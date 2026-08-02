@@ -89,3 +89,21 @@ being done**, so its checkboxes are legitimately unticked. The board therefore:
 Ticking those boxes to make a bar look tidy would misrepresent what happened —
 the ticket records why it was closed instead. See
 `completed/0006-define-real-application.md` for an example.
+
+## Architecture map
+
+`/architecture` renders the same tickets grouped by **where they sit in the
+stack** rather than by when they are scheduled — a phase is *when*, a layer is
+*where*. Eleven layers from Foundation up to Shipping, each split into
+subsystems, with per-subsystem progress.
+
+Clicking a ticket shows what it **depends on** and what **depends on it**.
+
+Those dependencies are not hand-maintained: any `T00NN` mention in a ticket body
+is treated as a reference, so the graph is derived from the backlog and cannot
+drift from it. Currently 286 edges across 94 tickets.
+
+The layer/subsystem mapping lives in `ARCHITECTURE` at the top of `server.js`.
+Every ticket must appear in exactly one group — any that do not are listed as a
+warning banner on the page rather than silently omitted, so adding a ticket
+without mapping it is visible immediately.

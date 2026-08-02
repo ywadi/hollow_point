@@ -27,6 +27,9 @@
   .dot.stale { background:var(--prog); }
   .dot.err { background:var(--blocked); }
 
+  a.nav { color:var(--accent); text-decoration:none; font-size:12.5px;
+          border:1px solid var(--line); border-radius:6px; padding:4px 10px; }
+  a.nav:hover { border-color:var(--accent); }
   .controls { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--dim); }
   .controls select, .ctl {
     background:var(--panel2); color:var(--fg); border:1px solid var(--line);
@@ -145,6 +148,7 @@
 <header>
   <h1>HollowPoint — Backlog</h1>
   <div class="meta" id="summary"></div>
+  <a class="nav" href="/architecture">Architecture →</a>
   <div class="controls">
     <label for="sortby">Sort</label>
     <select id="sortby">

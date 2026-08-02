@@ -92,6 +92,127 @@ function readBoard() {
   return { generated: new Date().toISOString(), columns };
 }
 
+
+// --- architecture map ---------------------------------------------------------
+//
+// Tickets grouped into the architectural structure they build, which is a
+// different cut from phases: a phase is *when*, a layer is *where in the stack*.
+// Ticket ids are listed explicitly rather than derived from phase, because
+// several subsystems deliberately span phases (profiling, gameplay, content).
+
+const ARCHITECTURE = [
+  { layer: 'Foundation', blurb: 'Build, toolchain and verification', groups: [
+    { name: 'Build harness',      tickets: ['T0001','T0002','T0003','T0010','T0004','T0011'] },
+    { name: 'Test & CI',          tickets: ['T0012','T0084'] },
+    { name: 'Conventions',        tickets: ['T0055','T0056'] },
+  ]},
+  { layer: 'Engine core', blurb: 'Application lifetime and the services everything sits on', groups: [
+    { name: 'App & window',       tickets: ['T0013','T0014','T0015'] },
+    { name: 'Layers & events',    tickets: ['T0017','T0018'] },
+    { name: 'Identity',           tickets: ['T0016'] },
+    { name: 'Reflection',         tickets: ['T0053'] },
+    { name: 'Diagnostics',        tickets: ['T0054','T0019'] },
+    { name: 'Time',               tickets: ['T0057'] },
+    { name: 'Input',              tickets: ['T0068'] },
+    { name: 'Threading',          tickets: ['T0026','T0050'] },
+  ]},
+  { layer: 'Data model', blurb: 'What a project, scene and asset actually are', groups: [
+    { name: 'Serialization',      tickets: ['T0020','T0082'] },
+    { name: 'Scene & ECS',        tickets: ['T0021','T0022','T0077'] },
+    { name: 'Assets',             tickets: ['T0023','T0058'] },
+    { name: 'Project & settings', tickets: ['T0024','T0078'] },
+    { name: 'Composition',        tickets: ['T0059','T0071'] },
+    { name: 'Communication',      tickets: ['T0072','T0074','T0075'] },
+  ]},
+  { layer: 'Gameplay', blurb: 'How the developer attaches and runs their own code', groups: [
+    { name: 'Hot-reload module',  tickets: ['T0048'] },
+    { name: 'Behaviours',         tickets: ['T0062'] },
+    { name: 'Autoloads',          tickets: ['T0076'] },
+    { name: 'Utilities',          tickets: ['T0073'] },
+    { name: 'Game definition',    tickets: ['T0044','T0006'] },
+  ]},
+  { layer: 'Rendering', blurb: 'Device, passes, materials and light', groups: [
+    { name: 'Device & stack',     tickets: ['T0025','T0027','T0046','T0047'] },
+    { name: 'Submission',         tickets: ['T0028','T0045','T0081','T0085'] },
+    { name: 'Materials',          tickets: ['T0060'] },
+    { name: 'Lighting',           tickets: ['T0079','T0086','T0087'] },
+    { name: 'Effects',            tickets: ['T0080','T0061'] },
+    { name: 'Visibility',         tickets: ['T0093'] },
+    { name: 'Extensibility',      tickets: ['T0094'] },
+  ]},
+  { layer: 'Content pipeline', blurb: 'Getting authored assets into the engine', groups: [
+    { name: 'Mesh import',        tickets: ['T0038','T0009'] },
+    { name: 'LOD',                tickets: ['T0039','T0040'] },
+    { name: 'Animation',          tickets: ['T0041','T0049','T0005'] },
+  ]},
+  { layer: 'World & environment', blurb: 'Sky, weather and atmosphere', groups: [
+    { name: 'Sky & time',         tickets: ['T0088'] },
+    { name: 'Atmospherics',       tickets: ['T0089','T0091'] },
+    { name: 'Weather',            tickets: ['T0090','T0092'] },
+  ]},
+  { layer: 'Simulation', blurb: 'Physics and audio', groups: [
+    { name: 'Physics',            tickets: ['T0051'] },
+    { name: 'Audio',              tickets: ['T0052'] },
+  ]},
+  { layer: 'Editor', blurb: 'Authoring tools — never shipped with the game', groups: [
+    { name: 'Shell & panels',     tickets: ['T0032','T0033','T0034','T0066','T0067'] },
+    { name: 'Scene authoring',    tickets: ['T0035','T0036','T0063','T0064'] },
+    { name: 'Editing model',      tickets: ['T0065','T0037'] },
+    { name: 'Probe (retired)',    tickets: ['T0007'] },
+  ]},
+  { layer: 'Shipping', blurb: 'The second consumer of the engine, and the player', groups: [
+    { name: 'Runtime & export',   tickets: ['T0042','T0043'] },
+    { name: 'Player state',       tickets: ['T0083'] },
+    { name: 'Game UI',            tickets: ['T0069'] },
+    { name: 'Networking',         tickets: ['T0070'] },
+  ]},
+  { layer: 'Cross-cutting', blurb: 'Spans every layer', groups: [
+    { name: 'Profiling',          tickets: ['T0029','T0030','T0031'] },
+    { name: 'Deferred',           tickets: ['T0008'] },
+  ]},
+];
+
+// Dependencies are read from the tickets themselves: any "T0053"-style mention
+// in a ticket body is treated as a reference. Derived rather than hand-authored,
+// so the graph cannot drift from the backlog.
+function readArchitecture() {
+  const board = readBoard();
+  const byId = new Map();
+  for (const c of board.columns) for (const t of c.tasks) byId.set(t.id, t);
+
+  const edges = [];
+  for (const [id, t] of byId) {
+    const seen = new Set();
+    for (const m of t.markdown.matchAll(/\bT(\d{4})\b/g)) {
+      const other = 'T' + m[1];
+      if (other !== id && byId.has(other) && !seen.has(other)) {
+        seen.add(other);
+        edges.push({ from: id, to: other });
+      }
+    }
+  }
+
+  const placed = new Set();
+  const layers = ARCHITECTURE.map((L) => ({
+    layer: L.layer,
+    blurb: L.blurb,
+    groups: L.groups.map((g) => {
+      const tasks = g.tickets.filter((id) => byId.has(id)).map((id) => {
+        placed.add(id);
+        const t = byId.get(id);
+        return { id, title: t.title, status: t.status, column: t.column,
+                 complexity: t.complexity, priority: t.priority,
+                 checksDone: t.checksDone, checksTotal: t.checksTotal, file: t.file };
+      });
+      return { name: g.name, tasks };
+    }),
+  }));
+
+  // Anything not placed is a mapping bug -- surface it rather than hide it.
+  const unplaced = [...byId.keys()].filter((id) => !placed.has(id)).sort();
+  return { generated: new Date().toISOString(), layers, edges, unplaced };
+}
+
 // --- http --------------------------------------------------------------------
 
 const server = http.createServer((req, res) => {
@@ -106,6 +227,17 @@ const server = http.createServer((req, res) => {
         'Cache-Control': 'no-store',
       });
       return res.end(body);
+    }
+
+    if (url === '/api/architecture') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(JSON.stringify(readArchitecture()));
+    }
+
+    if (url === '/architecture' || url === '/architecture.html') {
+      const html = fs.readFileSync(path.join(BOARD_DIR, 'architecture.html'));
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(html);
     }
 
     if (url === '/' || url === '/index.html') {
