@@ -48,11 +48,19 @@ function parseTask(file, column) {
 
   const status = field(md, 'Status');
 
+  // "1 — Harden the build" -> order 1, label "Harden the build". Tasks without
+  // a Phase sort last, under a "No phase" group.
+  const phaseRaw = field(md, 'Phase');
+  const pm = phaseRaw.match(/^\s*(\d+)\s*[—–-]?\s*(.*)$/);
+
   return {
     id: split ? split[1] : full,
     title: split ? split[2] : full,
     column,
     status,
+    phase: phaseRaw || null,
+    phaseOrder: pm ? Number(pm[1]) : 999,
+    phaseLabel: pm ? (pm[2] || `Phase ${pm[1]}`) : 'No phase',
     // A blocked task still lives in open/; surface it so it can be styled.
     blocked: /blocked/i.test(status),
     priority: field(md, 'Priority') || '—',
@@ -75,7 +83,8 @@ function readBoard() {
         .readdirSync(dir)
         .filter((f) => f.endsWith('.md') && f.toLowerCase() !== 'readme.md')
         .map((f) => parseTask(path.join(dir, f), c.id))
-        .sort((a, b) => a.id.localeCompare(b.id));
+        // Phase first, then id -- so a column reads in the order work happens.
+        .sort((a, b) => a.phaseOrder - b.phaseOrder || a.id.localeCompare(b.id));
     }
     return { ...c, tasks };
   });

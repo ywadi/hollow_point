@@ -206,10 +206,17 @@ where Ninja runs every command from.
 
 ## Known constraints
 
-- **`configure` needs network access.** DiligentFX fetches `entt` and
-  DiligentTools fetches `rapidjson` via CMake `FetchContent` at configure time.
-  Once configured, builds are offline. To pre-populate, point
-  `FETCHCONTENT_SOURCE_DIR_ENTT` at a local checkout.
+- **`configure` and builds are fully offline.** DiligentEngine fetches `entt`
+  (DiligentFX) and `abseil-cpp` (DiligentCore/ThirdParty) over the network at
+  configure time; both are vendored as submodules at exactly the refs Diligent
+  declares and wired up with `FETCHCONTENT_SOURCE_DIR_*` in the root
+  `CMakeLists.txt`. Verified by configuring inside a network namespace with no
+  connectivity.
+
+  `rapidjson` is vendored but **inactive** — DiligentTools gates it behind
+  `DILIGENT_USE_RAPIDJSON`, which is OFF, and TinyGLTF uses the bundled nlohmann
+  header instead. It is pointed at anyway so enabling that option cannot silently
+  reintroduce a network fetch.
 - **The Linux sysroot is x86_64 only.** Add `third_party/sysroot/linux-aarch64/`
   and a matching toolchain file to target ARM.
 - The vendored sysroot supplies link-time headers and stubs only. At runtime the

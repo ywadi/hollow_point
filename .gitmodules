@@ -17,3 +17,12 @@
 [submodule "third_party/ufbx"]
 	path = third_party/ufbx
 	url = https://github.com/ufbx/ufbx.git
+[submodule "third_party/entt"]
+	path = third_party/entt
+	url = https://github.com/skypjack/entt
+[submodule "third_party/abseil-cpp"]
+	path = third_party/abseil-cpp
+	url = https://chromium.googlesource.com/chromium/src/third_party/abseil-cpp
+[submodule "third_party/rapidjson"]
+	path = third_party/rapidjson
+	url = https://github.com/Tencent/rapidjson

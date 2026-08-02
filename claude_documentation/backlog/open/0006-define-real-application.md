@@ -4,6 +4,7 @@
 |---|---|
 | **Status** | 🔜 TODO |
 | **Priority** | High |
+| **Phase** | 2 — Application foundation |
 | **Created** | 2026-08-02 |
 | **Blocks** | T0007 |
 

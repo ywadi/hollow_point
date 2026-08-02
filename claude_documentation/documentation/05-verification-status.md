@@ -24,6 +24,10 @@ Zig-based, incremental, cross-compiling from either host. See
 - ✅ **glibc pinned** — max symbol requirement `GLIBC_2.27` against a 2.28 target
 - ✅ **RPATH clean** — no sysroot stub directory (G6)
 - ✅ **Bootstrap** — installs zig + cmake + ninja, checksum-verified
+- ✅ **Fully offline** — configure and build need no network. EnTT and abseil-cpp
+  are vendored at Diligent's pinned refs and wired via `FETCHCONTENT_SOURCE_DIR_*`.
+  Proven inside a network namespace (`unshare -r -n`) and with
+  `FETCHCONTENT_FULLY_DISCONNECTED=ON`; `_deps/` contains no fetched sources
 
 ### Libraries ✅ (compile/link on both targets)
 | Library | Version | Target(s) |
@@ -83,7 +87,7 @@ and subtasks:
 | Retire `apps/imgui_probe` | [T0007](../backlog/completed/0007-retire-imgui-probe.md) |
 | Remove the `ImGuiKey_Mod*` shim | [T0008](../backlog/open/0008-remove-imgui-modifier-shim.md) |
 | Wire up or drop `ufbx` | [T0009](../backlog/open/0009-wire-up-ufbx.md) |
-| Make `configure` work offline | [T0010](../backlog/open/0010-offline-configure.md) |
+| Make `configure` work offline | [T0010](../backlog/completed/0010-offline-configure.md) |
 | Add an aarch64 Linux target | [T0011](../backlog/open/0011-aarch64-linux-target.md) |
 
 This file records **what is proven and what is not**. The backlog records **what

@@ -50,6 +50,36 @@ set(DILIGENT_INSTALL_FX             OFF CACHE BOOL "" FORCE)
 set(DILIGENT_DEAR_IMGUI_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui"
     CACHE PATH "imgui source directory" FORCE)
 
+# --- offline configure -------------------------------------------------------
+#
+# DiligentEngine pulls two dependencies over the network at *configure* time via
+# FetchContent, which would otherwise make a fresh build tree require internet
+# and take whatever the pinned ref resolves to on the day. Both are vendored as
+# submodules at exactly the refs Diligent declares, and pointed at here.
+#
+# Must come before add_subdirectory(third_party/DiligentEngine), and must be
+# FORCE: FetchContent_Populate declares FETCHCONTENT_SOURCE_DIR_<NAME> as a cache
+# variable *without* FORCE deep inside that subdirectory, so ours has to already
+# be in the cache to win.
+#
+# The <NAME> suffix is the name from FetchContent_Declare, uppercased -- note the
+# hyphen survives in ABSEIL-CPP. A wrong name here fails silently and simply
+# fetches anyway, so these are taken from the generated CMakeCache, not guessed.
+set(FETCHCONTENT_SOURCE_DIR_ENTT
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/entt"
+    CACHE PATH "Vendored EnTT (DiligentFX)" FORCE)
+set(FETCHCONTENT_SOURCE_DIR_ABSEIL-CPP
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/abseil-cpp"
+    CACHE PATH "Vendored abseil-cpp (DiligentCore/ThirdParty)" FORCE)
+
+# rapidjson is NOT currently fetched -- DiligentTools/AssetLoader gates it behind
+# DILIGENT_USE_RAPIDJSON, which defaults OFF, and TinyGLTF falls back to the
+# vendored nlohmann single-header instead. It is vendored and pointed at anyway
+# so that turning that option on does not silently reintroduce a network fetch.
+set(FETCHCONTENT_SOURCE_DIR_RAPIDJSON
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/rapidjson"
+    CACHE PATH "Vendored rapidjson (inactive: DILIGENT_USE_RAPIDJSON is OFF)" FORCE)
+
 add_subdirectory(third_party/DiligentEngine)
 
 # ImGui renamed the modifier keys in 1.89 (ImGuiKey_ModCtrl -> ImGuiMod_Ctrl)

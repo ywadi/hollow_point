@@ -4,6 +4,7 @@
 |---|---|
 | **Status** | 🔜 TODO |
 | **Priority** | Low |
+| **Phase** | 3 — Content & libraries |
 | **Created** | 2026-08-02 |
 
 ## Why

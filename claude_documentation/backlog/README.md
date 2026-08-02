@@ -31,7 +31,7 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0007](completed/0007-retire-imgui-probe.md) | Retire `apps/imgui_probe` | ✅ DONE | Low |
 | [T0008](open/0008-remove-imgui-modifier-shim.md) | Remove the `ImGuiKey_Mod*` shim | ⏸ BLOCKED upstream | Low |
 | [T0009](open/0009-wire-up-ufbx.md) | Wire up `ufbx`, or drop it | 🔜 OPEN | Low |
-| [T0010](open/0010-offline-configure.md) | Make `configure` work offline | 🔜 OPEN | Low |
+| [T0010](completed/0010-offline-configure.md) | Make `configure` work offline | ✅ DONE | Low |
 | [T0011](open/0011-aarch64-linux-target.md) | Add an aarch64 Linux target | 🔜 OPEN | Low |
 | [T0012](open/0012-test-harness.md) | Build a test harness for TDD | 🔜 OPEN | High |
 
@@ -92,3 +92,20 @@ Keep the template in `0001` as the shape. What matters:
   say what output would prove it, the task is not ready to start.
 - **Notes / findings** — append as you go. This is what survives a context reset.
 - Do not mark ✅ DONE without pasting the evidence into the file.
+
+## Phases
+
+Open tickets carry a `Phase` field in their header table, and the board groups
+the Open column by it so the column reads in the order the work should happen
+rather than as a flat pile.
+
+| Phase | Meaning |
+|---|---|
+| 1 — Harden the build | Make the foundation trustworthy before building on it |
+| 2 — Application foundation | Decide and scaffold what is actually being built |
+| 3 — Content & libraries | Asset pipeline and the vendored libraries |
+| 4 — Deferred | Blocked on others, or speculative with no current need |
+
+Format is `<number> — <label>`; the number drives ordering. A ticket with no
+phase sorts last under "No phase" — which is why completed tickets, closed before
+phases existed, are ungrouped. Add a phase when a ticket becomes real work.
