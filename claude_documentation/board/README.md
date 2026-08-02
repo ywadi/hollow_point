@@ -76,3 +76,16 @@ reflect the ordering.
 The sort choice persists in `localStorage`, as does per-phase collapse state.
 With 39 open tickets in one column, Collapse all is the fastest way to see the
 phase structure at a glance.
+
+## Superseded and dropped tickets
+
+A ticket closed as `❌ SUPERSEDED` or `❌ DROPPED` was closed **without the work
+being done**, so its checkboxes are legitimately unticked. The board therefore:
+
+- tags the card *Superseded* / *Dropped* and dims it
+- replaces its progress bar with "closed without completing"
+- **excludes it from the phase aggregate**, so a phase can still reach 100%
+
+Ticking those boxes to make a bar look tidy would misrepresent what happened —
+the ticket records why it was closed instead. See
+`completed/0006-define-real-application.md` for an example.

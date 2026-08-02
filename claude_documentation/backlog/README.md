@@ -22,8 +22,14 @@ This is the work. For what is already proven to work — and what only appears t
 
 | ID | Task | Phase | State | Priority |
 |---|---|---|---|---|
+| [T0001](completed/0001-run-windows-exe-under-wine.md) | Run the Windows executable under wine | 1 — Harden the build | ✅ DONE | High |
+| [T0002](completed/0002-verify-windows-dist-staging.md) | Verify `dist` staging for Windows | 1 — Harden the build | ✅ DONE | High |
+| [T0003](completed/0003-verify-vulkan-backend.md) | Verify the Vulkan backend on real hardware | 1 — Harden the build | ✅ DONE | High |
 | [T0004](open/0004-verify-windows-host-build.md) | Verify building *on* a Windows host | 1 — Harden the build | 🔜 TODO | Medium |
+| [T0007](completed/0007-retire-imgui-probe.md) | Retire `apps/imgui_probe` | 1 — Harden the build | ✅ DONE | Low |
+| [T0010](completed/0010-offline-configure.md) | Make `configure` work offline | 1 — Harden the build | ✅ DONE | Low |
 | [T0012](open/0012-test-harness.md) | Build a test harness for TDD | 1 — Harden the build | 🔜 TODO | High |
+| [T0006](completed/0006-define-real-application.md) | Define and scaffold the real application | 2 — Engine skeleton | ❌ SUPERSEDED | High |
 | [T0013](open/0013-engine-library-app-split.md) | Split the tree into an engine library and app consumers | 2 — Engine skeleton | 🔜 TODO | High |
 | [T0014](open/0014-application-and-main-loop.md) | Application class, main loop and entry point | 2 — Engine skeleton | 🔜 TODO | High |
 | [T0015](open/0015-window-platform-layer.md) | Window and platform layer via DiligentTools NativeApp | 2 — Engine skeleton | 🔜 TODO | High |
@@ -55,6 +61,8 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0035](open/0035-hierarchy-and-inspector.md) | Scene hierarchy and inspector panels | 6 — Editor | 🔜 TODO | High |
 | [T0036](open/0036-assets-panel.md) | Assets panel | 6 — Editor | 🔜 TODO | Medium |
 | [T0037](open/0037-play-mode.md) | Play / simulation mode | 6 — Editor | 🔜 TODO | Medium |
+| [T0005](completed/0005-exercise-new-library-apis.md) | Actually call enkiTS / meshoptimizer / ozz | 7 — Content pipeline | ❌ SUPERSEDED | Medium |
+| [T0009](completed/0009-wire-up-ufbx.md) | Wire up `ufbx`, or drop it | 7 — Content pipeline | ❌ SUPERSEDED | Low |
 | [T0038](open/0038-fbx-to-gltf-converter.md) | FBX → glTF converter (host tool) | 7 — Content pipeline | 🔜 TODO | High |
 | [T0039](open/0039-meshoptimizer-auto-lod.md) | Automatic LOD generation with meshoptimizer | 7 — Content pipeline | 🔜 TODO | High |
 | [T0040](open/0040-runtime-lod-selection.md) | Runtime LOD selection | 7 — Content pipeline | 🔜 TODO | Medium |
@@ -64,14 +72,6 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0043](open/0043-export-pipeline.md) | Export pipeline and asset relocation | 8 — Runtime & export | 🔜 TODO | Medium |
 | [T0008](open/0008-remove-imgui-modifier-shim.md) | Remove the `ImGuiKey_Mod*` compile-definition shim | 9 — Deferred | ⏸ BLOCKED on DiligentEngine upstream | Low |
 | [T0011](open/0011-aarch64-linux-target.md) | Add an aarch64 Linux target | 9 — Deferred | 🔜 TODO | Low |
-| [T0001](completed/0001-run-windows-exe-under-wine.md) | Run the Windows executable under wine | — | ✅ DONE | High |
-| [T0002](completed/0002-verify-windows-dist-staging.md) | Verify `dist` staging for Windows | — | ✅ DONE | High |
-| [T0003](completed/0003-verify-vulkan-backend.md) | Verify the Vulkan backend on real hardware | — | ✅ DONE | High |
-| [T0005](completed/0005-exercise-new-library-apis.md) | Actually call enkiTS / meshoptimizer / ozz | — | ❌ SUPERSEDED | Medium |
-| [T0006](completed/0006-define-real-application.md) | Define and scaffold the real application | — | ❌ SUPERSEDED | High |
-| [T0007](completed/0007-retire-imgui-probe.md) | Retire `apps/imgui_probe` | — | ✅ DONE | Low |
-| [T0009](completed/0009-wire-up-ufbx.md) | Wire up `ufbx`, or drop it | — | ❌ SUPERSEDED | Low |
-| [T0010](completed/0010-offline-configure.md) | Make `configure` work offline | — | ✅ DONE | Low |
 
 
 ## Working a ticket — mandatory

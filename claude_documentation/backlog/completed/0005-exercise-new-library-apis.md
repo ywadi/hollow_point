@@ -4,6 +4,7 @@
 |---|---|
 | **Status** | ❌ SUPERSEDED |
 | **Priority** | Medium |
+| **Phase** | 7 — Content pipeline |
 | **Created** | 2026-08-02 |
 
 ## Why
@@ -65,3 +66,9 @@ files.
 
 Left here rather than deleted: the analysis in it is still accurate and the
 successor tickets refer back to it.
+
+**Phase assignment is approximate.** Filed under Phase 7 because two of its three
+successors (T0039 meshoptimizer LOD, T0041 ozz animation) are content-pipeline
+work — but the third, T0026 (enkiTS job system), is Phase 4. This ticket bundled
+libraries that turned out to belong in different phases, which is part of why it
+was superseded rather than worked.

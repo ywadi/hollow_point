@@ -4,6 +4,7 @@
 |---|---|
 | **Status** | ✅ DONE |
 | **Priority** | High |
+| **Phase** | 1 — Harden the build |
 | **Created** | 2026-08-02 |
 | **Closed** | 2026-08-02 |
 | **Refs** | [../../documentation/05-verification-status.md](../../documentation/05-verification-status.md) |

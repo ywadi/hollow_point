@@ -63,6 +63,9 @@
   .tag.High { color:#ff9b9b; border-color:#5a2b2b; }
   .tag.Medium { color:#e0c07a; border-color:#5a4a2b; }
   .tag.Low { color:#8b93a7; }
+  .card.undone { opacity:.72; }
+  .tag.undone { color:#c9a3ff; border-color:#4a3a63; background:#221b2e; }
+  .undone-note { font-style:italic; }
   .tag.blocked { color:#ffb4b1; border-color:#5a2b2b; background:#2a1b1b; }
 
   /* phase grouping */
@@ -288,15 +291,29 @@ function renderMarkdown(md) {
 function card(t) {
   const pct = t.checksTotal ? Math.round((t.checksDone / t.checksTotal) * 100) : 0;
   const prio = ['High','Medium','Low'].includes(t.priority) ? t.priority : '';
+
+  // A superseded ticket was closed WITHOUT the work being done, so its checkboxes
+  // are legitimately unticked. Showing it a 0% progress bar next to genuinely
+  // finished tickets reads as stalled work, which is misleading -- so show the
+  // status instead of a bar. Ticking those boxes to make the bar look tidy would
+  // be a lie about what happened.
+  const superseded = /superseded/i.test(t.status || '');
+  const dropped = /dropped/i.test(t.status || '');
+  const closedUndone = superseded || dropped;
+
   return `
-    <div class="card" data-id="${esc(t.id)}">
+    <div class="card${closedUndone ? ' undone' : ''}" data-id="${esc(t.id)}">
       <div class="idline"><span class="id">${esc(t.id)}</span></div>
       <h3>${esc(t.title)}</h3>
       <div class="tags">
         ${prio ? `<span class="tag ${prio}">${prio}</span>` : ''}
         ${t.blocked ? '<span class="tag blocked">Blocked</span>' : ''}
+        ${superseded ? '<span class="tag undone">Superseded</span>' : ''}
+        ${dropped ? '<span class="tag undone">Dropped</span>' : ''}
       </div>
-      ${t.checksTotal ? `<div class="bar"><i style="width:${pct}%"></i></div>
+      ${closedUndone
+        ? `<div class="barlabel undone-note">closed without completing — see the ticket</div>`
+        : t.checksTotal ? `<div class="bar"><i style="width:${pct}%"></i></div>
         <div class="barlabel">${t.checksDone}/${t.checksTotal} checks</div>` : ''}
     </div>`;
 }
@@ -328,8 +345,12 @@ function cardsHtml(tasks, colId) {
   groups.sort((a, b) => a.key - b.key);
 
   return groups.map((g) => {
-    const done = g.tasks.reduce((n, t) => n + t.checksDone, 0);
-    const total = g.tasks.reduce((n, t) => n + t.checksTotal, 0);
+    // Exclude superseded/dropped tickets from the aggregate: their checkboxes are
+    // unticked because the work was never done, not because it is outstanding.
+    // Counting them would permanently drag a phase's progress below 100%.
+    const counted = g.tasks.filter((t) => !/superseded|dropped/i.test(t.status || ''));
+    const done = counted.reduce((n, t) => n + t.checksDone, 0);
+    const total = counted.reduce((n, t) => n + t.checksTotal, 0);
     const pct = total ? Math.round((done / total) * 100) : 0;
     const phaseKey = `${colId}__${g.key}`;
     return `
