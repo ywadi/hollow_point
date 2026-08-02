@@ -42,6 +42,12 @@ get shadows, at what resolution, and making them look right is ours.
 
 ## Notes / findings
 
+**This machinery is also used for visibility, not only for lighting** (T0093).
+Vision cones render occlusion maps through the same path. Keep shadow map
+rendering and sampling reusable rather than hard-wired to the lighting pass — a
+vision source needs the depth map and the sampling function without the shading.
+
+
 **Shimmering is the artefact that makes shadows look amateur**, and it is caused
 by the shadow map's texel grid moving with the camera. The fix is snapping the
 light's projection to texel boundaries so the grid stays fixed in world space.

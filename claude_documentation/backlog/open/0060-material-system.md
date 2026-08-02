@@ -28,6 +28,8 @@ ability to attach a custom shader** for anything else.
 - [ ] Shader compilation is cached, not repeated every launch
 - [ ] A shader that fails to compile falls back visibly, never crashes
 - [ ] Shader hot reload in the editor
+- [ ] **Custom shaders receive engine intermediates** — visibility (T0093),
+      screen position, depth — not just a finished colour
 
 ## Subtasks
 
@@ -42,6 +44,14 @@ ability to attach a custom shader** for anything else.
 - [ ] 60.9 Sort by material/PSO in the render queue (T0045)
 
 ## Notes / findings
+
+**Custom shaders must be able to reach engine intermediates, not just material
+parameters.** T0093 (vision-based visibility) needs a per-pixel visibility factor
+inside the material shader to dim, hide or dither. If shading is a sealed pipeline
+that consumes lights and emits pixels, that capability has to be bolted on as a
+post-process hack later. Design the custom-shader interface to expose documented
+inputs — visibility, screen position, depth, world position — from the start.
+
 
 **`RenderStateCache.hpp` and `BytecodeCache.h` already exist in
 `Graphics/GraphicsTools`** and solve shader compile hitching and startup cost. Use
