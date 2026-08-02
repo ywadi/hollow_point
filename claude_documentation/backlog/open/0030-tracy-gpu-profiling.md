@@ -58,3 +58,12 @@ through every other problem in this project and is worth keeping.
 Diligent's built-in `IQuery` duration queries are the fallback if Tracy's Vulkan
 integration proves impractical: less rich, but backend-agnostic and fully
 supported.
+
+### Architecture review (2026-08-03)
+
+The fallback is even cheaper than the ticket implies: Diligent ships ready-made
+helpers for it — `DurationQueryHelper.hpp` and `ScopedQueryHelper.hpp` in
+`DiligentCore/Graphics/GraphicsTools/interface/`, which manage the query
+double-buffering that makes `IQuery` fiddly to use directly. If 30.2 concludes
+Tracy's same-command-buffer requirement cannot be met through the RHI, the
+fallback path is genuinely small.

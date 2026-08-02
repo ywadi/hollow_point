@@ -99,3 +99,26 @@ reloadable (T0058).
 
 `OnFixedUpdate` must be driven by the accumulator in T0057, not by the frame
 loop, or gameplay physics interactions become frame-rate dependent.
+
+### Architecture review (2026-08-03)
+
+Two scope clarifications, so this Phase 2 ticket is not blocked on Phase 6:
+
+- **The editor-facing Done-when items cannot close in Phase 2.** "Attachable
+  from the editor inspector", reflected properties "editable in the
+  inspector", and 62.11's dropdown all require T0035 (Phase 6). The Phase 2
+  deliverable is the mechanism — base class, registry, serialization,
+  hot-reload cycle, update dispatch — exercised from code and tests; the
+  editor surface lands with the inspector. Same pattern as other tickets whose
+  acceptance spans phases, but worth stating here because this one is the
+  gameplay keystone.
+- **Decide edit-mode execution policy now, even if the answer is simple:** do
+  behaviours run while *editing* (not playing)? The sane default is no —
+  `OnCreate`/`OnUpdate` fire only in play mode / runtime, and anything that
+  must run in-editor is an explicit opt-in later (Unity's `ExecuteInEditMode`
+  equivalent, if ever). Leaving it undecided means someone's `OnCreate` will
+  fire during scene load in the editor and mutate the authored scene.
+
+Linkage prerequisite: the type registry being "pushed from the module" only
+works once T0095 (module ABI — one engine state, entt across the boundary) is
+settled. T0095 now blocks this ticket.

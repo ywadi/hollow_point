@@ -54,3 +54,12 @@ wrong.
 Read back the ID buffer *asynchronously* — a synchronous readback stalls the
 pipeline and makes selection feel laggy. One frame of latency on selection is
 imperceptible.
+
+### Architecture review (2026-08-03)
+
+Two existing Diligent pieces reduce this ticket's cost — check both before
+building: `GPUCompletionAwaitQueue.hpp` (GraphicsTools) is purpose-built for
+the async-readback pattern the ID buffer needs, and DiligentFX's
+`CoordinateGridRenderer` is a ready-made editor viewport grid — a standard
+editor feature no ticket currently mentions, and it comes for free with the
+DiligentFX dependency (its ImGui settings panel included, per D6).

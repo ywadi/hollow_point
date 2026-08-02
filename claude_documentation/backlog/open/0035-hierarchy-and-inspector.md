@@ -28,6 +28,8 @@ actually *edit* rather than only display.
 - [ ] 35.1 Hierarchy panel querying the scene each frame — do not cache (notes)
 - [ ] 35.2 Selection writing to EditorState
 - [ ] 35.3 Create empty entity, rename, delete
+- [ ] 35.3b Duplicate an entity/subtree — uses T0071's reference remap (old→new
+      GUID map), which is why it is called out rather than assumed
 - [ ] 35.4 Inspector reading the selection and listing components
 - [ ] 35.5 Editable widgets per component type, registered like serialization
       (T0022) rather than a central switch
@@ -44,6 +46,17 @@ is cheap at this scale.
 Component editor registration should mirror component *serialization*
 registration (T0022). Two parallel central switches over component types is
 exactly the duplication that rots.
+
+### Architecture review (2026-08-03)
+
+The paragraph above predates T0053 and understates it: the inspector should
+not "mirror" serialization registration — **both are generated from the same
+reflection declaration** (T0053 lists the inspector as a consumer that uses
+reflection "and nothing else"). 35.5's per-type widgets are the *presentation*
+layer over reflected properties (plus metadata like ranges and tooltips), not
+a second registry. Duplicate-entity was also missing from the ticket entirely
+(now 35.3b) — it is a scene-authoring staple and it is the first editor
+operation that exercises T0071's remap.
 
 Undo/redo is deliberately not in scope, but it is much cheaper to design for now
 than to retrofit: if edits go through a small command abstraction rather than

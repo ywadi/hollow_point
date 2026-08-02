@@ -53,3 +53,17 @@ saving and worth designing the asset format around from the start.
 
 Store the **error metric** alongside each level. Runtime selection (T0040) should
 choose by screen-space error, not by raw distance, and it needs that number.
+
+### Architecture review (2026-08-03) — 39.5's "asset format" does not exist yet
+
+"Extend the asset format to carry the LOD chain" presumes an engine mesh
+format, but the pipeline's source of truth is glTF (T0038) and glTF core has
+no LOD concept. The options are real and nobody owns the choice yet:
+(a) the `MSFT_lod` glTF extension — stays in the interchange format, but
+Diligent's loader must be checked for whether it surfaces it; (b) an
+engine-side **cooked mesh** container produced at import (which is also where
+T0045's import-time bounding volumes and the shared-vertex-buffer layout this
+ticket describes naturally live); or (c) sidecar files per LOD, which is the
+option that rots. This decision shapes T0023's pool, T0040's selection and
+T0043's export — make it deliberately at the start of this ticket, and record
+it.

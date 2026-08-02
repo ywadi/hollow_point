@@ -54,3 +54,20 @@ executable.
 
 Deduplicate assets referenced by more than one scene; a naive per-reference copy
 bloats the export and breaks GUID identity if the copies drift.
+
+### Architecture review (2026-08-03) — Linux RUNPATH is a latent export-breaker
+
+The build's RUNPATH currently points at **absolute build-tree directories**
+(that is what G6's verification shows: `RUNPATH` containing the two engine
+directories under `build/`). That is correct for development and *wrong for an
+exported game*: on a player's machine those paths do not exist, Linux does not
+search the executable's own directory for shared libraries, and the runtime
+will fail to load `GraphicsEngineVk.so` even though it sits right next to the
+exe. The exported Linux runtime needs `$ORIGIN`-relative RUNPATH — either
+linked that way for the runtime app (`CMAKE_BUILD_RPATH`/`INSTALL_RPATH` with
+`$ORIGIN`) or rewritten at export time (patchelf). Windows is unaffected
+(exe-adjacent DLL search is native, and dist already co-locates). Add this to
+43.7's "move the folder and run it" test on a machine — or at least a chroot —
+without the build tree, because testing on the dev machine passes even when
+this is broken, which is exactly the class of false pass this ticket warns
+about.

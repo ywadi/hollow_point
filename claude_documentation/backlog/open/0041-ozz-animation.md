@@ -67,3 +67,17 @@ Original options, kept for the record:
    avoid.
 
 Superseded by the resolution above. The FBX SDK is never required either way.
+
+### Architecture review (2026-08-03) — the renderer half of 41.4 has an owner gap
+
+"Skinning matrices to the renderer" names the hand-off but not the receiver:
+someone must implement the GPU side — joint-palette buffer upload, the skinned
+vertex layout, and a skinned PSO/shader variant. Verified in the tree:
+`PBR_Renderer` already supports this for the standard path
+(`MaxJointCount`, `JOINTS_BUFFER_MODE`, `pJointsBuffer` in
+`DiligentFX/PBR/interface/PBR_Renderer.hpp`), so the standard-material case is
+plumbing, not shader writing. But **custom-shader materials (T0060) need their
+own skinned variant**, and T0060's variant discussion does not mention
+skinning. Assign the draw-path integration explicitly — here for the PBR path,
+and as a named variant axis in T0060 — or it lands by accident in whichever
+ticket is open when a skinned character first renders.

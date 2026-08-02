@@ -25,8 +25,9 @@ schema is still small.
 ## Subtasks
 
 - [ ] 22.1 `.hpscene` schema — entities as a list, each with GUID, tag, components
-- [ ] 22.2 Per-component serialize/deserialize, registered so adding a component
-      does not mean editing a central switch
+- [ ] 22.2 Per-component serialize/deserialize **driven by reflection (T0053)**
+      — registration falls out of the type's one reflection declaration, so
+      adding a component still touches exactly one place
 - [ ] 22.3 Save: iterate entities and their components
 - [ ] 22.4 Load: recreate entities preserving GUIDs, then components
 - [ ] 22.5 Wire binary cook/load through T0020
@@ -45,3 +46,14 @@ which destroys a file. Failing loudly is safer. Whichever we pick, write it down
 Component registration should be data-driven enough that adding a component type
 touches one place. A central `if/else` chain over component types is the thing
 that rots fastest in an engine of this shape.
+
+### Architecture review (2026-08-03)
+
+This ticket predates T0053 (reflection) and was written as if each component
+hand-registers its own serialize functions. T0053 explicitly lists
+serialization as a consumer that uses reflection "and nothing else" — so 22.2
+has been reworded: per-component serialization is *generated from* the
+reflection declaration, and the only hand-written serializers are the leaf
+types the reflection layer bottoms out in (see the matching note on T0020).
+**T0053 is therefore a hard prerequisite of this ticket**, which its own notes
+already claim but this file previously did not acknowledge.

@@ -1,8 +1,10 @@
 # Project overview
 
 **HollowPoint** — a C++17 project built on [DiligentEngine](https://github.com/DiligentGraphics/DiligentEngine)
-(cross-platform rendering). Not a git repository at the time of writing;
-`third_party/DiligentEngine` and the vendored libraries have their own `.git`.
+(cross-platform rendering).
+
+Git repository at `github.com/ywadi/hollow_point`. Everything under
+`third_party/` is a submodule, so clone with `--recursive`.
 
 Root: `/media/ywadi/second/hollow_point`
 

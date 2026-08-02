@@ -71,3 +71,25 @@ works — this is where material systems become unmaintainable.
 
 The error material matters more than it sounds: a shader failure that renders
 black is indistinguishable from an unlit object, and costs hours.
+
+### Architecture review (2026-08-03) — two gaps in this ticket
+
+**1. The custom-shader *language* is an undecided decision hiding in 60.3.**
+Custom materials must run on both Vulkan and OpenGL (D2 — GL is the only
+fallback on Windows). Diligent's portable path is **HLSL** (compiled via
+glslang for Vulkan, converted for GL via its HLSL2GLSL converter, with
+documented limitations); GLSL written directly does not portably reach both
+backends through the same pipeline. Whatever is chosen becomes the language
+every custom material is written in, forever — decide it explicitly at the
+start of this ticket and record it, including which HLSL feature subset is
+safe on the GL path.
+
+**2. Skinning is a missing variant axis.** The variant discussion covers
+optional features but not the one variant the engine is guaranteed to need:
+skinned vs static vertex input (T0041/T0049). The standard PBR path gets this
+from `PBR_Renderer` (verified: joints buffer support exists); custom-shader
+materials need the skinned variant defined here, or skinned characters will be
+limited to standard materials by accident rather than by decision.
+
+Also note T0096 (HDR/tonemapping) now owns where material output lands —
+custom shaders write linear HDR and must not tonemap themselves.

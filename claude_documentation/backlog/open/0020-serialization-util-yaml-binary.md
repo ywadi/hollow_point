@@ -54,3 +54,15 @@ YAML, never failing. That property is also exactly what Phase 8 export needs.
 rapidyaml is chosen over yaml-cpp for speed and active maintenance; the wrapper
 is what makes that reversible. Its API is lower-level (tree-based), so the
 wrapper carries more weight than it would with yaml-cpp — that is expected.
+
+### Architecture review (2026-08-03) — reconcile 20.3 with reflection (T0053)
+
+This ticket predates T0053 by a day and subtask 20.3 ("serialization
+concept/traits so types opt in uniformly") now half-overlaps it. If traits and
+reflection both exist as opt-in mechanisms, components get serialized two ways
+and they drift — the exact four-switches problem T0053 exists to kill. The
+reconciliation: **reflected types get serialization *derived from* T0053's
+property enumeration automatically**; hand-written traits are only for the
+leaf/primitive types reflection bottoms out in (GUID, math types, strings,
+containers). 20.3 should be read as "define the leaf-type layer reflection
+sits on", not as a parallel per-component mechanism.

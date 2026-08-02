@@ -36,7 +36,7 @@ Structure it now, while there is nothing to move.
       `readme.md` (G8) — the root glob picks them up with no root edit
 - [ ] 13.5 Leave room for a fourth artifact: `game/`, a hot-reloadable shared
       library both apps load (T0048) — it is not an app, and not the engine
-- [ ] 13.5 Build both targets, confirm no-op rebuild still clean
+- [ ] 13.6 Build both targets, confirm no-op rebuild still clean
 
 ## Notes / findings
 
@@ -57,3 +57,17 @@ runtime (app), and `game/` — a *shared* library holding gameplay, loaded and
 reloaded at runtime (T0048). The layout should anticipate it even if it is
 stubbed empty at first, because retrofitting a shared-library boundary means
 revisiting every gameplay type's linkage.
+
+### Architecture review (2026-08-03) — "engine as static library" is not a safe default
+
+This ticket's "Done when" fixes the engine as a **static** library, but the
+`game/` shared module (T0048) has to link against the engine somehow, and
+statically linking the engine into both the executable *and* the game DLL
+duplicates every engine global — including entt's `ENTT_API`-marked type-index
+counters, which must be a single instance for the registry to work across the
+boundary. On Windows the module cannot even resolve symbols from the exe
+without deliberate export machinery. **T0095 now owns that decision and blocks
+T0048/T0062; make it before committing this layout.** If the answer is "engine
+is a shared library in dev builds", this ticket's first Done-when changes, and
+export macros (`HP_API`) are cheapest to add while the headers are being
+written — not after.

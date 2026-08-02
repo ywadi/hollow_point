@@ -57,3 +57,30 @@ offline, and glTF is the engine's source of truth. Keeps this dispatch small.
 
 Asset *hot reload* is not in scope but will be wanted; leave the pool's
 GUID indirection able to swap an asset's contents without invalidating handles.
+
+### Architecture review (2026-08-03) — three things this ticket underspecifies
+
+**1. Sub-asset identity.** A glTF file is not one asset — it is N meshes, M
+materials and K textures in a container. "Each import writes a metafile with
+source path and GUID" implies one GUID per file, but scenes need to reference
+*the second mesh in* `characters.glb`. The metafile format must assign stable
+GUIDs to **sub-assets** (stable across re-import, ideally keyed by name rather
+than index so a re-exported file does not shuffle identities). Unity's
+fileID/guid split exists for exactly this reason. Deciding this after scenes
+reference assets means a migration.
+
+**2. GPU-backed import needs the render device — a real Phase 3→4 ordering
+wrinkle.** Diligent's `GLTFLoader`/`TextureLoader` create GPU resources and
+take an `IRenderDevice`, which does not exist until T0025 (Phase 4). Either
+accept that the GPU half of import only completes once T0025 lands, or split
+import into CPU parse + deferred GPU upload from the start — the same
+two-stage shape T0058's async loading needs anyway, so the split is not wasted
+work. Do not let Phase 3 "complete" with an import path that was never run.
+
+**3. Builtin default assets need well-known GUIDs.** The default material
+(T0028), error material (T0060), and primitive meshes for greyboxing
+(cube/sphere/plane — scene authoring needs them before any real asset is
+imported) are engine-provided assets that exist in every project. They need
+*fixed, reserved* GUIDs so scenes referencing them work across projects and
+exports — a reserved GUID range is one line of policy now and a data migration
+later.

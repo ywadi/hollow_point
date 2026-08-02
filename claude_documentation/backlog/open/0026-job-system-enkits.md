@@ -5,7 +5,7 @@
 | **Status** | 🔜 TODO |
 | **Priority** | Medium |
 | **Complexity** | Simple |
-| **Phase** | 4 — Render layer |
+| **Phase** | 3 — Data model |
 | **Created** | 2026-08-02 |
 
 ## Why
@@ -45,3 +45,12 @@ parallel *preparation* is the sane starting point.
 
 Nested tasks deadlock trivially in naive schedulers. enkiTS handles this
 properly, but the wrapper must not add a blocking wait that reintroduces it.
+
+### Architecture review (2026-08-03) — moved Phase 4 → 3
+
+Two Phase 3 tickets list this as a dependency in their subtasks: T0058 (async
+asset load, 58.5) and T0077 (async scene load, 77.2). A Phase 4 job system
+means those Phase 3 tickets cannot close — a straightforward ordering error.
+Moved to Phase 3. The original reasoning ("no scheduler before there is work
+to schedule") still holds in spirit: land it late in Phase 3, when the asset
+work that needs it exists, not at the phase's start.

@@ -53,3 +53,11 @@ two stages from the start.
 
 Debounce the file watcher: DCC tools and build steps write files in stages, and a
 naive watcher fires on a half-written file and reloads garbage.
+
+### Architecture review (2026-08-03)
+
+Diligent already ships a helper for the upload half of 58.5:
+`GPUUploadManager.h` in `DiligentCore/Graphics/GraphicsTools/interface/`.
+Check what it provides before hand-rolling the worker-decode → main-thread
+upload marshalling. (Note also T0026 has been moved to Phase 3 — this ticket's
+job-system dependency was previously pointing one phase forward.)

@@ -13,10 +13,17 @@
 
 ## Why
 
-**Dear ImGui never ships.** It is the editor's UI (T0032) and the editor is
-explicitly not part of the game. So HUD, menus, inventory and dialogue have no
-system at all — the RenderStack (T0027) reserves a UI layer, but nothing draws
-into it.
+**Dear ImGui is not the game's UI.** It is the editor's UI (T0032) and the
+editor is explicitly not part of the game. So HUD, menus, inventory and
+dialogue have no system at all — the RenderStack (T0027) reserves a UI layer,
+but nothing draws into it.
+
+(Precision, from the architecture review 2026-08-03: ImGui *code* does ship —
+DiligentFX links `Diligent-Imgui` PUBLIC and its post-process components call
+into it (D6), so the runtime binary carries ImGui regardless. The rule this
+ticket defends is that ImGui must never be the *player-facing* UI, not that
+its symbols are absent. T0042's "no editor symbols" check is worded
+accordingly.)
 
 This is easy to overlook precisely because the editor is full of working UI.
 

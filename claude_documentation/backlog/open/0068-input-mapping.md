@@ -50,3 +50,23 @@ something small and permissive that cross-compiles cleanly to MinGW, given G2/G3
 Edge detection needs care with variable frame rates: a key pressed and released
 within one frame must still register, which means consuming events rather than
 polling state at frame boundaries.
+
+### Architecture review (2026-08-03)
+
+- **Gamepad: verified absent.** Grepped DiligentTools — `NativeApp` has no
+  gamepad, joystick or XInput code at all (the only input translation Diligent
+  has lives in DiligentSamples' InputController, which is keyboard/mouse and
+  off-limits anyway). So gamepad is entirely ours: XInput on Windows is a
+  header away under MinGW; on Linux, raw `evdev`/`js` device reads need no
+  extra libraries, but **udev-based enumeration/hot-plug would need a library
+  the vendored sysroot does not provide** (D3/D4) — prefer plain
+  `/dev/input` scanning, or extend the sysroot deliberately.
+- **Relative mouse / capture mode is missing from the subtasks.** Fly camera
+  (T0063), any third-person orbit and most gameplay cameras need
+  capture-and-hide with relative deltas (and it interacts with the OS pump —
+  T0015). Small, but add it here rather than discovering it in T0063.
+- **Hot-reload hazard:** action *callbacks* registered by the gameplay module
+  dangle on reload (same as every module-owned function pointer — T0048).
+  Either gameplay polls actions by name/handle (safe), or callback
+  registration must be rebuilt on reload like behaviours. Decide which; do not
+  offer both silently.

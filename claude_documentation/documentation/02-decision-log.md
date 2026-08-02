@@ -117,6 +117,13 @@ calls `ImGui::` in `ScreenSpaceReflection`, `ScreenSpaceAmbientOcclusion`,
 ImGui-free. Link `Diligent-Imgui`, not raw ImGui — it carries the RHI renderer
 backend, which is the valuable part.
 
+**Correction (2026-08-03):** it was stated several times during planning that
+"ImGui never ships". That is wrong, and the PUBLIC link above is why — ImGui is
+linked into the *runtime* binary too, not just the editor. What does not ship is
+the editor's *UI code*. This matters for T0069: the argument against using ImGui
+for player-facing UI is that it is unsuitable (immediate mode, not built for
+shipping UI), not that it is unavailable.
+
 ---
 
 ## D7 — EnTT is not vendored

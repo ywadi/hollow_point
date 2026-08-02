@@ -48,3 +48,17 @@ logic share a thread.
 
 Linux has both X11 and XCB paths in NativeApp; the vendored sysroot provides
 stubs for both, so either works.
+
+### Architecture review (2026-08-03) — NativeApp has no input surface; translation is ours
+
+Checked `AppBase.hpp` directly: it exposes `Update/Render/Present/WindowResize`
+and **nothing about input**. The platform bases hand over *raw* OS events —
+`HandleXEvent`/`HandleXCBEvent` on Linux, `HandleWin32Message` on Win32 — and
+Diligent's actual input translation (`InputController`) lives in
+**DiligentSamples/SampleBase**, which this ticket rightly refuses to depend on.
+Consequence: translating raw Win32 messages and X11/XCB keycodes (keysyms,
+modifiers, mouse buttons/wheel, text input) into engine events is *our* code,
+on two platforms, and belongs to 15.4/T0018.5 explicitly rather than
+implicitly. `Diligent-Imgui`'s per-platform impls feed **ImGui only** — they do
+not feed the engine. Not a blocker, but "Moderate" is only honest if this work
+is known to be in scope.

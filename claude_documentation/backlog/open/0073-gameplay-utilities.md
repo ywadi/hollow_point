@@ -57,3 +57,16 @@ worth using sparingly, and worth saying so where it is documented.
 Spatial queries will eventually want an acceleration structure. Start with a
 linear scan — it is fine at small entity counts, and T0045 notes the same
 trade-off for culling.
+
+### Architecture review (2026-08-03) — utilities must be reload-serializable
+
+These utilities live *inside behaviours*, and behaviour state crosses the hot
+reload boundary via reflection serialize/recreate (T0062). A timer whose state
+is plain data (elapsed, duration, running) survives that; a timer holding a
+completion **callback** — a `std::function` into the module — cannot be
+serialized and dangles on reload. Design rule for everything in this ticket:
+*state is plain data and serializes; callbacks are re-bound in `OnCreate`
+after every reload, never stored across one.* The state machine has the same
+split: current-state-as-enum serializes; transition condition functions are
+code, re-registered on load. Say this in the utilities' documentation, because
+it is invisible until the first reload eats someone's timer.

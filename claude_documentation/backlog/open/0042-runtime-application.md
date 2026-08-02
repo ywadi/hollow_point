@@ -46,3 +46,14 @@ offscreen target, the runtime into a window-sized one. Same code path from T0028
 different dimensions — a good check that the abstraction is right.
 
 The runtime should ship with profiling compiled out entirely (T0031).
+
+### Architecture review (2026-08-03)
+
+"Contains no editor symbols — checkable" needs one caveat so the check is
+written correctly: the runtime links DiligentFX, DiligentFX links
+`Diligent-Imgui` **PUBLIC**, and its post-process components call `ImGui::`
+(D6). So ImGui symbols *will* appear in the runtime binary and that is
+expected, not an editor leak. The grep/nm check should look for `hp::editor`
+(or whatever the editor namespace is) and panel types — not for ImGui.
+Related: T0069's "Dear ImGui never ships" overstates; see the matching note
+there.

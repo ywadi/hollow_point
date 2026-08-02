@@ -73,3 +73,19 @@ log is a genuine debugging asset, and partly buys back what the call stack loses
 - reading state → **direct component access**, no messaging
 - authored 1:N with a known partner → **signals** (T0072)
 - unknown audience, broadcast, tag or radius → **this bus**
+
+### Architecture review (2026-08-03) — module-defined message types across reload
+
+75.7 covers *subscriptions* surviving reload but not the two harder halves of
+the same problem, both consequences of messages being typed:
+
+- **Type identity.** "Keyed on message type" means a type ID. For a message
+  struct defined in the gameplay module, a `typeid`/pointer-identity key breaks
+  across reload (and across the module boundary entirely — see T0095). The key
+  must be a stable name-based ID, registered the same way behaviour types are
+  (T0062's `RegisterTypes`), not a raw C++ type identity.
+- **In-flight payloads.** A deferred queue can hold messages whose type — and
+  destructor code — lives in the module being unloaded. Reload must happen at
+  a point where the queue is drained (the natural place: the same
+  between-frames point T0048 already needs), and that invariant should be
+  asserted, not assumed.

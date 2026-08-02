@@ -50,3 +50,15 @@ performance argument for glm does not hold either.
 A per-frame scratch allocator matters more than it sounds — culling, draw
 submission and animation all produce transient per-frame arrays, and doing that
 through the general allocator shows up in profiles immediately.
+
+### Architecture review (2026-08-03) — 56.6 vs T0094's "do not expose Diligent types"
+
+These two look contradictory and are not, but the line needs drawing
+explicitly: Diligent **math types** (`float3`, `float4x4` — header-only value
+types with no linkage or lifetime) are fine to use across the gameplay
+boundary, and forcing a conversion layer over them would be pure friction.
+What must *not* cross the boundary are **RHI interface pointers**
+(`IRenderDevice`, `ITexture`, …) — reference-counted objects whose lifetime
+the module cannot own safely across a hot reload; that is T0094's wrapper
+rule. Write 56.6's answer in exactly those terms. The linkage side of the same
+question (one engine state, symbol resolution) is T0095.

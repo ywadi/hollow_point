@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Status** | 🔜 TODO |
-| **Priority** | Medium |
+| **Priority** | High |
 | **Complexity** | Simple |
 | **Phase** | 2 — Engine skeleton |
 | **Created** | 2026-08-03 |
@@ -51,3 +51,10 @@ main loop and the transform component in Phase 9 — exactly the retrofit to avo
 dt, the accumulator runs dozens of physics steps to catch up, and everything
 tunnels through walls. Clamping is one line and prevents a genuinely confusing
 class of bug.
+
+### Architecture review (2026-08-03) — priority raised Medium → High
+
+T0062 (High, same phase) requires `OnFixedUpdate` driven by this ticket's
+accumulator, and play mode (T0037) requires pause. A Medium-priority ticket
+that gates two High-priority ones is mis-marked — the accumulator is the whole
+reason this lives in Phase 2, as its own notes say.

@@ -44,16 +44,18 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0054](open/0054-logging.md) | Logging and diagnostics | 2 — Engine skeleton | 🔜 TODO | High | Simple |
 | [T0055](open/0055-engine-conventions.md) | Engine conventions and error handling policy | 2 — Engine skeleton | 🔜 TODO | High | Trivial |
 | [T0056](open/0056-core-utilities-policy.md) | Core utilities: math, memory, containers | 2 — Engine skeleton | 🔜 TODO | Medium | Simple |
-| [T0057](open/0057-time-system.md) | Time system | 2 — Engine skeleton | 🔜 TODO | Medium | Simple |
+| [T0057](open/0057-time-system.md) | Time system | 2 — Engine skeleton | 🔜 TODO | High | Simple |
 | [T0062](open/0062-entity-behaviours.md) | Entity behaviours: attaching C++ logic to entities | 2 — Engine skeleton | 🔜 TODO | High | Very Complex |
 | [T0068](open/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
 | [T0073](open/0073-gameplay-utilities.md) | Gameplay utility library | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
 | [T0076](open/0076-autoloads.md) | Autoloads: project and scene scoped services | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
+| [T0095](open/0095-gameplay-module-abi-and-linkage.md) | Gameplay module ABI: engine linkage, one engine state, entt across the boundary | 2 — Engine skeleton | 🔜 TODO | High | Complex |
 | [T0020](open/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | 🔜 TODO | High | Complex |
 | [T0021](open/0021-scene-and-ecs.md) | Scene and entity-component system | 3 — Data model | 🔜 TODO | High | Moderate |
 | [T0022](open/0022-scene-serialization.md) | Scene serialization | 3 — Data model | 🔜 TODO | High | Moderate |
 | [T0023](open/0023-asset-manager.md) | AssetManager, asset pool and metafiles | 3 — Data model | 🔜 TODO | High | Complex |
 | [T0024](open/0024-project-manager.md) | ProjectManager | 3 — Data model | 🔜 TODO | High | Moderate |
+| [T0026](open/0026-job-system-enkits.md) | Job system on enkiTS | 3 — Data model | 🔜 TODO | Medium | Simple |
 | [T0058](open/0058-asset-lifetime-hot-reload.md) | Asset lifetime, reference counting and hot reload | 3 — Data model | 🔜 TODO | Medium | Complex |
 | [T0059](open/0059-prefabs.md) | Prefabs and entity templates | 3 — Data model | 🔜 TODO | High | Complex |
 | [T0071](open/0071-entity-references.md) | Entity references | 3 — Data model | 🔜 TODO | High | Moderate |
@@ -64,7 +66,6 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0078](open/0078-settings-and-config.md) | Settings and configuration | 3 — Data model | 🔜 TODO | Medium | Simple |
 | [T0082](open/0082-schema-versioning.md) | Schema versioning and migration | 3 — Data model | 🔜 TODO | Medium | Moderate |
 | [T0025](open/0025-render-layer.md) | Render layer and device lifecycle | 4 — Render layer | 🔜 TODO | High | Moderate |
-| [T0026](open/0026-job-system-enkits.md) | Job system on enkiTS | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | [T0027](open/0027-render-stack.md) | RenderStack: composited visual layers | 4 — Render layer | 🔜 TODO | High | Moderate |
 | [T0028](open/0028-scene-draw-submission.md) | Scene draw submission and the frame-rendered event | 4 — Render layer | 🔜 TODO | High | Moderate |
 | [T0045](open/0045-culling-and-render-queues.md) | Culling, sorting and render queues | 4 — Render layer | 🔜 TODO | High | Complex |
@@ -81,6 +82,7 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0087](open/0087-environment-lighting.md) | Environment lighting, IBL and skybox | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | [T0093](open/0093-visibility-and-fog-of-war.md) | Visibility, vision cones and fog of war | 4 — Render layer | 🔜 TODO | High | Very Complex |
 | [T0094](open/0094-gameplay-extensible-rendering.md) | Gameplay-extensible rendering | 4 — Render layer | 🔜 TODO | High | Complex |
+| [T0096](open/0096-hdr-pipeline-and-tonemapping.md) | HDR pipeline, tonemapping and the linear-workflow policy | 4 — Render layer | 🔜 TODO | High | Moderate |
 | [T0029](open/0029-tracy-cpu-profiling.md) | Tracy: vendor and CPU profiling | 5 — Profiling | 🔜 TODO | High | Moderate |
 | [T0030](open/0030-tracy-gpu-profiling.md) | Tracy GPU zones through Diligent | 5 — Profiling | 🔜 TODO | High | Very Complex |
 | [T0031](open/0031-profiling-workflow.md) | Profiling workflow, budgets and documentation | 5 — Profiling | 🔜 TODO | Low | Simple |
@@ -102,10 +104,13 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0040](open/0040-runtime-lod-selection.md) | Runtime LOD selection | 7 — Content pipeline | 🔜 TODO | Medium | Moderate |
 | [T0041](open/0041-ozz-animation.md) | ozz-animation runtime and import | 7 — Content pipeline | 🔜 TODO | High | Complex |
 | [T0049](open/0049-animation-runtime.md) | Animation runtime library | 7 — Content pipeline | 🔜 TODO | High | Very Complex |
+| [T0097](open/0097-texture-import-pipeline.md) | Texture import pipeline: mips, compression, colour space | 7 — Content pipeline | 🔜 TODO | Medium | Moderate |
 | [T0042](open/0042-runtime-application.md) | Runtime application | 8 — Runtime & export | 🔜 TODO | Medium | Simple |
 | [T0043](open/0043-export-pipeline.md) | Export pipeline and asset relocation | 8 — Runtime & export | 🔜 TODO | Medium | Complex |
 | [T0083](open/0083-save-system.md) | Save and load game state | 8 — Runtime & export | 🔜 TODO | Medium | Complex |
+| [T0099](open/0099-crash-handling-and-diagnostics.md) | Crash handling and shipped-build diagnostics | 8 — Runtime & export | 🔜 TODO | Low | Moderate |
 | [T0051](open/0051-physics-jolt.md) | Physics engine integration (Jolt) | 9 — Physics | 🔜 TODO | High | Very Complex |
+| [T0098](open/0098-navigation-and-pathfinding.md) | Navigation and pathfinding | 9 — Physics | 🔜 TODO | Medium | Complex |
 | [T0052](open/0052-audio.md) | Audio engine | 10 — Audio | 🔜 TODO | Medium | Complex |
 | [T0088](open/0088-sky-atmosphere-time-of-day.md) | Sky, atmosphere and time of day | 11 — World & environment | 🔜 TODO | Medium | Complex |
 | [T0089](open/0089-fog-and-atmospherics.md) | Fog and atmospherics | 11 — World & environment | 🔜 TODO | Medium | Moderate |
@@ -167,7 +172,7 @@ is. Priority says whether to do it; complexity says what you are walking into.
 | Complex | Several interacting concerns; expect it to take longer than planned |
 | Very Complex | Genuinely hard, with a real chance of needing a different approach |
 
-Current spread: 7 Trivial, 19 Simple, 33 Moderate, 26 Complex, 9 Very Complex.
+Current spread: 7 Trivial, 19 Simple, 36 Moderate, 28 Complex, 9 Very Complex.
 
 The **Very Complex** ones are worth knowing up front: **T0048** hot-reloadable
 gameplay module (state must survive reload), **T0030** Tracy GPU zones (Diligent

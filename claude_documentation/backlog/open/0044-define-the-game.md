@@ -44,6 +44,13 @@ Answering this early is cheap and changes real decisions already on the board:
 - **LOD** (T0039/T0040) — high value for large open scenes, near-worthless for a
   confined one
 - **Render stack composition** (T0027) — how much HUD/UI layering is required
+- **Navigation/pathfinding** (T0098) — near-certain if the game has moving
+  NPCs (which the vision-cone requirement in T0093 implies), droppable if not
+- **Terrain, water, vegetation** — no tickets exist for any of them. The
+  deleted `terrain_lab` app suggests outdoor terrain has been of interest;
+  if the game is outdoors, terrain alone is a subsystem on the scale of
+  Phase 4 and needs planning, not discovering. If indoors/authored geometry,
+  say so and close the question
 
 Deciding late is not fatal, but it means building for a hypothetical. Nothing in
 Phases 2-3 is wasted either way, which is why they can start first.

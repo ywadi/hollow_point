@@ -55,6 +55,16 @@ Bounding volumes belong in the **asset**, computed once at import (T0038/T0039),
 not recomputed per frame. This is a dependency on the asset format worth noting
 before it is finalised.
 
+**Skinned meshes break the import-time-bounds assumption** (added 2026-08-03,
+architecture review). A character's bind-pose AABB is wrong the moment it
+animates — arms extend, weapons swing, and the mesh visibly pops out of view at
+screen edges when culled by stale bounds. The standard fix is cheap:
+conservative bounds computed at import *across all clips* (or bind-pose bounds
+inflated by a factor), optionally refined at runtime from the sampled pose for
+hero characters. Whichever is chosen, it must be chosen — skeletal animation is
+core to this engine (T0041), so the bounds story cannot silently assume static
+meshes.
+
 Deliberately out of scope: occlusion culling, portals, spatial acceleration
 structures (BVH/octree). Frustum culling over a linear list is entirely adequate
 until object counts get large, and a spatial structure can be inserted behind the

@@ -56,3 +56,14 @@ build running under wine.
 
 Keep profiling **off by default** in Release and on in a dedicated profiling
 configuration, so shipped builds carry no instrumentation.
+
+### Architecture review (2026-08-03) — several Phase 4 tickets cannot close without this
+
+T0045 ("culling cost visible in Tracy"), T0040 ("verified in Tracy, not
+assumed") and T0050 ("threads named and visible in Tracy") all carry Done-when
+conditions that require Tracy — and they are Phase 4, while this is Phase 5.
+Either those verifications are deferred, or this ticket is pulled to the
+*start* of Phase 4. The latter is the better plan: the renderer is exactly the
+code that should be built with a profiler attached, and the T0019 macro
+surface means the wiring cost is small. Flagged rather than re-phased —
+owner's call.

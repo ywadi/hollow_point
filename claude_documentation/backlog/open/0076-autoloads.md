@@ -70,3 +70,19 @@ conflated with autoloads. If it is wanted, it belongs in T0077.
 Global access is convenient and easy to overuse. Autoloads are for genuine
 singletons — worth saying so where this is documented, because "just make it an
 autoload" is how a codebase acquires twenty global objects.
+
+### Architecture review (2026-08-03) — phase-spanning acceptance, and a T0095 tie
+
+Two Done-when items reach into Phase 3: "configured as data" needs the
+`.hpproj` format (T0024) and scene files (T0022), and project-scope creation
+"on project open" needs the ProjectManager. The Phase 2 deliverable is the
+registration/lifecycle/ordering mechanism with code-registered autoloads; the
+data-driven configuration lands with Phase 3. Fine as long as it is known —
+this note is so nobody blocks Phase 2 on it.
+
+Also: `Autoload::Get<T>()` is a type-keyed registry reached from both the
+engine and the gameplay module, which makes it exactly the kind of static
+state T0095 exists to sort out. Same answer as behaviours: name-based
+registration pushed from the module, single registry instance owned by the
+engine, access through a context rather than a global if the linkage model
+requires it.

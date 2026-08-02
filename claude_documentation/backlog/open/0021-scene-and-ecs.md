@@ -57,3 +57,25 @@ expensive mistake.
 
 Do not expose `entt::` types in public engine headers; keep the dependency
 swappable and keep compile times down. The `Entity` handle is the seam.
+
+### Architecture review (2026-08-03) — `Scene::Copy` is two operations, not one
+
+Two different copies exist with **opposite GUID semantics**, and 21.6 currently
+names only one of them:
+
+- **Play-mode clone** (T0037): GUIDs are *preserved*, so EntityRefs (T0071),
+  signal connections (T0072) and save data keep working inside the clone.
+  Consequence: GUID→entity lookup must be per-scene, never global, because two
+  live scenes now contain the same GUIDs.
+- **Duplicate / subtree copy** (editor duplicate, prefab instantiate): GUIDs
+  are *regenerated* and internal references *remapped* (T0071's old→new map).
+
+Make both explicit in the API — one function with a mode is fine; one function
+with an ambiguous behaviour is how an instance ends up silently sharing state
+with its template.
+
+Also: once behaviours exist (T0062), cloning a scene must clone behaviour
+*instances* — heap objects with vtables — not just component data. The
+reflection serialize/recreate cycle T0062 builds for hot reload is the same
+mechanism; pointer-copying instances between scenes is never correct. Worth
+knowing before 21.6 is designed, even though behaviours land later.

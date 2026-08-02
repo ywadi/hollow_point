@@ -47,3 +47,14 @@ work without it?* If no, it belongs in the engine.
 A corrupt state file must never prevent the editor starting. Fall back to defaults
 and say so — being unable to launch because a UI preference file is malformed is
 an infuriating failure mode.
+
+### Architecture review (2026-08-03)
+
+The persistent section conflates two scopes that end up in different files:
+**global-per-user** (last project, theme, window layout) and **per-project-per-
+user** (editor camera position — T0063.7 — viewport mode, expanded hierarchy
+nodes). The second kind must not go in a single global file (switching projects
+would bleed state) nor in the committed project (T0078's split — another
+developer's camera position is not project data). The usual answer is a
+git-ignored per-project user file (Godot's `.godot/editor` pattern). Decide the
+two-file split when designing 34.2 rather than migrating it later.
