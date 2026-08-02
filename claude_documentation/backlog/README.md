@@ -32,6 +32,7 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0018](open/0018-event-system.md) | Event system | 2 — Engine skeleton | 🔜 TODO | High |
 | [T0019](open/0019-profiling-macro-surface.md) | Profiling macro surface (Tracy-ready, no-op for now) | 2 — Engine skeleton | 🔜 TODO | Medium |
 | [T0044](open/0044-define-the-game.md) | Define the game | 2 — Engine skeleton | 🔜 TODO | High |
+| [T0048](open/0048-hot-reloadable-gameplay-module.md) | Hot-reloadable gameplay module | 2 — Engine skeleton | 🔜 TODO | High |
 | [T0020](open/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | 🔜 TODO | High |
 | [T0021](open/0021-scene-and-ecs.md) | Scene and entity-component system | 3 — Data model | 🔜 TODO | High |
 | [T0022](open/0022-scene-serialization.md) | Scene serialization | 3 — Data model | 🔜 TODO | High |
@@ -43,6 +44,8 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0028](open/0028-scene-draw-submission.md) | Scene draw submission and the frame-rendered event | 4 — Render layer | 🔜 TODO | High |
 | [T0045](open/0045-culling-and-render-queues.md) | Culling, sorting and render queues | 4 — Render layer | 🔜 TODO | High |
 | [T0046](open/0046-frame-render-targets.md) | Frame render target management | 4 — Render layer | 🔜 TODO | Medium |
+| [T0047](open/0047-evaluate-render-graph.md) | Declarative pass layer (and why not an off-the-shelf frame graph) | 4 — Render layer | 🔜 TODO | Medium |
+| [T0050](open/0050-threading-model.md) | Threading model and enkiTS workload map | 4 — Render layer | 🔜 TODO | High |
 | [T0029](open/0029-tracy-cpu-profiling.md) | Tracy: vendor and CPU profiling | 5 — Profiling | 🔜 TODO | High |
 | [T0030](open/0030-tracy-gpu-profiling.md) | Tracy GPU zones through Diligent | 5 — Profiling | 🔜 TODO | High |
 | [T0031](open/0031-profiling-workflow.md) | Profiling workflow, budgets and documentation | 5 — Profiling | 🔜 TODO | Low |
@@ -55,12 +58,12 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0038](open/0038-fbx-to-gltf-converter.md) | FBX → glTF converter (host tool) | 7 — Content pipeline | 🔜 TODO | High |
 | [T0039](open/0039-meshoptimizer-auto-lod.md) | Automatic LOD generation with meshoptimizer | 7 — Content pipeline | 🔜 TODO | High |
 | [T0040](open/0040-runtime-lod-selection.md) | Runtime LOD selection | 7 — Content pipeline | 🔜 TODO | Medium |
-| [T0041](open/0041-ozz-animation.md) | ozz-animation runtime and import | 7 — Content pipeline | 🔜 TODO | Medium |
+| [T0041](open/0041-ozz-animation.md) | ozz-animation runtime and import | 7 — Content pipeline | 🔜 TODO | High |
+| [T0049](open/0049-animation-runtime.md) | Animation runtime library | 7 — Content pipeline | 🔜 TODO | High |
 | [T0042](open/0042-runtime-application.md) | Runtime application | 8 — Runtime & export | 🔜 TODO | Medium |
 | [T0043](open/0043-export-pipeline.md) | Export pipeline and asset relocation | 8 — Runtime & export | 🔜 TODO | Medium |
 | [T0008](open/0008-remove-imgui-modifier-shim.md) | Remove the `ImGuiKey_Mod*` compile-definition shim | 9 — Deferred | ⏸ BLOCKED on DiligentEngine upstream | Low |
 | [T0011](open/0011-aarch64-linux-target.md) | Add an aarch64 Linux target | 9 — Deferred | 🔜 TODO | Low |
-| [T0047](open/0047-evaluate-render-graph.md) | Evaluate whether a render graph is warranted | 9 — Deferred | 🔜 TODO | Low |
 | [T0001](completed/0001-run-windows-exe-under-wine.md) | Run the Windows executable under wine | — | ✅ DONE | High |
 | [T0002](completed/0002-verify-windows-dist-staging.md) | Verify `dist` staging for Windows | — | ✅ DONE | High |
 | [T0003](completed/0003-verify-vulkan-backend.md) | Verify the Vulkan backend on real hardware | — | ✅ DONE | High |

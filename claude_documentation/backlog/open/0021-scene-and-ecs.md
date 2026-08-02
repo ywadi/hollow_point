@@ -31,7 +31,7 @@ the component set, the entity handle, and the scene's ownership semantics.
 - [ ] 21.2 `Entity` handle — a registry pointer plus an `entt::entity`, cheap to
       copy, never owning
 - [ ] 21.3 Automatic ID + tag on creation
-- [ ] 21.4 Transform component; decide parenting now or explicitly defer it
+- [ ] 21.4 Transform component **with parenting** — required, not optional (notes)
 - [ ] 21.5 Mesh, material and camera components referencing assets by GUID
 - [ ] 21.6 `Scene::Copy` for play mode
 - [ ] 21.7 GUID → entity lookup, since serialization and selection both need it
@@ -42,10 +42,17 @@ the component set, the entity handle, and the scene's ownership semantics.
 serialize and do not survive an asset reload. This is the single most important
 rule in the data model.
 
-**Decide about transform hierarchy explicitly.** Parenting is far cheaper to
-design in now than to retrofit — it changes the transform component, the update
-order, and the hierarchy panel. If we defer it, record that as a decision with
-its cost, rather than just not doing it.
+**Transform hierarchy is required, not optional.** Skeletal animation is core to
+this engine (T0041), and skinned characters need parenting for attachments —
+weapons in hands, props on sockets, cameras on rigs. Retrofitting parenting
+changes the transform component, the update order and the hierarchy panel, so it
+goes in from the start.
+
+Bone transforms are deliberately *not* entities. A skeleton with 80 bones per
+character would swamp the registry; ozz keeps its own compact SoA pose buffers
+and the renderer consumes those directly. Entity parenting is for attachment
+points, not for the skeleton itself — conflating the two is a common and
+expensive mistake.
 
 Do not expose `entt::` types in public engine headers; keep the dependency
 swappable and keep compile times down. The `Entity` handle is the seam.

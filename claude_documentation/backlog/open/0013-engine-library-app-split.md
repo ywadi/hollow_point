@@ -33,6 +33,8 @@ Structure it now, while there is nothing to move.
       deliberately (see notes — this leaks into consumers if got wrong)
 - [ ] 13.4 Stub `apps/editor` and `apps/runtime`, each with the mandatory
       `readme.md` (G8) — the root glob picks them up with no root edit
+- [ ] 13.5 Leave room for a fourth artifact: `game/`, a hot-reloadable shared
+      library both apps load (T0048) — it is not an app, and not the engine
 - [ ] 13.5 Build both targets, confirm no-op rebuild still clean
 
 ## Notes / findings
@@ -48,3 +50,9 @@ editor's dependencies" happen.
 
 Do not use `add_sample_app()` for these apps — that is DiligentSamples' framework.
 T0015 covers the app shell via `DiligentTools/NativeApp` instead.
+
+**There are four artifacts, not three.** engine (static lib), editor (app),
+runtime (app), and `game/` — a *shared* library holding gameplay, loaded and
+reloaded at runtime (T0048). The layout should anticipate it even if it is
+stubbed empty at first, because retrofitting a shared-library boundary means
+revisiting every gameplay type's linkage.
