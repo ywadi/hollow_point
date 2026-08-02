@@ -5,7 +5,7 @@
 | **Status** | 🔜 TODO |
 | **Priority** | Medium |
 | **Created** | 2026-08-02 |
-| **Refs** | [../02-decision-log.md](../02-decision-log.md) D3 |
+| **Refs** | [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D3 |
 
 ## Why
 

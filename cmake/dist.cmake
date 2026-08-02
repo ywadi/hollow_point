@@ -34,22 +34,33 @@ endif()
 file(REMOVE_RECURSE "${DIST_DIR}")
 file(MAKE_DIRECTORY "${DIST_DIR}/bin" "${DIST_DIR}/lib")
 
-# Executables. CMake has no portable "is executable" test, so identify them by
-# what they are not: on Windows by .exe, on Linux by living in a bin/ directory
-# or having no extension at the top of a target directory.
-set(_exe_count 0)
-if(TARGET_OS STREQUAL "windows")
-    file(GLOB_RECURSE _exes "${BUILD_DIR}/*.exe")
-else()
-    file(GLOB_RECURSE _exes "${BUILD_DIR}/apps/*")
-    list(FILTER _exes EXCLUDE REGEX "\\.(o|a|so|so\\.[0-9.]+|d|cmake|txt|json|ninja)$")
-    list(FILTER _exes EXCLUDE REGEX "/CMakeFiles/")
-endif()
-foreach(f IN LISTS _exes)
-    if(NOT IS_DIRECTORY "${f}")
-        file(COPY "${f}" DESTINATION "${DIST_DIR}/bin")
-        math(EXPR _exe_count "${_exe_count} + 1")
+# Application payload: each app target's executable *and* the shaders and
+# textures add_sample_app() copies next to it. Staged as a tree so assets keep
+# their relative layout and land beside the executable -- which is where the app
+# looks for them, on both platforms.
+#
+# Copying the tree rather than hunting for executables also sidesteps the fact
+# that CMake has no portable "is this executable" test: on Linux the app binary
+# has no extension and is indistinguishable from an asset by name alone.
+#
+# Build bookkeeping is excluded: CMakeFiles/ holds intermediate objects and
+# compiler-detection artefacts (CompilerIdC/a.exe), neither of which ships.
+set(_app_count 0)
+file(GLOB _app_dirs LIST_DIRECTORIES true "${BUILD_DIR}/apps/*")
+foreach(d IN LISTS _app_dirs)
+    if(NOT IS_DIRECTORY "${d}")
+        continue()
     endif()
+    file(GLOB_RECURSE _payload RELATIVE "${d}" "${d}/*")
+    foreach(rel IN LISTS _payload)
+        if(rel MATCHES "^CMakeFiles/" OR rel MATCHES "\\.(o|obj|d|ninja)$"
+           OR rel MATCHES "cmake_install\\.cmake$")
+            continue()
+        endif()
+        get_filename_component(_sub "${rel}" DIRECTORY)
+        file(COPY "${d}/${rel}" DESTINATION "${DIST_DIR}/bin/${_sub}")
+        math(EXPR _app_count "${_app_count} + 1")
+    endforeach()
 endforeach()
 
 # Shared libraries. On Windows the DLLs must sit beside the exe to be found at
@@ -84,5 +95,5 @@ foreach(g IN LISTS _lib_globs)
     endforeach()
 endforeach()
 
-message(STATUS "dist: ${DIST_DIR} -- ${_exe_count} executable(s), "
+message(STATUS "dist: ${DIST_DIR} -- ${_app_count} app file(s), "
                "${_shared_count} shared, ${_static_count} static/import")

@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HollowPoint — Backlog</title>
+<style>
+  :root {
+    --bg:#0f1115; --panel:#161922; --panel2:#1c2029; --line:#272c38;
+    --fg:#e6e9ef; --dim:#8b93a7; --accent:#5b9dff;
+    --open:#8b93a7; --prog:#e0a33e; --done:#3fb950; --blocked:#d9534f;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--bg); color:var(--fg);
+    font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  header {
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+    padding:14px 20px; border-bottom:1px solid var(--line); background:var(--panel);
+    position:sticky; top:0; z-index:5;
+  }
+  h1 { font-size:16px; margin:0; font-weight:650; letter-spacing:.2px; }
+  .spacer { flex:1; }
+  .meta { color:var(--dim); font-size:12px; display:flex; align-items:center; gap:8px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--done); }
+  .dot.stale { background:var(--prog); }
+  .dot.err { background:var(--blocked); }
+
+  .board { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; padding:20px; align-items:start; }
+  @media (max-width:900px){ .board{ grid-template-columns:1fr; } }
+
+  .col { background:var(--panel); border:1px solid var(--line); border-radius:10px; min-height:120px; }
+  .col > h2 {
+    font-size:12px; text-transform:uppercase; letter-spacing:.8px; margin:0;
+    padding:12px 14px; border-bottom:1px solid var(--line); color:var(--dim);
+    display:flex; align-items:center; gap:8px;
+  }
+  .count { background:var(--panel2); color:var(--fg); border-radius:20px; padding:1px 8px; font-size:11px; }
+  .col-open  > h2 { border-top:2px solid var(--open);  border-radius:10px 10px 0 0; }
+  .col-inprogress > h2 { border-top:2px solid var(--prog); border-radius:10px 10px 0 0; }
+  .col-completed  > h2 { border-top:2px solid var(--done); border-radius:10px 10px 0 0; }
+  .cards { padding:12px; display:flex; flex-direction:column; gap:10px; }
+  .empty { color:var(--dim); font-size:13px; padding:8px 2px; font-style:italic; }
+
+  .card {
+    background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+    padding:11px 12px; cursor:pointer; transition:border-color .12s, transform .12s;
+  }
+  .card:hover { border-color:var(--accent); transform:translateY(-1px); }
+  .card .idline { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
+  .id { font:600 11px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--accent); }
+  .card h3 { font-size:13.5px; margin:0 0 8px; font-weight:600; line-height:1.35; }
+  .tags { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .tag { font-size:10.5px; padding:1.5px 7px; border-radius:20px; border:1px solid var(--line); color:var(--dim); }
+  .tag.High { color:#ff9b9b; border-color:#5a2b2b; }
+  .tag.Medium { color:#e0c07a; border-color:#5a4a2b; }
+  .tag.Low { color:#8b93a7; }
+  .tag.blocked { color:#ffb4b1; border-color:#5a2b2b; background:#2a1b1b; }
+
+  .bar { height:4px; background:#0d0f14; border-radius:3px; overflow:hidden; margin-top:9px; }
+  .bar > i { display:block; height:100%; background:var(--done); }
+  .barlabel { font-size:10.5px; color:var(--dim); margin-top:4px; }
+
+  /* detail */
+  .scrim { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; z-index:10; }
+  .scrim.show { display:block; }
+  .detail {
+    position:fixed; top:0; right:0; height:100%; width:min(760px,92vw); z-index:11;
+    background:var(--panel); border-left:1px solid var(--line);
+    transform:translateX(100%); transition:transform .18s ease; display:flex; flex-direction:column;
+  }
+  .detail.show { transform:none; }
+  .detail header { position:static; }
+  .detail .body { overflow:auto; padding:18px 22px 60px; }
+  .close { background:none; border:1px solid var(--line); color:var(--fg); border-radius:6px;
+           padding:4px 10px; cursor:pointer; font-size:13px; }
+  .close:hover { border-color:var(--accent); }
+  .filepath { font:11px ui-monospace,Menlo,monospace; color:var(--dim); }
+
+  /* rendered markdown */
+  .md h1 { font-size:19px; margin:0 0 14px; }
+  .md h2 { font-size:15px; margin:22px 0 8px; padding-bottom:5px; border-bottom:1px solid var(--line); }
+  .md h3 { font-size:13.5px; margin:18px 0 6px; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; }
+  .md p { margin:9px 0; }
+  .md ul { margin:8px 0; padding-left:22px; }
+  .md li { margin:4px 0; }
+  .md li.task { list-style:none; margin-left:-18px; }
+  .md code { font:12px ui-monospace,Menlo,monospace; background:#0d0f14; padding:1.5px 5px; border-radius:4px; }
+  .md pre { background:#0d0f14; border:1px solid var(--line); border-radius:8px; padding:12px; overflow:auto; }
+  .md pre code { background:none; padding:0; font-size:12px; line-height:1.5; }
+  .md table { border-collapse:collapse; margin:10px 0; width:100%; display:block; overflow-x:auto; }
+  .md th,.md td { border:1px solid var(--line); padding:6px 10px; text-align:left; font-size:12.5px; }
+  .md th { background:var(--panel2); }
+  .md a { color:var(--accent); }
+  .md hr { border:none; border-top:1px solid var(--line); margin:20px 0; }
+  .md blockquote { margin:10px 0; padding-left:12px; border-left:3px solid var(--line); color:var(--dim); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>HollowPoint — Backlog</h1>
+  <div class="meta" id="summary"></div>
+  <div class="spacer"></div>
+  <div class="meta"><span class="dot" id="dot"></span><span id="status">loading…</span></div>
+</header>
+
+<div class="board" id="board"></div>
+
+<div class="scrim" id="scrim"></div>
+<aside class="detail" id="detail">
+  <header>
+    <div>
+      <div class="id" id="d-id"></div>
+      <div class="filepath" id="d-file"></div>
+    </div>
+    <div class="spacer"></div>
+    <button class="close" id="d-close">Close ✕</button>
+  </header>
+  <div class="body md" id="d-body"></div>
+</aside>
+
+<script>
+'use strict';
+
+const POLL_MS = 10000;
+let openTaskId = null;
+let lastSignature = '';
+
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// Compact markdown renderer -- enough for these task files: headings, tables,
+// fenced code, task lists, inline code/bold/links.
+function renderMarkdown(md) {
+  const lines = md.split('\n');
+  let out = '', i = 0, inCode = false, codeBuf = [];
+
+  const inline = (t) => esc(t)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (/^```/.test(line)) {
+      if (inCode) { out += '<pre><code>' + esc(codeBuf.join('\n')) + '</code></pre>'; codeBuf = []; inCode = false; }
+      else inCode = true;
+      i++; continue;
+    }
+    if (inCode) { codeBuf.push(line); i++; continue; }
+
+    // table: header row followed by a separator row
+    if (/^\s*\|/.test(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
+      const cells = (r) => r.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+      let html = '<table><thead><tr>' + cells(line).map((c) => '<th>' + inline(c) + '</th>').join('') + '</tr></thead><tbody>';
+      i += 2;
+      while (i < lines.length && /^\s*\|/.test(lines[i])) {
+        html += '<tr>' + cells(lines[i]).map((c) => '<td>' + inline(c) + '</td>').join('') + '</tr>';
+        i++;
+      }
+      out += html + '</tbody></table>';
+      continue;
+    }
+
+    let m;
+    if ((m = line.match(/^(#{1,6})\s+(.*)$/))) { const n = m[1].length; out += `<h${n}>${inline(m[2])}</h${n}>`; i++; continue; }
+    if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) { out += '<hr>'; i++; continue; }
+    if (/^>\s?/.test(line)) { out += '<blockquote>' + inline(line.replace(/^>\s?/, '')) + '</blockquote>'; i++; continue; }
+
+    if (/^\s*[-*]\s+/.test(line)) {
+      let html = '<ul>';
+      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
+        let t = lines[i].replace(/^\s*[-*]\s+/, '');
+        const box = t.match(/^\[([ xX])\]\s*(.*)$/);
+        if (box) {
+          const checked = box[1].toLowerCase() === 'x';
+          html += `<li class="task">${checked ? '☑' : '☐'} ${checked ? '<span style="opacity:.6">' + inline(box[2]) + '</span>' : inline(box[2])}</li>`;
+        } else html += '<li>' + inline(t) + '</li>';
+        i++;
+      }
+      out += html + '</ul>';
+      continue;
+    }
+
+    if (line.trim() === '') { i++; continue; }
+
+    let para = [];
+    while (i < lines.length && lines[i].trim() !== '' && !/^(#{1,6}\s|\s*[-*]\s|```|\s*\||>)/.test(lines[i])) {
+      para.push(lines[i]); i++;
+    }
+    if (para.length) out += '<p>' + inline(para.join(' ')) + '</p>';
+    else i++;
+  }
+  if (inCode && codeBuf.length) out += '<pre><code>' + esc(codeBuf.join('\n')) + '</code></pre>';
+  return out;
+}
+
+function card(t) {
+  const pct = t.checksTotal ? Math.round((t.checksDone / t.checksTotal) * 100) : 0;
+  const prio = ['High','Medium','Low'].includes(t.priority) ? t.priority : '';
+  return `
+    <div class="card" data-id="${esc(t.id)}">
+      <div class="idline"><span class="id">${esc(t.id)}</span></div>
+      <h3>${esc(t.title)}</h3>
+      <div class="tags">
+        ${prio ? `<span class="tag ${prio}">${prio}</span>` : ''}
+        ${t.blocked ? '<span class="tag blocked">Blocked</span>' : ''}
+      </div>
+      ${t.checksTotal ? `<div class="bar"><i style="width:${pct}%"></i></div>
+        <div class="barlabel">${t.checksDone}/${t.checksTotal} checks</div>` : ''}
+    </div>`;
+}
+
+let current = null;
+
+function draw(data) {
+  current = data;
+  document.getElementById('board').innerHTML = data.columns.map((c) => `
+    <section class="col col-${c.id}">
+      <h2>${c.title} <span class="count">${c.tasks.length}</span></h2>
+      <div class="cards">
+        ${c.tasks.length ? c.tasks.map(card).join('') : '<div class="empty">Nothing here</div>'}
+      </div>
+    </section>`).join('');
+
+  const total = data.columns.reduce((n, c) => n + c.tasks.length, 0);
+  const done = (data.columns.find((c) => c.id === 'completed') || {tasks:[]}).tasks.length;
+  document.getElementById('summary').textContent = `${done}/${total} complete`;
+
+  document.querySelectorAll('.card').forEach((el) =>
+    el.addEventListener('click', () => openTask(el.dataset.id)));
+
+  if (openTaskId) renderDetail(openTaskId, true);
+}
+
+function findTask(id) {
+  for (const c of current.columns) { const t = c.tasks.find((t) => t.id === id); if (t) return t; }
+  return null;
+}
+
+function renderDetail(id, silent) {
+  const t = findTask(id);
+  if (!t) { if (!silent) closeDetail(); return; }
+  document.getElementById('d-id').textContent = t.id;
+  document.getElementById('d-file').textContent = t.file;
+  document.getElementById('d-body').innerHTML = renderMarkdown(t.markdown);
+}
+
+function openTask(id) {
+  openTaskId = id;
+  renderDetail(id);
+  document.getElementById('detail').classList.add('show');
+  document.getElementById('scrim').classList.add('show');
+}
+
+function closeDetail() {
+  openTaskId = null;
+  document.getElementById('detail').classList.remove('show');
+  document.getElementById('scrim').classList.remove('show');
+}
+
+document.getElementById('d-close').addEventListener('click', closeDetail);
+document.getElementById('scrim').addEventListener('click', closeDetail);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDetail(); });
+
+async function poll() {
+  const dot = document.getElementById('dot'), status = document.getElementById('status');
+  try {
+    const r = await fetch('/api/tasks', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+
+    // Only repaint when something actually changed, so an open detail panel
+    // does not flicker or lose scroll position every 10 seconds.
+    const sig = JSON.stringify(data.columns.map((c) => c.tasks.map((t) => t.id + ':' + t.mtime)));
+    if (sig !== lastSignature) { lastSignature = sig; draw(data); }
+
+    dot.className = 'dot';
+    status.textContent = 'updated ' + new Date().toLocaleTimeString();
+  } catch (err) {
+    dot.className = 'dot err';
+    status.textContent = 'server unreachable — retrying';
+  }
+}
+
+poll();
+setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>

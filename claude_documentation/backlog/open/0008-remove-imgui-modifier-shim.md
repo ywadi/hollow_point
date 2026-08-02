@@ -5,7 +5,7 @@
 | **Status** | ⏸ BLOCKED on DiligentEngine upstream |
 | **Priority** | Low |
 | **Created** | 2026-08-02 |
-| **Refs** | [../04-cross-compile-gotchas.md](../04-cross-compile-gotchas.md) G7 |
+| **Refs** | [../../documentation/04-cross-compile-gotchas.md](../../documentation/04-cross-compile-gotchas.md) G7 |
 
 ## Why
 
