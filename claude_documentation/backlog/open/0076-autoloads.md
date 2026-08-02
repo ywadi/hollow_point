@@ -19,7 +19,7 @@ Godot calls these autoloads. Two scopes are needed:
 
 | Scope | Lifetime | Example |
 |---|---|---|
-| **Project** | Created at startup, survives scene changes | save system, settings, game state |
+| **Project** | Created at startup, survives scene changes | save system, settings, game state, fog-of-war memory (T0093) |
 | **Scene** | Created on scene load, destroyed on unload | level director, wave spawner |
 
 ## Done when

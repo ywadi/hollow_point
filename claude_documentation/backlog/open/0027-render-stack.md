@@ -30,6 +30,7 @@ this `RenderStack`.
 - [ ] Per-layer clear behaviour and camera/projection
 - [ ] A world layer and a UI/HUD layer both render, correctly stacked
 - [ ] Layers can be enabled/disabled at runtime without reordering
+- [ ] **Gameplay code can implement and insert its own layer** (T0094)
 - [ ] Each layer emits its own profiling zone (T0019)
 
 ## Subtasks
@@ -43,6 +44,14 @@ this `RenderStack`.
 - [ ] 27.6 Per-layer profiling zones
 
 ## Notes / findings
+
+**The stack must accept layers implemented outside the engine** (T0094). Fog of
+war accumulation, minimaps, portal views and custom post effects are all
+gameplay-owned passes, and the engine deliberately does not implement those
+policies. Design `IRenderLayer` as a public extension point from the start —
+retrofitting one means revisiting ordering, resource access and hot-reload safety
+all at once.
+
 
 **The compositing decision matters and is hard to change later.** Drawing all
 layers into a single target is cheapest and usually right. Giving each layer its

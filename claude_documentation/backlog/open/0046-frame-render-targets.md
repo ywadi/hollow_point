@@ -25,6 +25,7 @@ explicitly-managed set of frame resources.
 - [ ] Resize is debounced and leak-free
 - [ ] Formats are declared in one place, not scattered across passes
 - [ ] GPU memory used by frame targets is reportable
+- [ ] Gameplay-owned persistent targets are supported alongside frame targets (T0094)
 
 ## Subtasks
 
