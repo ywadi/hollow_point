@@ -19,8 +19,7 @@ cmake/
 tools/
   mk_linux_sysroot.sh       regenerates the Linux stub sysroot
   find_win_header_case.sh   rescans for case-mismatched Windows headers/libs
-apps/
-  imgui_probe/              Tutorial10 copy -- build+run smoke test (disposable)
+apps/                       (empty -- no application yet; root CMakeLists globs apps/*)
 third_party/
   DiligentEngine/           the engine (submodules: Core, Tools, Samples, FX)
   imgui/                    ocornut/imgui `docking` -- overrides Diligent's copy
@@ -35,9 +34,10 @@ dist/<target>/              staged output
 
 ## What the build produces
 
-Engine static libraries, the `GraphicsEngineOpenGL` / `GraphicsEngineVk` shared
-libraries, and `apps/imgui_probe/ImGuiProbe`. **There is no real application
-yet** — the probe is a disposable smoke test.
+Engine static libraries plus the `GraphicsEngineOpenGL` / `GraphicsEngineVk`
+shared libraries. **There is no application and therefore no executable** — the
+temporary probe app was retired in T0007. `dist/` will stage libraries only until
+T0006 lands.
 
 Roughly 1100 build targets per platform.
 

@@ -137,7 +137,7 @@ not get a per-config suffix (`ozz_base_r.a`).
 
 ---
 
-## D9 — `apps/imgui_probe` is a deliberately disposable smoke test
+## D9 — `apps/imgui_probe` was a deliberately disposable smoke test *(retired)*
 
 A copy of `Tutorial10_DataStreaming`, chosen because it drives ImGui hard **and**
 calls `ImGui::InputInt(..., ImGuiInputTextFlags_EnterReturnsTrue)` — the exact
@@ -148,4 +148,13 @@ One marked edit (`HP_DOCKING_PROBE`) enables docking, creates a
 `HP_PROBE_EXIT_FRAMES` for headless runs. Those docking APIs do not exist in
 ImGui 1.92.1, so **the build itself proves the swap took effect**.
 
-Delete the directory once a real app exists.
+**Retired in T0007** (2026-08-02), on request, before a real app existed. It
+earned its keep first: it caught G7 (removed ImGui modifier aliases), G8
+(mandatory `readme.md`), the sysroot glibc mismatch (D4) and the RPATH-to-stubs
+bug (G6) — none of which a compile-only check would have found.
+
+Consequence to be aware of: with it gone the build produces **no executable**, so
+there is currently no way to catch a *runtime* regression in the harness. The
+ImGui/Vulkan/wine evidence already recorded stands, but it can no longer be
+re-run. Recover the file from git history if that becomes a problem before T0006
+lands.

@@ -11,7 +11,8 @@
 
 There is no application. The previous one (`apps/terrain_lab`, an Atmosphere-
 sample derivative with custom water/terrain layers) was deliberately deleted, and
-`apps/imgui_probe` is a disposable smoke test.
+`apps/imgui_probe` was a disposable smoke test, retired in T0007 — so there is
+now no executable target at all.
 
 Everything built so far — the harness, ImGui docking, enkiTS, meshoptimizer,
 ozz — is scaffolding for an application whose shape has not been decided. That

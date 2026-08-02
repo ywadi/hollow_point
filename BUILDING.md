@@ -100,8 +100,9 @@ on `Diligent-Imgui` rather than patching the engine. The Win32 impl is
 unaffected — it comes from ImGui's own up-to-date backend. Drop that block once
 DiligentEngine updates those files.
 
-`apps/imgui_probe/` is a copy of Tutorial10 that exercises all of this; see its
-readme.
+This was verified end-to-end by a temporary probe app (a copy of Tutorial10)
+before it was retired: OpenGL and Vulkan both reported `ImGui 1.92.9b, docking
+ON`. Nothing currently exercises it at runtime -- see T0006.
 
 ozz's samples, tools, tests and the FBX/glTF importers are off: the samples need
 GLFW/OpenGL and the FBX pipeline needs the proprietary FBX SDK, neither of which

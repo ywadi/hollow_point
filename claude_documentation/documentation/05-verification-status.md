@@ -35,7 +35,8 @@ Zig-based, incremental, cross-compiling from either host. See
 | ozz-animation | 0.17.0 | `ozz_base`, `ozz_animation`, `ozz_geometry`, `ozz_animation_offline` |
 
 ### ImGui docking, end to end ✅
-`apps/imgui_probe` built **and ran** under Xvfb:
+`apps/imgui_probe` built **and ran** (since retired — see T0007; the evidence
+below stands but can no longer be reproduced without restoring it from git):
 
 ```
 Diligent Engine: Info: Initialized OpenGL 4.5 context (llvmpipe)
@@ -79,7 +80,7 @@ and subtasks:
 | Verify building on a Windows host | [T0004](../backlog/open/0004-verify-windows-host-build.md) |
 | Actually call enkiTS / meshoptimizer / ozz | [T0005](../backlog/open/0005-exercise-new-library-apis.md) |
 | Define the real application | [T0006](../backlog/open/0006-define-real-application.md) |
-| Retire `apps/imgui_probe` | [T0007](../backlog/open/0007-retire-imgui-probe.md) |
+| Retire `apps/imgui_probe` | [T0007](../backlog/completed/0007-retire-imgui-probe.md) |
 | Remove the `ImGuiKey_Mod*` shim | [T0008](../backlog/open/0008-remove-imgui-modifier-shim.md) |
 | Wire up or drop `ufbx` | [T0009](../backlog/open/0009-wire-up-ufbx.md) |
 | Make `configure` work offline | [T0010](../backlog/open/0010-offline-configure.md) |

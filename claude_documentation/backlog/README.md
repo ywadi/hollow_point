@@ -28,11 +28,48 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0004](open/0004-verify-windows-host-build.md) | Verify building *on* a Windows host | 🔜 OPEN — needs a real Windows machine | Medium |
 | [T0005](open/0005-exercise-new-library-apis.md) | Actually call enkiTS / meshoptimizer / ozz | 🔜 OPEN | Medium |
 | [T0006](open/0006-define-real-application.md) | Define and scaffold the real application | 🔜 OPEN — needs a product decision | High |
-| [T0007](open/0007-retire-imgui-probe.md) | Retire `apps/imgui_probe` | ⏸ BLOCKED by T0006 | Low |
+| [T0007](completed/0007-retire-imgui-probe.md) | Retire `apps/imgui_probe` | ✅ DONE | Low |
 | [T0008](open/0008-remove-imgui-modifier-shim.md) | Remove the `ImGuiKey_Mod*` shim | ⏸ BLOCKED upstream | Low |
 | [T0009](open/0009-wire-up-ufbx.md) | Wire up `ufbx`, or drop it | 🔜 OPEN | Low |
 | [T0010](open/0010-offline-configure.md) | Make `configure` work offline | 🔜 OPEN | Low |
 | [T0011](open/0011-aarch64-linux-target.md) | Add an aarch64 Linux target | 🔜 OPEN | Low |
+| [T0012](open/0012-test-harness.md) | Build a test harness for TDD | 🔜 OPEN | High |
+
+## Working a ticket — mandatory
+
+This applies to **everyone**, humans and agents alike. It is not optional, and an
+agent given a ticket is expected to follow it without being told again.
+
+**1. Move the ticket to `inprogress/` before doing any work.**
+
+```sh
+git mv claude_documentation/backlog/open/00NN-*.md \
+       claude_documentation/backlog/inprogress/
+```
+
+Then set **Status** inside the file to `🚧 IN PROGRESS`. Do this *first* — the
+board is how progress is watched, and a ticket still sitting in `open/` while
+someone works it makes the board lie.
+
+**2. Tick the subtask checkboxes as you go, not at the end.**
+
+Change `- [ ]` to `- [x]` the moment a subtask is genuinely finished. The board
+renders a progress bar from these counts, so ticking them as you go is what makes
+progress visible in real time. Batching them into one commit at the end defeats
+the entire point.
+
+**3. Append findings to `## Notes / findings` as you discover them.**
+
+Especially anything surprising, anything that turned out to be wrong, and
+anything you could not verify. This is what survives a context reset.
+
+**4. Only move to `completed/` when it is actually verified.**
+
+Paste the evidence — the command and its output — into the file. If a "Done when"
+condition was not met, say so plainly rather than ticking it; a ticket that
+overstates what was achieved is worse than one left open. See
+`completed/0007-retire-imgui-probe.md` for how to record closing a ticket whose
+precondition was not satisfied.
 
 ## Status values
 
