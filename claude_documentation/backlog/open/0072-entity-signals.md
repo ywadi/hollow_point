@@ -56,6 +56,11 @@ handler identity and resolve on emit.
 Automatic disconnection is what makes this safe to use. Requiring manual
 disconnect in every destructor guarantees a leak or a crash eventually.
 
-This is deliberately *not* a global event bus. A bus makes it impossible to tell
-who is listening; per-entity signals keep the relationship visible and
-serializable.
+**This is deliberately not a global event bus** — see D10. Signals cover authored
+1:N relationships with a known partner, where keeping the connection visible and
+serializable is the whole point. Broadcast to an unknown audience is the message
+bus's job (T0075), and reading another entity's state needs no messaging at all.
+
+The three-way split matters: a bus makes "who listens?" unanswerable from the call
+graph, which is an acceptable cost for genuinely broadcast events and an
+unnecessary one for a door and its switch.

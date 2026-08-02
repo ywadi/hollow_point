@@ -1,0 +1,75 @@
+# T0075 — Message bus with addressing
+
+| | |
+|---|---|
+| **Status** | 🔜 TODO |
+| **Priority** | High |
+| **Complexity** | Complex |
+| **Phase** | 3 — Data model |
+| **Created** | 2026-08-03 |
+
+## Why
+
+Some events have **no known audience**: an explosion that should affect whatever
+is nearby, an alert that should reach every enemy, a wave-started announcement.
+Direct calls and per-entity signals (T0072) both require the publisher to know
+who is listening — which is exactly what these cases lack.
+
+The valuable part is **addressing**: publish to one entity, to a tag, to a radius,
+or to everything.
+
+This is deliberately **one of three mechanisms**, not the only one — see the
+layering note below, and D10 in the decision log.
+
+## Done when
+
+- [ ] Publish to: a single entity, a tag (T0074), a radius, or all
+- [ ] Messages are **typed** — no untyped variant payloads
+- [ ] Subscribers register by message type, optionally filtered by tag
+- [ ] Dispatch is deferred to a defined drain point, avoiding reentrancy
+- [ ] Publishing does not allocate on the hot path
+- [ ] Subscriptions survive a gameplay hot reload (T0048)
+- [ ] Every message is visible in Tracy when profiling is on
+- [ ] Dispatch order is deterministic
+
+## Subtasks
+
+- [ ] 75.1 `Target` — Entity / Tag / Radius / All
+- [ ] 75.2 Typed publish and subscribe, keyed on message type
+- [ ] 75.3 Tag dispatch via the tag index (T0074)
+- [ ] 75.4 Radius dispatch via spatial query (T0073)
+- [ ] 75.5 Deferred queue with an explicit drain point in the frame
+- [ ] 75.6 Pooled message storage — no per-publish allocation
+- [ ] 75.7 Subscriptions stored as GUID + type so hot reload survives
+- [ ] 75.8 Tracy events per message when profiling (T0029)
+- [ ] 75.9 Deterministic ordering — see notes
+- [ ] 75.10 A debug view listing recent messages and their subscribers
+
+## Notes / findings
+
+**Keep messages typed.** Untyped payloads (`std::any`, variants) are the usual way
+a bus is built and they discard compile-time checking, which is a poor trade in a
+C++ engine. `Publish<DamageMsg>(Target::Tag("enemy"), {10})` keeps the checking
+and costs nothing.
+
+**Deferred dispatch is the default for a reason**, but it has a real cost worth
+stating: a chain of `damage → death → loot → UI` takes one frame per hop. If that
+becomes a problem, the fix is draining the queue repeatedly within a frame until
+empty (with an iteration cap), *not* switching to immediate dispatch — immediate
+reintroduces the reentrancy problem where a handler destroys entities mid-iteration.
+
+**Determinism matters more than it looks.** Once behaviour flows through a bus,
+message order *is* semantics. Order by (publish order, subscriber registration
+order) and keep it stable, or the same inputs produce different outcomes across
+runs — the worst class of bug to chase, and fatal if replay or networking (T0070)
+ever matters.
+
+**The known weakness, stated honestly:** a bus makes "who handles this?"
+unanswerable from the call graph, which is why it is not the only mechanism. Two
+mitigations are built in: 75.10's debug view, and Tracy integration — a message
+log is a genuine debugging asset, and partly buys back what the call stack loses.
+
+**Mechanism guidance** (see D10):
+- reading state → **direct component access**, no messaging
+- authored 1:N with a known partner → **signals** (T0072)
+- unknown audience, broadcast, tag or radius → **this bus**

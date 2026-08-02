@@ -158,3 +158,45 @@ there is currently no way to catch a *runtime* regression in the harness. The
 ImGui/Vulkan/wine evidence already recorded stands, but it can no longer be
 re-run. Recover the file from git history if that becomes a problem before T0006
 lands.
+
+---
+
+## D10 — Layered communication: direct access, signals, and a message bus
+
+**Decision:** three mechanisms, each used where it is strongest, rather than one
+universal one.
+
+| Use | Mechanism |
+|---|---|
+| Reading another entity's state | **Direct component access** — `e.Get<Health>()`, no messaging |
+| Authored 1:N with a known partner (door ← switch) | **Signals** (T0072) — visible, serializable, editor-wireable |
+| Unknown audience: tag, radius, or broadcast | **Message bus** (T0075) with addressing |
+
+**Rejected — a single global bus for all entity communication.** The addressing
+model is genuinely valuable and is why T0075 exists, but making it the *only*
+mechanism carries costs that bite hardest where the alternatives are cheapest:
+
+- **"Who handles this?" stops being answerable from the call graph.** With a
+  signal you inspect the connection; with a bus you grep. This is the well-known
+  failure mode of global event buses, and it works against keeping the codebase
+  legible.
+- **Message chains cost frames.** Deferred dispatch avoids reentrancy, but
+  `damage → death → loot → UI` becomes four frames. Immediate dispatch fixes that
+  and reintroduces reentrancy.
+- **Queries do not fit.** "What is your health?" is request/response, not publish.
+  Forcing it through a bus is painful, so direct access returns anyway — the bus
+  becomes an *additional* mechanism rather than the single one, which was the
+  point.
+- **Order becomes semantics**, and deterministic ordering across parallel systems
+  is hard — a real problem if replay or networking ever matters.
+- **Typed payloads are worth keeping.** A universal bus tends toward untyped
+  messages, discarding compile-time checking in a language chosen partly for it.
+
+**What the idea contributed, and was kept:** addressing by tag, radius and
+broadcast, which per-entity signals cannot express without manual fan-out. That
+required a tag system (T0074), which turns out to be independently useful for
+queries, filtering and content authoring.
+
+Two mitigations for the bus's traceability cost are built into T0075: a debug
+view of recent messages and their subscribers, and Tracy integration — a message
+log is a real debugging asset.

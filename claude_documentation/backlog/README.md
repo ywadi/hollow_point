@@ -56,6 +56,8 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0059](open/0059-prefabs.md) | Prefabs and entity templates | 3 — Data model | 🔜 TODO | High | Complex |
 | [T0071](open/0071-entity-references.md) | Entity references | 3 — Data model | 🔜 TODO | High | Moderate |
 | [T0072](open/0072-entity-signals.md) | Entity signals and messaging | 3 — Data model | 🔜 TODO | Medium | Moderate |
+| [T0074](open/0074-gameplay-tags.md) | Hierarchical gameplay tags | 3 — Data model | 🔜 TODO | High | Moderate |
+| [T0075](open/0075-message-bus.md) | Message bus with addressing | 3 — Data model | 🔜 TODO | High | Complex |
 | [T0025](open/0025-render-layer.md) | Render layer and device lifecycle | 4 — Render layer | 🔜 TODO | High | Moderate |
 | [T0026](open/0026-job-system-enkits.md) | Job system on enkiTS | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | [T0027](open/0027-render-stack.md) | RenderStack: composited visual layers | 4 — Render layer | 🔜 TODO | High | Moderate |
@@ -146,7 +148,7 @@ is. Priority says whether to do it; complexity says what you are walking into.
 | Complex | Several interacting concerns; expect it to take longer than planned |
 | Very Complex | Genuinely hard, with a real chance of needing a different approach |
 
-Current spread: 7 Trivial, 17 Simple, 26 Moderate, 16 Complex, 7 Very Complex.
+Current spread: 7 Trivial, 17 Simple, 27 Moderate, 17 Complex, 7 Very Complex.
 
 The **Very Complex** ones are worth knowing up front: **T0048** hot-reloadable
 gameplay module (state must survive reload), **T0030** Tracy GPU zones (Diligent
