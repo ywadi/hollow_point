@@ -69,3 +69,19 @@ Deliberately out of scope: occlusion culling, portals, spatial acceleration
 structures (BVH/octree). Frustum culling over a linear list is entirely adequate
 until object counts get large, and a spatial structure can be inserted behind the
 same interface later.
+
+### Second review pass (2026-08-03) — do not block Phase 4 on the Phase 7 asset format
+
+45.1 stores bounds "in the asset, computed at import", but the cooked-mesh
+container that would hold them is a decision T0039's note places at the start
+of Phase 7 — one phase *after* this ticket. Untangle it by making import-time
+bounds an optimisation, not a prerequisite: **compute bounds at load time**
+(one pass over positions at import/first-load, cached in memory) for Phase 4,
+and move them into the cooked asset when T0039's container exists. Same
+interface, no waiting, and the skinned-mesh conservative-bounds question above
+is unaffected.
+
+Also: the frustum/AABB math in 45.3 already exists — `AdvancedMath.hpp`
+(`ViewFrustum`, `ExtractViewFrustumPlanesFromMatrix` with its OpenGL flag,
+`GetBoxVisibility`, bound-box transform). Consume it (T0056), do not re-derive
+it. World-space bounds come from T0101's world transforms.

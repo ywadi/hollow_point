@@ -105,6 +105,7 @@ const ARCHITECTURE = [
     { name: 'Build harness',      tickets: ['T0001','T0002','T0003','T0010','T0004','T0011'] },
     { name: 'Test & CI',          tickets: ['T0012','T0084'] },
     { name: 'Conventions',        tickets: ['T0055','T0056'] },
+    { name: 'Crash handling',     tickets: ['T0099'] },
   ]},
   { layer: 'Engine core', blurb: 'Application lifetime and the services everything sits on', groups: [
     { name: 'App & window',       tickets: ['T0013','T0014','T0015'] },
@@ -113,19 +114,21 @@ const ARCHITECTURE = [
     { name: 'Reflection',         tickets: ['T0053'] },
     { name: 'Diagnostics',        tickets: ['T0054','T0019'] },
     { name: 'Time',               tickets: ['T0057'] },
+    { name: 'Frame lifecycle',    tickets: ['T0100'] },
     { name: 'Input',              tickets: ['T0068'] },
     { name: 'Threading',          tickets: ['T0026','T0050'] },
   ]},
   { layer: 'Data model', blurb: 'What a project, scene and asset actually are', groups: [
     { name: 'Serialization',      tickets: ['T0020','T0082'] },
     { name: 'Scene & ECS',        tickets: ['T0021','T0022','T0077'] },
+    { name: 'Transforms',         tickets: ['T0101'] },
     { name: 'Assets',             tickets: ['T0023','T0058'] },
     { name: 'Project & settings', tickets: ['T0024','T0078'] },
     { name: 'Composition',        tickets: ['T0059','T0071'] },
     { name: 'Communication',      tickets: ['T0072','T0074','T0075'] },
   ]},
   { layer: 'Gameplay', blurb: 'How the developer attaches and runs their own code', groups: [
-    { name: 'Hot-reload module',  tickets: ['T0048'] },
+    { name: 'Hot-reload module',  tickets: ['T0048','T0095'] },
     { name: 'Behaviours',         tickets: ['T0062'] },
     { name: 'Autoloads',          tickets: ['T0076'] },
     { name: 'Utilities',          tickets: ['T0073'] },
@@ -135,6 +138,7 @@ const ARCHITECTURE = [
     { name: 'Device & stack',     tickets: ['T0025','T0027','T0046','T0047'] },
     { name: 'Submission',         tickets: ['T0028','T0045','T0081','T0085'] },
     { name: 'Materials',          tickets: ['T0060'] },
+    { name: 'HDR & colour',       tickets: ['T0096'] },
     { name: 'Lighting',           tickets: ['T0079','T0086','T0087'] },
     { name: 'Effects',            tickets: ['T0080','T0061'] },
     { name: 'Visibility',         tickets: ['T0093'] },
@@ -142,6 +146,7 @@ const ARCHITECTURE = [
   ]},
   { layer: 'Content pipeline', blurb: 'Getting authored assets into the engine', groups: [
     { name: 'Mesh import',        tickets: ['T0038','T0009'] },
+    { name: 'Texture import',     tickets: ['T0097'] },
     { name: 'LOD',                tickets: ['T0039','T0040'] },
     { name: 'Animation',          tickets: ['T0041','T0049','T0005'] },
   ]},
@@ -153,6 +158,7 @@ const ARCHITECTURE = [
   { layer: 'Simulation', blurb: 'Physics and audio', groups: [
     { name: 'Physics',            tickets: ['T0051'] },
     { name: 'Audio',              tickets: ['T0052'] },
+    { name: 'Navigation',         tickets: ['T0098'] },
   ]},
   { layer: 'Editor', blurb: 'Authoring tools — never shipped with the game', groups: [
     { name: 'Shell & panels',     tickets: ['T0032','T0033','T0034','T0066','T0067'] },

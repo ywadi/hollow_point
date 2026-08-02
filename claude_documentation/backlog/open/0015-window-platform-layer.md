@@ -62,3 +62,16 @@ on two platforms, and belongs to 15.4/T0018.5 explicitly rather than
 implicitly. `Diligent-Imgui`'s per-platform impls feed **ImGui only** — they do
 not feed the engine. Not a blocker, but "Moderate" is only honest if this work
 is known to be in scope.
+
+### Second review pass (2026-08-03) — display modes have no owner
+
+No ticket owns fullscreen/borderless/windowed switching, monitor enumeration,
+resolution changes at runtime, or DPI awareness — yet T0078's game options
+list "resolution" as a player-facing setting, so *something* must implement
+applying it. That something is this platform layer (window/display control is
+per-OS code; the swapchain resize path from T0025 already handles the GPU
+side). Scope it here: borderless-fullscreen toggle + runtime resolution change
++ basic DPI handling are the needed floor; exclusive fullscreen and
+multi-monitor selection can wait for evidence. `AppBase` has a
+`HOT_KEY_FLAG_ALLOW_FULL_SCREEN_SWITCH` hint but the actual mode work is in
+the per-platform bases — check what they provide before writing it.

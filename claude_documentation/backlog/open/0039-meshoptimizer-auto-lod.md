@@ -66,4 +66,6 @@ T0045's import-time bounding volumes and the shared-vertex-buffer layout this
 ticket describes naturally live); or (c) sidecar files per LOD, which is the
 option that rots. This decision shapes T0023's pool, T0040's selection and
 T0043's export — make it deliberately at the start of this ticket, and record
-it.
+it. *(Second pass, 2026-08-03: T0045 no longer waits on this — it computes
+bounds at load until the container exists (see T0045's note), so this decision
+gates Phase 7 only, as originally intended.)*

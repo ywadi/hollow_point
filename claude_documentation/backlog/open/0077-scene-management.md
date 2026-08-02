@@ -61,3 +61,20 @@ entity per scene, which is cleaner.
 with a few hundred entities and their assets is a visible freeze. The two-stage
 pattern from T0058 applies: parse and deserialize on a worker, create GPU
 resources on the main thread.
+
+### Second review pass (2026-08-03) — additive scenes make two ambiguities load-bearing
+
+- **Can the same scene be loaded additively twice?** (Streaming the same
+  area-scene as two instances.) If yes, its entity GUIDs collide across the
+  two copies — the play-mode-clone situation, but permanent — so the per-scene
+  GUID lookup (T0021's review note) becomes mandatory and every "find by GUID"
+  API needs a scene in hand. If no, say so and assert it on load. Either answer
+  is fine; the silent middle is not.
+- **Which scenes do scene-spanning services see?** Bus radius/tag queries
+  (T0075), spatial queries (T0073.6) and tag queries (T0074.7) — across *all*
+  resident scenes, or the active one? Decide once here, not per-system.
+  Cross-scene `EntityRef` is already flagged in T0071 ("disallow rather than
+  half-support"); this is the query-side twin of that decision.
+
+Both belong in 77.1's design, and T0083 now notes that saves must record the
+resident-scene set.

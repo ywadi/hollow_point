@@ -50,6 +50,7 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0073](open/0073-gameplay-utilities.md) | Gameplay utility library | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
 | [T0076](open/0076-autoloads.md) | Autoloads: project and scene scoped services | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | [T0095](open/0095-gameplay-module-abi-and-linkage.md) | Gameplay module ABI: engine linkage, one engine state, entt across the boundary | 2 — Engine skeleton | 🔜 TODO | High | Complex |
+| [T0100](open/0100-frame-lifecycle-and-update-order.md) | Frame lifecycle and system update order | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | [T0020](open/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | 🔜 TODO | High | Complex |
 | [T0021](open/0021-scene-and-ecs.md) | Scene and entity-component system | 3 — Data model | 🔜 TODO | High | Moderate |
 | [T0022](open/0022-scene-serialization.md) | Scene serialization | 3 — Data model | 🔜 TODO | High | Moderate |
@@ -65,6 +66,7 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0077](open/0077-scene-management.md) | Scene loading, transitions and additive scenes | 3 — Data model | 🔜 TODO | High | Complex |
 | [T0078](open/0078-settings-and-config.md) | Settings and configuration | 3 — Data model | 🔜 TODO | Medium | Simple |
 | [T0082](open/0082-schema-versioning.md) | Schema versioning and migration | 3 — Data model | 🔜 TODO | Medium | Moderate |
+| [T0101](open/0101-transform-hierarchy-and-world-transforms.md) | Transform hierarchy propagation and world transforms | 3 — Data model | 🔜 TODO | High | Moderate |
 | [T0025](open/0025-render-layer.md) | Render layer and device lifecycle | 4 — Render layer | 🔜 TODO | High | Moderate |
 | [T0027](open/0027-render-stack.md) | RenderStack: composited visual layers | 4 — Render layer | 🔜 TODO | High | Moderate |
 | [T0028](open/0028-scene-draw-submission.md) | Scene draw submission and the frame-rendered event | 4 — Render layer | 🔜 TODO | High | Moderate |
@@ -172,7 +174,7 @@ is. Priority says whether to do it; complexity says what you are walking into.
 | Complex | Several interacting concerns; expect it to take longer than planned |
 | Very Complex | Genuinely hard, with a real chance of needing a different approach |
 
-Current spread: 7 Trivial, 19 Simple, 36 Moderate, 28 Complex, 9 Very Complex.
+Current spread: 7 Trivial, 19 Simple, 38 Moderate, 28 Complex, 9 Very Complex.
 
 The **Very Complex** ones are worth knowing up front: **T0048** hot-reloadable
 gameplay module (state must survive reload), **T0030** Tracy GPU zones (Diligent
@@ -227,7 +229,7 @@ show an aggregate progress bar.
 | 9 — Physics | Jolt integration, character controller, fixed timestep |
 | 10 — Audio | Library still undecided; animation-event driven playback |
 | 11 — World & environment | Sky, time of day, fog, volumetrics, weather, wet surfaces |
-| 12 — Game UI | HUD/menus — ImGui never ships, so this has no owner yet |
+| 12 — Game UI | HUD/menus — ImGui ships but is unsuitable for player-facing UI |
 | 13 — Networking | Placeholder; constrains determinism and state ownership if ever wanted |
 | 14 — Deferred | Blocked, speculative, or explicitly postponed |
 

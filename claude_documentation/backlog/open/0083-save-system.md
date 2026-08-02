@@ -59,3 +59,17 @@ bug. Write to a temporary file, fsync, rename.
 
 Saves are exactly where T0082's migration pays off: players have saves, the game
 gets patched, and "your saves are gone" is unacceptable.
+
+### Second review pass (2026-08-03) — two identity dependencies this ticket inherits
+
+- **Prefab-instance entities are only save-stable if T0059 persists the
+  per-instance GUID map** (see T0059's second-pass note). "Entity GUIDs from
+  the scene file are stable" is true for hand-placed entities and *false* for
+  prefab-instance children unless T0059.9 lands — a door that is part of a
+  prefab would get a new GUID every load, and saves referencing it silently
+  break. Treat T0059.9 as a prerequisite of 83.7.
+- **A save must record the loaded-scene set, not assume one scene.** T0077
+  allows additive scenes; "load restores it into a freshly loaded scene"
+  (singular) under-specifies. The save needs the active scene plus any
+  additively loaded ones (and their autoload state, T0076), or loading a save
+  taken mid-stream reconstructs a different world.

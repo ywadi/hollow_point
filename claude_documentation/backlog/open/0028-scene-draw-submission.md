@@ -46,3 +46,12 @@ what the event system exists to avoid.
 Sorting, culling and instancing are deliberately out of scope here — get correct
 output first. But leave the parse step's output as an explicit list so a sort or
 cull pass can be inserted without restructuring.
+
+### Second review pass (2026-08-03) — nothing displays this texture until Phase 6
+
+The two consumers of the frame-rendered event are the viewport panel (T0033,
+Phase 6) and the runtime (T0042, Phase 8) — so as written, all of Phase 4 has
+no on-screen output. Add a trivial dev-only present path (blit the offscreen
+target to the swap chain in the editor app's stub layer) so Phase 4 work is
+visually verifiable as it lands. It is ~20 lines, it exercises the same event,
+and T0033 simply replaces it.

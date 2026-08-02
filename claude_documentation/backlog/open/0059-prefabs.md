@@ -37,6 +37,9 @@ source propagate to instances and per-instance overrides are preserved.
 - [ ] 59.6 Editor: create prefab from selection, apply, revert
 - [ ] 59.7 Decide on nested prefabs — see notes
 - [ ] 59.8 Tests, especially override survival across an edit
+- [ ] 59.9 **Persist the per-instance GUID map in the scene file** — see the
+      second-pass note; without it every scene load breaks references into
+      prefab instances
 
 ## Notes / findings
 
@@ -55,3 +58,29 @@ silently half-support it.
 Prefab instances must serialize as reference + overrides. Serializing the expanded
 hierarchy works and quietly destroys the entire feature — every instance becomes
 an independent copy the moment the scene is saved.
+
+### Second review pass (2026-08-03) — instance entity GUIDs must be *persistent*, not per-load
+
+59.2 generates fresh GUIDs at instantiation, and the serialization model stores
+only "reference + overrides". Combine the two naively and **every scene load
+re-instantiates with new GUIDs** — which silently breaks three systems that
+reference entities *inside* an instance by GUID:
+
+- an `EntityRef` (T0071) from outside the instance to a child of it (a switch
+  wired to a door that is part of a prefab) dangles after save/load;
+- authored signal connections (T0072) into the instance dangle the same way;
+- save games (T0083) that say "door `guid` is open" cannot find the door after
+  the game restarts, because the door has a different GUID every run.
+
+The fix is small if designed in and a migration if not: the scene file records,
+per instance, the **template-entity → instance-entity GUID map** (or derives it
+deterministically, e.g. hash of instance-root GUID + a stable per-entity key in
+the template). Loading an instance reuses the recorded GUIDs; only *new*
+template entities added since the save get fresh ones — which is also exactly
+the stable intra-instance identity the override model (59.4) needs for its
+property paths, so this is one mechanism, not two. Unity's fileID/guid
+composition is this same answer.
+
+Tests to add under 59.8/59.9: save → load → save produces identical GUIDs; an
+external EntityRef into an instance survives a reload; two instances of the
+same prefab never share a GUID.

@@ -86,3 +86,21 @@ state T0095 exists to sort out. Same answer as behaviours: name-based
 registration pushed from the module, single registry instance owned by the
 engine, access through a context rather than a global if the linkage model
 requires it.
+
+### Second review pass (2026-08-03) — "created at startup" is ambiguous in the editor
+
+"Project scope: created at startup" has one meaning in the runtime (process
+start) and **two candidate meanings in the editor**: editor launch / project
+open, or play-mode entry. They are not equivalent. If gameplay project
+autoloads (game state, fog-of-war memory) are created at project open and
+reused across play sessions, their mutated state survives stop — every
+playtest starts from the previous one's state, which is precisely the
+corruption play mode's scene clone exists to prevent.
+
+The consistent rule: **project scope = game-session scope.** In the runtime a
+session is the process; in the editor a session is one play-mode run (created
+on play entry, destroyed on stop — see the matching note on T0037). Autoloads
+do not run, and need not exist, while *editing* — same default as behaviours
+(T0062's edit-mode policy). If some future autoload genuinely must run in the
+editor, that is an explicit opt-in, not the default. Word 76.3 accordingly
+("created when a game session starts", not "on project open").

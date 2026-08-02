@@ -87,3 +87,20 @@ not skip it just because it is not the conventional target of TDD.
 **Do not require a GPU.** Anything that needs a device makes the suite
 unrunnable in CI and on headless machines. Keep GPU-dependent checks in a
 separate, clearly-marked target.
+
+### Second review pass (2026-08-03) — the GPU-marked target can still run headless
+
+Two facts make the "separate GPU target" more useful than it sounds, worth
+knowing when it is designed:
+
+- **Software rasterisation is already proven in this repo.** T0001/T0003 ran
+  the probe under Xvfb on llvmpipe (GL) — including the *Windows* binary under
+  wine — so a GPU-dependent test target can run in CI on Mesa with no real
+  hardware. Lavapipe gives the same for Vulkan.
+- **Diligent can render without a window.** `OffScreenSwapChain.hpp`
+  (GraphicsTools) creates an off-screen swap chain from just a device — no
+  surface, no X11 — which suits image-comparison render tests better than
+  driving a hidden window.
+
+Neither changes the rule (default suite stays GPU-free); they mean the GPU
+suite is CI-able rather than desktop-only.

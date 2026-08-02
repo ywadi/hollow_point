@@ -45,3 +45,29 @@ Input routing is the other trap: while playing, the game wants input, but the
 editor still needs its own shortcuts (stop, in particular). The event system's
 consume semantics (T0018) is the mechanism — the editor layer sits above and
 takes only what it needs.
+
+### Second review pass (2026-08-03) — play mode is a *session*, and cloning the scene is only part of it
+
+The clone covers entity/component state. Four other things hold game state or
+in-flight work, and each needs an explicit start/stop story or state leaks
+across play sessions — the same failure T0052 already flags for audio:
+
+- **Project-scoped autoloads (T0076).** A game-state manager or fog-of-war
+  memory created "at startup" and merely *reused* across play sessions keeps
+  its mutated state after stop — the autoload equivalent of the shallow-copy
+  bug this ticket exists to prevent. Play entry must construct the gameplay
+  project-scope autoloads fresh (and stop must destroy them); in the exported
+  runtime the equivalent point is process startup, so the semantics stay
+  identical (T0042). See the matching note on T0076.
+- **Scene-scoped autoloads** must be created against the *clone* on play entry
+  and destroyed on stop — never pointed at the authored scene.
+- **Deferred queues (T0072/T0075).** Stop must drain-or-discard queued
+  messages; a payload delivered after the clone is destroyed dangles. The
+  end-of-frame safe point (T0100) is where play enter/exit belongs.
+- **In-flight jobs (T0026) and async loads (T0058/T0077)** referencing the
+  clone must be fenced before the clone is destroyed.
+
+Physics (T0051, later) follows the same shape: the simulation world is built
+for the clone on entry and torn down on stop. Nothing to build now — but 37.1
+should be designed as "enter/exit a simulation *session*", not just "swap the
+scene pointer", so these attach cleanly instead of by patch.

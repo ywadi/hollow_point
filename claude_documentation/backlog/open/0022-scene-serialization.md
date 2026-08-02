@@ -57,3 +57,17 @@ reflection declaration, and the only hand-written serializers are the leaf
 types the reflection layer bottoms out in (see the matching note on T0020).
 **T0053 is therefore a hard prerequisite of this ticket**, which its own notes
 already claim but this file previously did not acknowledge.
+
+### Second review pass (2026-08-03) — the unknown-component policy has a third case
+
+"Skip-and-warn vs hard-fail" misses the case this engine is guaranteed to hit:
+**component/behaviour types that live in the gameplay module** (T0048/T0062).
+When the module fails to build, or a type is renamed mid-refactor, its types
+are *legitimately absent* at load time — hard-fail makes the editor unusable
+exactly when the developer is mid-change, and skip-and-warn destroys the data
+on the next save. The answer both Unity and Godot converged on: **preserve
+unknown component data as an opaque blob** (keep the raw YAML subtree),
+round-trip it through save, and re-materialise it when the type reappears.
+Warn loudly meanwhile. Worth building from the start, because it also covers
+files from newer schema versions more gracefully than refusal alone (T0082
+still refuses newer *file* versions; this handles a missing *type*).

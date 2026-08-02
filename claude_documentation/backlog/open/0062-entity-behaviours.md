@@ -122,3 +122,25 @@ Two scope clarifications, so this Phase 2 ticket is not blocked on Phase 6:
 Linkage prerequisite: the type registry being "pushed from the module" only
 works once T0095 (module ABI — one engine state, entt across the boundary) is
 settled. T0095 now blocks this ticket.
+
+### Second review pass (2026-08-03) — the Phase 3 dependencies, named
+
+The first review scoped the *editor* items out of Phase 2; two more
+dependencies also cross the phase line and are worth naming so the sequencing
+is honest:
+
+- **Entities (T0021).** Behaviours attach to entities; the Scene/ECS wrapper is
+  Phase 3. The Phase 2 mechanism can be built and tested against a raw
+  `entt::registry`, but nothing here truly closes before T0021 exists.
+- **Serialization (62.5) is T0020/T0022 territory** — Phase 3 again. The
+  hot-reload cycle (62.6), however, does *not* need the YAML/file layer: a
+  reflection-driven **in-memory** snapshot (property values into a value tree,
+  restored after reload) is sufficient and keeps the reload path independent of
+  file formats. Design 62.6 against that, and let scene serialization reuse the
+  same property enumeration when T0022 lands.
+
+Practical order: T0053 → T0095 → this mechanism (registry + lifecycle +
+in-memory snapshot, tested headless) → T0021/T0020 make it real → T0035 gives
+it an editor surface. The ticket stays Phase 2 as the *design/mechanism*
+keystone, but the plan should not expect it to be demonstrable end-to-end
+before mid-Phase 3.
