@@ -29,6 +29,7 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0007](completed/0007-retire-imgui-probe.md) | Retire `apps/imgui_probe` | 1 — Harden the build | ✅ DONE | Low | Simple |
 | [T0010](completed/0010-offline-configure.md) | Make `configure` work offline | 1 — Harden the build | ✅ DONE | Low | Moderate |
 | [T0012](open/0012-test-harness.md) | Build a test harness for TDD | 1 — Harden the build | 🔜 TODO | High | Complex |
+| [T0084](open/0084-continuous-integration.md) | Continuous integration | 1 — Harden the build | 🔜 TODO | Medium | Moderate |
 | [T0006](completed/0006-define-real-application.md) | Define and scaffold the real application | 2 — Engine skeleton | ❌ SUPERSEDED | High | Trivial |
 | [T0013](open/0013-engine-library-app-split.md) | Split the tree into an engine library and app consumers | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | [T0014](open/0014-application-and-main-loop.md) | Application class, main loop and entry point | 2 — Engine skeleton | 🔜 TODO | High | Simple |
@@ -47,6 +48,7 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0062](open/0062-entity-behaviours.md) | Entity behaviours: attaching C++ logic to entities | 2 — Engine skeleton | 🔜 TODO | High | Very Complex |
 | [T0068](open/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
 | [T0073](open/0073-gameplay-utilities.md) | Gameplay utility library | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
+| [T0076](open/0076-autoloads.md) | Autoloads: project and scene scoped services | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | [T0020](open/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | 🔜 TODO | High | Complex |
 | [T0021](open/0021-scene-and-ecs.md) | Scene and entity-component system | 3 — Data model | 🔜 TODO | High | Moderate |
 | [T0022](open/0022-scene-serialization.md) | Scene serialization | 3 — Data model | 🔜 TODO | High | Moderate |
@@ -58,6 +60,9 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0072](open/0072-entity-signals.md) | Entity signals and messaging | 3 — Data model | 🔜 TODO | Medium | Moderate |
 | [T0074](open/0074-gameplay-tags.md) | Hierarchical gameplay tags | 3 — Data model | 🔜 TODO | High | Moderate |
 | [T0075](open/0075-message-bus.md) | Message bus with addressing | 3 — Data model | 🔜 TODO | High | Complex |
+| [T0077](open/0077-scene-management.md) | Scene loading, transitions and additive scenes | 3 — Data model | 🔜 TODO | High | Complex |
+| [T0078](open/0078-settings-and-config.md) | Settings and configuration | 3 — Data model | 🔜 TODO | Medium | Simple |
+| [T0082](open/0082-schema-versioning.md) | Schema versioning and migration | 3 — Data model | 🔜 TODO | Medium | Moderate |
 | [T0025](open/0025-render-layer.md) | Render layer and device lifecycle | 4 — Render layer | 🔜 TODO | High | Moderate |
 | [T0026](open/0026-job-system-enkits.md) | Job system on enkiTS | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | [T0027](open/0027-render-stack.md) | RenderStack: composited visual layers | 4 — Render layer | 🔜 TODO | High | Moderate |
@@ -68,6 +73,12 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0050](open/0050-threading-model.md) | Threading model and enkiTS workload map | 4 — Render layer | 🔜 TODO | High | Complex |
 | [T0060](open/0060-material-system.md) | Material assets and custom shader materials | 4 — Render layer | 🔜 TODO | High | Complex |
 | [T0061](open/0061-debug-draw.md) | Debug draw service | 4 — Render layer | 🔜 TODO | Medium | Simple |
+| [T0079](open/0079-lighting-system.md) | Lights and per-object light selection | 4 — Render layer | 🔜 TODO | High | Complex |
+| [T0080](open/0080-particles.md) | Particle and VFX system | 4 — Render layer | 🔜 TODO | Medium | Complex |
+| [T0081](open/0081-camera-system.md) | Camera system | 4 — Render layer | 🔜 TODO | Medium | Simple |
+| [T0085](open/0085-layers-and-masks.md) | Object layers and masks | 4 — Render layer | 🔜 TODO | High | Moderate |
+| [T0086](open/0086-shadows.md) | Shadow rendering | 4 — Render layer | 🔜 TODO | High | Complex |
+| [T0087](open/0087-environment-lighting.md) | Environment lighting, IBL and skybox | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | [T0029](open/0029-tracy-cpu-profiling.md) | Tracy: vendor and CPU profiling | 5 — Profiling | 🔜 TODO | High | Moderate |
 | [T0030](open/0030-tracy-gpu-profiling.md) | Tracy GPU zones through Diligent | 5 — Profiling | 🔜 TODO | High | Very Complex |
 | [T0031](open/0031-profiling-workflow.md) | Profiling workflow, budgets and documentation | 5 — Profiling | 🔜 TODO | Low | Simple |
@@ -91,12 +102,18 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0049](open/0049-animation-runtime.md) | Animation runtime library | 7 — Content pipeline | 🔜 TODO | High | Very Complex |
 | [T0042](open/0042-runtime-application.md) | Runtime application | 8 — Runtime & export | 🔜 TODO | Medium | Simple |
 | [T0043](open/0043-export-pipeline.md) | Export pipeline and asset relocation | 8 — Runtime & export | 🔜 TODO | Medium | Complex |
+| [T0083](open/0083-save-system.md) | Save and load game state | 8 — Runtime & export | 🔜 TODO | Medium | Complex |
 | [T0051](open/0051-physics-jolt.md) | Physics engine integration (Jolt) | 9 — Physics | 🔜 TODO | High | Very Complex |
 | [T0052](open/0052-audio.md) | Audio engine | 10 — Audio | 🔜 TODO | Medium | Complex |
-| [T0069](open/0069-game-ui.md) | Game UI system | 11 — Game UI | 🔜 TODO | Medium | Complex |
-| [T0070](open/0070-networking.md) | Networking | 12 — Networking | 🔜 TODO | Low | Very Complex |
-| [T0008](open/0008-remove-imgui-modifier-shim.md) | Remove the `ImGuiKey_Mod*` compile-definition shim | 13 — Deferred | ⏸ BLOCKED on DiligentEngine upstream | Low | Trivial |
-| [T0011](open/0011-aarch64-linux-target.md) | Add an aarch64 Linux target | 13 — Deferred | 🔜 TODO | Low | Moderate |
+| [T0088](open/0088-sky-atmosphere-time-of-day.md) | Sky, atmosphere and time of day | 11 — World & environment | 🔜 TODO | Medium | Complex |
+| [T0089](open/0089-fog-and-atmospherics.md) | Fog and atmospherics | 11 — World & environment | 🔜 TODO | Medium | Moderate |
+| [T0090](open/0090-weather-system.md) | Weather system | 11 — World & environment | 🔜 TODO | Low | Complex |
+| [T0091](open/0091-volumetric-fog.md) | Volumetric fog and light shafts | 11 — World & environment | 🔜 TODO | Medium | Very Complex |
+| [T0092](open/0092-wet-surfaces.md) | Wet surfaces | 11 — World & environment | 🔜 TODO | Medium | Complex |
+| [T0069](open/0069-game-ui.md) | Game UI system | 12 — Game UI | 🔜 TODO | Medium | Complex |
+| [T0070](open/0070-networking.md) | Networking | 13 — Networking | 🔜 TODO | Low | Very Complex |
+| [T0008](open/0008-remove-imgui-modifier-shim.md) | Remove the `ImGuiKey_Mod*` compile-definition shim | 14 — Deferred | ⏸ BLOCKED on DiligentEngine upstream | Low | Trivial |
+| [T0011](open/0011-aarch64-linux-target.md) | Add an aarch64 Linux target | 14 — Deferred | 🔜 TODO | Low | Moderate |
 
 
 ## Working a ticket — mandatory
@@ -148,7 +165,7 @@ is. Priority says whether to do it; complexity says what you are walking into.
 | Complex | Several interacting concerns; expect it to take longer than planned |
 | Very Complex | Genuinely hard, with a real chance of needing a different approach |
 
-Current spread: 7 Trivial, 17 Simple, 27 Moderate, 17 Complex, 7 Very Complex.
+Current spread: 7 Trivial, 19 Simple, 33 Moderate, 25 Complex, 8 Very Complex.
 
 The **Very Complex** ones are worth knowing up front: **T0048** hot-reloadable
 gameplay module (state must survive reload), **T0030** Tracy GPU zones (Diligent
@@ -202,9 +219,10 @@ show an aggregate progress bar.
 | 8 — Runtime & export | The second engine consumer, and shipping a game |
 | 9 — Physics | Jolt integration, character controller, fixed timestep |
 | 10 — Audio | Library still undecided; animation-event driven playback |
-| 11 — Game UI | HUD/menus — ImGui never ships, so this has no owner yet |
-| 12 — Networking | Placeholder; constrains determinism and state ownership if ever wanted |
-| 13 — Deferred | Blocked, speculative, or explicitly postponed |
+| 11 — World & environment | Sky, time of day, fog, volumetrics, weather, wet surfaces |
+| 12 — Game UI | HUD/menus — ImGui never ships, so this has no owner yet |
+| 13 — Networking | Placeholder; constrains determinism and state ownership if ever wanted |
+| 14 — Deferred | Blocked, speculative, or explicitly postponed |
 
 Format is `<number> — <label>`; the number drives ordering. Completed tickets
 predate phases and are ungrouped, which is why the Completed column renders flat.

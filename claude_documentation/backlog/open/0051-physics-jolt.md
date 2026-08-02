@@ -31,6 +31,8 @@ than to retrofit.
 - [ ] Vendor Jolt; confirm it cross-compiles to `x86_64-windows-gnu`
 - [ ] **Fixed-timestep physics with render interpolation** — see notes
 - [ ] Rigid body and collision shape components, referencing assets by GUID
+- [ ] Collision filtering via the shared layer definitions (T0085), not a
+      separate physics-only layer concept
 - [ ] Collision shape generation at import (convex hulls, meshes)
 - [ ] **Character controller** — the piece that matters most here
 - [ ] Back Jolt's job system with enkiTS rather than a second thread pool

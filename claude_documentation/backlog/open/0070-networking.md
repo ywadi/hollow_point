@@ -5,7 +5,7 @@
 | **Status** | 🔜 TODO |
 | **Priority** | Low |
 | **Complexity** | Very Complex |
-| **Phase** | 12 — Networking |
+| **Phase** | 13 — Networking |
 | **Created** | 2026-08-03 |
 
 > **Placeholder epic**, opened to be sorted out later. Recorded now because

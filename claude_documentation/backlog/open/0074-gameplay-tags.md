@@ -47,6 +47,12 @@ wrong — it matches `enemyBase` as well as `enemy.flying`. Intern each tag to a
 and store its parent chain; matching is then a walk up a short chain, or a
 precomputed ancestor bitset for O(1).
 
+**Tags are not layers (T0085).** Layers are a small fixed bitmask (32) tested per
+object per frame in culling, light selection and physics — they exist to be one
+instruction. Tags are unlimited, hierarchical and data-authored, and exist to
+express gameplay meaning. Engine filtering → layer; game semantics → tag. Both
+exist; neither replaces the other.
+
 **Tags versus components — both, deliberately.** entt already makes empty
 components excellent compile-time tags, and those stay the right tool for
 type-safe queries in systems. Gameplay tags are the *data-driven* counterpart:

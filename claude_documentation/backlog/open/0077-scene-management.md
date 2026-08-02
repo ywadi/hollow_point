@@ -1,0 +1,63 @@
+# T0077 — Scene loading, transitions and additive scenes
+
+| | |
+|---|---|
+| **Status** | 🔜 TODO |
+| **Priority** | High |
+| **Complexity** | Complex |
+| **Phase** | 3 — Data model |
+| **Created** | 2026-08-03 |
+
+## Why
+
+T0024 opens *a* scene when a project opens. Nothing covers changing scenes **at
+runtime** — which every game needs: menu to level, level to level, level to game
+over.
+
+Also missing: loading a scene without blocking the frame, and having more than one
+scene loaded at once (a persistent gameplay scene plus a streamed area, or a UI
+scene over a world scene).
+
+## Done when
+
+- [ ] Change the active scene at runtime, from gameplay code
+- [ ] Loading is asynchronous — no multi-second frozen frame
+- [ ] Additive load: multiple scenes resident, with one active
+- [ ] Unload releases entities and scene-scoped autoloads (T0076) in the right order
+- [ ] Project-scoped autoloads survive the transition; scene-scoped ones do not
+- [ ] Assets shared between old and new scenes are not reloaded (T0058)
+- [ ] A transition hook exists so a loading screen is possible
+- [ ] Entity references across scenes are handled or explicitly forbidden (T0071)
+
+## Subtasks
+
+- [ ] 77.1 Scene registry: which scenes are loaded, which is active
+- [ ] 77.2 Async load on the job system — parse off-thread, GPU upload on main (T0050)
+- [ ] 77.3 Additive load and unload
+- [ ] 77.4 Teardown order: scene autoloads, then entities, then scene-scoped assets
+- [ ] 77.5 Asset retention across transitions via reference counting (T0058)
+- [ ] 77.6 Transition events for loading screens
+- [ ] 77.7 Decide on persistent entities across scene change — see notes
+- [ ] 77.8 Editor support for previewing additive setups
+- [ ] 77.9 Tests: load, additive load, unload, and transition with shared assets
+
+## Notes / findings
+
+**Asset retention is what makes transitions fast, and it depends on T0058.**
+Without reference counting, unloading a scene either drops assets the next scene
+needs (and reloads them, causing a stall) or keeps everything forever. Reference
+counting makes "shared assets stay resident" fall out naturally. Sequencing
+matters: load the new scene *before* unloading the old one, so shared assets never
+hit zero references.
+
+**Persistent entities are a real question** — Unity's `DontDestroyOnLoad`. It is
+genuinely useful for a player that carries across levels, and it is genuinely
+messy: which scene owns it, where is it saved, what happens on reload. Deciding
+*not* to support it is respectable, provided it is a decision. The alternative is
+usually to hold that state in a project-scoped autoload (T0076) and respawn the
+entity per scene, which is cleaner.
+
+**Async loading is not optional at any real scale.** A synchronous load of a scene
+with a few hundred entities and their assets is a visible freeze. The two-stage
+pattern from T0058 applies: parse and deserialize on a worker, create GPU
+resources on the main thread.

@@ -5,7 +5,7 @@
 | **Status** | 🔜 TODO |
 | **Priority** | Medium |
 | **Complexity** | Complex |
-| **Phase** | 11 — Game UI |
+| **Phase** | 12 — Game UI |
 | **Created** | 2026-08-03 |
 
 > **Placeholder epic.** The library is not chosen. Recorded because it is a real
