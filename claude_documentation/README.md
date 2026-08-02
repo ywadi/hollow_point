@@ -11,7 +11,8 @@ Read them in order:
 | [02-decision-log.md](02-decision-log.md) | Decisions made, the options rejected, and **why** — the reasons matter more than the choices |
 | [03-build-harness.md](03-build-harness.md) | How the build harness works internally |
 | [04-cross-compile-gotchas.md](04-cross-compile-gotchas.md) | Every defect hit getting this to cross-compile, with root cause and fix |
-| [05-task-log.md](05-task-log.md) | What is done, what is verified, what is next |
+| [05-verification-status.md](05-verification-status.md) | What is proven to work, what merely appears to, with the evidence |
+| [backlog/](backlog/README.md) | Open work — one file per task, each with its own subtasks |
 
 `BUILDING.md` in the repo root is different — that's user-facing "how do I build
 this" documentation. These files are the *why* and the *state*.
@@ -28,7 +29,12 @@ this" documentation. These files are the *why* and the *state*.
 - **Record corrections.** When something recorded here turns out to be wrong,
   fix it *and* note that it was wrong, so the same wrong conclusion is not
   reached twice.
-- Update `05-task-log.md` at the end of any working session.
+- Update `05-verification-status.md` when something becomes proven — or turns out
+  not to be. Update the relevant `backlog/` file as work progresses, appending
+  findings rather than overwriting them.
+- **Keep the two apart.** `05-verification-status.md` is *what is true*;
+  `backlog/` is *what to do*. An open task does not mean something is broken, and
+  a closed task does not mean something is verified.
 
 ## Conventions used in these files
 

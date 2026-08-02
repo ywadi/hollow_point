@@ -1,4 +1,4 @@
-# Task log
+# Verification status
 
 Last updated: 2026-08-02
 
@@ -66,32 +66,25 @@ dockspace. `1.92.9b` (not Diligent's 1.92.1) proves the swap took effect.
 
 ---
 
-## Known incomplete
+## Known incomplete / next steps
 
-- 🔜 **No real application.** `apps/imgui_probe` is a disposable smoke test.
-- 🔜 **`ufbx` and `third_party/dxc` are wired into nothing.** Present in the tree,
-  referenced by no build rule.
-- 🔜 **Linux sysroot is x86_64 only.** Add `third_party/sysroot/linux-aarch64/`
-  plus a toolchain file to target ARM.
-- 🔜 **`configure` needs network.** DiligentFX fetches EnTT and DiligentTools
-  fetches rapidjson via `FetchContent` at configure time. Builds are offline
-  afterwards. Pre-populate with `FETCHCONTENT_SOURCE_DIR_ENTT`.
+These moved to [backlog/](backlog/README.md) — one file per task, with rationale
+and subtasks:
 
----
+| | |
+|---|---|
+| Run the Windows exe under wine | [T0001](backlog/0001-run-windows-exe-under-wine.md) |
+| Verify Windows `dist` staging | [T0002](backlog/0002-verify-windows-dist-staging.md) |
+| Verify the Vulkan backend | [T0003](backlog/0003-verify-vulkan-backend.md) |
+| Verify building on a Windows host | [T0004](backlog/0004-verify-windows-host-build.md) |
+| Actually call enkiTS / meshoptimizer / ozz | [T0005](backlog/0005-exercise-new-library-apis.md) |
+| Define the real application | [T0006](backlog/0006-define-real-application.md) |
+| Retire `apps/imgui_probe` | [T0007](backlog/0007-retire-imgui-probe.md) |
+| Remove the `ImGuiKey_Mod*` shim | [T0008](backlog/0008-remove-imgui-modifier-shim.md) |
+| Wire up or drop `ufbx` | [T0009](backlog/0009-wire-up-ufbx.md) |
+| Make `configure` work offline | [T0010](backlog/0010-offline-configure.md) |
+| Add an aarch64 Linux target | [T0011](backlog/0011-aarch64-linux-target.md) |
 
-## Temporary things to remove later
-
-- `apps/imgui_probe/` — delete once a real app exists
-- The `ImGuiKey_Mod*` compile definitions in the root `CMakeLists.txt` — delete
-  once DiligentEngine updates its Linux/Emscripten ImGui impls (G7)
-
----
-
-## Next steps
-
-1. Run `ImGuiProbe.exe` under wine to close the Windows verification gap
-2. Verify `zig build dist` for the Windows target
-3. Try `--mode vk` on real hardware — the one backend never exercised
-4. Decide what the real application is, and delete the probe
-5. Wire up `ufbx` if FBX loading is still wanted (ozz has its own importers, but
-   they are off because the FBX pipeline needs the proprietary FBX SDK)
+This file records **what is proven and what is not**. The backlog records **what
+to do about it**. Keep the two separate: a task being open is not the same as a
+capability being broken.
