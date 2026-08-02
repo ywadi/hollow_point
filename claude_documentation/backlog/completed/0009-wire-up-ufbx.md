@@ -2,9 +2,8 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | ❌ SUPERSEDED |
 | **Priority** | Low |
-| **Phase** | 3 — Content & libraries |
 | **Created** | 2026-08-02 |
 
 ## Why
@@ -48,3 +47,19 @@ Or:
 - `third_party/dxc` (v1.8.2407, 34 MB of binaries) is in the same unwired state.
   Diligent has its own bundled DXC support, so the standalone copy may simply be
   redundant — worth checking before it is carried around forever.
+
+### Superseded (2026-08-02)
+
+Replaced by **T0038** (ufbx -> glTF converter tool).
+
+The open question in this ticket -- ufbx versus ozz's FBX pipeline -- was settled
+differently than either option: glTF becomes the engine's source of truth via
+Diligent's existing GLTFLoader, and ufbx is repurposed as the *input* side of an
+offline FBX -> glTF converter. That removes the Blender round-trip without
+duplicating the mesh/material import Diligent already provides.
+
+So ufbx is neither wired as a runtime loader nor dropped. It becomes a host-only
+tool dependency, which also keeps it out of the shipped binary.
+
+Left here rather than deleted: the analysis in it is still accurate and the
+successor tickets refer back to it.

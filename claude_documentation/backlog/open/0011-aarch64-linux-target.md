@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | 🔜 TODO |
 | **Priority** | Low |
-| **Phase** | 4 — Deferred |
+| **Phase** | 9 — Deferred |
 | **Created** | 2026-08-02 |
 
 ## Why
@@ -45,3 +45,35 @@ Do not start this without an actual reason to.
   can differ between ABIs, so do not take that shortcut without checking.
 - `zig dlltool`/`zig cc` handle the aarch64 output fine; the sysroot is the
   whole problem.
+
+### Feasibility re-assessed (2026-08-02) — two of my own concerns were wrong
+
+**Correction 1 — `-mavx2` is already arch-guarded.** Subtask 11.4 worried the
+x86-specific release flag would break an ARM build. It will not:
+`DiligentCore/CMakeLists.txt:527` gates it on `TARGET_CPU STREQUAL "x86_64"`, and
+lines 89-91 map `aarch64` to `TARGET_CPU=arm`. Diligent handles this itself as
+long as the toolchain file sets `CMAKE_SYSTEM_PROCESSOR aarch64`. Not an issue.
+
+**Correction 2 — the sysroot is much less of a blocker than stated.** Subtask
+11.1 called generating an aarch64 sysroot from an x86_64 host "the actual work".
+It mostly is not, because the stub generator only needs symbol *names*:
+
+- exported symbol names of libX11/libxcb/libGL are the same C API on every
+  architecture, so the x86_64 lists carry over directly
+- the only arch-sensitive part is data-symbol sizes, and both x86_64 and aarch64
+  Linux are LP64 with the same struct layouts — spot-checked
+  (`_XimTransportRec` 64, `_XcmsRegColorSpaces` 144, all pointer-layout driven)
+- only the final compile changes: `zig cc -target aarch64-linux-gnu.2.28`
+
+So `tools/mk_linux_sysroot.sh` needs an arch parameter, not a second source of
+libraries.
+
+**The genuine blocker is verification, not implementation.** There is no aarch64
+hardware here and `qemu-user` is not installed, so the result could be built but
+not *run*. By this project's own standard it would close as ⚠️ UNVERIFIED, which
+is a weak close for something with no stated need behind it.
+
+Revised estimate: roughly an hour of work — extend the sysroot script, add a
+near-copy toolchain file, add one entry to `specs` in `build.zig`. Installing
+`qemu-user-static` would make it genuinely verifiable and is the thing to do
+first if this is picked up.

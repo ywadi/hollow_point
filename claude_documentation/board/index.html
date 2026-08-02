@@ -27,6 +27,13 @@
   .dot.stale { background:var(--prog); }
   .dot.err { background:var(--blocked); }
 
+  .controls { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--dim); }
+  .controls select, .ctl {
+    background:var(--panel2); color:var(--fg); border:1px solid var(--line);
+    border-radius:6px; padding:3px 8px; font-size:11.5px; cursor:pointer;
+  }
+  .controls select:hover, .ctl:hover { border-color:var(--accent); }
+
   .board { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; padding:20px; align-items:start; }
   @media (max-width:900px){ .board{ grid-template-columns:1fr; } }
 
@@ -64,13 +71,25 @@
   .phase-head {
     display:flex; align-items:center; gap:8px; padding:2px 2px 6px;
     border-bottom:1px dashed var(--line); margin-bottom:2px;
+    cursor:pointer; user-select:none;
   }
+  .phase-head:hover .phase-label { color:var(--accent); }
+  .phase-head:focus-visible { outline:1px solid var(--accent); outline-offset:2px; }
+  .chevron {
+    flex:none; width:10px; font-size:9px; text-align:center; color:var(--dim);
+    display:inline-block; transition:transform .12s ease;
+  }
+  .phase.collapsed .chevron { transform:rotate(-90deg); }
+  .phase.collapsed .phase-body { display:none; }
   .phase-num {
     background:var(--accent); color:#08121f; font:700 10px/1 ui-monospace,Menlo,monospace;
     width:18px; height:18px; border-radius:5px; display:grid; place-items:center; flex:none;
   }
   .phase-label { font-size:11.5px; font-weight:650; letter-spacing:.3px; color:var(--fg); }
   .phase-count { margin-left:auto; font-size:10.5px; color:var(--dim); }
+  .phase-agg { padding:0 2px 8px; margin-top:-4px; }
+  .phase-agg .bar { margin-top:0; }
+  .phase-body { display:flex; flex-direction:column; gap:10px; }
 
   .bar { height:4px; background:#0d0f14; border-radius:3px; overflow:hidden; margin-top:9px; }
   .bar > i { display:block; height:100%; background:var(--done); }
@@ -116,6 +135,16 @@
 <header>
   <h1>HollowPoint — Backlog</h1>
   <div class="meta" id="summary"></div>
+  <div class="controls">
+    <label for="sortby">Sort</label>
+    <select id="sortby">
+      <option value="phase">Phase</option>
+      <option value="priority">Priority</option>
+      <option value="id">ID</option>
+    </select>
+    <button class="ctl" id="collapse-all">Collapse all</button>
+    <button class="ctl" id="expand-all">Expand all</button>
+  </div>
   <div class="spacer"></div>
   <div class="meta"><span class="dot" id="dot"></span><span id="status">loading…</span></div>
 </header>
@@ -141,6 +170,50 @@
 const POLL_MS = 10000;
 let openTaskId = null;
 let lastSignature = '';
+
+// Phase-group collapse state, keyed by "<columnId>__<phaseOrder>" so it stays
+// stable across reloads and across the 10s poll (which redraws whenever the
+// task data signature changes -- without persistence every redraw would
+// re-expand every group, which defeats the point of collapsing them).
+const COLLAPSE_KEY = 'hpBoard.collapsedPhases.v1';
+const SORT_KEY = 'hpBoard.sortBy.v1';
+
+// Sort mode is a *view* concern, so it is applied client-side rather than by the
+// server -- the folders remain the source of truth either way.
+let sortBy = localStorage.getItem(SORT_KEY) || 'phase';
+
+const PRIO_RANK = { High: 0, Medium: 1, Low: 2 };
+function sortTasks(tasks) {
+  const t = tasks.slice();
+  if (sortBy === 'priority') {
+    t.sort((a, b) => (PRIO_RANK[a.priority] ?? 9) - (PRIO_RANK[b.priority] ?? 9)
+                  || a.phaseOrder - b.phaseOrder
+                  || a.id.localeCompare(b.id));
+  } else if (sortBy === 'id') {
+    t.sort((a, b) => a.id.localeCompare(b.id));
+  } else {
+    t.sort((a, b) => a.phaseOrder - b.phaseOrder || a.id.localeCompare(b.id));
+  }
+  return t;
+}
+function loadCollapsedPhases() {
+  try { return JSON.parse(localStorage.getItem(COLLAPSE_KEY)) || {}; }
+  catch (e) { return {}; }
+}
+function saveCollapsedPhases() {
+  try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(collapsedPhases)); }
+  catch (e) { /* storage unavailable -- collapse still works for this session */ }
+}
+let collapsedPhases = loadCollapsedPhases();
+
+function applyCollapsedPhases() {
+  document.querySelectorAll('.phase').forEach((el) => {
+    const collapsed = !!collapsedPhases[el.dataset.phaseKey];
+    el.classList.toggle('collapsed', collapsed);
+    const head = el.querySelector('.phase-head');
+    if (head) head.setAttribute('aria-expanded', String(!collapsed));
+  });
+}
 
 const esc = (s) => s.replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
@@ -233,9 +306,17 @@ let current = null;
 // Cards are grouped under phase headings when a column has phases, so the
 // column reads in the order the work is meant to happen. A column whose tasks
 // carry no phase renders flat, unchanged.
-function cardsHtml(tasks) {
+//
+// Each group's header carries an aggregate progress bar -- total checksDone /
+// checksTotal across every ticket in the phase -- and can be collapsed. The
+// aggregate lives in the header (not the collapsible body), so it stays
+// visible and meaningful when the group is collapsed.
+function cardsHtml(tasks, colId) {
   if (!tasks.length) return '<div class="empty">Nothing here</div>';
-  if (!tasks.some((t) => t.phase)) return tasks.map(card).join('');
+  tasks = sortTasks(tasks);
+  // Phase grouping only makes sense while sorting by phase; the other modes
+  // deliberately cut across phases, so they render flat.
+  if (sortBy !== 'phase' || !tasks.some((t) => t.phase)) return tasks.map(card).join('');
 
   const groups = [];
   for (const t of tasks) {
@@ -246,15 +327,26 @@ function cardsHtml(tasks) {
   }
   groups.sort((a, b) => a.key - b.key);
 
-  return groups.map((g) => `
-    <div class="phase">
-      <div class="phase-head">
+  return groups.map((g) => {
+    const done = g.tasks.reduce((n, t) => n + t.checksDone, 0);
+    const total = g.tasks.reduce((n, t) => n + t.checksTotal, 0);
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    const phaseKey = `${colId}__${g.key}`;
+    return `
+    <div class="phase" data-phase-key="${esc(phaseKey)}">
+      <div class="phase-head" role="button" tabindex="0" aria-expanded="true">
+        <span class="chevron">&#9662;</span>
         ${g.key < 999 ? `<span class="phase-num">${g.key}</span>` : ''}
         <span class="phase-label">${esc(g.label)}</span>
         <span class="phase-count">${g.tasks.length}</span>
       </div>
-      ${g.tasks.map(card).join('')}
-    </div>`).join('');
+      ${total ? `<div class="phase-agg">
+        <div class="bar"><i style="width:${pct}%"></i></div>
+        <div class="barlabel">${done}/${total} checks</div>
+      </div>` : ''}
+      <div class="phase-body">${g.tasks.map(card).join('')}</div>
+    </div>`;
+  }).join('');
 }
 
 function draw(data) {
@@ -262,7 +354,7 @@ function draw(data) {
   document.getElementById('board').innerHTML = data.columns.map((c) => `
     <section class="col col-${c.id}">
       <h2>${c.title} <span class="count">${c.tasks.length}</span></h2>
-      <div class="cards">${cardsHtml(c.tasks)}</div>
+      <div class="cards">${cardsHtml(c.tasks, c.id)}</div>
     </section>`).join('');
 
   const total = data.columns.reduce((n, c) => n + c.tasks.length, 0);
@@ -271,6 +363,24 @@ function draw(data) {
 
   document.querySelectorAll('.card').forEach((el) =>
     el.addEventListener('click', () => openTask(el.dataset.id)));
+
+  // Toggle a phase group's collapse state. stopPropagation keeps this from
+  // ever being interpreted as a card click (cards attach their own listener
+  // directly, so this is belt-and-suspenders, not load-bearing).
+  const togglePhase = (headEl) => {
+    const phase = headEl.closest('.phase');
+    const key = phase.dataset.phaseKey;
+    collapsedPhases[key] = !collapsedPhases[key];
+    saveCollapsedPhases();
+    applyCollapsedPhases();
+  };
+  document.querySelectorAll('.phase-head').forEach((el) => {
+    el.addEventListener('click', (e) => { e.stopPropagation(); togglePhase(el); });
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); togglePhase(el); }
+    });
+  });
+  applyCollapsedPhases();
 
   if (openTaskId) renderDetail(openTaskId, true);
 }
@@ -304,6 +414,26 @@ function closeDetail() {
 document.getElementById('d-close').addEventListener('click', closeDetail);
 document.getElementById('scrim').addEventListener('click', closeDetail);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeDetail(); });
+
+// Mutates the shared collapsedPhases map, matching how the per-header toggle
+// works -- saveCollapsedPhases() reads that variable rather than taking an arg.
+function setAllCollapsed(collapsed) {
+  document.querySelectorAll('.phase').forEach((el) => {
+    collapsedPhases[el.dataset.phaseKey] = collapsed;
+  });
+  saveCollapsedPhases();
+  applyCollapsedPhases();
+}
+
+const sortSel = document.getElementById('sortby');
+sortSel.value = sortBy;
+sortSel.addEventListener('change', () => {
+  sortBy = sortSel.value;
+  localStorage.setItem(SORT_KEY, sortBy);
+  if (current) draw(current);   // re-render immediately; do not wait for the poll
+});
+document.getElementById('collapse-all').addEventListener('click', () => setAllCollapsed(true));
+document.getElementById('expand-all').addEventListener('click', () => setAllCollapsed(false));
 
 async function poll() {
   const dot = document.getElementById('dot'), status = document.getElementById('status');

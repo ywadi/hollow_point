@@ -2,9 +2,8 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | ❌ SUPERSEDED |
 | **Priority** | High |
-| **Phase** | 2 — Application foundation |
 | **Created** | 2026-08-02 |
 | **Blocks** | T0007 |
 
@@ -50,3 +49,15 @@ DiligentFX dependency (and therefore the mandatory ImGui dependency, D6) stays.
 - If DiligentFX is not needed, dropping it would also drop the forced ImGui
   dependency — but DiligentFX is the atmosphere/SSR/SSAO/bloom/tonemapping
   library, which is likely the reason Diligent is here at all.
+
+### Superseded (2026-08-02)
+
+Replaced by **Phase 2** (T0013-T0019, the engine skeleton) and **T0044** (define the game).
+
+This conflated two separate things. Scaffolding a runnable application needs no
+knowledge of what the game is -- that is the Phase 2 engine skeleton, and it can
+proceed immediately. Deciding *what game this is* is a product question that only
+gates Phase 7 content work, and is now T0044.
+
+Left here rather than deleted: the analysis in it is still accurate and the
+successor tickets refer back to it.

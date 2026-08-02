@@ -2,9 +2,8 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | ❌ SUPERSEDED |
 | **Priority** | Medium |
-| **Phase** | 3 — Content & libraries |
 | **Created** | 2026-08-02 |
 
 ## Why
@@ -49,3 +48,20 @@ libraries behave — and ozz in particular was built with most of its options of
   machine, never on the target.
 - Related: `ufbx` (T0009) exists in the tree and may be the intended FBX route
   instead of ozz's FBX pipeline.
+
+### Superseded (2026-08-02)
+
+Replaced by **T0026** (enkiTS job system), **T0039** (meshoptimizer auto-LOD) and **T0041** (ozz animation).
+
+This ticket bundled three unrelated libraries under "prove they work". The
+architecture discussion gave each of them a real home instead: enkiTS becomes the
+engine job system, meshoptimizer becomes automatic LOD generation at import, and
+ozz becomes the animation runtime. Exercising an API is no longer the goal --
+using it for its actual purpose is, and each now has its own ticket.
+
+The ozz importer problem identified here still stands and carries over to T0041:
+`ozz_build_gltf` is OFF, so there is currently no way to produce `.ozz` runtime
+files.
+
+Left here rather than deleted: the analysis in it is still accurate and the
+successor tickets refer back to it.
