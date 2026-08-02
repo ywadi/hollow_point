@@ -4,6 +4,7 @@
 |---|---|
 | **Status** | 🔜 TODO |
 | **Priority** | High |
+| **Complexity** | Complex |
 | **Phase** | 3 — Data model |
 | **Created** | 2026-08-02 |
 

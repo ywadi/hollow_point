@@ -4,6 +4,7 @@
 |---|---|
 | **Status** | 🔜 TODO |
 | **Priority** | High |
+| **Complexity** | Very Complex |
 | **Phase** | 7 — Content pipeline |
 | **Created** | 2026-08-03 |
 

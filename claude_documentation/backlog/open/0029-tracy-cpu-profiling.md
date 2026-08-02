@@ -4,6 +4,7 @@
 |---|---|
 | **Status** | 🔜 TODO |
 | **Priority** | High |
+| **Complexity** | Moderate |
 | **Phase** | 5 — Profiling |
 | **Created** | 2026-08-02 |
 

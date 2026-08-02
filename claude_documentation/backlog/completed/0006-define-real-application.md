@@ -4,6 +4,7 @@
 |---|---|
 | **Status** | ❌ SUPERSEDED |
 | **Priority** | High |
+| **Complexity** | Trivial |
 | **Phase** | 2 — Engine skeleton |
 | **Created** | 2026-08-02 |
 | **Blocks** | T0007 |

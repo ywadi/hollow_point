@@ -4,6 +4,7 @@
 |---|---|
 | **Status** | ❌ SUPERSEDED |
 | **Priority** | Low |
+| **Complexity** | Simple |
 | **Phase** | 7 — Content pipeline |
 | **Created** | 2026-08-02 |
 

@@ -4,6 +4,7 @@
 |---|---|
 | **Status** | 🔜 TODO |
 | **Priority** | High |
+| **Complexity** | Complex |
 | **Phase** | 4 — Render layer |
 | **Created** | 2026-08-03 |
 

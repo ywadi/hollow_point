@@ -4,6 +4,7 @@
 |---|---|
 | **Status** | 🔜 TODO |
 | **Priority** | Medium |
+| **Complexity** | Moderate |
 | **Phase** | 1 — Harden the build |
 | **Created** | 2026-08-02 |
 | **Refs** | [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D3 |

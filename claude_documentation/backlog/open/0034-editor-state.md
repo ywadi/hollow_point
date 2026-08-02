@@ -4,6 +4,7 @@
 |---|---|
 | **Status** | 🔜 TODO |
 | **Priority** | High |
+| **Complexity** | Simple |
 | **Phase** | 6 — Editor |
 | **Created** | 2026-08-02 |
 

@@ -66,6 +66,13 @@
   .card.undone { opacity:.72; }
   .tag.undone { color:#c9a3ff; border-color:#4a3a63; background:#221b2e; }
   .undone-note { font-style:italic; }
+  /* complexity, on a cool ramp so it reads as effort rather than urgency */
+  .tag.cx { border-style:dashed; }
+  .tag.cx-Trivial { color:#6fbf8f; border-color:#2f5a42; }
+  .tag.cx-Simple  { color:#79b7d6; border-color:#2f4a5a; }
+  .tag.cx-Moderate{ color:#8a9ad6; border-color:#39406b; }
+  .tag.cx-Complex { color:#c08ad6; border-color:#553a6b; }
+  .tag.cx-Very-Complex { color:#e08ab0; border-color:#6b3a52; }
   .tag.blocked { color:#ffb4b1; border-color:#5a2b2b; background:#2a1b1b; }
 
   /* phase grouping */
@@ -307,6 +314,7 @@ function card(t) {
       <h3>${esc(t.title)}</h3>
       <div class="tags">
         ${prio ? `<span class="tag ${prio}">${prio}</span>` : ''}
+        ${t.complexity ? `<span class="tag cx cx-${esc(t.complexity).replace(/\s+/g,'-')}">${esc(t.complexity)}</span>` : ''}
         ${t.blocked ? '<span class="tag blocked">Blocked</span>' : ''}
         ${superseded ? '<span class="tag undone">Superseded</span>' : ''}
         ${dropped ? '<span class="tag undone">Dropped</span>' : ''}

@@ -64,6 +64,7 @@ function parseTask(file, column) {
     // A blocked task still lives in open/; surface it so it can be styled.
     blocked: /blocked/i.test(status),
     priority: field(md, 'Priority') || '—',
+    complexity: field(md, 'Complexity') || '',
     created: field(md, 'Created'),
     closed: field(md, 'Closed'),
     checksDone: done,

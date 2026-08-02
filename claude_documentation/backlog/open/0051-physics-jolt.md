@@ -1,0 +1,61 @@
+# T0051 — Physics engine integration (Jolt)
+
+| | |
+|---|---|
+| **Status** | 🔜 TODO |
+| **Priority** | High |
+| **Complexity** | Very Complex |
+| **Phase** | 9 — Physics |
+| **Created** | 2026-08-03 |
+
+> **Placeholder epic.** Recorded now so the architecture accounts for it, not
+> because it is ready to start. Break into real tickets when Phase 9 is reached —
+> the subtasks below are scope markers, not a plan.
+
+## Why
+
+A character-driven game with skeletal animation at its core needs collision,
+character movement and rigid body simulation. Diligent provides none of this — it
+is a rendering abstraction only.
+
+**Jolt Physics** is the intended choice: C++17, permissive licence, CMake,
+deterministic, multi-threaded, and proven at scale (Horizon Forbidden West). It
+should cross-compile to both targets without drama.
+
+Capturing it now matters because two earlier decisions have to accommodate it —
+the fixed-timestep loop and the job system — and both are cheaper to get right
+than to retrofit.
+
+## Rough scope
+
+- [ ] Vendor Jolt; confirm it cross-compiles to `x86_64-windows-gnu`
+- [ ] **Fixed-timestep physics with render interpolation** — see notes
+- [ ] Rigid body and collision shape components, referencing assets by GUID
+- [ ] Collision shape generation at import (convex hulls, meshes)
+- [ ] **Character controller** — the piece that matters most here
+- [ ] Back Jolt's job system with enkiTS rather than a second thread pool
+- [ ] Debug draw of collision shapes through the render stack
+- [ ] Physics/animation interaction: root motion vs simulated movement
+
+## Notes / findings
+
+**Jolt has its own `JobSystem` interface, and it is an interface for exactly this
+reason** — it can be backed by an existing scheduler. Backing it with enkiTS
+(T0026) avoids two thread pools fighting over cores, which is a real and common
+performance problem. Worth doing from the first integration, not later.
+
+**Fixed timestep is non-negotiable and affects the main loop** (T0014). Physics
+must step at a fixed rate for stability and determinism while rendering runs at
+whatever rate it can, which means accumulating time and interpolating transforms
+between the last two physics states for rendering. Retrofitting this into a
+variable-timestep loop touches everything that reads a transform, so T0014 should
+at least not preclude it.
+
+**Root motion versus physics is the hard part for animated characters** (T0049).
+Animation wants to drive movement from the clip; physics wants to drive it from
+forces and collisions. Reconciling them — usually the character controller
+consuming root motion as a desired velocity — is where character movement
+actually gets difficult. Expect this to be the bulk of the work.
+
+Determinism is worth deciding on early if networking is ever a possibility, since
+it constrains float usage and threading.

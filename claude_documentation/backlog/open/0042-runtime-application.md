@@ -4,6 +4,7 @@
 |---|---|
 | **Status** | 🔜 TODO |
 | **Priority** | Medium |
+| **Complexity** | Simple |
 | **Phase** | 8 — Runtime & export |
 | **Created** | 2026-08-02 |
 

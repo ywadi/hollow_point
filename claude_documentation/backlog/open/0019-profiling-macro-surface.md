@@ -4,6 +4,7 @@
 |---|---|
 | **Status** | 🔜 TODO |
 | **Priority** | Medium |
+| **Complexity** | Trivial |
 | **Phase** | 2 — Engine skeleton |
 | **Created** | 2026-08-02 |
 
