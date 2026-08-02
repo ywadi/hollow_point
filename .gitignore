@@ -1,0 +1,18 @@
+# Build harness output
+/build/
+/dist/
+
+# Bootstrapped toolchain (zig, cmake, ninja) and their downloads.
+# Recreate with ./bootstrap.sh or .\bootstrap.ps1
+#
+# NOTE: keep comments on their own lines. Git does not strip trailing comments
+# from a pattern, so "/.harness/  # toolchain" is a literal pattern that matches
+# nothing -- which is exactly how 229 MB of toolchain nearly got committed.
+/.harness/
+
+# Zig build-system cache
+/.zig-cache/
+/zig-out/
+
+# Generated for clangd
+compile_commands.json
