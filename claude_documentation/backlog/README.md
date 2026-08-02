@@ -46,6 +46,7 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0057](open/0057-time-system.md) | Time system | 2 — Engine skeleton | 🔜 TODO | Medium | Simple |
 | [T0062](open/0062-entity-behaviours.md) | Entity behaviours: attaching C++ logic to entities | 2 — Engine skeleton | 🔜 TODO | High | Very Complex |
 | [T0068](open/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
+| [T0073](open/0073-gameplay-utilities.md) | Gameplay utility library | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
 | [T0020](open/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | 🔜 TODO | High | Complex |
 | [T0021](open/0021-scene-and-ecs.md) | Scene and entity-component system | 3 — Data model | 🔜 TODO | High | Moderate |
 | [T0022](open/0022-scene-serialization.md) | Scene serialization | 3 — Data model | 🔜 TODO | High | Moderate |
@@ -53,6 +54,8 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0024](open/0024-project-manager.md) | ProjectManager | 3 — Data model | 🔜 TODO | High | Moderate |
 | [T0058](open/0058-asset-lifetime-hot-reload.md) | Asset lifetime, reference counting and hot reload | 3 — Data model | 🔜 TODO | Medium | Complex |
 | [T0059](open/0059-prefabs.md) | Prefabs and entity templates | 3 — Data model | 🔜 TODO | High | Complex |
+| [T0071](open/0071-entity-references.md) | Entity references | 3 — Data model | 🔜 TODO | High | Moderate |
+| [T0072](open/0072-entity-signals.md) | Entity signals and messaging | 3 — Data model | 🔜 TODO | Medium | Moderate |
 | [T0025](open/0025-render-layer.md) | Render layer and device lifecycle | 4 — Render layer | 🔜 TODO | High | Moderate |
 | [T0026](open/0026-job-system-enkits.md) | Job system on enkiTS | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | [T0027](open/0027-render-stack.md) | RenderStack: composited visual layers | 4 — Render layer | 🔜 TODO | High | Moderate |
@@ -143,7 +146,7 @@ is. Priority says whether to do it; complexity says what you are walking into.
 | Complex | Several interacting concerns; expect it to take longer than planned |
 | Very Complex | Genuinely hard, with a real chance of needing a different approach |
 
-Current spread: 7 Trivial, 17 Simple, 23 Moderate, 16 Complex, 7 Very Complex.
+Current spread: 7 Trivial, 17 Simple, 26 Moderate, 16 Complex, 7 Very Complex.
 
 The **Very Complex** ones are worth knowing up front: **T0048** hot-reloadable
 gameplay module (state must survive reload), **T0030** Tracy GPU zones (Diligent

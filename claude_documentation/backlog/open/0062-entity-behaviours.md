@@ -39,19 +39,36 @@ arrays. Naively mixing them gives scattered allocations *and* awkward systems.
 ## Subtasks
 
 - [ ] 62.1 `Behaviour` base class and lifecycle
-- [ ] 62.2 `BehaviourComponent` holding the instance; a system driving them
+- [ ] 62.2 **Multiple behaviours per entity**, driven by one system — see notes
 - [ ] 62.3 **Type registry populated by the gameplay module** — see notes
 - [ ] 62.4 Registration macro binding name, factory and reflected properties (T0053)
 - [ ] 62.5 Serialize as `{ type: "PlayerController", properties: {...} }`
 - [ ] 62.6 **Hot-reload cycle**: serialize state → unload → load → recreate →
       deserialize
 - [ ] 62.7 Deterministic update order, with an explicit priority
-- [ ] 62.8 Entity/component access helpers on the base class
+- [ ] 62.8 Entity/component access helpers, plus `GetBehaviour<T>()` so
+      behaviours on the same entity can find each other
 - [ ] 62.9 Pool-allocate instances per type (`FixedBlockMemoryAllocator`)
 - [ ] 62.10 Enable/disable without destroying, and the matching callbacks
 - [ ] 62.11 Editor: "Add Behaviour" dropdown listing registered types
 
 ## Notes / findings
+
+**Many behaviours per entity, not one.** Two models exist: Godot allows one
+script per node and composes via child nodes; Unity allows many components per
+object. **Unity's is the right fit here.** Composing a `StateMachine` and a
+`PlayerController` onto the player should not require inventing a child entity
+whose only purpose is to hold logic — that pollutes the hierarchy with things
+that are not scene objects.
+
+Consequence: behaviours need `GetBehaviour<T>()` to find siblings, and update
+order within an entity must be defined (declaration order, or explicit priority).
+
+**Not everything reusable should be a behaviour.** The test is whether it needs to
+exist *in the scene* — selectable, positioned, saved, visible in the hierarchy. A
+state machine is logic, so it is best as a plain C++ class owned by a behaviour
+(see T0073). Promote it to a behaviour only when it needs inspector exposure.
+
 
 **Hot reload is the constraint that shapes the whole design.** A behaviour
 instance allocated inside the gameplay DLL and stored in a component has a vtable
