@@ -5,7 +5,7 @@
 | **Status** | 🔜 TODO |
 | **Priority** | Low |
 | **Complexity** | Moderate |
-| **Phase** | 11 — Deferred |
+| **Phase** | 13 — Deferred |
 | **Created** | 2026-08-02 |
 
 ## Why

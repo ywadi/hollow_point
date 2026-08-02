@@ -39,11 +39,20 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0019](open/0019-profiling-macro-surface.md) | Profiling macro surface (Tracy-ready, no-op for now) | 2 — Engine skeleton | 🔜 TODO | Medium | Trivial |
 | [T0044](open/0044-define-the-game.md) | Define the game | 2 — Engine skeleton | 🔜 TODO | High | Trivial |
 | [T0048](open/0048-hot-reloadable-gameplay-module.md) | Hot-reloadable gameplay module | 2 — Engine skeleton | 🔜 TODO | High | Very Complex |
+| [T0053](open/0053-reflection-type-system.md) | Reflection and type system | 2 — Engine skeleton | 🔜 TODO | High | Very Complex |
+| [T0054](open/0054-logging.md) | Logging and diagnostics | 2 — Engine skeleton | 🔜 TODO | High | Simple |
+| [T0055](open/0055-engine-conventions.md) | Engine conventions and error handling policy | 2 — Engine skeleton | 🔜 TODO | High | Trivial |
+| [T0056](open/0056-core-utilities-policy.md) | Core utilities: math, memory, containers | 2 — Engine skeleton | 🔜 TODO | Medium | Simple |
+| [T0057](open/0057-time-system.md) | Time system | 2 — Engine skeleton | 🔜 TODO | Medium | Simple |
+| [T0062](open/0062-entity-behaviours.md) | Entity behaviours: attaching C++ logic to entities | 2 — Engine skeleton | 🔜 TODO | High | Very Complex |
+| [T0068](open/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
 | [T0020](open/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | 🔜 TODO | High | Complex |
 | [T0021](open/0021-scene-and-ecs.md) | Scene and entity-component system | 3 — Data model | 🔜 TODO | High | Moderate |
 | [T0022](open/0022-scene-serialization.md) | Scene serialization | 3 — Data model | 🔜 TODO | High | Moderate |
 | [T0023](open/0023-asset-manager.md) | AssetManager, asset pool and metafiles | 3 — Data model | 🔜 TODO | High | Complex |
 | [T0024](open/0024-project-manager.md) | ProjectManager | 3 — Data model | 🔜 TODO | High | Moderate |
+| [T0058](open/0058-asset-lifetime-hot-reload.md) | Asset lifetime, reference counting and hot reload | 3 — Data model | 🔜 TODO | Medium | Complex |
+| [T0059](open/0059-prefabs.md) | Prefabs and entity templates | 3 — Data model | 🔜 TODO | High | Complex |
 | [T0025](open/0025-render-layer.md) | Render layer and device lifecycle | 4 — Render layer | 🔜 TODO | High | Moderate |
 | [T0026](open/0026-job-system-enkits.md) | Job system on enkiTS | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | [T0027](open/0027-render-stack.md) | RenderStack: composited visual layers | 4 — Render layer | 🔜 TODO | High | Moderate |
@@ -52,6 +61,8 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0046](open/0046-frame-render-targets.md) | Frame render target management | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | [T0047](open/0047-evaluate-render-graph.md) | Declarative pass layer (and why not an off-the-shelf frame graph) | 4 — Render layer | 🔜 TODO | Medium | Complex |
 | [T0050](open/0050-threading-model.md) | Threading model and enkiTS workload map | 4 — Render layer | 🔜 TODO | High | Complex |
+| [T0060](open/0060-material-system.md) | Material assets and custom shader materials | 4 — Render layer | 🔜 TODO | High | Complex |
+| [T0061](open/0061-debug-draw.md) | Debug draw service | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | [T0029](open/0029-tracy-cpu-profiling.md) | Tracy: vendor and CPU profiling | 5 — Profiling | 🔜 TODO | High | Moderate |
 | [T0030](open/0030-tracy-gpu-profiling.md) | Tracy GPU zones through Diligent | 5 — Profiling | 🔜 TODO | High | Very Complex |
 | [T0031](open/0031-profiling-workflow.md) | Profiling workflow, budgets and documentation | 5 — Profiling | 🔜 TODO | Low | Simple |
@@ -61,6 +72,11 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0035](open/0035-hierarchy-and-inspector.md) | Scene hierarchy and inspector panels | 6 — Editor | 🔜 TODO | High | Complex |
 | [T0036](open/0036-assets-panel.md) | Assets panel | 6 — Editor | 🔜 TODO | Medium | Moderate |
 | [T0037](open/0037-play-mode.md) | Play / simulation mode | 6 — Editor | 🔜 TODO | Medium | Moderate |
+| [T0063](open/0063-editor-camera-and-picking.md) | Editor camera controls and entity picking | 6 — Editor | 🔜 TODO | High | Moderate |
+| [T0064](open/0064-transform-gizmos.md) | Transform gizmos | 6 — Editor | 🔜 TODO | High | Moderate |
+| [T0065](open/0065-undo-redo.md) | Undo/redo command system | 6 — Editor | 🔜 TODO | High | Complex |
+| [T0066](open/0066-console-panel.md) | Console panel | 6 — Editor | 🔜 TODO | Medium | Simple |
+| [T0067](open/0067-launcher.md) | Project launcher | 6 — Editor | 🔜 TODO | Medium | Simple |
 | [T0005](completed/0005-exercise-new-library-apis.md) | Actually call enkiTS / meshoptimizer / ozz | 7 — Content pipeline | ❌ SUPERSEDED | Medium | Moderate |
 | [T0009](completed/0009-wire-up-ufbx.md) | Wire up `ufbx`, or drop it | 7 — Content pipeline | ❌ SUPERSEDED | Low | Simple |
 | [T0038](open/0038-fbx-to-gltf-converter.md) | FBX → glTF converter (host tool) | 7 — Content pipeline | 🔜 TODO | High | Complex |
@@ -72,8 +88,10 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0043](open/0043-export-pipeline.md) | Export pipeline and asset relocation | 8 — Runtime & export | 🔜 TODO | Medium | Complex |
 | [T0051](open/0051-physics-jolt.md) | Physics engine integration (Jolt) | 9 — Physics | 🔜 TODO | High | Very Complex |
 | [T0052](open/0052-audio.md) | Audio engine | 10 — Audio | 🔜 TODO | Medium | Complex |
-| [T0008](open/0008-remove-imgui-modifier-shim.md) | Remove the `ImGuiKey_Mod*` compile-definition shim | 11 — Deferred | ⏸ BLOCKED on DiligentEngine upstream | Low | Trivial |
-| [T0011](open/0011-aarch64-linux-target.md) | Add an aarch64 Linux target | 11 — Deferred | 🔜 TODO | Low | Moderate |
+| [T0069](open/0069-game-ui.md) | Game UI system | 11 — Game UI | 🔜 TODO | Medium | Complex |
+| [T0070](open/0070-networking.md) | Networking | 12 — Networking | 🔜 TODO | Low | Very Complex |
+| [T0008](open/0008-remove-imgui-modifier-shim.md) | Remove the `ImGuiKey_Mod*` compile-definition shim | 13 — Deferred | ⏸ BLOCKED on DiligentEngine upstream | Low | Trivial |
+| [T0011](open/0011-aarch64-linux-target.md) | Add an aarch64 Linux target | 13 — Deferred | 🔜 TODO | Low | Moderate |
 
 
 ## Working a ticket — mandatory
@@ -125,7 +143,7 @@ is. Priority says whether to do it; complexity says what you are walking into.
 | Complex | Several interacting concerns; expect it to take longer than planned |
 | Very Complex | Genuinely hard, with a real chance of needing a different approach |
 
-Current spread: 6 Trivial, 11 Simple, 20 Moderate, 11 Complex, 4 Very Complex.
+Current spread: 7 Trivial, 17 Simple, 23 Moderate, 16 Complex, 7 Very Complex.
 
 The **Very Complex** ones are worth knowing up front: **T0048** hot-reloadable
 gameplay module (state must survive reload), **T0030** Tracy GPU zones (Diligent
@@ -179,7 +197,9 @@ show an aggregate progress bar.
 | 8 — Runtime & export | The second engine consumer, and shipping a game |
 | 9 — Physics | Jolt integration, character controller, fixed timestep |
 | 10 — Audio | Library still undecided; animation-event driven playback |
-| 11 — Deferred | Blocked, speculative, or explicitly postponed |
+| 11 — Game UI | HUD/menus — ImGui never ships, so this has no owner yet |
+| 12 — Networking | Placeholder; constrains determinism and state ownership if ever wanted |
+| 13 — Deferred | Blocked, speculative, or explicitly postponed |
 
 Format is `<number> — <label>`; the number drives ordering. Completed tickets
 predate phases and are ungrouped, which is why the Completed column renders flat.

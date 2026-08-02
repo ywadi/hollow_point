@@ -5,7 +5,7 @@
 | **Status** | ⏸ BLOCKED on DiligentEngine upstream |
 | **Priority** | Low |
 | **Complexity** | Trivial |
-| **Phase** | 11 — Deferred |
+| **Phase** | 13 — Deferred |
 | **Created** | 2026-08-02 |
 | **Refs** | [../../documentation/04-cross-compile-gotchas.md](../../documentation/04-cross-compile-gotchas.md) G7 |
 
