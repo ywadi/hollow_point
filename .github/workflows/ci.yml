@@ -11,11 +11,13 @@
 # which would consume most of the repository's 10 GB cache quota, and restoring
 # that much is not obviously faster than rebuilding it.
 #
-# ccache is deliberately absent. `build.zig` enables it whenever it is on PATH,
-# but that path has never been exercised against the generated `zig cc` shims --
-# ccache identifies a compiler by hashing it, and here the "compiler" is a
-# wrapper script. Enabling it in CI would be introducing an untested variable to
-# a job whose purpose is to catch problems. See T0084 notes.
+# Nothing here installs ccache -- and that turned out not to matter, which is
+# the lesson. The windows-latest image already ships one at C:\Strawberry\c\bin,
+# `build.zig` adopts any ccache it finds on PATH, and that copy cannot exec the
+# generated `.cmd` compiler shim, so the first CI run died compiling enkiTS.
+# Not installing something is not the same as it being absent. `build.zig` now
+# declines to adopt a PATH-discovered ccache on a Windows host; see the comment
+# there for the measurements.
 
 name: CI
 
@@ -39,13 +41,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 1
 
       - name: Cache the pinned toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .harness
           # The pins and their checksums live in bootstrap.sh, so it is the
@@ -80,13 +82,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 1
 
       - name: Cache the pinned toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .harness
           key: harness-windows-${{ hashFiles('bootstrap.ps1') }}
@@ -117,13 +119,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 1
 
       - name: Cache the pinned toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .harness
           key: harness-linux-${{ hashFiles('bootstrap.sh') }}

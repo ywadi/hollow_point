@@ -196,7 +196,33 @@ pub fn build(b: *Build) void {
             b.fmt("-DCMAKE_MAKE_PROGRAM={s}", .{ninja}),
             "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         });
-        if (want_ccache) {
+        // Not on a Windows host, where whether ccache can drive this toolchain
+        // depends on which ccache you happen to have.
+        //
+        // As a compiler launcher ccache execs the compiler directly, and on
+        // Windows the compiler is a generated `.cmd` batch file. Measured both
+        // ways: ccache **4.13.6 runs the shim fine**, while the copy the GitHub
+        // windows-latest image ships at C:\Strawberry\c\bin does not, and every
+        // compile dies before it starts --
+        //
+        //     ccache: error: execute_noreturn of ...\toolchain\zig-cxx.cmd
+        //             failed: No such file or directory
+        //
+        // So this is not "ccache is broken on Windows". It is that the answer
+        // is version-dependent and the tool is picked up off PATH, which runs
+        // against this file's own rule: the pinned toolchain exists so the
+        // build does not vary with whatever the host happens to ship. The
+        // failure is also badly disguised, presenting as a compile error in
+        // third-party code that builds fine everywhere else.
+        //
+        // Found by CI (T0084), where it broke a build that passes locally
+        // precisely because this machine has no ccache. Being on PATH is not
+        // consent, and "we did not install ccache" is not "ccache is absent".
+        //
+        // The POSIX shims are `#!/bin/sh` scripts and exec cleanly, so Linux
+        // hosts keep ccache. If Windows caching is ever wanted, probe the shim
+        // through ccache once at configure time rather than assuming.
+        if (want_ccache and host_os != .windows) {
             if (b.findProgram(&.{"ccache"}, &.{})) |cc| {
                 configure.addArgs(&.{
                     b.fmt("-DCMAKE_C_COMPILER_LAUNCHER={s}", .{cc}),

@@ -41,13 +41,13 @@ jobs:
       matrix:
         target: [linux, windows]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 1
 
       - name: Cache the pinned toolchain
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           # Same key as ci.yml: same host, same pins, same 635 MB download.
           key: harness-linux-${{ hashFiles('bootstrap.sh') }}
@@ -73,7 +73,7 @@ jobs:
         # artifact quota for something nobody asked for. Run the workflow
         # manually when you actually want the staged tree.
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.target }}
           path: dist/

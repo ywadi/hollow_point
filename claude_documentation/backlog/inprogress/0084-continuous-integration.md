@@ -166,3 +166,84 @@ Recorded here rather than ticked.
    job (submodules + harness + build tree is roughly 3 GB)
 3. Record real timings against 84.7, and revisit the cost question above
 4. Only then tick the "Done when" conditions and move this to `completed/`
+
+---
+
+## First run (2026-08-03) — 3 of 4 jobs green, one real bug found
+
+| Job | Result |
+|---|---|
+| Tests (Linux host, both targets) | ✅ passed — both suites, Windows one under wine |
+| Configure with FetchContent disconnected | ✅ passed |
+| Tests (Windows host, native) | ❌ failed — but 10/10 Zig harness tests passed first |
+| Full build | did not run (nightly/dispatch, by design) |
+
+### The failure: ccache was already on the runner
+
+```
+C:\Strawberry\c\bin\ccache.exe D:\a\...\toolchain\zig-cxx.cmd -DENKITS_... 
+ccache: error: execute_noreturn of ...\toolchain\zig-cxx.cmd
+        failed: No such file or directory
+```
+
+`build.zig` adopts any ccache it finds on `PATH` as `CMAKE_<LANG>_COMPILER_LAUNCHER`.
+The GitHub `windows-latest` image ships one via Strawberry Perl, so ccache
+turned itself on unasked and killed every compile before it started.
+
+**This ticket predicted the hazard and still got it wrong.** The note above said
+"ccache is deliberately absent... enabling it in CI would be introducing an
+untested variable". Not installing something is not the same as it being
+absent. The variable was already there.
+
+### The stated cause was also wrong, and measuring said so
+
+The obvious explanation -- ccache execs the compiler directly and a `.cmd` is
+not executable without `cmd.exe` -- is **false**. Tested by putting ccache
+4.13.6 on this Windows host's PATH and building:
+
+```
+pre-fix code + ccache 4.13.6 on PATH:
+  CMakeCache: CMAKE_CXX_COMPILER_LAUNCHER=...\ccache.exe
+  build: BUILD_EXIT=0            <- works fine
+```
+
+So a modern ccache runs the shim without complaint. The real difference is the
+**ccache version**: Strawberry Perl's bundled copy cannot, 4.13.6 can. Had the
+fix shipped on the first explanation it would have carried a comment stating
+something untrue.
+
+### Fix
+
+`build.zig` no longer adopts a PATH-discovered ccache on a **Windows host**.
+Not because ccache is broken there, but because whether it works depends on
+which ccache the machine happens to have — and this file's own rule is that the
+build must not vary with whatever the host ships. The failure is also badly
+disguised: it presents as a compile error in third-party code that builds
+everywhere else. Linux hosts keep ccache; their shims are `#!/bin/sh` and exec
+cleanly.
+
+Verified in both directions, with ccache still on PATH:
+
+```
+post-fix: CMakeCache has no COMPILER_LAUNCHER   -> "(none — ccache not adopted)"
+post-fix build with ccache on PATH:  BUILD_EXIT=0, doctest Status: SUCCESS
+```
+
+If Windows caching is ever wanted, probe the shim through ccache once at
+configure time rather than assuming either answer.
+
+### Also fixed
+
+Node 20 deprecation warnings on all three jobs: `actions/checkout@v4` →
+`@v7`, `actions/cache@v4` → `@v6`, `actions/upload-artifact@v4` → `@v7`
+(the current majors, checked against the release API rather than guessed).
+
+### Still open
+
+- The Windows job has not yet gone green; that is the next thing to confirm
+- No timings recorded yet for 84.7. The Windows configure alone took **282s**
+  on the runner versus ~28s locally, which is worth knowing before judging
+  whether the fast jobs are actually fast
+- The nightly full build has never run
+- Persisting the ccache directory across runs would make ccache genuinely
+  useful on the Linux jobs rather than pure overhead. Not done, not measured
