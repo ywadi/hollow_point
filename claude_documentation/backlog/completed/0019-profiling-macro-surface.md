@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | ⏸ BLOCKED on T0014/T0017 for 19.3 |
+| **Status** | ✅ DONE |
 | **Priority** | Medium |
 | **Complexity** | Trivial |
 | **Phase** | 2 — Engine skeleton |
@@ -25,13 +25,13 @@ for free the moment it is.
       `HP_PROFILE_GPU_ZONE` exist and compile to nothing by default
 - [x] Enabled/disabled by one build option (`HP_PROFILING`, default OFF)
 - [x] Zero measurable cost when disabled — **verified by comparing emitted assembly**, not assumed
-- [ ] The frame loop and layer updates are already instrumented — **blocked: neither exists yet** (T0014, T0017)
+- [x] The frame loop is instrumented — `frame`, `poll`, `update`, `render`, `present` zones plus `HP_PROFILE_FRAME`. **Layer updates are not**: the LayerStack does not exist, and that half moved to T0017
 
 ## Subtasks
 
 - [x] 19.1 `engine/include/hp/Profiling.hpp` with the macro surface
 - [x] 19.2 `HP_PROFILING` build option, wired through the toolchain
-- [ ] 19.3 Instrument the frame loop and `LayerStack::OnUpdate` — **blocked on T0014 and T0017**
+- [x] 19.3 Instrument the frame loop — done with T0014. `LayerStack::OnUpdate` **moved to [T0017](../open/0017-layer-stack.md)**: instrumenting it is one line at the point it is written, not a separate visit
 - [x] 19.4 Confirm disabled builds emit no calls (inspect the object, do not
       assume — an unused RAII object can still cost if not fully inlined)
 - [x] 19.5 Document the convention so instrumentation is added by habit
@@ -163,3 +163,21 @@ before there is much to instrument, which is the point.
 
 The only instrumented call site today is `engineRegisterConsumer`, which exists
 to prove the macro compiles in real engine code rather than only in a test.
+
+
+## Closing note
+
+The macro surface was always this ticket's substance, and it is done and proven:
+zero emitted code when disabled, arguments never evaluated, both verified rather
+than assumed.
+
+19.3's frame-loop half landed with T0014 -- the loop carries `frame`, `poll`,
+`update`, `render` and `present` zones plus a frame mark, so the shape of a
+frame is visible in a capture from the first one rather than appearing once
+someone remembers to instrument it. The `poll` and `present` zones are empty
+today and deliberately present: they are where T0015 and T0025 plug in.
+
+**The LayerStack half moved to [T0017](../open/0017-layer-stack.md)** rather
+than holding this open. Instrumenting `LayerStack::OnUpdate` is one line at the
+moment that class is written; a ticket that stays open to add one line to code
+that does not exist is bookkeeping, not work.

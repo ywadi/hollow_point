@@ -21,8 +21,11 @@
 
 #include "../fixtures/abi_boundary.h"
 
+#include <hp/Log.hpp>
+
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -359,4 +362,45 @@ TEST_CASE("RTTI across the module boundary") {
     CHECK(std::string(engine_name) == std::string(module_name));
 
     hp_abi_destroy_base(base);
+}
+
+TEST_CASE("gameplay code can write to the engine's log across the boundary") {
+    // The question this answers: when a game developer writes a log line in
+    // gameplay code, does it reach the editor console, the log file and every
+    // other sink? It must, or the console is only useful to the engine.
+    //
+    // It works because of two decisions that were made for other reasons and
+    // pay off here. The engine is a *shared* library (D12), so the module and
+    // the host share one logger rather than each getting a copy. And
+    // `LogCategory` is an id into engine-owned storage rather than an object
+    // (T0054) -- a category declared *inside the module*, as this one is, would
+    // otherwise leave the engine holding a pointer into a library that can
+    // unload.
+    class CapturingSink final : public hp::ILogSink {
+    public:
+        void write(const hp::LogRecord& record) override {
+            categories.emplace_back(record.category);
+            messages.emplace_back(record.message);
+        }
+
+        std::vector<std::string> categories;
+        std::vector<std::string> messages;
+    };
+
+    LoadedModule mod;
+    REQUIRE_MESSAGE(mod.ok(), mod.error());
+
+    auto modLog = mod.sym<hp_mod_log_fn>("hp_mod_log");
+    REQUIRE(modLog != nullptr);
+
+    CapturingSink sink;
+    hp::logAddSink(&sink);
+    modLog("hello from gameplay");
+    hp::logRemoveSink(&sink);
+
+    REQUIRE(sink.messages.size() == 1);
+    CHECK(sink.messages[0] == "hello from gameplay");
+    // The category the module declared is visible to the engine by name, which
+    // is what lets an editor console filter on it.
+    CHECK(sink.categories[0] == "game.sandbox");
 }

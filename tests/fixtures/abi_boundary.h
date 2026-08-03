@@ -67,6 +67,7 @@ typedef uint32_t (*hp_mod_engine_type_index_fn)(void);
 typedef int (*hp_mod_count_engine_components_fn)(void* registry);
 typedef void (*hp_mod_emplace_module_component_fn)(void* registry, uint32_t entity, float value);
 typedef int (*hp_mod_count_module_components_fn)(void* registry);
+typedef void (*hp_mod_log_fn)(const char* message);
 typedef int (*hp_mod_dynamic_cast_works_fn)(void* base);
 typedef const char* (*hp_mod_typeid_name_fn)(void* base);
 

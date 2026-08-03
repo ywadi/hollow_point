@@ -11,7 +11,7 @@
 # does not bind here -- the readme is present because it is useful, not because
 # CMake demands it.
 add_executable(hp_editor
-    src/main.cpp
+    src/EditorMain.cpp
 )
 
 target_link_libraries(hp_editor PRIVATE hp::engine)

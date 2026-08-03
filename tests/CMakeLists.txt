@@ -121,7 +121,9 @@ endforeach()
 # The module resolves engine symbols from the engine library, on both platforms:
 # ELF by SONAME, PE by import from a named DLL. Neither needs the executable to
 # export anything, which is why D12 could reject the exe-exports alternative.
-target_link_libraries(hp_abi_module PRIVATE hp_abi_engine)
+# hp_engine too: a real gameplay module links the engine, and the boundary
+# suite asserts that a module can log to the engine's sinks (T0054, T0066).
+target_link_libraries(hp_abi_module PRIVATE hp_abi_engine hp_engine)
 
 foreach(_bucket fast integration gpu perf)
     hp_add_test_bucket(${_bucket})

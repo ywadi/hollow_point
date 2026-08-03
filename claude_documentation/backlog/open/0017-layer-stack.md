@@ -49,3 +49,19 @@ explicit.
 Overlays (layers that must stay on top, like a debug UI) are usually handled by a
 separate insert point in the stack. Worth deciding now whether we need that
 distinction or a single ordered list suffices.
+
+
+### Amendment (2026-08-03) — instrument `OnUpdate` when you write it (from T0019)
+
+T0019 built the profiling macro surface and instrumented T0014's frame loop, but
+`LayerStack::OnUpdate` did not exist to instrument. That one item moved here
+rather than holding T0019 open to add a single line to code that had not been
+written.
+
+When this class lands, put `HP_PROFILE_ZONE()` in `OnUpdate` and a named zone
+per layer -- `HP_PROFILE_ZONE_NAMED(layer->name())` or equivalent. Per-layer
+zones are the point: a frame that shows one `update` block tells you the update
+was slow, and one that shows which layer was slow tells you what to do about it.
+
+The macros are already available (`<hp/Profiling.hpp>`, no engine dependencies)
+and compile to nothing by default, so this costs nothing until profiling is on.

@@ -10,6 +10,8 @@
 
 #include "abi_polymorphic.h"
 
+#include <hp/Log.hpp>
+
 #include <entt/entt.hpp>
 #include <typeinfo>
 
@@ -51,6 +53,16 @@ HP_ABI_EXPORT int hp_mod_count_engine_components(void* r) {
 HP_ABI_EXPORT void hp_mod_emplace_module_component(void* r, uint32_t e, float value) {
     static_cast<entt::registry*>(r)->emplace<ModuleComponent>(static_cast<entt::entity>(e),
                                                               ModuleComponent{value});
+}
+
+// Can gameplay code write to the engine's log -- and therefore to the editor
+// console (T0066), the log file and every other sink -- from the far side of
+// the module boundary? The category is declared *here*, in the module, which is
+// the case that would break if LogCategory owned its own storage (T0054).
+HP_ABI_EXPORT void hp_mod_log(const char* message) {
+    const hp::LogCategory category("game.sandbox");
+    category.setLevel(hp::LogLevel::Trace);
+    HP_LOG_INFO(category, "{}", message);
 }
 
 // The measurement: a Derived created by the engine, cast by the module.

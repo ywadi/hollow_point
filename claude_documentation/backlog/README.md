@@ -25,12 +25,12 @@ This is the work. For what is already proven to work — and what only appears t
 | — | [T0095](completed/0095-gameplay-module-abi-and-linkage.md) | Gameplay module ABI: engine linkage, one engine state, entt across the boundary | 2 — Engine skeleton | ✅ DONE | High | Complex |
 | 10 | [T0055](completed/0055-engine-conventions.md) | Engine conventions and error handling policy | 2 — Engine skeleton | ✅ DONE | High | Trivial |
 | 30 | [T0013](completed/0013-engine-library-app-split.md) | Split the tree into an engine library and app consumers | 2 — Engine skeleton | ✅ DONE | High | Moderate |
-| 35 | [T0019](inprogress/0019-profiling-macro-surface.md) | Profiling macro surface (Tracy-ready, no-op for now) | 2 — Engine skeleton | ⏸ BLOCKED | Medium | Trivial |
+| 35 | [T0019](completed/0019-profiling-macro-surface.md) | Profiling macro surface (Tracy-ready, no-op for now) | 2 — Engine skeleton | ✅ DONE | Medium | Trivial |
 | 40 | [T0054](completed/0054-logging.md) | Logging and diagnostics | 2 — Engine skeleton | ✅ DONE | High | Simple |
 | 50 | [T0056](completed/0056-core-utilities-policy.md) | Core utilities: math, memory, containers | 2 — Engine skeleton | ✅ DONE | Medium | Simple |
 | 60 | [T0016](completed/0016-guid-system.md) | GUID system | 2 — Engine skeleton | ✅ DONE | High | Trivial |
 | 70 | [T0057](completed/0057-time-system.md) | Time system | 2 — Engine skeleton | ✅ DONE | High | Simple |
-| 80 | [T0014](open/0014-application-and-main-loop.md) | Application class, main loop and entry point | 2 — Engine skeleton | 🔜 TODO | High | Simple |
+| 80 | [T0014](completed/0014-application-and-main-loop.md) | Application class, main loop and entry point | 2 — Engine skeleton | ✅ DONE | High | Simple |
 | 90 | [T0015](open/0015-window-platform-layer.md) | Window, input and platform layer via SDL3 | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | 100 | [T0018](open/0018-event-system.md) | Event system | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | 110 | [T0017](open/0017-layer-stack.md) | LayerStack (system layers) | 2 — Engine skeleton | 🔜 TODO | High | Simple |

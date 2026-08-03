@@ -11,6 +11,7 @@
 # Proven on both targets before this layout was committed; see
 # tests/integration/module_boundary_test.cpp and T0095.
 add_library(hp_engine SHARED
+    src/Application.cpp
     src/Engine.cpp
     src/Guid.cpp
     src/Log.cpp
