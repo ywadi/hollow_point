@@ -115,6 +115,22 @@ Diligent recompile every run.
 
 ## How we work
 
+**Every push must be watched to completion, and the result reported.** A push is
+not finished when `git push` returns — it is finished when the run is green, or
+when you have said out loud that it is not. Twice in one session CI broke and
+the *user* noticed first, which means the work was reported as done while it was
+not. Watch it:
+
+```sh
+RUN=$(/usr/bin/gh run list --limit 1 --json databaseId --jq '.[0].databaseId')
+/usr/bin/gh run watch $RUN --exit-status      # blocks until it finishes
+```
+
+Run it in the background if the wait is long, but do not walk away from it, and
+never infer a pass from silence. If it fails, say so plainly and fix it before
+moving on — a red main branch that nobody has mentioned is worse than a failing
+test, because it looks fine.
+
 **Push deliberately, not reflexively.** Docs-only changes skip CI via
 `paths-ignore`, but anything touching code triggers a full run. Batch commits and
 push at a natural checkpoint. Say what a push will trigger.
