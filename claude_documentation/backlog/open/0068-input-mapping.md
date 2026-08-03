@@ -101,3 +101,42 @@ What this ticket still owns, and it is the valuable half:
 implementation to wiring SDL's events into the action layer. **Rumble is now
 in scope** and was not before — it needs a place in the action/feedback API,
 and output-to-the-player is a different shape from input-from-the-player.
+
+
+### Amendment (2026-08-03) — cursor control is three features, and only one was noted
+
+The review above flags relative mouse capture as missing from the subtasks. It
+is one of three related things a game needs, and the other two are not mentioned
+anywhere in the backlog. SDL3 provides all three (D16), so this is API surface to
+expose rather than platform code to write:
+
+- **Hide / show the cursor** — `SDL_HideCursor()` / `SDL_ShowCursor()`. Needed
+  by any game that draws its own reticle, and by fullscreen play generally.
+- **Pin the cursor** (relative mode) — `SDL_SetWindowRelativeMouseMode()`. The
+  cursor stops moving and the game receives deltas instead. This is the one
+  already flagged: fly cameras (T0063), orbit cameras and most gameplay cameras
+  need capture-and-hide together, and it interacts with the OS pump (T0015).
+- **A custom cursor image** — `SDL_CreateColorCursor()` from a surface, or
+  `SDL_CreateSystemCursor()` for standard shapes. **Genuinely absent from the
+  backlog**, and the one with a dependency the others do not have: a
+  game-defined cursor is an *asset*. It has to be loaded (T0023) and imported
+  (T0097), so it is not purely an input concern and should not be designed as if
+  it were.
+
+Three things worth getting right, none of which is obvious from the API:
+
+**Hide and pin are independent**, and conflating them is a common bug. A menu
+may want a visible cursor that is confined to the window; a first-person camera
+wants hidden *and* relative. Expose them separately even though they are usually
+used together.
+
+**Cursor state belongs to the input-context stack**, not to whoever set it last.
+The context that owns input decides the cursor, so entering a menu while flying
+restores the pointer and leaving it re-hides — without every camera and every
+panel having to remember to undo what it did. This is the same consumption model
+as the rest of this ticket, applied to an output.
+
+**Relative mode must survive focus loss.** Alt-tabbing out of a captured game
+and back is a case that reliably breaks: the cursor must be released on focus
+loss and re-captured on focus gain, or the pointer is trapped in a window the
+user is not looking at. This interacts with the focus-loss policy T0110 owns.

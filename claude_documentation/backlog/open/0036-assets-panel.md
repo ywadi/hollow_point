@@ -40,7 +40,9 @@ fiddly and not required for the panel to be useful.
 
 Thumbnail previews for textures and meshes are a genuine quality-of-life win and
 a genuine time sink (mesh thumbnails need offscreen renders). Explicitly out of
-scope here; revisit once the render stack can render to arbitrary targets.
+scope here; revisit once the render stack can render to arbitrary targets --
+that capability is **T0120** (2026-08-03), filed because this line named it
+without a ticket to revisit into.
 
 This panel is where the FBX→glTF converter (T0038) will eventually surface, so
 leave room in the import flow for a conversion step rather than assuming import

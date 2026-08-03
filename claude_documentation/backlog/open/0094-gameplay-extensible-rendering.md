@@ -104,3 +104,21 @@ screenshot of the raw HDR target is a bug), encode PNG, and write via the
 write-directory rules (T0103.4). Consumers: T0083's slot thumbnails (scaled-
 down variant wanted), a developer hotkey, and eventually T0036's asset
 thumbnails -- which remain explicitly deferred; 94.10 does not take them on.
+
+### Note (2026-08-03) -- the render itself is a separate ticket (T0120)
+
+This ticket's "Why" names minimaps, portal and mirror views and security-camera
+monitors as motivating examples, and 94.1/94.4/94.5 give gameplay a persistent
+texture, read access to engine resources, and a way to bind that texture as a
+material parameter. What none of that provides is the thing that actually
+fills the texture with a second, independently-positioned camera's view of the
+3D scene -- scene draw submission (T0028) is wired to one implicit camera and
+one viewport-sized target, and a custom `IRenderLayer` here can *read* the
+existing frame's resources but cannot re-invoke submission against a different
+camera. **T0120 owns that mechanism** and is ordered directly after this
+ticket because it reuses 94.1's `RenderTexture` type as its output rather than
+inventing a second one. This ticket's own worked example (94.9, accumulating
+visibility into a persistent texture) does not need T0120 -- it is a 2D
+accumulation, not a re-render -- so the two tickets do not overlap; T0120 is
+what makes the *other* named examples (portal, mirror, security monitor)
+actually deliverable.

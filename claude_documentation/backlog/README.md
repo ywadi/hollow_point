@@ -32,7 +32,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 60 | [T0016](completed/0016-guid-system.md) | GUID system | 2 — Engine skeleton | ✅ DONE | High | Trivial |
 | 70 | [T0057](completed/0057-time-system.md) | Time system | 2 — Engine skeleton | ✅ DONE | High | Simple |
 | 80 | [T0014](completed/0014-application-and-main-loop.md) | Application class, main loop and entry point | 2 — Engine skeleton | ✅ DONE | High | Simple |
-| 90 | [T0015](inprogress/0015-window-platform-layer.md) | Window, input and platform layer via SDL3 | 2 — Engine skeleton | 🚧 IN PROGRESS | High | Moderate |
+| 90 | [T0015](completed/0015-window-platform-layer.md) | Window, input and platform layer via SDL3 | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | 100 | [T0018](open/0018-event-system.md) | Event system | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | 110 | [T0017](open/0017-layer-stack.md) | LayerStack (system layers) | 2 — Engine skeleton | 🔜 TODO | High | Simple |
 | 120 | [T0100](open/0100-frame-lifecycle-and-update-order.md) | Frame lifecycle and system update order | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
@@ -81,6 +81,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 495 | [T0117](open/0117-font-and-text-rendering.md) | Font and text rendering | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 500 | [T0061](open/0061-debug-draw.md) | Debug draw service | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | 510 | [T0094](open/0094-gameplay-extensible-rendering.md) | Gameplay-extensible rendering | 4 — Render layer | 🔜 TODO | High | Complex |
+| 515 | [T0120](open/0120-render-to-texture.md) | Camera render-to-texture | 4 — Render layer | 🔜 TODO | High | Complex |
 | 520 | [T0050](open/0050-threading-model.md) | Threading model and enkiTS workload map | 4 — Render layer | 🔜 TODO | High | Complex |
 | 530 | [T0047](open/0047-evaluate-render-graph.md) | Declarative pass layer (and why not an off-the-shelf frame graph) | 4 — Render layer | 🔜 TODO | Medium | Complex |
 | 535 | [T0108](open/0108-decals.md) | Decals | 4 — Render layer | 🔜 TODO | Medium | Moderate |
@@ -112,6 +113,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 740 | [T0041](open/0041-ozz-animation.md) | ozz-animation runtime and import | 7 — Content pipeline | 🔜 TODO | High | Complex |
 | 745 | [T0109](open/0109-external-game-projects.md) | How an external game project builds against the engine | 8 — Runtime & export | 🔜 TODO | High | Complex |
 | 750 | [T0049](open/0049-animation-runtime.md) | Animation runtime library | 7 — Content pipeline | 🔜 TODO | High | Very Complex |
+| 755 | [T0119](open/0119-wayland-and-linux-distribution.md) | Wayland support and Linux distribution | 8 — Runtime & export | 🔜 TODO | Medium | Moderate |
 | 760 | [T0042](open/0042-runtime-application.md) | Runtime application | 8 — Runtime & export | 🔜 TODO | Medium | Simple |
 | 770 | [T0043](open/0043-export-pipeline.md) | Export pipeline and asset relocation | 8 — Runtime & export | 🔜 TODO | Medium | Complex |
 | 780 | [T0083](open/0083-save-system.md) | Save and load game state | 8 — Runtime & export | 🔜 TODO | Medium | Complex |

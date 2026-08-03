@@ -25,6 +25,18 @@ int Application::run() {
 
     HP_LOG_INFO(kLog, "starting {}", config_.name);
 
+    if (!config_.headless) {
+        WindowConfig windowConfig = config_.window;
+        if (windowConfig.title.empty()) {
+            windowConfig.title = config_.name;
+        }
+        window_ = Window::create(windowConfig);
+        if (!window_) {
+            HP_LOG_ERROR(kLog, "could not create a window; aborting startup");
+            return 1;
+        }
+    }
+
     running_ = true;
     exitCode_ = 0;
 
@@ -40,10 +52,17 @@ int Application::run() {
         const double delta = clock_.delta();
 
         {
-            // T0015 pumps the OS/SDL event queue here. Nothing to poll yet, but
-            // the zone exists so the shape of the frame is visible in a profile
-            // from the first capture rather than appearing later.
             HP_PROFILE_ZONE_NAMED("poll");
+            if (window_) {
+                const WindowEvents events = window_->pumpEvents();
+                if (events.resized) {
+                    onResize(events.width, events.height);
+                }
+                if (events.closeRequested) {
+                    HP_LOG_INFO(kLog, "window close requested");
+                    requestExit(0);
+                }
+            }
         }
 
         {
@@ -74,6 +93,11 @@ int Application::run() {
 
     // Before anything is torn down: the app still holds everything it created.
     onShutdown();
+
+    // And only then the window. Layers detach in onShutdown, so anything
+    // holding a swap chain or a GPU resource is gone before the surface it was
+    // created against -- the ordering T0025 will depend on.
+    window_.reset();
 
     HP_LOG_INFO(kLog, "{} ran {} frame(s) in {:.3f}s, exit {}", config_.name, clock_.frame(),
                 clock_.unscaledElapsed(), exitCode_);

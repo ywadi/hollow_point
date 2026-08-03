@@ -76,3 +76,17 @@ items 2 and 8), because this ticket is where they become cheap or expensive:
   counts, TAA history buffers or their absence), and the render-scale decision
   means world targets may size from render scale rather than swap-chain size.
   Do not freeze the declarations before T0111's answers exist.
+
+### Note (2026-08-03) -- T0120 owns a separate pool, not this ticket's targets
+
+**T0120 (camera render-to-texture)** gives *additional*, independently
+positioned cameras their own texture targets -- a portal, a mirror, a
+security-camera monitor. Those are a distinct pool from what this ticket
+owns: this ticket is the *single* main frame's own colour/depth/ping-pong
+set (46.4's shared depth, 46.5's ping-pong pair, the amendment above's
+mid-frame readback), sized to one viewport or window. T0120's targets are
+per-camera, sized and updated independently, and are T0094.1 `RenderTexture`
+instances rather than frame targets. The two should share naming/lookup
+conventions (46.2) so GPU memory reporting (46.6, and T0120's own reporting)
+stays legible in one place, but they are not the same resource pool and
+should not be merged into one to save a ticket.

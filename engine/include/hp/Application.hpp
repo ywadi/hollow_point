@@ -18,6 +18,7 @@
 
 #include <hp/Api.hpp>
 #include <hp/Time.hpp>
+#include <hp/Window.hpp>
 
 #include <cstdint>
 #include <memory>
@@ -29,13 +30,19 @@ namespace hp {
 struct ApplicationConfig {
     std::string name = "HollowPoint";
 
-    /// Stop after this many frames. **Scaffolding**, and it should go away.
+    /// The window to open. Its title defaults to `name` when left empty.
+    WindowConfig window;
+
+    /// Run without a window. For tests and for any future headless tool -- an
+    /// application that cannot run headless is one that cannot be tested
+    /// without a display, which is how a test suite ends up needing a desktop.
+    bool headless = false;
+
+    /// Stop after this many frames.
     ///
-    /// There is no window yet (T0015), so nothing can be closed and the loop
-    /// would otherwise never end. It also gives tests a way to run a real loop
-    /// deterministically rather than racing a timer. When T0015 lands, the
-    /// window's close event becomes the exit condition and this stays only as a
-    /// test affordance.
+    /// Now that there is a window, closing it is the normal exit condition and
+    /// this is what it was always going to become: a test affordance, and the
+    /// way a headless run terminates at all.
     std::optional<std::uint64_t> exitAfterFrames;
 };
 
@@ -64,6 +71,11 @@ public:
 
     std::uint64_t frame() const { return clock_.frame(); }
 
+    /// Null in a headless run.
+    Window* window() { return window_.get(); }
+
+    const Window* window() const { return window_.get(); }
+
 protected:
     /// Called once, after the engine is up and before the first frame.
     virtual void onStartup() {}
@@ -73,6 +85,14 @@ protected:
 
     /// Called once per frame, after update.
     virtual void onRender() {}
+
+    /// The window was resized. `width` and `height` are in *pixels*, which is
+    /// what a swap chain is sized in -- on a scaled display they differ from
+    /// the logical size.
+    virtual void onResize(int width, int height) {
+        (void)width;
+        (void)height;
+    }
 
     /// Called once, before the engine is torn down.
     ///
@@ -84,6 +104,7 @@ protected:
 
 private:
     ApplicationConfig config_;
+    std::unique_ptr<Window> window_;
     Clock clock_;
     bool running_ = false;
     int exitCode_ = 0;

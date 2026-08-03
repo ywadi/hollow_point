@@ -16,6 +16,7 @@ add_library(hp_engine SHARED
     src/Guid.cpp
     src/Log.cpp
     src/Time.cpp
+    src/Window.cpp
 )
 add_library(hp::engine ALIAS hp_engine)
 
@@ -72,6 +73,13 @@ if (HP_PROFILING)
     target_compile_definitions(hp_engine PUBLIC HP_PROFILING)
     message(STATUS "hp_engine: profiling instrumentation ENABLED")
 endif()
+
+# SDL3, PRIVATE and static (D16). PRIVATE because no public engine header names
+# an SDL type -- <hp/Window.hpp> exposes native handles as void*/uint64_t
+# precisely so consumers never see SDL3/SDL.h, and gameplay cannot reach SDL
+# behind the engine's back. Static so there is one fewer file beside every
+# executable.
+target_link_libraries(hp_engine PRIVATE SDL3::SDL3-static)
 
 # Deliberately links nothing from Diligent yet.
 #

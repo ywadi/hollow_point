@@ -138,6 +138,66 @@ set(ozz_build_data           OFF CACHE BOOL "" FORCE)
 set(ozz_build_postfix        OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/ozz-animation)
 
+# --- SDL3: window, input and audio backend (T0015, D16) ----------------------
+#
+# D16 chose SDL3 over DiligentTools/NativeApp and over GLFW. Diligent attaches to
+# a window created by anything -- LinuxNativeWindow takes an X11 WindowId and a
+# Display*, Win32 takes an HWND -- so using SDL costs nothing in engine
+# integration, and it brings gamepad support with rumble, clipboard, DPI and
+# monitor enumeration that NativeApp has none of.
+#
+# Static, into the engine shared library. One fewer file to ship beside every
+# executable, and the engine is already the single place that owns platform
+# state (D12).
+#
+# Deliberately minimal: no tests, no examples, no install rules, nothing
+# vendored into our install tree. Same treatment as every other third-party
+# project here -- consumed, never modified.
+set(SDL_SHARED       OFF CACHE BOOL "" FORCE)
+set(SDL_STATIC       ON  CACHE BOOL "" FORCE)
+set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
+set(SDL_TESTS        OFF CACHE BOOL "" FORCE)
+set(SDL_EXAMPLES     OFF CACHE BOOL "" FORCE)
+set(SDL_INSTALL      OFF CACHE BOOL "" FORCE)
+
+# Every backend is chosen explicitly, because SDL's detection scans the *host*.
+#
+# This is not caution -- it is a bug that already happened. Left to auto-detect,
+# SDL's pkg-config probes found the build machine's Wayland, KMSDRM, PulseAudio,
+# sndio and EGL, enabled them, and the link then failed on ten libraries the
+# vendored sysroot does not carry. That is the hermetic-Linux property (D4)
+# breaking silently: a build that succeeds only on a machine that happens to
+# have the right -dev packages is exactly what the sysroot exists to prevent, and
+# on a Windows host cross-compiling to Linux it could not work at all.
+#
+# So: on for what the sysroot backs, off for everything else. Turning one back
+# on means vendoring its headers and stubs first (tools/mk_linux_sysroot.sh).
+set(SDL_WAYLAND    OFF CACHE BOOL "" FORCE)  # T0119 owns this, with the sysroot work it needs
+set(SDL_KMSDRM     OFF CACHE BOOL "" FORCE)
+set(SDL_OPENGLES   OFF CACHE BOOL "" FORCE)  # EGL is not vendored; Diligent uses GLX on Linux
+set(SDL_PULSEAUDIO OFF CACHE BOOL "" FORCE)
+set(SDL_SNDIO      OFF CACHE BOOL "" FORCE)
+set(SDL_PIPEWIRE   OFF CACHE BOOL "" FORCE)
+set(SDL_JACK       OFF CACHE BOOL "" FORCE)
+set(SDL_LIBUDEV    OFF CACHE BOOL "" FORCE)  # udev is not in the sysroot either (T0068 noted this)
+set(SDL_DBUS       OFF CACHE BOOL "" FORCE)
+set(SDL_IBUS       OFF CACHE BOOL "" FORCE)
+set(SDL_LIBDECOR   OFF CACHE BOOL "" FORCE)
+set(SDL_DIALOG     OFF CACHE BOOL "" FORCE)  # native file dialogs want GTK
+set(SDL_FRIBIDI    OFF CACHE BOOL "" FORCE)  # bidirectional text -- T0117 owns text, not SDL
+set(SDL_LIBTHAI    OFF CACHE BOOL "" FORCE)  # Thai word breaking, same reason
+set(SDL_OPENVR     OFF CACHE BOOL "" FORCE)
+set(SDL_OSS        OFF CACHE BOOL "" FORCE)
+set(SDL_ALSA       OFF CACHE BOOL "" FORCE)  # no ALSA headers vendored; audio is T0052's problem
+set(SDL_HIDAPI_LIBUSB OFF CACHE BOOL "" FORCE)
+set(SDL_RPATH      OFF CACHE BOOL "" FORCE)  # the engine decides RPATH, not a dependency (T0013)
+
+# X11 support is dlopen'd at run time rather than linked (SDL_X11_SHARED, on by
+# default), which is why the vendored sysroot needs only X11 *headers* and not
+# the five extension libraries GLFW would have required. That was D16's one
+# recorded unknown; it is confirmed here.
+add_subdirectory(third_party/SDL)
+
 # The engine library, and the four-artifact layout it anchors (T0013).
 #
 # engine/  a SHARED library -- the editor, the runtime and the gameplay module

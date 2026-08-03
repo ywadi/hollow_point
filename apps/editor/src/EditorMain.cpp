@@ -26,9 +26,9 @@ private:
     static hp::ApplicationConfig makeConfig() {
         hp::ApplicationConfig config;
         config.name = "HollowPoint Editor";
-        // Temporary: there is no window to close yet (T0015), so without a
-        // frame budget the loop would never end.
-        config.exitAfterFrames = 3;
+        config.window.title = "HollowPoint Editor";
+        config.window.width = 1280;
+        config.window.height = 720;
         return config;
     }
 
@@ -39,7 +39,11 @@ private:
     }
 
     void onUpdate(double deltaSeconds) override {
-        HP_LOG_DEBUG(kLog, "frame {} dt={:.6f}s", frame(), deltaSeconds);
+        HP_LOG_TRACE(kLog, "frame {} dt={:.6f}s", frame(), deltaSeconds);
+    }
+
+    void onResize(int width, int height) override {
+        HP_LOG_INFO(kLog, "resized to {}x{}", width, height);
     }
 
     void onShutdown() override { HP_LOG_INFO(kLog, "editor shutting down"); }

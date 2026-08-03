@@ -38,7 +38,14 @@ command -v readelf >/dev/null || { echo "error: readelf required (binutils)" >&2
 HEADER_DIRS=(X11 xcb GL KHR)
 # libGLdispatch/libXau/libXdmcp are DT_NEEDED of the libs above; the linker
 # wants them present even though we never name them directly.
-LIBS=(libX11 libxcb libGL libGLX libOpenGL libGLdispatch libXau libXdmcp)
+# The X11 extension libraries were added for SDL3 (T0015, D16). SDL dlopen's
+# them at run time rather than linking them -- SDL_X11_SHARED, on by default --
+# but its *configure* step still requires each to be findable, and a stub
+# satisfies that without the sysroot carrying a real implementation. The headers
+# for all of them were already vendored; only the link stubs were missing.
+LIBS=(libX11 libxcb libGL libGLX libOpenGL libGLdispatch libXau libXdmcp
+      libXcursor libXrandr libXi libXinerama libXext libXfixes libXrender
+      libXss libXtst)
 
 echo "==> assembling $OUT"
 rm -rf "$OUT"
