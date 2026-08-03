@@ -14,6 +14,7 @@ add_library(hp_engine SHARED
     src/Application.cpp
     src/Engine.cpp
     src/Guid.cpp
+    src/Layer.cpp
     src/Log.cpp
     src/Time.cpp
     src/Window.cpp

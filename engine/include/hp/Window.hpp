@@ -12,8 +12,10 @@
 #pragma once
 
 #include <hp/Api.hpp>
+#include <hp/Event.hpp>
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -61,7 +63,15 @@ public:
     Window& operator=(const Window&) = delete;
 
     /// Drains the platform event queue. Call once per frame, before update.
-    WindowEvents pumpEvents();
+    ///
+    /// @param onEvent called for each input event as it is translated, so it can
+    ///        be dispatched immediately. Passed as a callback rather than
+    ///        returned as a queue because an event is a message passing
+    ///        through, not an object with a lifetime -- queueing would mean
+    ///        heap-allocating polymorphic events every frame to keep them alive
+    ///        past this call, for no benefit.
+    /// @returns close and resize state, which the loop acts on directly.
+    WindowEvents pumpEvents(const std::function<void(Event&)>& onEvent = {});
 
     int width() const;
     int height() const;

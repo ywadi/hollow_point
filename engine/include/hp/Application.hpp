@@ -17,6 +17,8 @@
 #pragma once
 
 #include <hp/Api.hpp>
+#include <hp/Event.hpp>
+#include <hp/Layer.hpp>
 #include <hp/Time.hpp>
 #include <hp/Window.hpp>
 
@@ -64,6 +66,12 @@ public:
     ///        code. Defaults to 0.
     void requestExit(int exitCode = 0);
 
+    /// Sends an event top-down through the layers, then to `onEvent` if nothing
+    /// consumed it. Public so a test or a tool can inject one.
+    ///
+    /// @param event the event to deliver.
+    void dispatch(Event& event);
+
     const ApplicationConfig& config() const { return config_; }
 
     /// The game clock. Scaled and pausable -- see T0057. The editor will own a
@@ -79,6 +87,12 @@ public:
 
     const Window* window() const { return window_.get(); }
 
+    /// The layer stack. Layers are where features live; `Application` stays
+    /// thin on purpose (T0014).
+    LayerStack& layers() { return layers_; }
+
+    const LayerStack& layers() const { return layers_; }
+
 protected:
     /// Called once, after the engine is up and before the first frame.
     virtual void onStartup() {}
@@ -92,10 +106,20 @@ protected:
     /// The window was resized. `width` and `height` are in *pixels*, which is
     /// what a swap chain is sized in -- on a scaled display they differ from
     /// the logical size.
+    /// @param width new width in pixels.
+    /// @param height new height in pixels.
     virtual void onResize(int width, int height) {
         (void)width;
         (void)height;
     }
+
+    /// An event the layer stack did not consume.
+    ///
+    /// Layers see everything first; this is the fallback for an application
+    /// that wants whatever nothing claimed.
+    ///
+    /// @param event the unconsumed event.
+    virtual void onEvent(Event& event) { (void)event; }
 
     /// Called once, before the engine is torn down.
     ///
@@ -108,6 +132,7 @@ protected:
 private:
     ApplicationConfig config_;
     std::unique_ptr<Window> window_;
+    LayerStack layers_;
     Clock clock_;
     bool running_ = false;
     int exitCode_ = 0;

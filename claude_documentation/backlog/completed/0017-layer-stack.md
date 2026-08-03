@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Simple |
 | **Phase** | 2 — Engine skeleton |
@@ -23,20 +23,20 @@ different things; keep the names apart.
 
 ## Done when
 
-- [ ] `ILayer` with `OnAttach`, `OnDetach`, `OnUpdate`
-- [ ] `LayerStack` push/pop with correct ordering and lifecycle calls
-- [ ] `Application::Run` updates the stack each frame
-- [ ] Layers are destroyed in the correct order relative to the render device
-- [ ] Tests cover attach/detach ordering
+- [x] `ILayer` with `OnAttach`, `OnDetach`, `OnUpdate`
+- [x] `LayerStack` push/pop with correct ordering and lifecycle calls
+- [x] `Application::Run` updates the stack each frame
+- [x] Layers are destroyed in the correct order relative to the render device
+- [x] Tests cover attach/detach ordering
 
 ## Subtasks
 
-- [ ] 17.1 `ILayer` interface
-- [ ] 17.2 `LayerStack` — push calls `OnAttach`; removal calls `OnDetach` first
-- [ ] 17.3 Removal always starts from the top, so dependants detach before
+- [x] 17.1 `ILayer` interface
+- [x] 17.2 `LayerStack` — push calls `OnAttach`; removal calls `OnDetach` first
+- [x] 17.3 Removal always starts from the top, so dependants detach before
       their dependencies
-- [ ] 17.4 Wire into `Application`'s loop and shutdown
-- [ ] 17.5 Tests for ordering and lifecycle
+- [x] 17.4 Wire into `Application`'s loop and shutdown
+- [x] 17.5 Tests for ordering and lifecycle
 
 ## Notes / findings
 
@@ -65,3 +65,34 @@ was slow, and one that shows which layer was slow tells you what to do about it.
 
 The macros are already available (`<hp/Profiling.hpp>`, no engine dependencies)
 and compile to nothing by default, so this costs nothing until profiling is on.
+
+
+## Findings
+
+Built alongside T0018, because half of that ticket's subtasks needed a stack to
+dispatch through and the two are one design in practice.
+
+**Overlays are pinned above, and stay there when a normal layer is pushed
+later.** Without it, pushing a gameplay layer after the editor UI silently puts
+the world on top of the interface — a bug that is invisible until someone
+clicks. One vector with an insert point rather than two vectors, so "dispatch
+top-down across both" is not a special case at every call site.
+
+**Layers are owned (`unique_ptr`), not borrowed.** The alternative makes
+lifetime a question every caller has to answer correctly, and getting it wrong
+means the stack walking into freed memory during shutdown.
+
+**Teardown is top-down, mirroring dispatch.** A layer above may depend on one
+below still existing while it tears down; never the reverse. `Application`
+clears the stack *after* `onShutdown` and *before* the window goes, which is the
+ordering T0025 will depend on — a layer holding a GPU resource must release it
+while the device still exists.
+
+**T0019's leftover subtask is done here**: `LayerStack::update` and `render`
+carry `HP_PROFILE_ZONE`, and each layer gets its own named zone, so a capture
+shows *which* layer was slow rather than that the update was.
+
+## Evidence
+
+Covered by `tests/integration/layer_event_test.cpp` — see T0018 for the run.
+Ordering, overlays, attach/detach and pop are each asserted independently.

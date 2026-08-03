@@ -81,7 +81,80 @@ Window::~Window() {
     }
 }
 
-WindowEvents Window::pumpEvents() {
+namespace {
+
+/// SDL scancode to our layout-independent KeyCode.
+///
+/// Scancode, not keycode: a binding on "W" must stay where W sits on a US
+/// layout even on AZERTY. SDL's *keycode* is the layout-mapped character, which
+/// is what TextInputEvent is for.
+KeyCode translateKey(SDL_Scancode code) {
+    switch (code) {
+    case SDL_SCANCODE_ESCAPE:
+        return KeyCode::Escape;
+    case SDL_SCANCODE_SPACE:
+        return KeyCode::Space;
+    case SDL_SCANCODE_RETURN:
+        return KeyCode::Enter;
+    case SDL_SCANCODE_TAB:
+        return KeyCode::Tab;
+    case SDL_SCANCODE_BACKSPACE:
+        return KeyCode::Backspace;
+    case SDL_SCANCODE_LEFT:
+        return KeyCode::Left;
+    case SDL_SCANCODE_RIGHT:
+        return KeyCode::Right;
+    case SDL_SCANCODE_UP:
+        return KeyCode::Up;
+    case SDL_SCANCODE_DOWN:
+        return KeyCode::Down;
+    default:
+        break;
+    }
+    if (code >= SDL_SCANCODE_A && code <= SDL_SCANCODE_Z) {
+        return static_cast<KeyCode>(static_cast<int>(KeyCode::A) + (code - SDL_SCANCODE_A));
+    }
+    if (code >= SDL_SCANCODE_1 && code <= SDL_SCANCODE_9) {
+        return static_cast<KeyCode>(static_cast<int>(KeyCode::Num1) + (code - SDL_SCANCODE_1));
+    }
+    if (code == SDL_SCANCODE_0) {
+        return KeyCode::Num0;
+    }
+    if (code >= SDL_SCANCODE_F1 && code <= SDL_SCANCODE_F12) {
+        return static_cast<KeyCode>(static_cast<int>(KeyCode::F1) + (code - SDL_SCANCODE_F1));
+    }
+    return KeyCode::Unknown;
+}
+
+KeyModifiers translateModifiers(SDL_Keymod mod) {
+    KeyModifiers mods;
+    mods.shift = (mod & SDL_KMOD_SHIFT) != 0;
+    mods.control = (mod & SDL_KMOD_CTRL) != 0;
+    mods.alt = (mod & SDL_KMOD_ALT) != 0;
+    mods.super = (mod & SDL_KMOD_GUI) != 0;
+    return mods;
+}
+
+MouseButton translateButton(Uint8 button) {
+    switch (button) {
+    case SDL_BUTTON_LEFT:
+        return MouseButton::Left;
+    case SDL_BUTTON_RIGHT:
+        return MouseButton::Right;
+    case SDL_BUTTON_MIDDLE:
+        return MouseButton::Middle;
+    case SDL_BUTTON_X1:
+        return MouseButton::X1;
+    case SDL_BUTTON_X2:
+        return MouseButton::X2;
+    default:
+        return MouseButton::Unknown;
+    }
+}
+
+} // namespace
+
+WindowEvents Window::pumpEvents(const std::function<void(Event&)>& onEvent) {
     HP_PROFILE_ZONE();
 
     WindowEvents events;
@@ -107,6 +180,58 @@ WindowEvents Window::pumpEvents() {
             events.resized = true;
             events.width = event.window.data1;
             events.height = event.window.data2;
+            break;
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:
+        case SDL_EVENT_WINDOW_FOCUS_LOST:
+            if (onEvent) {
+                WindowFocusEvent focus(event.type == SDL_EVENT_WINDOW_FOCUS_GAINED);
+                onEvent(focus);
+            }
+            break;
+        case SDL_EVENT_KEY_DOWN:
+        case SDL_EVENT_KEY_UP:
+            if (onEvent) {
+                KeyEvent key(translateKey(event.key.scancode), event.type == SDL_EVENT_KEY_DOWN,
+                             translateModifiers(event.key.mod), event.key.repeat);
+                onEvent(key);
+            }
+            break;
+        case SDL_EVENT_TEXT_INPUT:
+            if (onEvent && event.text.text != nullptr) {
+                // One event per code point. SDL hands us UTF-8; decoding is
+                // deliberately minimal here because anything beyond ASCII is
+                // T0117's problem, and guessing at it now would be a second
+                // implementation to remove later.
+                for (const char* c = event.text.text; *c != '\0'; ++c) {
+                    if ((static_cast<unsigned char>(*c) & 0x80U) != 0) {
+                        continue; // non-ASCII: left to T0117
+                    }
+                    TextInputEvent text(static_cast<std::uint32_t>(*c));
+                    onEvent(text);
+                }
+            }
+            break;
+        case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_BUTTON_UP:
+            if (onEvent) {
+                MouseButtonEvent button(translateButton(event.button.button),
+                                        event.type == SDL_EVENT_MOUSE_BUTTON_DOWN, event.button.x,
+                                        event.button.y);
+                onEvent(button);
+            }
+            break;
+        case SDL_EVENT_MOUSE_MOTION:
+            if (onEvent) {
+                MouseMovedEvent moved(event.motion.x, event.motion.y, event.motion.xrel,
+                                      event.motion.yrel);
+                onEvent(moved);
+            }
+            break;
+        case SDL_EVENT_MOUSE_WHEEL:
+            if (onEvent) {
+                MouseScrolledEvent scrolled(event.wheel.x, event.wheel.y);
+                onEvent(scrolled);
+            }
             break;
         default:
             break;

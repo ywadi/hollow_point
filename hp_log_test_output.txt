@@ -1,2 +1,0 @@
-[error] test.file (/media/ywadi/second/hollow_point/tests/integration/log_test.cpp:169): written to disk
-[info ] game.sandbox (/media/ywadi/second/hollow_point/tests/fixtures/abi_module.cpp:65): hello from gameplay

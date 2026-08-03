@@ -1,5 +1,6 @@
 #include <hp/Application.hpp>
 
+#include <hp/Event.hpp>
 #include <hp/Log.hpp>
 #include <hp/Profiling.hpp>
 
@@ -11,6 +12,14 @@ const LogCategory kLog("app");
 Application::Application(ApplicationConfig config) : config_(std::move(config)) {}
 
 Application::~Application() = default;
+
+void Application::dispatch(Event& event) {
+    HP_PROFILE_ZONE();
+    layers_.dispatch(event);
+    if (!event.isConsumed()) {
+        onEvent(event);
+    }
+}
 
 void Application::requestExit(int exitCode) {
     // Only records intent. The loop finishes the frame it is in, so a hook can
@@ -54,25 +63,37 @@ int Application::run() {
         {
             HP_PROFILE_ZONE_NAMED("poll");
             if (window_) {
-                const WindowEvents events = window_->pumpEvents();
+                const WindowEvents events = window_->pumpEvents([this](Event& e) { dispatch(e); });
                 if (events.resized) {
+                    // Delivered as an event so layers can react, and as a hook
+                    // so an application need not add a layer just to resize.
+                    WindowResizeEvent resize(events.width, events.height);
+                    dispatch(resize);
                     onResize(events.width, events.height);
                 }
                 if (events.closeRequested) {
-                    HP_LOG_INFO(kLog, "window close requested");
-                    requestExit(0);
+                    WindowCloseEvent close;
+                    dispatch(close);
+                    if (!close.isConsumed()) {
+                        // Unconsumed means nobody objected -- a layer wanting
+                        // "really quit?" consumes it and asks.
+                        HP_LOG_INFO(kLog, "window close requested");
+                        requestExit(0);
+                    }
                 }
             }
         }
 
         {
             HP_PROFILE_ZONE_NAMED("update");
-            // T0017's LayerStack is updated here, before the app's own hook.
+            // Bottom-up: the world simulates before the interface over it.
+            layers_.update(delta);
             onUpdate(delta);
         }
 
         {
             HP_PROFILE_ZONE_NAMED("render");
+            layers_.render();
             onRender();
         }
 
@@ -93,6 +114,11 @@ int Application::run() {
 
     // Before anything is torn down: the app still holds everything it created.
     onShutdown();
+
+    // Then layers, top-down, while the window still exists -- a layer holding a
+    // GPU resource must release it before the surface it was made against
+    // (T0025).
+    layers_.clear();
 
     // And only then the window. Layers detach in onShutdown, so anything
     // holding a swap chain or a GPU resource is gone before the surface it was

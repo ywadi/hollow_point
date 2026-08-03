@@ -31,7 +31,7 @@ for free the moment it is.
 
 - [x] 19.1 `engine/include/hp/Profiling.hpp` with the macro surface
 - [x] 19.2 `HP_PROFILING` build option, wired through the toolchain
-- [x] 19.3 Instrument the frame loop — done with T0014. `LayerStack::OnUpdate` **moved to [T0017](../open/0017-layer-stack.md)**: instrumenting it is one line at the point it is written, not a separate visit
+- [x] 19.3 Instrument the frame loop — done with T0014. `LayerStack::OnUpdate` **moved to [T0017](0017-layer-stack.md)**: instrumenting it is one line at the point it is written, not a separate visit
 - [x] 19.4 Confirm disabled builds emit no calls (inspect the object, do not
       assume — an unused RAII object can still cost if not fully inlined)
 - [x] 19.5 Document the convention so instrumentation is added by habit
@@ -177,7 +177,7 @@ frame is visible in a capture from the first one rather than appearing once
 someone remembers to instrument it. The `poll` and `present` zones are empty
 today and deliberately present: they are where T0015 and T0025 plug in.
 
-**The LayerStack half moved to [T0017](../open/0017-layer-stack.md)** rather
+**The LayerStack half moved to [T0017](0017-layer-stack.md)** rather
 than holding this open. Instrumenting `LayerStack::OnUpdate` is one line at the
 moment that class is written; a ticket that stays open to add one line to code
 that does not exist is bookkeeping, not work.
