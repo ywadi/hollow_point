@@ -48,15 +48,13 @@ world — exactly the "hacking the engine" outcome this backlog exists to avoid.
       static vs shared, per configuration (dev with hot reload vs shipped
       static, per T0048.7), and how the module resolves engine symbols on
       **both** platforms — **D12**
-- [ ] Exactly one instance of every engine global exists at runtime — proven by
+- [x] Exactly one instance of every engine global exists at runtime — proven by
       a test (e.g. exe and module both log the address of the same engine
-      static and they match) — **demonstrated by the prototype on both targets,
-      but that prototype is a scratchpad experiment, not a test in this repo.
-      Not tickable until it lives under `tests/` and runs in `zig build test`**
-- [ ] entt type identity holds across the boundary: a component type used from
+      static and they match) — `tests/integration/module_boundary_test.cpp`,
+      run by `zig build test` on both targets
+- [x] entt type identity holds across the boundary: a component type used from
       the module is visible and iterable from engine code and vice versa, on
-      both targets — **same caveat: measured, both targets, but by a throwaway
-      prototype rather than a suite the build runs**
+      both targets — tested both directions, both targets
 - [ ] `dynamic_cast`/`typeid` on types crossing the boundary either works
       (typeinfo symbols unified) or is banned by convention (T0055) — decided,
       not left to chance
@@ -76,9 +74,11 @@ world — exactly the "hacking the engine" outcome this backlog exists to avoid.
       `type_hash` behaves identically for both modules under zig's clang
 - [ ] 95.3 Boundary test: two component types (one engine-defined, one
       module-defined), created on one side, queried on the other, surviving a
-      hot reload — **half done**: the cross-boundary half is proven on both
-      targets, the *hot reload* half is untested (nothing was unloaded and
-      reloaded)
+      hot reload — **still not fully done**: both component types are tested
+      both directions on both targets, and two independently loaded generations
+      are proven to agree, but a *genuine unload* is impossible under this
+      toolchain today (see the dlclose finding). Reload is proven only in the
+      copy-before-load shape T0048 will actually use
 - [ ] 95.4 Symbol visibility policy for shared types (vtables and typeinfo
       need default visibility; `-fvisibility=hidden` everywhere else is still
       fine)
