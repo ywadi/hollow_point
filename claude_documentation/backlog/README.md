@@ -27,11 +27,12 @@ This is the work. For what is already proven to work — and what only appears t
 | 30 | [T0013](completed/0013-engine-library-app-split.md) | Split the tree into an engine library and app consumers | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | 35 | [T0019](completed/0019-profiling-macro-surface.md) | Profiling macro surface (Tracy-ready, no-op for now) | 2 — Engine skeleton | ✅ DONE | Medium | Trivial |
 | 40 | [T0054](completed/0054-logging.md) | Logging and diagnostics | 2 — Engine skeleton | ✅ DONE | High | Simple |
+| 45 | [T0118](open/0118-generated-api-reference-for-agents.md) | Generated API reference for coding agents | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | 50 | [T0056](completed/0056-core-utilities-policy.md) | Core utilities: math, memory, containers | 2 — Engine skeleton | ✅ DONE | Medium | Simple |
 | 60 | [T0016](completed/0016-guid-system.md) | GUID system | 2 — Engine skeleton | ✅ DONE | High | Trivial |
 | 70 | [T0057](completed/0057-time-system.md) | Time system | 2 — Engine skeleton | ✅ DONE | High | Simple |
 | 80 | [T0014](completed/0014-application-and-main-loop.md) | Application class, main loop and entry point | 2 — Engine skeleton | ✅ DONE | High | Simple |
-| 90 | [T0015](open/0015-window-platform-layer.md) | Window, input and platform layer via SDL3 | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
+| 90 | [T0015](inprogress/0015-window-platform-layer.md) | Window, input and platform layer via SDL3 | 2 — Engine skeleton | 🚧 IN PROGRESS | High | Moderate |
 | 100 | [T0018](open/0018-event-system.md) | Event system | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | 110 | [T0017](open/0017-layer-stack.md) | LayerStack (system layers) | 2 — Engine skeleton | 🔜 TODO | High | Simple |
 | 120 | [T0100](open/0100-frame-lifecycle-and-update-order.md) | Frame lifecycle and system update order | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
@@ -77,6 +78,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 470 | [T0079](open/0079-lighting-system.md) | Lights and per-object light selection | 4 — Render layer | 🔜 TODO | High | Complex |
 | 480 | [T0086](open/0086-shadows.md) | Shadow rendering | 4 — Render layer | 🔜 TODO | High | Complex |
 | 490 | [T0087](open/0087-environment-lighting.md) | Environment lighting, IBL and skybox | 4 — Render layer | 🔜 TODO | Medium | Moderate |
+| 495 | [T0117](open/0117-font-and-text-rendering.md) | Font and text rendering | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 500 | [T0061](open/0061-debug-draw.md) | Debug draw service | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | 510 | [T0094](open/0094-gameplay-extensible-rendering.md) | Gameplay-extensible rendering | 4 — Render layer | 🔜 TODO | High | Complex |
 | 520 | [T0050](open/0050-threading-model.md) | Threading model and enkiTS workload map | 4 — Render layer | 🔜 TODO | High | Complex |
@@ -96,6 +98,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 630 | [T0035](open/0035-hierarchy-and-inspector.md) | Scene hierarchy and inspector panels | 6 — Editor | 🔜 TODO | High | Complex |
 | 640 | [T0064](open/0064-transform-gizmos.md) | Transform gizmos | 6 — Editor | 🔜 TODO | High | Moderate |
 | 650 | [T0065](open/0065-undo-redo.md) | Undo/redo command system | 6 — Editor | 🔜 TODO | High | Complex |
+| 655 | [T0116](open/0116-csg-and-in-editor-geometry-authoring.md) | CSG / in-editor geometry authoring | 6 — Editor | 🔜 TODO | Medium | Complex |
 | 660 | [T0036](open/0036-assets-panel.md) | Assets panel | 6 — Editor | 🔜 TODO | Medium | Moderate |
 | 665 | [T0115](open/0115-editor-content-operations.md) | Editor content operations at scale | 6 — Editor | 🔜 TODO | Medium | Moderate |
 | 670 | [T0066](open/0066-console-panel.md) | Console panel | 6 — Editor | 🔜 TODO | Medium | Simple |
@@ -267,7 +270,7 @@ is. Priority says whether to do it; complexity says what you are walking into.
 | Complex | Several interacting concerns; expect it to take longer than planned |
 | Very Complex | Genuinely hard, with a real chance of needing a different approach |
 
-Current spread: 7 Trivial, 23 Simple, 46 Moderate, 30 Complex, 9 Very Complex.
+Current spread: 7 Trivial, 23 Simple, 47 Moderate, 31 Complex, 9 Very Complex.
 
 The **Very Complex** ones are worth knowing up front: **T0048** hot-reloadable
 gameplay module (state must survive reload), **T0030** Tracy GPU zones (Diligent

@@ -86,3 +86,15 @@ Three adjustments, from `documentation/07-design-gaps.md` items 3, 11 and 15:
   amendment has the projection half): whatever the answer -- free aspect,
   letterbox, clamped FOV -- HUD elements anchor to screen edges/corners under
   it, and a safe-area inset is the cheap generalisation to carry.
+
+### Amendment (2026-08-03) -- text rendering split into T0117
+
+T0117 now owns font loading, glyph rasterisation, atlas packing, and
+world-space/debug text rendering -- pulled out for the same reason T0112
+pulled string identity out of this epic: debug text (T0061), profiling
+overlays (T0031) and in-world labels need a text stack well before Phase 12,
+and building one ad hoc under those tickets would only be redone here. What
+stays in this epic: UI-specific layout and shaping (multi-line wrapping
+inside a panel, focus-aware input) built on top of T0117's stack, and the UI
+library choice above, which may bring its own font stack that supersedes or
+wraps T0117's for player-facing text specifically.

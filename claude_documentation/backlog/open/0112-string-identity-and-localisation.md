@@ -82,3 +82,12 @@ but nothing currently says so.
 - Fonts remain the reason T0069's library choice cannot drift forever (every
   candidate UI library has its own font stack); that pressure is recorded in
   T0069, not here.
+
+### Amendment (2026-08-03) -- text rendering (not string identity) is T0117
+
+This ticket's scope is unchanged: string identity, not fonts. T0117 was filed
+to own the rendering half the survey flagged as also unowned -- font loading,
+rasterisation, atlas packing, and world-space/debug rendering -- for the
+systems that need text before Phase 12 (T0061's debug text, T0031's overlays,
+in-world labels). Glyph coverage for the languages this ticket's localisation
+decision eventually names is T0117's concern, not this one's.

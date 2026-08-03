@@ -1,0 +1,92 @@
+# T0118 — Generated API reference for coding agents
+
+| | |
+|---|---|
+| **Status** | 🔜 TODO |
+| **Priority** | High |
+| **Complexity** | Moderate |
+| **Phase** | 2 — Engine skeleton |
+| **Order** | 45 |
+| **Created** | 2026-08-03 |
+| **Refs** | T0013, T0055, T0104, T0109, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D5 D12, [../../documentation/06-engine-conventions.md](../../documentation/06-engine-conventions.md) |
+
+## Why
+
+**The audience for this ticket is not a human, and the deliverable is not a documentation website.** The requirement, from the project owner directly: generate the API reference **in markdown** so that a Claude Code agent "can use it to generate game code properly... so Claude Code has access to APIs easily." HollowPoint is an engine for several games (D12), and gameplay is C++ compiled against the engine's real headers in lockstep — not a script, not a stable C ABI. That makes `engine/include/hp/` the API surface a coding agent writes gameplay against, in exactly the same sense it is the API surface a human developer would.
+
+**Verified absent.** `doxygen`, `doxyfile`, `api doc`, `api reference`, `sphinx`, `clang-doc`, `javadoc` return **zero hits** across every ticket and every documentation file.
+
+Measured, not assumed:
+
+```
+$ for f in engine/include/hp/*.hpp; do echo "$f: $(grep -c '^\s*///' "$f")"; done
+engine/include/hp/Api.hpp: 0
+engine/include/hp/Application.hpp: 25
+engine/include/hp/Engine.hpp: 13
+engine/include/hp/EntryPoint.hpp: 0
+engine/include/hp/Guid.hpp: 17
+engine/include/hp/Log.hpp: 42
+engine/include/hp/Profiling.hpp: 9
+engine/include/hp/Time.hpp: 36
+
+$ grep -rn -E "@param|@returns|@throws" engine/include/hp/*.hpp
+(no output)
+```
+
+**142** `///` doc-comment lines across the **8** public headers in `engine/include/hp/`, and **0** `@param`, `@returns` or `@throws` tags anywhere in them. `///` is Doxygen-compatible and the comments sit on the right declarations, so a generator would find real prose — but generated output today would be descriptions with no parameter or return documentation, which for an agent generating a call site is close to useless: it says what a function is *for*, not what to pass it or what it hands back.
+
+**Staleness here is a correctness bug, not a documentation bug.** For a human reader, a stale doc comment is annoying — they read the header anyway when in doubt. An agent generating code from a reference has no equivalent instinct: if the markdown says a function takes `(int count)` and the header has since changed to `(int count, LogLevel level)`, the agent confidently emits a call that does not compile, or one that compiles against the wrong overload and means something else. **The reference must therefore be *generated*, never hand-maintained**, and kept in lockstep with the headers the same way T0104 keeps a gameplay module in lockstep with the engine — the same class of problem, a derived artefact silently drifting from its source, with a much cheaper fix available up front than after the fact.
+
+**The reference should be produced by the build, not merely checked by CI — the owner's own framing: "maybe needs to be generated with the build?"** A CI check that parses headers and compares against committed markdown catches staleness *after* someone pushes it. A build step means the reference **cannot** go stale, because producing it is part of producing the engine. `build.zig` already orchestrates `configure`, `dist`, `test`, and per-target steps (`linux`, `windows`) — see `documentation/03-build-harness.md` — so a `zig build docs` step is the obvious continuation of an established pattern, not a new kind of thing this project does.
+
+## What "generated markdown, for an agent" changes versus a documentation site
+
+- **Completeness beats polish.** A missing symbol is worse than a tersely documented one — an agent finding no entry for a function does not conclude "undocumented, proceed carefully"; it infers the function does not exist and either invents a substitute or gives up on a path that was actually available. Coverage of the public surface, not prose quality, is the acceptance bar.
+- **Structure for a context window, not for hyperlink browsing.** A human browses a generated site by following links; an agent reads some slice of it into a limited context window. Whether the output is one file per header/subsystem or a single reference file, and how much prose accompanies each symbol (full doc-comment prose, or signature plus a one-line description), changes how usable it is under that constraint. This is an open decision, not something to default on.
+- **Convention rules belong inline, next to the API they constrain, not in a separate document an agent may not read.** `06-engine-conventions.md` states real constraints a caller must not violate: engine code does not throw and exceptions never cross a module boundary; memory is never freed on the side of the module boundary that did not allocate it; `entt::type_index` must never be persisted or compared across the boundary (use `entt::type_hash` or a stable name); `HP_ASSERT` compiles out entirely in release and must not gate anything with side effects. A human learns these once from the conventions doc and carries them around; an agent generating one call site at a time benefits far more from the constraint sitting next to the function it applies to. How that gets into the generated output — a recognised comment tag the generator surfaces specially, a structured section per header, or something else — is a decision to make, not assumed away.
+
+## Tooling options — not picked here
+
+| Option | Notes |
+|---|---|
+| **`clang-doc`** | Part of LLVM's `clang-tools-extra`, with a Markdown backend built for exactly this. **Unverified**: whether it ships as an invocable binary from this project's pinned toolchain is not confirmed. Zig 0.16.0 (D5) bundles `clang` internals for `zig cc`, but that is not the same thing as the separate `clang-tools-extra` binaries; check before relying on it |
+| **Doxygen → XML → a small script** | Doxygen's own HTML/LaTeX output is not the target, but its XML output is a stable, documented intermediate that a short script can turn into whatever markdown shape 118.2 decides on. Adds Doxygen as a host-only dependency |
+| **A purpose-built `libclang` tool** | Most control over exactly what gets extracted and how tags are surfaced. Not a new idea in this codebase: `third_party/DiligentEngine/DiligentTools/RenderStateNotation/CMakeLists.txt` already `pip install`s `libclang==16.0.6` as part of its own CMake configure step (verified) — proof a libclang-based host tool already works in this build, and a concrete existing pattern (pip-install-at-configure-time) to either reuse or deliberately avoid |
+
+Whichever is chosen **runs as a host tool only** — it never cross-compiles, mirroring T0038's FBX converter. The reference is target-independent (the same `engine/include/hp/` headers regardless of Windows or Linux target), so it must be generated exactly once per build, not once per target.
+
+## Done when
+
+- [ ] Every declaration in `engine/include/hp/` — and only that directory; `engine/src/` is not public surface — appears in the generated reference, with signature and doc-comment prose, checkable as a coverage count against the header count
+- [ ] `///` comments on public API gain `@param`/`@returns`/`@throws`-shaped tags where a function takes parameters or returns something non-obvious, so the generator has structured data to extract — added as tag discipline on top of the existing prose, not a replacement for it (see the tension below)
+- [ ] The context-window structure decision is made and recorded: one file per header/subsystem versus a single reference file, and the prose-density question (full doc comment versus signature-plus-one-line)
+- [ ] The convention-inlining decision is made and recorded: how constraints from `06-engine-conventions.md` (module-boundary rules, exception policy, `HP_ASSERT` behaviour) reach the generated output next to the symbols they constrain
+- [ ] `zig build docs` (or the chosen step name) produces the reference as part of the build, per the build-step-over-CI-check reasoning above; whether it runs on every ordinary build or on demand is decided and recorded, weighing generation cost on every build against the risk of it not being run
+- [ ] The commit-vs-gitignore decision is made and recorded (see below), not defaulted by whichever happens to be convenient at implementation time
+- [ ] If committed: CI fails on a dirty working tree after running the docs step — the simple gate the build-step design enables, instead of a second header-parsing pass to detect drift
+- [ ] Verified against a real change: adding a parameter to a public function and running the build step changes the generated output; forgetting to regenerate (if committed) fails CI
+
+## Subtasks
+
+- [ ] 118.1 Decide the tooling (see the options table) and record the rejected alternatives' costs, matching the decision-log's own style
+- [ ] 118.2 Decide the context-window structure: file granularity and prose density
+- [ ] 118.3 Add `@param`/`@returns`/`@throws` tag discipline to the 8 existing public headers as a worked example, and write the expectation into `06-engine-conventions.md` (or this ticket's own note, if conventions is judged the wrong home) so new public API is tagged as it is written — the same "land the rule before the surface grows" reasoning as T0019's profiling macros
+- [ ] 118.4 Decide how module-boundary and other cross-cutting conventions surface inline in the generated output
+- [ ] 118.5 Wire the chosen tool into `build.zig` as a host-only step (`zig build docs`), following the existing `configure`/`dist`/`test` pattern; decide on-demand versus part of the default build
+- [ ] 118.6 Decide committed-to-the-repo versus generated-and-gitignored (see the trade-off below) and implement the corresponding CI gate
+- [ ] 118.7 Confirm the tool runs once, host-only, independent of target — no accidental per-target regeneration
+
+## Notes / findings
+
+**The tension with `06-engine-conventions.md` is real and the fix is additive, not a rewrite.** That document pushes comments toward explaining *why*, not restating the signature — good guidance for a human reading the header in place. The existing 142 `///` lines follow it and read well for that audience. What a generated reference additionally wants is structured `@param`/`@returns` data, a different axis entirely (machine-extractable facts about a call site) from prose explaining rationale. The fix is adding tag discipline for public API on top of the existing prose, not replacing it — an agent benefits from both the "why" and the structured signature facts, for different reasons.
+
+**Committed versus gitignored is left as an open question, not decided here**, because both are genuinely defensible and the trade-off is a project-management call as much as a technical one:
+
+- **Committed**: an agent (or a human on GitHub) sees the reference without building anything first, and it is what makes the "build, then fail if the tree is dirty" CI gate possible at all. Costs review noise on every PR that touches a public header (the generated diff rides along with the real change) and a growing generated artefact in history.
+- **Gitignored, generated fresh**: no generated-file noise in history or reviews. Costs that nobody sees the reference without running the build step first — which matters specifically for the stated use case, since an agent working against a fresh checkout that has not been built yet would find no reference until it builds one.
+
+**Ties to T0109.** A game project outside this repository builds its gameplay module against a *released* engine (T0109's "installed engine" question — headers, import libs, shared libraries, a version stamp). Whichever form this reference takes, it is part of what an installed engine ships, not only an artefact of this repository — 109.1's SDK-layout decision should account for it once both tickets are further along. Not recorded as a `Blocks` relationship: T0109 is Phase 8 and does not structurally require this ticket to land first, but it does need to know this exists.
+
+**Public surface is exactly `engine/include/hp/`.** `engine/src/` is implementation and out of scope for this reference regardless of what comment density it carries — matching the layout `06-engine-conventions.md` already states (`include/hp/…` public, `src/…` implementation).
+
+**Placed early (Phase 2, Order 45) rather than later.** Gameplay-facing headers accumulate from Phase 2 onward, and a coding agent writing against them needs the reference from the start, not once Phase 12's UI epic is reached. The same "land the rule before the surface grows" reasoning that put T0019's profiling macros ahead of the systems they instrument applies here: retrofitting tag discipline and a generation step across a large, already-grown header surface is a sweep nobody schedules; doing it now, against 8 headers, is cheap.
