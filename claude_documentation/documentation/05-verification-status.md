@@ -1,6 +1,6 @@
 # Verification status
 
-Last updated: 2026-08-02
+Last updated: 2026-08-03
 
 Status markers: ✅ VERIFIED (observed, with evidence) · ⚠️ UNVERIFIED (believed,
 never exercised) · ❌ BROKEN · 🔜 TODO
@@ -35,6 +35,15 @@ Zig-based, incremental, cross-compiling from either host. See
 - ✅ **glibc pinned** — max symbol requirement `GLIBC_2.27` against a 2.28 target
 - ✅ **RPATH clean** — no sysroot stub directory (G6)
 - ✅ **Bootstrap** — installs zig + cmake + ninja, checksum-verified
+- ✅ **Dual-host `.harness/`** — installs are keyed by host
+  (`.harness/<tool>/<host-key>/<version>/`) and no longer destroy each other
+  (T0102). A synthetic Windows toolchain survived a full Linux re-bootstrap
+  intact, where the old shared layout deleted it; `bootstrap.ps1` was then run
+  end to end on a real `windows-latest` runner under `pwsh 7` and installed to
+  `.harness\zig\windows-x86_64\0.16.0\`. `tests/harness/pins_test.zig` fails if
+  either script's pins or layout drift from `build.zig`, checked by mutating
+  each and watching it catch them. **Not** proven: one physical machine running
+  both bootstraps into one tree and building from each in turn
 - ✅ **Fully offline** — configure and build need no network. EnTT and abseil-cpp
   are vendored at Diligent's pinned refs and wired via `FETCHCONTENT_SOURCE_DIR_*`.
   Proven inside a network namespace (`unshare -r -n`) and with
@@ -141,7 +150,7 @@ and subtasks:
 | Run the Windows exe under wine | [T0001](../backlog/completed/0001-run-windows-exe-under-wine.md) |
 | Verify Windows `dist` staging | [T0002](../backlog/completed/0002-verify-windows-dist-staging.md) |
 | Verify the Vulkan backend | [T0003](../backlog/completed/0003-verify-vulkan-backend.md) |
-| Verify building on a Windows host | [T0004](../backlog/open/0004-verify-windows-host-build.md) |
+| Verify building on a Windows host | [T0004](../backlog/completed/0004-verify-windows-host-build.md) |
 | Actually call enkiTS / meshoptimizer / ozz | [T0005](../backlog/completed/0005-exercise-new-library-apis.md) |
 | Define the real application | [T0006](../backlog/completed/0006-define-real-application.md) |
 | Retire `apps/imgui_probe` | [T0007](../backlog/completed/0007-retire-imgui-probe.md) |

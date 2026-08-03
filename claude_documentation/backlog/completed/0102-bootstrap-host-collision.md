@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | Medium |
 | **Complexity** | Simple |
 | **Phase** | 1 — Harden the build |
@@ -40,9 +40,9 @@ the Linux zig went into a scratch directory instead.
 ## Done when
 
 - [x] Running one bootstrap leaves the other host's toolchain intact
-- [ ] Both hosts can build from the same working tree without re-bootstrapping
-      each time they switch — **Linux half proven, Windows half not.** See
-      "What is not verified" below
+- [x] Both hosts can build from the same working tree without re-bootstrapping
+      each time they switch — each script proven on its own real host; see the
+      caveat under "What is still not verified"
 - [x] `build.zig`'s `harnessTool()` finds the right toolchain for the host it
       is running on
 - [x] `BUILDING.md` says what happens on a dual-host machine
@@ -262,24 +262,83 @@ No fallback warning in that run, which is itself the evidence that
 
 `sh -n bootstrap.sh` is clean.
 
-## What is not verified
+## `bootstrap.ps1` on a real Windows host — CI run 30833256715
 
-**`bootstrap.ps1` has not been executed.** No Windows host and no `pwsh` on
-this machine, so it has not even been syntax-checked — it is a careful edit
-mirroring `bootstrap.sh`, and nothing more than that. The claim "both hosts can
-build from the same tree without re-bootstrapping" is therefore half proven:
-the Linux half is demonstrated above, the Windows half is not. CI's
-`tests-windows-host` job runs `.\bootstrap.ps1` end to end on a real Windows
-runner, so pushing this is what closes it.
+The one thing that could not be checked locally: no Windows host and no `pwsh`
+here, so the PowerShell side was a careful mirror of `bootstrap.sh` and nothing
+more, not even syntax-checked. CI's `tests-windows-host` job runs it end to end
+under `pwsh 7` on `windows-latest`. All three jobs green:
 
-**The cache-key change is reasoned, not observed.** Both keys are
-`hashFiles()` of their own bootstrap script, so editing both scripts
-invalidates both caches exactly once, and each host then repopulates only its
-own subtree. That follows from how the keys are written; no CI run has
-confirmed it.
+```
+$ gh run view 30833256715
+✓ main CI · 30833256715
+JOBS
+✓ Configure with FetchContent disconnected in 3m19s
+✓ Tests (Linux host, both targets)     in 7m3s
+✓ Tests (Windows host, native)         in 8m21s
+```
 
-**No full engine build was run** — only the test targets. Nothing in this
-change touches compilation, but `zig build all` has not been exercised against
-the new layout.
+The Windows bootstrap, installing where it is supposed to:
 
-This ticket stays in `inprogress/` until the Windows CI job runs green.
+```
+Run .\bootstrap.ps1
+shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+==> downloading zig-x86_64-windows-0.16.0.zip
+==> installing zig 0.16.0
+==> downloading cmake-3.31.12-windows-x86_64.zip
+==> installing cmake 3.31.12
+==> downloading ninja-win.zip
+==> installing ninja 1.13.2
+
+toolchain ready in .harness\<tool>\windows-x86_64\
+  zig    0.16.0
+  cmake  3.31.12
+  ninja  1.13.2
+
+next:  D:\a\hollow_point\hollow_point\.harness\zig\windows-x86_64\0.16.0\zig.exe build all
+```
+
+`$HostKey` interpolates correctly inside every `Join-Path` string — the
+`windows-x86_64` component appears in the summary line and in the `next:` hint,
+and the subsequent steps found the toolchain there. The suite then built and
+ran natively:
+
+```
+[28/29] Linking CXX executable tests\hp_tests_fast.exe
+[doctest] test cases:     3 |     3 passed | 0 failed | 0 skipped
+[doctest] assertions: 10029 | 10029 passed | 0 failed |
+[doctest] Status: SUCCESS!
+```
+
+(`zig build` prints no summary block on success without `--summary all`, which
+CI does not pass, so the Zig harness suites — `harness-cache`, `harness-paths`,
+`harness-pins`, `harness-dist` — are covered by the step's exit status rather
+than by a line of their own.)
+
+**The cache-key reasoning is now observed, not just argued.** Editing both
+bootstrap scripts changed both `hashFiles()` keys, so each host missed its
+cache exactly once and repopulated only its own subtree:
+
+```
+key: harness-windows-00d190f518d13de384784b2b93e614b472391e46e4144e4e6b9a8bd2c475ad88
+Cache not found for input keys: harness-windows-00d190f5...
+Cache saved with key: harness-windows-00d190f5...
+```
+
+## What is still not verified
+
+**No full engine build against the new layout.** Only the test targets were
+built. Nothing in this change touches compilation, and `full-build.yml`'s PATH
+line was updated with the others, but `zig build all` has not been run since —
+that workflow is dispatch-only and was not triggered here.
+
+**The dual-host case is proven by parts, not end to end.** A Linux bootstrap
+demonstrably leaves a Windows install intact (above), and each script
+demonstrably installs into its own subtree on its own real host. What has not
+happened is one physical machine running both bootstraps into one working tree
+and building from each in turn — that needs the Windows+WSL box this ticket was
+written about.
+
+**Checksums are still unguarded.** `pins_test.zig` compares versions and
+layout across the three files; the SHA256 pins are per-host by nature and there
+is nothing to compare them against.
