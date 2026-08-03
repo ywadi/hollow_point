@@ -81,6 +81,70 @@ required, and the build says so loudly if it falls back to something there.
 
 ---
 
+## CI, and how to look at it
+
+`gh` is installed at `/usr/bin/gh` and authenticated. `command -v gh` has
+returned nothing in a non-interactive shell here — use the absolute path.
+
+```sh
+/usr/bin/gh run list --limit 5
+RUN=$(/usr/bin/gh run list --limit 1 --json databaseId --jq '.[0].databaseId')
+
+# Per-job status. `gh run view` truncates -- this does not, and reading a
+# truncated view once produced a confident, wrong "only Windows failed".
+/usr/bin/gh api repos/ywadi/hollow_point/actions/runs/$RUN/jobs \
+  --jq '.jobs[] | "\(.conclusion // .status)\t\(.name)"'
+
+JOB=$(/usr/bin/gh api repos/ywadi/hollow_point/actions/runs/$RUN/jobs --jq '.jobs[0].id')
+/usr/bin/gh run view --job=$JOB --log | sed 's/^.*Z //' | grep -iE "error|failed"
+```
+
+**`cancelled` is not `failed`.** `ci.yml` sets `cancel-in-progress: true`, so
+pushing again while a run is going kills it. That is intended — a superseded
+push should not burn runners — but it means **letting a run finish before
+pushing again** is the difference between verifying your work and silently not.
+
+**Three jobs must pass**: Linux host (both target suites, Windows one under
+wine), Windows host (native), offline-configure, plus the API-reference check.
+Expect **10–15 minutes** — build trees are deliberately not cached, so SDL and
+Diligent recompile every run.
+
+`full-build.yml` is the ~1100-target build, nightly and on dispatch.
+
+---
+
+## How we work
+
+**Push deliberately, not reflexively.** Docs-only changes skip CI via
+`paths-ignore`, but anything touching code triggers a full run. Batch commits and
+push at a natural checkpoint. Say what a push will trigger.
+
+**Commit messages carry the reasoning, not a changelog.** This repository's
+history is a design record — it explains *why*, what was rejected, what was
+measured, and what turned out to be wrong. Read a few (`git log`) before writing
+one. End with:
+
+```
+Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>
+```
+
+**Record what you could not verify.** Every ticket has a "not done" or "not
+verified" section where it applies. An overstated claim is worse than an open
+question, and this project's whole value is that its documents can be trusted.
+
+**When a check fails, suspect the check.** It has been the broken thing more
+often than the code here: a `sed` that deleted a loop body, a `make_format_args`
+test that looked like a missing `<format>`, a floating-point step count, and a
+`tail` that hid a failing bucket. Verify with whole output, not a filtered tail.
+
+**Assert on every scripted edit.** A `str.replace` that silently matches nothing
+is the most common way a change appears to land and does not. `assert old in t`.
+
+**Delegating to a subagent?** Give it explicit file paths it may touch, tell it
+what another task is editing concurrently, and require `git add <paths>` — never
+`git add -A`, which sweeps in-flight work from another session. Tell it not to
+push.
+
 ## Traps that will cost you an hour
 
 - **Submodules.** `git pull` does not fetch them. If C++ suddenly fails to find
