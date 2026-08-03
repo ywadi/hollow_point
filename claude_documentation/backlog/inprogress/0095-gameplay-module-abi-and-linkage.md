@@ -44,16 +44,19 @@ world — exactly the "hacking the engine" outcome this backlog exists to avoid.
 
 ## Done when
 
-- [ ] The linkage model is decided and recorded in the decision log: engine
+- [x] The linkage model is decided and recorded in the decision log: engine
       static vs shared, per configuration (dev with hot reload vs shipped
       static, per T0048.7), and how the module resolves engine symbols on
-      **both** platforms
+      **both** platforms — **D12**
 - [ ] Exactly one instance of every engine global exists at runtime — proven by
       a test (e.g. exe and module both log the address of the same engine
-      static and they match)
+      static and they match) — **demonstrated by the prototype on both targets,
+      but that prototype is a scratchpad experiment, not a test in this repo.
+      Not tickable until it lives under `tests/` and runs in `zig build test`**
 - [ ] entt type identity holds across the boundary: a component type used from
       the module is visible and iterable from engine code and vice versa, on
-      both targets — tested, not assumed
+      both targets — **same caveat: measured, both targets, but by a throwaway
+      prototype rather than a suite the build runs**
 - [ ] `dynamic_cast`/`typeid` on types crossing the boundary either works
       (typeinfo symbols unified) or is banned by convention (T0055) — decided,
       not left to chance
@@ -166,6 +169,20 @@ evidence above.
 - The genuine hazard the ticket identified — **one instance of engine state** —
   is real and is solved by the engine being a shared library, which is now
   demonstrated on both platforms rather than assumed.
+
+### The decision is recorded; the ticket is not finished
+
+D12 (engine linkage, lockstep, build id) and D14 (no scripting, name-keyed
+behaviours) are in the decision log, and the amendments they imply have been
+made to T0013, T0023, T0032, T0035, T0043, T0048, T0053 and T0062. T0104 was
+created to own the build-id guard that makes D12 safe, and T0103 to own the
+virtual filesystem.
+
+**The single most valuable thing left is turning the prototype into a real
+test.** It currently lives in a scratchpad directory and proves the boundary
+holds on both targets; nothing in `zig build test` would notice if a future
+change broke it. Two Done-when conditions above are blocked on exactly that, and
+it is also the natural home for the hot-reload half of 95.3.
 
 ### Still open in this ticket
 

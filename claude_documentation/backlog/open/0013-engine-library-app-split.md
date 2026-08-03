@@ -71,3 +71,30 @@ T0048/T0062; make it before committing this layout.** If the answer is "engine
 is a shared library in dev builds", this ticket's first Done-when changes, and
 export macros (`HP_API`) are cheapest to add while the headers are being
 written — not after.
+
+
+### Architecture decision (2026-08-03) — the engine is a **shared** library (D12)
+
+T0095 settled this, so the first Done-when above ("`engine/` builds as a static
+library target") is **superseded**: the engine builds as a shared library. It
+was measured working on both targets — one address for an engine global seen
+from the executable and from a loaded module, and Windows needed no import
+library, no `.def` and no export list.
+
+Three consequences for this ticket, all cheapest now:
+
+- **`HP_API` export macros go into the headers as they are written.** Retrofitting
+  them across hundreds of headers later is exactly the mechanical churn worth
+  spending ten minutes to avoid. Default visibility for anything crossing the
+  boundary, `-fvisibility=hidden` for the rest.
+- **13.5's "leave room for `game/`" is now a requirement, not foresight.** The
+  gameplay module links the engine shared library; the editor and runtime link
+  the same one. Four artifacts, one engine.
+- **PUBLIC vs PRIVATE (13.3) matters more, not less.** With a shared engine the
+  question becomes which Diligent symbols the engine *re-exports* to modules,
+  and D6's note about DiligentFX linking Diligent-Imgui PUBLIC now has teeth:
+  get it wrong and every gameplay module inherits ImGui.
+
+Rich C++ crosses the boundary — no C ABI, no binding layer — because engine and
+gameplay are always built together (D12). T0104 is the guard that makes that
+safe and should land alongside the module loader, not after it.

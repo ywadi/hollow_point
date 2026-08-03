@@ -46,3 +46,23 @@ its post-process components call `ImGui::` for their settings panels (D6).
 Decide where `imgui.ini` lives. Per-project keeps layouts with the work; per-user
 avoids churning the project on every window drag. Per-user is the usual choice
 and probably right.
+
+
+### Architecture decision (2026-08-03) — the editor is a module host (D12)
+
+The editor loads the gameplay module, exactly as the runtime does. That is not
+an incidental capability — it is how the editor knows about game-defined types
+at all, and it is the model this project is following deliberately (Godot loads
+extensions into the editor for the same reason).
+
+Consequences this ticket did not previously account for:
+
+- The editor links the **shared** engine library and hosts modules through the
+  same loader the runtime uses. The build-id check (T0104) lives in that shared
+  loader, or the editor will cheerfully load a stale module and the failure will
+  present as a broken panel
+- In-editor hot reload becomes first-class rather than a runtime-only concern
+  (T0048), because the editor is where reload actually gets used
+- Panels that display game-defined types depend on the module being loaded, so
+  "no module loaded" and "module failed to load" are real editor states that
+  need designing, not error paths to bolt on

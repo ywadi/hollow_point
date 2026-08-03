@@ -259,3 +259,116 @@ for the host target proves half of what it should. A Windows suite runs on a
 Linux host via WSL interop if available (a real Windows process — better than
 emulation, and proven in T0004), else wine (proven in T0001), else it is built
 but not run *with a warning*, never a silent pass.
+
+---
+
+## D12 — Engine is a shared library; gameplay links it in lockstep, guarded by a build id
+
+**Decision:** the engine is built as a **shared** library (`.so`/`.dll`). The
+editor, the runtime and every gameplay module link against that one copy, so
+engine state exists exactly once in a process. Gameplay modules are C++ against
+the engine's real headers — **not** a C ABI — and engine plus modules are always
+built and shipped together. A build id is stamped into the engine and into every
+module, and a module whose id does not match is refused at load, loudly.
+
+Proven before deciding (T0095), on both targets under the pinned zig toolchain:
+one address for an engine global seen from the executable and from a
+`dlopen`/`LoadLibrary`'d module, mutations visible both ways, and an entt
+component emplaced by the engine iterable from the module. Windows needed no
+import library, no `.def` and no export list — naming the DLL on the link line
+was enough.
+
+**Rejected — engine as a static library** (what T0013 originally assumed).
+Linking it into both the executable and the gameplay module duplicates every
+engine global: the logger, the autoload registry, asset pool statics. Each side
+then mutates its own copy and neither sees the other. This is not a build error;
+it is a runtime behaviour that looks like impossible bugs in gameplay code.
+
+**Rejected — the executable exports its own symbols and modules link against
+it.** Works on Linux with `--export-dynamic`; on Windows it means linking a DLL
+against the exe's import library, which is possible under MinGW and unusual
+enough to be fragile. Since engine-as-shared-library was measured working on
+both platforms, the asymmetric option buys nothing and costs a platform-specific
+code path.
+
+**Rejected — a C ABI boundary, as Godot's GDExtension uses.** Godot needs it
+because extensions must survive engine updates they were not compiled against,
+and the price they pay is `godot-cpp`: an entire generated binding layer,
+because a raw C ABI is miserable to write gameplay against. Lockstep removes the
+requirement that creates that cost. Engine and gameplay are compiled together,
+so rich C++ — real types, templates, entt registries — crosses the boundary
+directly and no binding layer is needed. **The build id is what makes this
+safe:** without it, a stale module against a changed engine is silent memory
+corruption; with it, the failure is a refusal at load with both ids printed.
+
+**Consequence, accepted deliberately:** shipping a gameplay update means
+shipping the engine too. For a project that publishes its own games this is
+already how releases work. It does mean third-party modules compiled against a
+different engine build can never be loaded — see D14.
+
+---
+
+## D13 — All content addressed through a virtual filesystem (PhysicsFS)
+
+**Decision:** every asset read goes through a virtual filesystem, never
+`std::filesystem` or `fopen` directly. **PhysicsFS** (zlib licence, vendored
+like everything else) provides it. Loose directories are mounted during
+development and archives when shipping, and because both are mounts, dev and
+shipped builds run the *same* code path. Mount order decides who wins when a
+path exists in more than one source, which is the whole mechanism for patches
+and DLC: ship a later archive and it overrides earlier ones per file.
+
+**Rejected — writing our own pack format and VFS.** It is a well-understood
+problem with a mature answer. PhysicsFS is Quake 3-inspired, handles ZIP plus
+PAK/7z/WAD and native directories, sandboxes all writes to a designated write
+directory (which T0083's saves want anyway), offers `PHYSFS_setRoot` to mount a
+subset of an archive, and has been API/ABI stable back to 1.0. It also builds
+for Switch and PS5, which costs nothing now and is worth having if consoles ever
+happen.
+
+**Rejected — exporting a folder of loose files** (what T0043 originally
+described). It ships fine, but it makes patching and DLC into separate features
+invented later, and it lets asset code call the filesystem directly — after
+which introducing a VFS means touching every read site. The order matters: the
+VFS has to exist *before* T0023 hardens, not after.
+
+**Not what this replaces.** PhysicsFS is file I/O, not an asset database. GUIDs,
+metafiles, reference counting and hot reload (T0023, T0058) remain ours. The
+division is deliberate: it owns *where bytes come from*, we own *what the bytes
+mean*.
+
+**Open, and flagged rather than assumed:** PhysicsFS is a C library with global
+init state, and its guarantees for concurrent reads were not confirmed. That
+matters once the job system (T0026) wants async loading, and is worth a spike
+before the first threaded loader, not after.
+
+---
+
+## D14 — No scripting language; gameplay is C++, composed from data
+
+**Decision:** there is no embedded scripting VM. Gameplay logic is C++ in the
+gameplay module. New content is expressed by **composing existing behaviours
+with new data** — a new enemy is existing behaviours with different stats, mesh
+and animations — and genuinely new mechanics arrive as a game update, which
+under D12 already ships the binary.
+
+**Rejected — Lua (with sol2), Wren, or AngelScript.** Any of them would be a
+reasonable embed. The reason none is taken: the requirement they satisfy is
+"install DLC or mods without shipping a new binary", and that is not a goal
+here. Adding a VM to satisfy a requirement nobody has is cost without benefit,
+and the cost is not only the integration — it is that gameplay authored in
+script tends to migrate onto the hot path, where a per-entity per-frame call
+across a native↔VM boundary is exactly what this project cannot afford with the
+unit counts implied by T0093 and T0098.
+
+**Consequence, accepted:** no Steam-Workshop-style user-generated content
+without revisiting this. Assets-only DLC still works through D13 and needs no
+code; it is *new behaviour* that requires a build.
+
+**Kept regardless of this decision:** behaviours are registered and referenced
+by **stable name**, not by C++ type identity alone. This was first considered as
+a hedge for a future script backend, which undersold it — it is required
+independently by serialization. T0095 measured that `entt::type_index` is a
+per-module runtime number that differs across the module boundary and cannot be
+persisted, so scenes and prefabs must reference behaviours by name whatever else
+is true. See T0053 and T0062.

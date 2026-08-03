@@ -62,3 +62,23 @@ Undo/redo is deliberately not in scope, but it is much cheaper to design for now
 than to retrofit: if edits go through a small command abstraction rather than
 mutating components directly, undo becomes tractable later. Worth a deliberate
 decision either way.
+
+
+### Architecture decision (2026-08-03) — the inspector shows module-defined types (D12)
+
+The inspector's job includes game-defined components and behaviours, which live
+in the gameplay module the editor loads (see T0032's amendment). This binds the
+inspector to two things it did not previously reference:
+
+- **Reflection (T0053) must work for types defined in the module**, not only for
+  engine types. Whatever the registry is, the module populates it at load and
+  must depopulate on unload or a reload leaves stale entries describing types
+  that no longer exist
+- **Behaviours are addressed by stable name, not by `entt::type_index`** (D14).
+  T0095 measured that the sequential index is a per-module runtime number which
+  differs across the boundary and cannot be persisted. An inspector that keys
+  anything on it will appear to work in-process and break on reload or reload
+  order changes
+
+"No module loaded" is a legitimate state the inspector must render sensibly
+rather than treat as an error.

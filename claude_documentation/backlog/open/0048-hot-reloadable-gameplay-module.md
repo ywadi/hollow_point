@@ -62,3 +62,32 @@ partly determines whether this is pleasant enough to actually use.
 
 For the shipped game, prefer linking the module statically (48.7) — hot reload is
 a development affordance and adds startup cost and attack surface otherwise.
+
+
+### Architecture decision (2026-08-03) — linkage settled, and it is modules plural (D12)
+
+T0095 resolved what this ticket was blocked on. The engine is a **shared**
+library; the gameplay module links it and so do the editor and runtime, so
+engine state exists once per process. Measured on both targets. Rich C++ crosses
+the boundary — no C ABI and no binding layer — because engine and gameplay are
+always built together.
+
+Three amendments:
+
+- **A build-id check is mandatory, not a nicety.** T0104 owns it and blocks this
+  ticket. Without it a stale module loads, resolves symbols, and reads fields at
+  wrong offsets — silent corruption arbitrarily far from the cause. With it, a
+  refusal at load naming both ids. The check must run *before* any module entry
+  point is called.
+- **"The module" is really "a set of modules".** Designing the loader for one
+  and generalising later is the expensive order. Even without code-bearing DLC
+  (ruled out by D14), the editor and runtime both host modules and a project may
+  reasonably split gameplay across more than one.
+- **The engine shared library is loaded once and never reloaded.** Only gameplay
+  modules are copied-before-load and swapped. 95.6 exists to re-verify this
+  ticket's mechanics against that split and is still open.
+
+The entt hazard this ticket inherited from T0095 turned out to be misdescribed —
+see that ticket's prototype results. Component identity is name-hash based and
+survives the boundary; the sequential `type_index` does not and must never be
+persisted or compared across modules.

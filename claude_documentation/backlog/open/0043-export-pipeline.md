@@ -71,3 +71,28 @@ linked that way for the runtime app (`CMAKE_BUILD_RPATH`/`INSTALL_RPATH` with
 without the build tree, because testing on the dev machine passes even when
 this is broken, which is exactly the class of false pass this ticket warns
 about.
+
+
+### Architecture decision (2026-08-03) — export produces packs, not a loose folder (D13)
+
+The Done-when above describes exporting "a folder that runs on a machine that
+has never seen the project". That still holds, but the assets inside it are
+**packs** mounted through the VFS (T0103), not loose files.
+
+What this changes here:
+
+- 43.5's cooking step feeds a pack builder rather than a copy
+- 43.3/43.4's "copy each asset and rewrite its metafile path" becomes "resolve
+  each asset into the pack", and the relative-path discipline in the notes above
+  applies to *mount-relative* paths
+- Two new capabilities fall out of the same mechanism rather than needing their
+  own design: a **patch** is a later-mounted pack that overrides files per path,
+  and **assets-only DLC** is a pack that adds them. Neither needs a separate
+  feature, which is the reason for choosing a VFS at all
+
+**Code-bearing DLC is out of scope by decision, not oversight** (D14). New
+behaviour ships as a game update, which under D12's lockstep already ships the
+binary. Assets-only DLC needs no build.
+
+The RUNPATH problem recorded above is unaffected and still needs fixing — it is
+about the executable's library search path, not about content.

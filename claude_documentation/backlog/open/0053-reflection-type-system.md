@@ -71,3 +71,31 @@ matters.
 C++ has no built-in reflection, so whatever is chosen is a permanent part of how
 every engine type is declared. Prototype two approaches on a real component
 before committing.
+
+
+### Architecture decision (2026-08-03) — never key reflection on `entt::type_index` (D12/D14)
+
+Measured in T0095, against the vendored entt 3.16.0: `type_index<T>::value()` is
+a **per-module** sequential number. The same type observed from the engine and
+from a gameplay module gets different values, because the memoising static is
+per-module even when the underlying counter is shared. It is a runtime number
+with no meaning outside the module that produced it.
+
+Therefore, for this ticket:
+
+- **A reflected type's identity is a stable name** (or a hash of one), never the
+  sequential index, and never a raw pointer to a static
+- Nothing derived from `type_index` may be **serialised**, compared across the
+  module boundary, or used as a key that outlives a process
+- `type_hash` (name-based) *is* stable across the boundary on both targets and
+  is a legitimate key — it is what entt keys its own pools on
+
+**The registry must be an instance handed across the boundary, not a global
+reached by symbol.** With the engine as a shared library (D12) a global would in
+fact resolve to one instance — but designing it as a context object passed in is
+robust to that changing and is the convention T0095 recommends for every
+stateful engine service, alongside the log sinks (T0054) and the autoload
+registry (T0076).
+
+Types defined in the gameplay module must register on load and deregister on
+unload, since the module is reloadable (T0048).

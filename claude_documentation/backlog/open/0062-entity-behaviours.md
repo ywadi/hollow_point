@@ -144,3 +144,31 @@ in-memory snapshot, tested headless) → T0021/T0020 make it real → T0035 give
 it an editor surface. The ticket stays Phase 2 as the *design/mechanism*
 keystone, but the plan should not expect it to be demonstrable end-to-end
 before mid-Phase 3.
+
+
+### Architecture decision (2026-08-03) — behaviours are keyed by stable name (D14)
+
+**A behaviour's identity is a stable name, not its C++ type identity.** This is
+required by serialization, independent of any other consideration: T0095
+measured that `entt::type_index` is a per-module sequential number that differs
+between the engine and a gameplay module for the *same* type, and cannot be
+persisted or compared across the boundary. A scene or prefab that stores a
+behaviour reference must store a name.
+
+`entt::type_hash` (name-based) *is* stable across the boundary on both targets
+and is what entt itself keys component pools on — so component storage is safe;
+it is the sequential index that is not.
+
+Two further consequences:
+
+- **Composition is the extension mechanism** (D14). There is no scripting layer;
+  new content is existing behaviours recombined with new data, and genuinely new
+  mechanics ship as a game update. This makes the behaviour *catalogue* a
+  first-class thing to design — a small set of well-factored behaviours composes
+  better than a large set of specific ones
+- Registration and deregistration must be symmetric, because the module hosting
+  these behaviours is unloaded and reloaded (T0048)
+
+Linkage is settled: rich C++ across the boundary, engine as a shared library,
+lockstep with a build-id check (D12). This ticket is no longer blocked on T0095
+for that.

@@ -84,3 +84,22 @@ imported) are engine-provided assets that exist in every project. They need
 *fixed, reserved* GUIDs so scenes referencing them work across projects and
 exports — a reserved GUID range is one line of policy now and a data migration
 later.
+
+
+### Architecture decision (2026-08-03) — all reads go through the VFS (D13)
+
+**This ticket must not call `std::filesystem` or `fopen` on asset paths.**
+Content is addressed through the virtual filesystem in T0103, which mounts loose
+directories during development and archives when shipping. Both are mounts, so
+dev and shipped builds run the same code path.
+
+The ordering is the whole point: **T0103 lands before this ticket hardens.** If
+the asset manager is written against the real filesystem first — which is the
+obvious way to write it — then packs, patches and DLC each become a rewrite of
+every read site rather than a mount. That is why T0103 was created.
+
+The division of responsibility is deliberate and worth keeping clean: the VFS
+owns *where bytes come from*, this ticket owns *what the bytes mean* — GUIDs,
+metafiles, reference counting, and the lifetime rules in T0058. Resist letting
+asset identity leak into path handling; a GUID must not be a path, and a mount
+point must not be an asset concept.
