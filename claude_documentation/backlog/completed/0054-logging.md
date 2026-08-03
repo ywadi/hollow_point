@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | ⏸ BLOCKED on Diligent linkage (54.5) and T0029 (54.6) |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Simple |
 | **Phase** | 2 — Engine skeleton |
@@ -129,3 +129,29 @@ same stream is most of the value of this ticket.
 **54.6 (Tracy bridge) is blocked on T0029**, which has not started.
 
 **54.4 is half done** — see the subtask. Correct, not yet asynchronous.
+
+
+## Closing note
+
+Closed on what it exists for: levels, categories, sinks, a compile-time floor,
+thread safety and type-safe formatting, all working and tested on both targets.
+
+**Two items were moved rather than ticked**, and the distinction matters:
+
+- **54.5** (route Diligent's `DebugOutput` into this) is now recorded on
+  [T0025](../open/0025-render-layer.md), which is where the engine first links
+  Diligent at all. It is most of this ticket's remaining value and should be
+  done *then*, not later.
+- **54.6** (Tracy message bridge) waits on T0029, which owns the Tracy client.
+
+**Why moved rather than left BLOCKED:** this ticket sits at order 40 and the
+prerequisite lands at order 380. A ⏸ BLOCKED ticket near the head of an
+execution-ordered board, unable to move for the whole of Phases 2 and 3, makes
+the board lie about what to work next. Closing it and recording the remainder
+where it will actually be picked up keeps both honest.
+
+**54.4 remains half done and is not carried anywhere**, because it is not
+blocked — it is deferred on purpose. Logging is correct under concurrency, but
+the caller still writes to sinks on its own thread. A queued sink with a flush
+thread needs worker threads to be worth building and testing (T0026), and the
+sink interface is the seam where it lands with no change to any call site.

@@ -59,3 +59,39 @@ From the design-gap survey (`documentation/07-design-gaps.md`, items 1 and 5):
 - **T0113 (device loss)** adds detection to this ticket's present/submission
   error paths. Creation, resize and shutdown were owned here; the device dying
   *mid-run* was owned nowhere.
+
+### Amendment (2026-08-03) — this ticket is where the engine first links Diligent
+
+`engine/` deliberately links **nothing** from Diligent today. T0013 made that
+choice explicitly (13.3): nothing needed a device, and a careless PUBLIC link
+would have handed ImGui to every gameplay module via DiligentFX (D6). It was the
+right call, and it left a prerequisite with no owner.
+
+**This ticket is that owner.** Three items from other tickets are blocked on it
+and were closed pointing here rather than pinning their own tickets open near
+the top of the queue — T0054 sits at order 40 and T0056 at 50, so leaving them
+blocked would have shown two tickets at the head of the board that could not
+move until order 380.
+
+| Waiting item | From | What it needs |
+|---|---|---|
+| Route Diligent's `DebugOutput` into the engine logger | T0054 (54.5) | A `SetDebugMessageCallback` to install |
+| Confirm the SSE/NEON math paths are on in release | T0056 (56.2) | `BasicMathSSE.hpp` / `BasicMathNEON.hpp` compiled in |
+| Adopt `DynamicLinearAllocator` for per-frame scratch | T0056 (56.3) | The allocator to exist in the link |
+| Adopt `FixedBlockMemoryAllocator` where pooling pays | T0056 (56.4) | The allocator, **and a profile** — see below |
+
+**Do them when Diligent arrives, not later.** The logger one in particular is
+most of T0054's value: validation-layer output, shader compile errors and engine
+warnings landing in the same stream and the same editor console is worth far
+more than any of the logging machinery itself.
+
+**56.4 has a second blocker that Diligent does not clear.** "Where pooling pays"
+needs a measurement, not a linked library. Adopting a pool allocator because it
+became available is how a codebase acquires complexity it cannot justify — that
+one waits for T0031's budgets and a profile, and should not be ticked here just
+because the type is reachable.
+
+**Also inherited: the PUBLIC/PRIVATE rule.** T0013 wrote it down and this is
+where it first applies — link Diligent targets PRIVATE unless a *public engine
+header* names their types. Getting it wrong is not a build error; it silently
+widens every consumer's dependency surface.
