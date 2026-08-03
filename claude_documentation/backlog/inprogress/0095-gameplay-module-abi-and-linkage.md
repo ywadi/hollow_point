@@ -55,12 +55,14 @@ world — exactly the "hacking the engine" outcome this backlog exists to avoid.
 - [x] entt type identity holds across the boundary: a component type used from
       the module is visible and iterable from engine code and vice versa, on
       both targets — tested both directions, both targets
-- [ ] `dynamic_cast`/`typeid` on types crossing the boundary either works
+- [x] `dynamic_cast`/`typeid` on types crossing the boundary either works
       (typeinfo symbols unified) or is banned by convention (T0055) — decided,
-      not left to chance
+      not left to chance. **It works, on both targets, measured** — so it is
+      allowed rather than banned, conditional on boundary types being marked
+      default-visibility
 - [ ] Dev and shipped configurations build from the same source with no
       `#ifdef` spread through gameplay code
-- [ ] The rules are written into the conventions doc (T0055)
+- [x] The rules are written into the conventions doc (T0055) — see its module boundary section
 
 ## Subtasks
 
@@ -69,9 +71,11 @@ world — exactly the "hacking the engine" outcome this backlog exists to avoid.
       Windows-fragile). Prototype the Windows side under the zig/MinGW
       toolchain **before** committing — this project's history (G2, G3, G4) is
       that Windows linking surprises are real
-- [ ] 95.2 Configure entt for cross-boundary use — `ENTT_API_EXPORT` /
-      `ENTT_API_IMPORT` on the right sides — and confirm name-based
-      `type_hash` behaves identically for both modules under zig's clang
+- [x] 95.2 Configure entt for cross-boundary use — **re-scoped and resolved as
+      "deliberately do not set them"**. Setting the macros makes indices
+      disagree rather than unifying them; `type_hash` was confirmed identical
+      across modules on both targets. The reasoning is in the prototype results
+      below and the resulting rule is in the conventions doc
 - [ ] 95.3 Boundary test: two component types (one engine-defined, one
       module-defined), created on one side, queried on the other, surviving a
       hot reload — **still not fully done**: both component types are tested
@@ -79,11 +83,15 @@ world — exactly the "hacking the engine" outcome this backlog exists to avoid.
       are proven to agree, but a *genuine unload* is impossible under this
       toolchain today (see the dlclose finding). Reload is proven only in the
       copy-before-load shape T0048 will actually use
-- [ ] 95.4 Symbol visibility policy for shared types (vtables and typeinfo
-      need default visibility; `-fvisibility=hidden` everywhere else is still
-      fine)
-- [ ] 95.5 Exception and allocation rules at the boundary, folded into T0055
-      (Diligent throws internally; the module boundary should not)
+- [x] 95.4 Symbol visibility policy for shared types — confirmed by
+      measurement and written into the conventions doc: boundary types marked
+      default-visibility, `-fvisibility=hidden` everywhere else, which is what
+      the fixtures build with and what makes RTTI work across the boundary
+- [x] 95.5 Exception and allocation rules at the boundary, folded into T0055:
+      our code does not throw, Diligent's exceptions are converted at the call
+      site and never reach a module boundary, and memory is released by the
+      side that allocated it because each library carries its own statically
+      linked libc++
 - [ ] 95.6 Re-verify T0048's mechanics against the chosen model: the *game*
       DLL is copied-before-load and reloaded; the *engine* DLL (if that is the
       choice) is loaded once and never reloaded

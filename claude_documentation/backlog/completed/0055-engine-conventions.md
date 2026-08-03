@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Trivial |
 | **Phase** | 2 — Engine skeleton |
@@ -102,3 +102,47 @@ formatting is a developer tool, not a build input.
 
 `.clang-tidy` is left undone on purpose rather than forgotten: a lint config
 written before there is any engine code to lint is a guess at what will matter.
+
+
+## Closing note
+
+**One Done-when is ticked with a caveat, and it is worth being explicit about
+rather than quietly counting it.** "Error handling policy decided **and applied
+consistently**" — the policy is decided and written down; *applied* cannot be
+true, because there is no engine code to apply it to. That half is inherited by
+the first code that lands (T0013, T0014), and the condition as worded can never
+be "done" for a living convention document anyway. The ticket is closed on the
+decisions being made and recorded, which is what it existed for.
+
+### Evidence
+
+Document: [`documentation/06-engine-conventions.md`](../../documentation/06-engine-conventions.md).
+
+Two rules measured rather than assumed, using the T0095 boundary fixtures:
+
+```
+$ zig build test -Dtest=integration
+module_boundary_test.cpp:336: MESSAGE: dynamic_cast across the boundary from the module: WORKS
+module_boundary_test.cpp:338: MESSAGE: typeid names agree: 1
+[doctest] test cases:  7 |  7 passed | 0 failed | 0 skipped
+[doctest] assertions: 38 | 38 passed | 0 failed |        (x2 -- Linux, and Windows under wine)
+```
+
+C++20 for our code alongside Diligent at 17 — test targets and fixtures raised
+to `cxx_std_20`, full suite green on both targets.
+
+`.clang-format`, validated with clang-format 14 rather than merely written:
+
+```
+$ clang-format --style=file --dump-config >/dev/null && echo ok
+ok
+$ clang-format --style=file --dry-run -Werror $(git ls-files 'tests/**/*.cpp' 'tests/**/*.h' 'tests/*.cpp')
+(no output -- idempotent, every file already canonical)
+
+$ printf 'int  f( )  {return  1;}\n' > ugly.cpp && clang-format --style=file:.clang-format --dry-run -Werror ugly.cpp
+ugly.cpp:1:4: error: code should be clang-formatted [-Wclang-format-violations]
+```
+
+That last one is the check that matters — it proves the dry-run gate can fail,
+so it is worth adding to CI later. Applied to all six files under `tests/`, and
+the full suite passes afterwards.

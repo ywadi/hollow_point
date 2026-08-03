@@ -23,7 +23,7 @@ This is the work. For what is already proven to work — and what only appears t
 | Order | ID | Task | Phase | State | Priority | Complexity |
 |---|---|---|---|---|---|---|
 | ▶ | [T0095](inprogress/0095-gameplay-module-abi-and-linkage.md) | Gameplay module ABI: engine linkage, one engine state, entt across the boundary | 2 — Engine skeleton | 🚧 IN PROGRESS | High | Complex |
-| 10 | [T0055](inprogress/0055-engine-conventions.md) | Engine conventions and error handling policy | 2 — Engine skeleton | 🚧 IN PROGRESS | High | Trivial |
+| 10 | [T0055](completed/0055-engine-conventions.md) | Engine conventions and error handling policy | 2 — Engine skeleton | ✅ DONE | High | Trivial |
 | 20 | [T0019](open/0019-profiling-macro-surface.md) | Profiling macro surface (Tracy-ready, no-op for now) | 2 — Engine skeleton | 🔜 TODO | Medium | Trivial |
 | 30 | [T0013](open/0013-engine-library-app-split.md) | Split the tree into an engine library and app consumers | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | 40 | [T0054](open/0054-logging.md) | Logging and diagnostics | 2 — Engine skeleton | 🔜 TODO | High | Simple |
