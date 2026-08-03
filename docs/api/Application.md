@@ -6,7 +6,7 @@
 #include <hp/Application.hpp>
 ```
 
-14 public declaration(s), 5 documented.
+17 public declaration(s), 7 documented.
 
 ## `ApplicationConfig`
 
@@ -68,6 +68,17 @@ void requestExit(int exitCode)
  @param exitCode value `run()` returns, and therefore the process exit
         code. Defaults to 0.
 
+## `Application::dispatch`
+
+```cpp
+void dispatch(Event & event)
+```
+
+ Sends an event top-down through the layers, then to `onEvent` if nothing
+ consumed it. Public so a test or a tool can inject one.
+
+ @param event the event to deliver.
+
 ## `Application::config`
 
 ```cpp
@@ -113,6 +124,23 @@ Window * window()
 
 ```cpp
 const Window * window() const
+```
+
+*No documentation comment.*
+
+## `Application::layers`
+
+```cpp
+LayerStack & layers()
+```
+
+ The layer stack. Layers are where features live; `Application` stays
+ thin on purpose (T0014).
+
+## `Application::layers`
+
+```cpp
+const LayerStack & layers() const
 ```
 
 *No documentation comment.*

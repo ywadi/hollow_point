@@ -329,7 +329,13 @@ def check_entry(header: str, entry: dict) -> list[str]:
                      It happens whenever someone renames a parameter and does
                      not update the comment, which nothing else would catch.
     """
-    where = f"{header}:{entry['line']} {entry['name']}"
+    # Identity deliberately excludes the line number. Keying a baseline on
+    # `file:line` means any edit above a defect invalidates its entry, so the
+    # ratchet reports the whole file as new the first time someone adds a
+    # comment near the top -- which is exactly what happened, 72 spurious
+    # "new" defects from one unrelated edit. The line is reported for
+    # navigation and is not part of the key.
+    where = f"{header} {entry['owner'] + '::' if entry['owner'] else ''}{entry['name']}"
     problems: list[str] = []
     doc = entry["doc"]
 
@@ -467,6 +473,7 @@ def main() -> int:
         fixed = len(known) - (len(defects) - len(new_defects))
         for defect in new_defects:
             print(f"error: {defect}", file=sys.stderr)
+        # Line numbers are printed alongside but never keyed on -- see check_entry.
         if new_defects:
             print(
                 f"error: {len(new_defects)} new API documentation defect(s).\n"

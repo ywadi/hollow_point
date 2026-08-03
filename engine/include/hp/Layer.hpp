@@ -74,7 +74,9 @@ public:
     LayerStack(const LayerStack&) = delete;
     LayerStack& operator=(const LayerStack&) = delete;
 
-    /// Adds below any overlays. @param layer the layer; ownership is taken.
+    /// Adds below any overlays.
+    ///
+    /// @param layer the layer; ownership is taken.
     /// @returns a borrowed pointer, valid until the layer is popped.
     ILayer* push(std::unique_ptr<ILayer> layer);
 
@@ -91,6 +93,8 @@ public:
     void clear();
 
     /// Bottom-up: the world simulates before the interface drawn over it.
+    ///
+    /// @param deltaSeconds scaled frame delta, passed to every layer.
     void update(double deltaSeconds);
     void render();
 
@@ -102,7 +106,8 @@ public:
 
     std::size_t overlayCount() const { return overlayCount_; }
 
-    /// @param index position from the bottom. @returns the layer, or null.
+    /// @param index position from the bottom, overlays last.
+    /// @returns the layer at `index`, or null if out of range.
     ILayer* at(std::size_t index) const;
 
 private:

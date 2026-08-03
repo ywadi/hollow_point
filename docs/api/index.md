@@ -31,16 +31,18 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | Header | Declarations | Documented |
 |---|---|---|
 | [`<hp/Api.hpp>`](Api.md) | 0 | 0 |
-| [`<hp/Application.hpp>`](Application.md) | 14 | 5 |
+| [`<hp/Application.hpp>`](Application.md) | 17 | 7 |
 | [`<hp/Engine.hpp>`](Engine.md) | 4 | 4 |
 | [`<hp/EntryPoint.hpp>`](EntryPoint.md) | 1 | 0 |
+| [`<hp/Event.hpp>`](Event.md) | 72 | 15 |
 | [`<hp/Guid.hpp>`](Guid.md) | 13 | 5 |
+| [`<hp/Layer.hpp>`](Layer.md) | 24 | 12 |
 | [`<hp/Log.hpp>`](Log.md) | 22 | 12 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 12 | 4 |
 
-**87 public declarations across 9 headers, 40 documented.**
+**186 public declarations across 11 headers, 69 documented.**
 
 ## Every symbol
 
@@ -53,18 +55,93 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Application::operator=` | [`Application.hpp`](Application.md) |
 | `Application::run` | [`Application.hpp`](Application.md) |
 | `Application::requestExit` | [`Application.hpp`](Application.md) |
+| `Application::dispatch` | [`Application.hpp`](Application.md) |
 | `Application::config` | [`Application.hpp`](Application.md) |
 | `Application::clock` | [`Application.hpp`](Application.md) |
 | `Application::clock` | [`Application.hpp`](Application.md) |
 | `Application::frame` | [`Application.hpp`](Application.md) |
 | `Application::window` | [`Application.hpp`](Application.md) |
 | `Application::window` | [`Application.hpp`](Application.md) |
+| `Application::layers` | [`Application.hpp`](Application.md) |
+| `Application::layers` | [`Application.hpp`](Application.md) |
 | `createApplication` | [`Application.hpp`](Application.md) |
 | `engineVersion` | [`Engine.hpp`](Engine.md) |
 | `engineInstanceCount` | [`Engine.hpp`](Engine.md) |
 | `engineRegisterConsumer` | [`Engine.hpp`](Engine.md) |
 | `engineConsumerCount` | [`Engine.hpp`](Engine.md) |
 | `main` | [`EntryPoint.hpp`](EntryPoint.md) |
+| `EventType` | [`Event.hpp`](Event.md) |
+| `EventCategory` | [`Event.hpp`](Event.md) |
+| `operator|` | [`Event.hpp`](Event.md) |
+| `hasCategory` | [`Event.hpp`](Event.md) |
+| `Event` | [`Event.hpp`](Event.md) |
+| `Event::type` | [`Event.hpp`](Event.md) |
+| `Event::categories` | [`Event.hpp`](Event.md) |
+| `Event::name` | [`Event.hpp`](Event.md) |
+| `Event::consume` | [`Event.hpp`](Event.md) |
+| `Event::isConsumed` | [`Event.hpp`](Event.md) |
+| `Event::isIn` | [`Event.hpp`](Event.md) |
+| `WindowCloseEvent` | [`Event.hpp`](Event.md) |
+| `WindowCloseEvent::type` | [`Event.hpp`](Event.md) |
+| `WindowCloseEvent::categories` | [`Event.hpp`](Event.md) |
+| `WindowCloseEvent::name` | [`Event.hpp`](Event.md) |
+| `WindowResizeEvent` | [`Event.hpp`](Event.md) |
+| `WindowResizeEvent::WindowResizeEvent` | [`Event.hpp`](Event.md) |
+| `WindowResizeEvent::width` | [`Event.hpp`](Event.md) |
+| `WindowResizeEvent::height` | [`Event.hpp`](Event.md) |
+| `WindowResizeEvent::type` | [`Event.hpp`](Event.md) |
+| `WindowResizeEvent::categories` | [`Event.hpp`](Event.md) |
+| `WindowResizeEvent::name` | [`Event.hpp`](Event.md) |
+| `WindowFocusEvent` | [`Event.hpp`](Event.md) |
+| `WindowFocusEvent::WindowFocusEvent` | [`Event.hpp`](Event.md) |
+| `WindowFocusEvent::gained` | [`Event.hpp`](Event.md) |
+| `WindowFocusEvent::type` | [`Event.hpp`](Event.md) |
+| `WindowFocusEvent::categories` | [`Event.hpp`](Event.md) |
+| `WindowFocusEvent::name` | [`Event.hpp`](Event.md) |
+| `KeyCode` | [`Event.hpp`](Event.md) |
+| `KeyModifiers` | [`Event.hpp`](Event.md) |
+| `KeyEvent` | [`Event.hpp`](Event.md) |
+| `KeyEvent::KeyEvent` | [`Event.hpp`](Event.md) |
+| `KeyEvent::key` | [`Event.hpp`](Event.md) |
+| `KeyEvent::modifiers` | [`Event.hpp`](Event.md) |
+| `KeyEvent::pressed` | [`Event.hpp`](Event.md) |
+| `KeyEvent::isRepeat` | [`Event.hpp`](Event.md) |
+| `KeyEvent::type` | [`Event.hpp`](Event.md) |
+| `KeyEvent::categories` | [`Event.hpp`](Event.md) |
+| `KeyEvent::name` | [`Event.hpp`](Event.md) |
+| `TextInputEvent` | [`Event.hpp`](Event.md) |
+| `TextInputEvent::TextInputEvent` | [`Event.hpp`](Event.md) |
+| `TextInputEvent::codepoint` | [`Event.hpp`](Event.md) |
+| `TextInputEvent::type` | [`Event.hpp`](Event.md) |
+| `TextInputEvent::categories` | [`Event.hpp`](Event.md) |
+| `TextInputEvent::name` | [`Event.hpp`](Event.md) |
+| `MouseButton` | [`Event.hpp`](Event.md) |
+| `MouseButtonEvent` | [`Event.hpp`](Event.md) |
+| `MouseButtonEvent::MouseButtonEvent` | [`Event.hpp`](Event.md) |
+| `MouseButtonEvent::button` | [`Event.hpp`](Event.md) |
+| `MouseButtonEvent::pressed` | [`Event.hpp`](Event.md) |
+| `MouseButtonEvent::x` | [`Event.hpp`](Event.md) |
+| `MouseButtonEvent::y` | [`Event.hpp`](Event.md) |
+| `MouseButtonEvent::type` | [`Event.hpp`](Event.md) |
+| `MouseButtonEvent::categories` | [`Event.hpp`](Event.md) |
+| `MouseButtonEvent::name` | [`Event.hpp`](Event.md) |
+| `MouseMovedEvent` | [`Event.hpp`](Event.md) |
+| `MouseMovedEvent::MouseMovedEvent` | [`Event.hpp`](Event.md) |
+| `MouseMovedEvent::x` | [`Event.hpp`](Event.md) |
+| `MouseMovedEvent::y` | [`Event.hpp`](Event.md) |
+| `MouseMovedEvent::deltaX` | [`Event.hpp`](Event.md) |
+| `MouseMovedEvent::deltaY` | [`Event.hpp`](Event.md) |
+| `MouseMovedEvent::type` | [`Event.hpp`](Event.md) |
+| `MouseMovedEvent::categories` | [`Event.hpp`](Event.md) |
+| `MouseMovedEvent::name` | [`Event.hpp`](Event.md) |
+| `MouseScrolledEvent` | [`Event.hpp`](Event.md) |
+| `MouseScrolledEvent::MouseScrolledEvent` | [`Event.hpp`](Event.md) |
+| `MouseScrolledEvent::offsetX` | [`Event.hpp`](Event.md) |
+| `MouseScrolledEvent::offsetY` | [`Event.hpp`](Event.md) |
+| `MouseScrolledEvent::type` | [`Event.hpp`](Event.md) |
+| `MouseScrolledEvent::categories` | [`Event.hpp`](Event.md) |
+| `MouseScrolledEvent::name` | [`Event.hpp`](Event.md) |
+| `dispatchEvent` | [`Event.hpp`](Event.md) |
 | `Guid` | [`Guid.hpp`](Guid.md) |
 | `Guid::Guid` | [`Guid.hpp`](Guid.md) |
 | `Guid::Guid` | [`Guid.hpp`](Guid.md) |
@@ -78,6 +155,30 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Guid::parse` | [`Guid.hpp`](Guid.md) |
 | `hash` | [`Guid.hpp`](Guid.md) |
 | `hash::operator()` | [`Guid.hpp`](Guid.md) |
+| `ILayer` | [`Layer.hpp`](Layer.md) |
+| `ILayer::ILayer` | [`Layer.hpp`](Layer.md) |
+| `ILayer::ILayer` | [`Layer.hpp`](Layer.md) |
+| `ILayer::operator=` | [`Layer.hpp`](Layer.md) |
+| `ILayer::onAttach` | [`Layer.hpp`](Layer.md) |
+| `ILayer::onDetach` | [`Layer.hpp`](Layer.md) |
+| `ILayer::onUpdate` | [`Layer.hpp`](Layer.md) |
+| `ILayer::onRender` | [`Layer.hpp`](Layer.md) |
+| `ILayer::onEvent` | [`Layer.hpp`](Layer.md) |
+| `ILayer::name` | [`Layer.hpp`](Layer.md) |
+| `LayerStack` | [`Layer.hpp`](Layer.md) |
+| `LayerStack::LayerStack` | [`Layer.hpp`](Layer.md) |
+| `LayerStack::LayerStack` | [`Layer.hpp`](Layer.md) |
+| `LayerStack::operator=` | [`Layer.hpp`](Layer.md) |
+| `LayerStack::push` | [`Layer.hpp`](Layer.md) |
+| `LayerStack::pushOverlay` | [`Layer.hpp`](Layer.md) |
+| `LayerStack::pop` | [`Layer.hpp`](Layer.md) |
+| `LayerStack::clear` | [`Layer.hpp`](Layer.md) |
+| `LayerStack::update` | [`Layer.hpp`](Layer.md) |
+| `LayerStack::render` | [`Layer.hpp`](Layer.md) |
+| `LayerStack::dispatch` | [`Layer.hpp`](Layer.md) |
+| `LayerStack::size` | [`Layer.hpp`](Layer.md) |
+| `LayerStack::overlayCount` | [`Layer.hpp`](Layer.md) |
+| `LayerStack::at` | [`Layer.hpp`](Layer.md) |
 | `LogLevel` | [`Log.hpp`](Log.md) |
 | `logLevelName` | [`Log.hpp`](Log.md) |
 | `LogCategory` | [`Log.hpp`](Log.md) |
