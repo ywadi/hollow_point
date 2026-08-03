@@ -25,7 +25,7 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0001](completed/0001-run-windows-exe-under-wine.md) | Run the Windows executable under wine | 1 — Harden the build | ✅ DONE | High | Simple |
 | [T0002](completed/0002-verify-windows-dist-staging.md) | Verify `dist` staging for Windows | 1 — Harden the build | ✅ DONE | High | Simple |
 | [T0003](completed/0003-verify-vulkan-backend.md) | Verify the Vulkan backend on real hardware | 1 — Harden the build | ✅ DONE | High | Trivial |
-| [T0004](open/0004-verify-windows-host-build.md) | Verify building *on* a Windows host | 1 — Harden the build | 🔜 TODO | Medium | Moderate |
+| [T0004](completed/0004-verify-windows-host-build.md) | Verify building *on* a Windows host | 1 — Harden the build | ✅ DONE | Medium | Moderate |
 | [T0007](completed/0007-retire-imgui-probe.md) | Retire `apps/imgui_probe` | 1 — Harden the build | ✅ DONE | Low | Simple |
 | [T0010](completed/0010-offline-configure.md) | Make `configure` work offline | 1 — Harden the build | ✅ DONE | Low | Moderate |
 | [T0012](open/0012-test-harness.md) | Build a test harness for TDD | 1 — Harden the build | 🔜 TODO | High | Complex |

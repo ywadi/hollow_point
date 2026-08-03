@@ -82,8 +82,25 @@ for l in "${LIBS[@]}"; do
         -Wl,-soname,"$soname" -o "$OUT/lib/$soname" "$WORK/stub.c"
 
     # The .so name is what -l<name> resolves against at link time.
-    ln -sf "$soname" "$OUT/lib/$l.so"
-    echo "    lib/$l.so -> $soname  ($(wc -l < "$WORK/syms") symbols)"
+    #
+    # A real copy, not a symlink. This tree gets checked out on Windows too, and
+    # neither git can produce a symlink a Win32 process can read: WSL git writes
+    # an LX reparse point (Win32 cannot open it at all -- "the file cannot be
+    # accessed by the system"), and Git for Windows with the default
+    # core.symlinks=false writes a text file containing the target's name. Both
+    # make `find_library` fail, which fails configure of the Linux target from a
+    # Windows host with `Could NOT find X11 (missing: X11_X11_LIB)` (T0004).
+    #
+    # The copy keeps the versioned SONAME, so link-time and runtime behaviour are
+    # unchanged -- the loader still binds the user's real library by SONAME, and
+    # the RPATH reasoning in zig-common.cmake (gotcha G6) still holds.
+    #
+    # Costs ~1.4 MB of duplication. Emitting the stub *once* as lib<n>.so with
+    # -Wl,-soname,<versioned> would avoid that and is probably what this should
+    # do eventually, but the duplicated form is what has actually been built and
+    # run on both hosts.
+    cp -f "$OUT/lib/$soname" "$OUT/lib/$l.so"
+    echo "    lib/$l.so (copy of $soname, $(wc -l < "$WORK/syms") symbols)"
 done
 
 {

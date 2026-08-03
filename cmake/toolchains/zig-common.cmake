@@ -211,6 +211,38 @@ if(HP_TARGET MATCHES "windows")
     endif()
 endif()
 
+# --- precompiled headers, ELF target, Windows host ---------------------------
+#
+# zig 0.16.0 cannot produce a precompiled header for an ELF target when it is
+# itself running on Windows. Clang emits the PCH into zig's cache under an `.o`
+# name, and zig then hands that file to its linker instead of treating it as the
+# final artifact:
+#
+#     ld.lld: error: ...\.zig-cache\o\<hash>\cmake_pch.hxx.o: unknown file type
+#
+# Diligent's vendored glslang enables PCH, which is 99 of the Linux target's
+# build rules -- so the whole target is unbuildable from a Windows host without
+# this. Measured, not guessed (T0004); the deciding variables are the host and
+# the target's object format, not the flags:
+#
+#   | host    | target          | -MD | result |
+#   | Linux   | linux  (ELF)    | no  | fail   |
+#   | Linux   | linux  (ELF)    | yes | pass   |
+#   | Windows | linux  (ELF)    | no  | fail   |
+#   | Windows | linux  (ELF)    | yes | fail   |
+#   | either  | windows (COFF)  | -   | pass   |
+#
+# CMake always passes `-MD`, which is why a Linux host never hits this and the
+# defect stayed invisible until the diagonal was first attempted. Scoped as
+# tightly as the evidence allows: a Windows host is the only one affected, so a
+# Linux host keeps its precompiled headers and its build times.
+#
+# Revisit when the zig pin moves -- this is an upstream defect, not a project
+# one, and the cost here is compile time on one host/target pair.
+if(CMAKE_HOST_WIN32 AND NOT HP_TARGET MATCHES "windows")
+    set(CMAKE_DISABLE_PRECOMPILE_HEADERS ON CACHE BOOL "" FORCE)
+endif()
+
 _hp_shim(zig-cc     "cc"     "-target ${HP_TARGET}${_hp_extra}")
 _hp_shim(zig-cxx    "c++"    "-target ${HP_TARGET}${_hp_extra}")
 _hp_shim(zig-ar     "ar")

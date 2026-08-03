@@ -18,6 +18,17 @@ Zig-based, incremental, cross-compiling from either host. See
   1105/1105 targets. `ImGuiProbe.exe` is `PE32+ executable (console) x86-64`;
   `GraphicsEngineVk_64r.dll`, `GraphicsEngineOpenGL_64r.dll`,
   `Archiver_64r.dll`, `SuperResolution_64r.dll` are `PE32+ (DLL)`
+- ✅ **Windows x86_64, built on a Windows host** — full build, exit 0,
+  1089/1089 targets (T0004). `Diligent-RenderStatePackager.exe` was **run
+  natively**, the first execution of this project's output on Windows without
+  wine. All four DLLs `PE32+ (DLL)`, 92 static libraries
+- ✅ **Linux x86_64, cross-compiled from Windows** — the last quadrant of the
+  D3 matrix, full build, exit 0, 1095/1095 targets (T0004). Produced
+  `Diligent-RenderStatePackager` (`ELF 64-bit LSB executable, x86-64`) which
+  **runs under WSL**; max symbol requirement `GLIBC_2.27`, no RPATH — matching
+  the Linux-host build exactly. Required two fixes, both landed: sysroot stubs
+  are copies rather than symlinks, and precompiled headers are disabled for
+  ELF targets on a Windows host
 - ✅ **Incremental exact** — no-op → `ninja: no work to do`; one `.cpp` → 8 steps;
   hot header → 246 of ~1100
 - ✅ **Hermetic Linux** — X11/GL resolved from the vendored sysroot, not `/usr`
@@ -55,9 +66,14 @@ dockspace. `1.92.9b` (not Diligent's 1.92.1) proves the swap took effect.
 
 ## Not verified — do not claim these work
 
-- ⚠️ **Windows host.** All Windows-host paths (`bootstrap.ps1`, `.cmd` shims,
-  the case-sensitivity probe taking its false branch) are written but have
-  **never been executed**. Only Linux→Windows cross-compilation is proven.
+- ⚠️ **Windows host — now largely proven; two caveats remain.** `bootstrap.ps1`,
+  the `.cmd` shims and the case probe's false branch all executed correctly
+  (T0004), so the D3 matrix is complete. But the working tree used was created
+  by **WSL git**, not by a Windows clone, and the run was driven through WSL
+  interop rather than from a Windows shell. A clone made with Git for Windows
+  has not been built. Configure also requires **Python on `PATH`** (it runs
+  `pip install jinja2` for DiligentCore's codegen), which `BUILDING.md` does
+  not mention.
 - ⚠️ **The Windows `.exe` has never been run.** It links and has the right
   format; that is all that is known. `wine` is available at `/usr/bin/wine` and
   was going to be tried.
