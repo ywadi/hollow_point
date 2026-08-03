@@ -21,10 +21,41 @@
 
 name: CI
 
+# Documentation-only pushes cannot fail a build or a test, so they skip the
+# matrix below via paths-ignore. Most of this repo's commits touch only
+# claude_documentation/ (backlog tickets, design docs) or a root-level *.md,
+# and burning ~19 minutes of runners on a paragraph edit proves nothing.
+#
+# Keep this list narrow -- anything that can affect a build or test result
+# must still trigger CI. In particular, resist the urge to add bootstrap.sh
+# or bootstrap.ps1 here because they "look like" install scripts nobody but a
+# human reads: tests/harness/pins_test.zig opens both of them at test time
+# and asserts their pinned versions and install layout against build.zig, so
+# they are test inputs, not documentation. The same caution applies before
+# ever widening `*.md` to `**.md` or adding another root path here -- check
+# whether a test reads the file first, don't assume markdown is inert.
+#
+# paths-ignore also has a sharp edge that has nothing to do with what's
+# listed below: on a repo with required status checks configured, a job that
+# never runs also never reports a status, and a required-but-skipped check
+# leaves the PR stuck at "waiting for status" forever, with no failure to
+# point at. This repo has no branch protection on main today (checked via
+# `gh api repos/ywadi/hollow_point/branches/main/protection`, which 404s), so
+# that trap does not apply -- but if required checks are ever turned on for
+# the jobs below, paths-ignore stops being the right tool and the fix is a
+# cheap filter job that always reports a result instead.
 on:
   push:
     branches: [main]
+    # See the note above `on:` for what this excludes and why.
+    paths-ignore:
+      - 'claude_documentation/**'
+      - '*.md'
   pull_request:
+    # Same list as push, above.
+    paths-ignore:
+      - 'claude_documentation/**'
+      - '*.md'
   workflow_dispatch:
 
 # A superseded push should not keep burning runners.
