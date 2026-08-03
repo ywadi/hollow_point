@@ -50,7 +50,7 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0068](open/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
 | [T0073](open/0073-gameplay-utilities.md) | Gameplay utility library | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
 | [T0076](open/0076-autoloads.md) | Autoloads: project and scene scoped services | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
-| [T0095](open/0095-gameplay-module-abi-and-linkage.md) | Gameplay module ABI: engine linkage, one engine state, entt across the boundary | 2 — Engine skeleton | 🔜 TODO | High | Complex |
+| [T0095](inprogress/0095-gameplay-module-abi-and-linkage.md) | Gameplay module ABI: engine linkage, one engine state, entt across the boundary | 2 — Engine skeleton | 🚧 IN PROGRESS | High | Complex |
 | [T0100](open/0100-frame-lifecycle-and-update-order.md) | Frame lifecycle and system update order | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | [T0020](open/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | 🔜 TODO | High | Complex |
 | [T0021](open/0021-scene-and-ecs.md) | Scene and entity-component system | 3 — Data model | 🔜 TODO | High | Moderate |

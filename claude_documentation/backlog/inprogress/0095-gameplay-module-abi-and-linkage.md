@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Complex |
 | **Phase** | 2 — Engine skeleton |
@@ -63,7 +63,7 @@ world — exactly the "hacking the engine" outcome this backlog exists to avoid.
 
 ## Subtasks
 
-- [ ] 95.1 Decide: engine as shared library in dev builds (one copy of state,
+- [x] 95.1 Decide: engine as shared library in dev builds (one copy of state,
       conventional on both platforms) vs exe-exports (Linux-easy,
       Windows-fragile). Prototype the Windows side under the zig/MinGW
       toolchain **before** committing — this project's history (G2, G3, G4) is
@@ -71,7 +71,7 @@ world — exactly the "hacking the engine" outcome this backlog exists to avoid.
 - [ ] 95.2 Configure entt for cross-boundary use — `ENTT_API_EXPORT` /
       `ENTT_API_IMPORT` on the right sides — and confirm name-based
       `type_hash` behaves identically for both modules under zig's clang
-- [ ] 95.3 Boundary test: two component types (one engine-defined, one
+- [x] 95.3 Boundary test: two component types (one engine-defined, one
       module-defined), created on one side, queried on the other, surviving a
       hot reload
 - [ ] 95.4 Symbol visibility policy for shared types (vtables and typeinfo
@@ -84,6 +84,97 @@ world — exactly the "hacking the engine" outcome this backlog exists to avoid.
       choice) is loaded once and never reloaded
 - [ ] 95.7 Check `dist`/export staging carries the engine shared library
       correctly on both platforms (T0043; Windows needs it beside the exe)
+
+## Prototype results (2026-08-03) — 95.1/95.2/95.3 fact-finding
+
+A standalone prototype under the pinned zig toolchain: `hpengine` (shared),
+`gamemod` (shared, links the engine), and a driver that `dlopen`/`LoadLibrary`s
+the module and compares both sides. Built for **both** targets, run natively on
+Linux and under wine for Windows.
+
+### The engine-as-shared-library model works on both platforms
+
+```
+Linux    engine global has one address     PASS  exe=0x7bdd1e03e680 module=0x7bdd1e03e680
+Windows  engine global has one address     PASS  exe=00006FFFFAF5F9E0 module=00006FFFFAF5F9E0
+```
+
+Mutating the global through the engine and reading it back through the module
+gives the mutated value on both. **Windows did not surprise us**, which is
+worth stating given G2/G3/G4: `zig c++ -target x86_64-windows-gnu -shared`
+produced `hpengine.dll`, and linking `gamemod.dll` and `driver.exe` against it
+by naming the DLL directly worked with no import library, no `.def` file and no
+export list. The "exe-exports" alternative in 95.1 does not need to be
+prototyped — the conventional option is available on both platforms, so the
+fragile one can simply be dropped.
+
+### The ticket's sharpest claim is wrong, and the fix it proposes backfires
+
+This ticket says `type_index`'s sequential counter "must be a single instance
+across boundaries" or "components quietly land in the wrong pools". Against the
+vendored entt 3.16.0 that is not how identity works:
+
+- `basic_registry` keys **every** pool on `type_hash<Type>::value()`, the
+  name-based hash — `registry.hpp:248,280,455,466,1022`, all defaulting to
+  `type_hash<Type>::value()`. The sequential index is never a pool key.
+- `type_info::operator==` compares **`hash()` only** (`type_info.hpp:188`).
+  `seq` is carried in the struct and ignored by equality, so the debug asserts
+  at `registry.hpp:258,288` (`it->second->info() == type_id<Type>()`) do not
+  fire on an index mismatch either.
+
+Measured, both targets: `type_hash` for the same type agrees across the
+boundary (`48949654` on both sides, both platforms), and a component emplaced
+by the engine is visible to a `view<>` in the module.
+
+Worse, **setting `ENTT_API_EXPORT`/`ENTT_API_IMPORT` as 95.2 proposes makes the
+indices disagree** rather than unifying them:
+
+```
+no ENTT_API      engine=0  module=0   (and module's own type = 1)
+ENTT_API set     engine=0  module=1   (and module's own type = 2)
+```
+
+The macros do make `internal::type_index::next()` a single counter, but
+`type_index<T>::value()` memoises into a function-local static that is still
+**per-module**. One shared counter handing out numbers to two memoisation sites
+gives the same type two different indices — the opposite of the intent. Without
+the macros each module runs its own counter and the first type registered in
+each gets `0`.
+
+**Caveat on that last row, stated because the test cannot distinguish it:** the
+`no ENTT_API` pass is a *coincidence*, not a proof of sharing — each module's
+counter independently starts at zero, so the first type on each side gets `0`
+either way. The prototype cannot tell "one shared counter" from "two counters
+that happen to agree", and no conclusion should be drawn from it beyond "index
+values are not a cross-boundary identity". `type_hash` is the identity, on the
+evidence above.
+
+### What this changes
+
+- **95.2 as written should not be done.** Do not define `ENTT_API_EXPORT` /
+  `ENTT_API_IMPORT`. Leaving `ENTT_API` empty is both the default and the
+  better behaviour here. The subtask becomes: prove `type_hash` stability and
+  write down *why* the macros are deliberately not set, so the next person
+  reading entt's docs does not "fix" it.
+- **A convention for T0055 falls out of this:** `entt::type_index` /
+  `type_info::index()` must never be used as a persistent identifier, a
+  serialised value, or any cross-module key. It is a per-module runtime number.
+  This binds T0053 (reflection registry) and T0074 (gameplay tags), both of
+  which will be tempted by a dense integer id.
+- The genuine hazard the ticket identified — **one instance of engine state** —
+  is real and is solved by the engine being a shared library, which is now
+  demonstrated on both platforms rather than assumed.
+
+### Still open in this ticket
+
+95.4 (visibility policy) is untested: the prototype used
+`-fvisibility=hidden` on Linux with explicit default-visibility exports and it
+worked, but vtables/typeinfo for types crossing the boundary were not
+exercised. 95.5 (exceptions/allocation at the boundary), 95.6 (re-verifying
+T0048's copy-before-load against this model) and 95.7 (`dist` staging the
+engine shared library) are untouched. No decision has been recorded in the
+decision log yet — that is the first Done-when and needs sign-off on "engine is
+a shared library", not just evidence that it can be.
 
 ## Notes / findings
 
