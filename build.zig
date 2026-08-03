@@ -10,6 +10,7 @@
 //!   zig build all             build both
 //!   zig build dist            stage runnable output into dist/
 //!   zig build configure       (re)run CMake configure only
+//!   zig build docs            regenerate docs/api/ (the agent-facing API reference)
 //!   zig build clean           delete build/ and dist/
 //!
 //!   -Dconfig=Release|Debug|RelWithDebInfo|MinSizeRel   (default: Release)
@@ -373,6 +374,39 @@ pub fn build(b: *Build) void {
         run.has_side_effects = true;
         test_step.dependOn(&run.step);
     }
+
+    // --- api docs (T0118) --------------------------------------------------
+    //
+    // A markdown reference for the engine's public headers, whose consumer is a
+    // coding agent writing gameplay code rather than a human browsing a site.
+    //
+    // A build step rather than only a CI check, because stale output here is a
+    // *correctness* bug: an agent reading an outdated reference writes calls to
+    // functions that do not exist, confidently. Generating it as part of the
+    // build means it cannot drift; the CI gate is then trivially "run this,
+    // then fail if the tree is dirty".
+    //
+    // On demand rather than part of the default build. It needs python and
+    // libclang, which not every developer will have, and making `zig build`
+    // fail for someone who only wants to compile the engine would be a poor
+    // trade for output that changes rarely. CI runs it, so drift is caught.
+    //
+    // Host-only and target-independent: the API is the same for every target,
+    // so there is nothing to generate twice.
+    const docs = b.addSystemCommand(&.{
+        "python3",
+        "tools/gen_api_docs.py",
+        "--include",
+        "engine/include",
+        "--out",
+        "docs/api",
+        "--zig",
+        b.graph.zig_exe,
+    });
+    docs.setName("generate api docs");
+    docs.stdio = .inherit;
+    docs.has_side_effects = true;
+    b.step("docs", "Generate the markdown API reference for coding agents").dependOn(&docs.step);
 
     // --- clean -----------------------------------------------------------
     const clean = b.addSystemCommand(&.{ cmake, "-E", "rm", "-rf", "build", "dist" });

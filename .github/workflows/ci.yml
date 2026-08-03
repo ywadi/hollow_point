@@ -145,6 +145,50 @@ jobs:
         # proved Linux-from-Windows cross-compiles.
         run: zig build test -Dtest=all -Dtarget=windows
 
+  api-docs-current:
+    name: API reference is up to date
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Cache the pinned toolchain
+        uses: actions/cache@v6
+        with:
+          key: harness-linux-${{ hashFiles('bootstrap.sh') }}
+          path: .harness
+
+      - name: Bootstrap the toolchain
+        run: ./bootstrap.sh
+
+      - name: Put the pinned zig on PATH
+        run: |
+          zig_version=$(grep -m1 '^ZIG_VERSION=' bootstrap.sh | cut -d= -f2)
+          echo "$PWD/.harness/zig/linux-$(uname -m)/$zig_version" >> "$GITHUB_PATH"
+
+      - name: Install libclang
+        run: pip install libclang
+
+      # The whole point of generating the reference in the build rather than
+      # only checking it in CI: the gate is "regenerate, then fail if anything
+      # moved". No second header-parsing pass, no drift detector to maintain.
+      #
+      # Stale output here is a correctness bug rather than a documentation one --
+      # the consumer is a coding agent, and an outdated reference makes it write
+      # calls to functions that do not exist (T0118).
+      - name: Regenerate and check for drift
+        run: |
+          zig build docs
+          if ! git diff --quiet -- docs/api; then
+            echo "::error::docs/api is out of date -- run 'zig build docs' and commit the result"
+            git diff --stat -- docs/api
+            exit 1
+          fi
+          echo "API reference matches the headers"
+
   offline-configure:
     name: Configure with FetchContent disconnected
     runs-on: ubuntu-latest

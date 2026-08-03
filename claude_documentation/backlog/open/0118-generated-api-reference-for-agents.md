@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 2 — Engine skeleton |
@@ -90,3 +90,86 @@ Whichever is chosen **runs as a host tool only** — it never cross-compiles, mi
 **Public surface is exactly `engine/include/hp/`.** `engine/src/` is implementation and out of scope for this reference regardless of what comment density it carries — matching the layout `06-engine-conventions.md` already states (`include/hp/…` public, `src/…` implementation).
 
 **Placed early (Phase 2, Order 45) rather than later.** Gameplay-facing headers accumulate from Phase 2 onward, and a coding agent writing against them needs the reference from the start, not once Phase 12's UI epic is reached. The same "land the rule before the surface grows" reasoning that put T0019's profiling macros ahead of the systems they instrument applies here: retrofitting tag discipline and a generation step across a large, already-grown header surface is a sweep nobody schedules; doing it now, against 8 headers, is cheap.
+
+
+## Decisions taken (2026-08-03)
+
+**118.1 Tooling: python + libclang.** `clang-doc` is **not** in the pinned
+toolchain — checked, `find .harness/zig -name 'clang-doc*'` returns nothing, so
+the ticket's flagged unknown is settled negatively. Doxygen *is* on this host
+but was rejected twice over: it would be an unpinned host dependency, which is
+what D5 exists to prevent, and its markdown is shaped for human browsing rather
+than for an agent. libclang gives exact signatures and Python is already a build
+requirement (DiligentCore pip-installs jinja2 during configure), so this adds a
+dependency of a kind the project already carries.
+
+**The diagnostics rule is what makes it trustworthy.** The host's libclang is a
+different LLVM version from the one zig bundles, so parsing zig's libc++ headers
+produces version-mismatch noise — 13 errors on `Log.hpp` alone. Rather than
+ignore diagnostics wholesale, the generator distinguishes: **errors originating
+in our own headers are fatal and refuse to write output; errors inside standard
+library headers are tolerated.** Verified that extraction from a header with 13
+libc++ errors and zero own-header errors is complete and correct — all 28
+declarations, correct return types and signatures.
+
+Include paths are asked of `zig c++ -E -v` rather than hardcoded, so the
+reference describes the API as the real build sees it and does not drift when
+zig is bumped.
+
+**118.2 Structure: one file per header, plus an index.** A single file is
+tempting at nine headers and wrong at fifty. Per-header means an agent asking
+"what is the logging API" reads `docs/api/Log.md` and nothing else, which is the
+context-window property that matters. `index.md` carries the map: a header
+table, a full symbol list, and the cross-cutting rules.
+
+**Prose density: the full doc comment, not a summary.** This project's comments
+explain *why* — why `LogCategory` is a handle, why sinks are non-owning — and
+that is precisely what stops an agent misusing an API. Truncating to a one-liner
+would discard the most valuable part.
+
+**118.4 Conventions inline: a rules preamble in `index.md`.** The module-boundary
+rules, the exception policy, `HP_ASSERT` semantics and the `entt::type_index`
+prohibition are reproduced next to the API rather than left in
+`06-engine-conventions.md`. An agent reads what it is given; a document it was
+never pointed at may as well not exist.
+
+**118.5 `zig build docs`, on demand.** Not part of the default build: it needs
+python and libclang, and making `zig build` fail for someone who only wants to
+compile the engine is a poor trade for output that changes rarely. Host-only and
+target-independent — there is nothing to generate twice.
+
+**118.6 Committed to the repository.** An agent working in a fresh clone must
+not have to build the engine first to learn its API, and a human reading the
+repo on GitHub gets the same. It also enables the CI gate below. The cost —
+regenerated files in diffs — is accepted and small at this size.
+
+**The CI gate is the one the build-step design enables**: run `zig build docs`,
+then fail if `git diff --quiet -- docs/api` reports changes. No second
+header-parsing pass, no drift detector to maintain. Proven to fail: changing
+`Guid::generate()` to `generate(int seedHint)` changed the generated output.
+
+## Progress
+
+Working and verified:
+
+```
+$ zig build docs
+api docs: 87 declarations across 9 headers (39 documented) -> docs/api
+```
+
+Generated: `docs/api/index.md` plus one file per public header.
+
+## Still to do
+
+**118.3 is not done, and the coverage number says so plainly: 39 of 87
+declarations carry documentation.** The generator marks the rest
+`*No documentation comment.*` rather than omitting them, so the gap is visible
+to an agent rather than silent — an undocumented symbol is far safer than an
+absent one, because absence invites invention.
+
+What remains is the tag discipline: adding `@param`/`@returns` to public
+functions where the parameters are not self-evident, and writing that
+expectation into `06-engine-conventions.md` so new API is tagged as it is
+written. That is the same "land the rule before the surface grows" reasoning
+that put T0019 ahead of the code it instruments — and it is worth doing before
+the header count grows past nine.

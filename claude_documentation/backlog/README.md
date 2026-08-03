@@ -27,7 +27,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 30 | [T0013](completed/0013-engine-library-app-split.md) | Split the tree into an engine library and app consumers | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | 35 | [T0019](completed/0019-profiling-macro-surface.md) | Profiling macro surface (Tracy-ready, no-op for now) | 2 — Engine skeleton | ✅ DONE | Medium | Trivial |
 | 40 | [T0054](completed/0054-logging.md) | Logging and diagnostics | 2 — Engine skeleton | ✅ DONE | High | Simple |
-| 45 | [T0118](open/0118-generated-api-reference-for-agents.md) | Generated API reference for coding agents | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
+| 45 | [T0118](open/0118-generated-api-reference-for-agents.md) | Generated API reference for coding agents | 2 — Engine skeleton | 🚧 IN PROGRESS | High | Moderate |
 | 50 | [T0056](completed/0056-core-utilities-policy.md) | Core utilities: math, memory, containers | 2 — Engine skeleton | ✅ DONE | Medium | Simple |
 | 60 | [T0016](completed/0016-guid-system.md) | GUID system | 2 — Engine skeleton | ✅ DONE | High | Trivial |
 | 70 | [T0057](completed/0057-time-system.md) | Time system | 2 — Engine skeleton | ✅ DONE | High | Simple |
