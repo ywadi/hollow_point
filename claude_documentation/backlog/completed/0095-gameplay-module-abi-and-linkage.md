@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Complex |
 | **Phase** | 2 — Engine skeleton |
@@ -61,7 +61,8 @@ world — exactly the "hacking the engine" outcome this backlog exists to avoid.
       allowed rather than banned, conditional on boundary types being marked
       default-visibility
 - [ ] Dev and shipped configurations build from the same source with no
-      `#ifdef` spread through gameplay code
+      `#ifdef` spread through gameplay code — **moved to T0105**, needs a build
+      system and T0104 to exist
 - [x] The rules are written into the conventions doc (T0055) — see its module boundary section
 
 ## Subtasks
@@ -92,11 +93,11 @@ world — exactly the "hacking the engine" outcome this backlog exists to avoid.
       site and never reach a module boundary, and memory is released by the
       side that allocated it because each library carries its own statically
       linked libc++
-- [ ] 95.6 Re-verify T0048's mechanics against the chosen model: the *game*
-      DLL is copied-before-load and reloaded; the *engine* DLL (if that is the
-      choice) is loaded once and never reloaded
+- [ ] 95.6 Re-verify T0048's mechanics against the chosen model — **moved to
+      T0105**, blocked on T0048 existing
 - [ ] 95.7 Check `dist`/export staging carries the engine shared library
-      correctly on both platforms (T0043; Windows needs it beside the exe)
+      correctly on both platforms — **moved to T0105**, blocked on T0013
+      producing an engine shared library to stage
 
 ## Prototype results (2026-08-03) — 95.1/95.2/95.3 fact-finding
 
@@ -280,3 +281,46 @@ a shared library", not just evidence that it can be.
   macros (`HP_API`) need deciding at T0013 time — retrofitting export macros
   onto hundreds of headers is exactly the kind of mechanical churn worth
   avoiding by deciding now.
+
+
+## Closing note
+
+**Closed on what it existed to do: decide the linkage model and prove it.** D12
+is recorded, the boundary is proven by a suite that runs on both targets in
+`zig build test`, and the conventions that fall out are written into T0055. That
+is what T0013, T0048 and T0062 were waiting for, and they are no longer blocked.
+
+**Four items are moved to [T0105](../open/0105-module-linkage-loose-ends.md)
+rather than ticked**, and the distinction matters: none was overlooked, and each
+needs code that does not exist yet.
+
+| Item | Waits on |
+|---|---|
+| Genuine module unload (95.3's second half) | T0048 |
+| Dev vs shipped configuration | T0104, and a build system |
+| Re-verify T0048's reload mechanics (95.6) | T0048 |
+| `dist` staging of the engine shared library (95.7) | T0013 |
+
+Leaving this ticket open for them would have shown a blocker on the board that
+was blocking nothing, while the tickets that could actually resolve them queued
+behind it.
+
+### What this ticket proved, and where the evidence lives
+
+- **The engine-as-shared-library model works on both targets.** One address for
+  an engine global seen from the executable and from a loaded module; Windows
+  needed no import library, no `.def` and no export list. The exe-exports
+  alternative was dropped rather than prototyped as a result.
+- **The ticket's own sharpest claim was wrong.** entt keys component pools on
+  `type_hash` (name-based) and `type_info::operator==` compares `hash()` only,
+  so a `type_index` mismatch is inert — and setting `ENTT_API_EXPORT`/`IMPORT`
+  as 95.2 proposed makes indices disagree rather than unifying them.
+- **RTTI across the boundary works** on both targets, so it is allowed rather
+  than banned — conditional on boundary types being default-visibility.
+- **`dlclose` segfaults the process at exit**, reduced to a shared library
+  containing one `static std::string`. Found only because the prototype became
+  a test that unloads; the prototype never did.
+
+Living evidence: `tests/integration/module_boundary_test.cpp` and
+`tests/fixtures/abi_*` — 7 cases, 38 assertions, green on Linux natively and on
+Windows under wine, in CI on both hosts.

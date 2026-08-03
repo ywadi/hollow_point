@@ -22,7 +22,7 @@ This is the work. For what is already proven to work — and what only appears t
 
 | Order | ID | Task | Phase | State | Priority | Complexity |
 |---|---|---|---|---|---|---|
-| ▶ | [T0095](inprogress/0095-gameplay-module-abi-and-linkage.md) | Gameplay module ABI: engine linkage, one engine state, entt across the boundary | 2 — Engine skeleton | 🚧 IN PROGRESS | High | Complex |
+| — | [T0095](completed/0095-gameplay-module-abi-and-linkage.md) | Gameplay module ABI: engine linkage, one engine state, entt across the boundary | 2 — Engine skeleton | ✅ DONE | High | Complex |
 | 10 | [T0055](completed/0055-engine-conventions.md) | Engine conventions and error handling policy | 2 — Engine skeleton | ✅ DONE | High | Trivial |
 | 20 | [T0019](open/0019-profiling-macro-surface.md) | Profiling macro surface (Tracy-ready, no-op for now) | 2 — Engine skeleton | 🔜 TODO | Medium | Trivial |
 | 30 | [T0013](open/0013-engine-library-app-split.md) | Split the tree into an engine library and app consumers | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
@@ -38,6 +38,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 130 | [T0104](open/0104-build-id-and-module-compatibility.md) | Build id stamping and module compatibility checks | 2 — Engine skeleton | 🔜 TODO | High | Simple |
 | 140 | [T0053](open/0053-reflection-type-system.md) | Reflection and type system | 2 — Engine skeleton | 🔜 TODO | High | Very Complex |
 | 150 | [T0048](open/0048-hot-reloadable-gameplay-module.md) | Hot-reloadable gameplay module | 2 — Engine skeleton | 🔜 TODO | High | Very Complex |
+| 155 | [T0105](open/0105-module-linkage-loose-ends.md) | Module linkage: the parts that need something built first | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | 160 | [T0044](open/0044-define-the-game.md) | Define the game | 2 — Engine skeleton | 🔜 TODO | High | Trivial |
 | 170 | [T0068](open/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
 | 180 | [T0103](open/0103-virtual-filesystem-and-packs.md) | Virtual filesystem and content packs | 3 — Data model | 🔜 TODO | High | Moderate |
