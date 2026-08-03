@@ -71,9 +71,11 @@ world — exactly the "hacking the engine" outcome this backlog exists to avoid.
 - [ ] 95.2 Configure entt for cross-boundary use — `ENTT_API_EXPORT` /
       `ENTT_API_IMPORT` on the right sides — and confirm name-based
       `type_hash` behaves identically for both modules under zig's clang
-- [x] 95.3 Boundary test: two component types (one engine-defined, one
+- [ ] 95.3 Boundary test: two component types (one engine-defined, one
       module-defined), created on one side, queried on the other, surviving a
-      hot reload
+      hot reload — **half done**: the cross-boundary half is proven on both
+      targets, the *hot reload* half is untested (nothing was unloaded and
+      reloaded)
 - [ ] 95.4 Symbol visibility policy for shared types (vtables and typeinfo
       need default visibility; `-fvisibility=hidden` everywhere else is still
       fine)
@@ -166,6 +168,14 @@ evidence above.
   demonstrated on both platforms rather than assumed.
 
 ### Still open in this ticket
+
+**95.3 is only half done.** Two component types created on one side and queried
+from the other is proven, on both targets. The rest of that subtask — that it
+still holds *across a hot reload* — was not tested: the prototype loads the
+module once and never unloads it. That half matters more than it looks, because
+reload is when a module's memoised `type_index` statics are re-initialised
+against a counter that has already advanced, and it is the case T0048 depends
+on. It needs the dlclose/FreeLibrary cycle before it can be ticked.
 
 95.4 (visibility policy) is untested: the prototype used
 `-fvisibility=hidden` on Linux with explicit default-visibility exports and it
