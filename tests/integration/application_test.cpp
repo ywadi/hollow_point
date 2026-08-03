@@ -4,6 +4,13 @@
 // loops. Deterministic despite being a loop, because `exitAfterFrames` bounds
 // it: a test that ran until a window closed would need a window, and one that
 // ran until a timer expired would be flaky.
+//
+// **Every app here sets `headless = true`, and must.** CI runners have no
+// display, so `Window::create` fails there and `run()` returns 1 before calling
+// a single hook. That is what happened the first time these were written: they
+// passed on a developer desktop with X11 and failed every assertion on CI. A
+// test that silently needs a display is a test that only proves the machine it
+// ran on had one.
 
 #include <doctest/doctest.h>
 
@@ -26,6 +33,7 @@ public:
 private:
     static hp::ApplicationConfig makeConfig(std::uint64_t frames) {
         hp::ApplicationConfig config;
+        config.headless = true;
         config.name = "test";
         config.exitAfterFrames = frames;
         return config;
@@ -92,6 +100,7 @@ TEST_CASE("requestExit stops the loop and sets the exit code") {
     private:
         static hp::ApplicationConfig makeConfig() {
             hp::ApplicationConfig config;
+        config.headless = true;
             // Deliberately larger than the frame we exit on, so the test proves
             // requestExit stopped the loop rather than the budget doing it.
             config.exitAfterFrames = 100;
@@ -125,6 +134,7 @@ TEST_CASE("requestExit finishes the current frame rather than cutting it short")
     private:
         static hp::ApplicationConfig makeConfig() {
             hp::ApplicationConfig config;
+        config.headless = true;
             config.exitAfterFrames = 100;
             return config;
         }
@@ -147,9 +157,15 @@ TEST_CASE("an application can be run with no frame budget if it exits itself") {
     // The shape every real app will have once there is a window to close.
     class SelfStopping final : public hp::Application {
     public:
-        SelfStopping() : hp::Application(hp::ApplicationConfig{}) {}
+        SelfStopping() : hp::Application(headlessConfig()) {}
 
     private:
+        static hp::ApplicationConfig headlessConfig() {
+            hp::ApplicationConfig config;
+            config.headless = true;
+            return config;
+        }
+
         void onUpdate(double) override {
             if (frame() >= 2) {
                 requestExit();
