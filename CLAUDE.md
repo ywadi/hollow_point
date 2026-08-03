@@ -156,6 +156,24 @@ test that looked like a missing `<format>`, a floating-point step count, and a
 **Assert on every scripted edit.** A `str.replace` that silently matches nothing
 is the most common way a change appears to land and does not. `assert old in t`.
 
+**Stuck on a technical decision? Research it rather than guessing.** Spin off a
+Sonnet 5 agent to search the web and report back — library comparisons, format
+details, API behaviour, what other engines do and why. It has been consistently
+useful here: it settled SDL3 over GLFW on rumble support, found that GLFW has no
+haptics API at all, and confirmed PhysicsFS's per-file override semantics. Give
+it the specific question and the constraints it must respect, and ask for
+sources.
+
+Two things it cannot settle, so do not send them:
+
+- **Decisions that are the owner's**, not technical — what the game *is*
+  (T0044), whether to support mods, what platforms matter. Research produces a
+  survey, not an answer. Leave these open and ask.
+- **Anything measurable here.** If the question is "does this compile", "is this
+  in the pinned toolchain", or "what does this actually output", measure it. A
+  web search returns what is usually true; the build returns what is true here,
+  and those have differed repeatedly.
+
 **Delegating to a subagent?** Give it explicit file paths it may touch, tell it
 what another task is editing concurrently, and require `git add <paths>` — never
 `git add -A`, which sweeps in-flight work from another session. Tell it not to
