@@ -6,6 +6,7 @@
 | **Priority** | High |
 | **Complexity** | Complex |
 | **Phase** | 7 — Content pipeline |
+| **Order** | 700 |
 | **Created** | 2026-08-02 |
 | **Supersedes** | T0009 |
 

@@ -6,6 +6,7 @@
 | **Priority** | High |
 | **Complexity** | Complex |
 | **Phase** | 7 — Content pipeline |
+| **Order** | 740 |
 | **Created** | 2026-08-02 |
 
 ## Why

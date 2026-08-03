@@ -6,6 +6,7 @@
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
+| **Order** | 460 |
 | **Created** | 2026-08-03 |
 | **Refs** | T0027, T0046, T0060, T0087, T0089 |
 

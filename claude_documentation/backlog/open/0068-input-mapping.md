@@ -6,6 +6,7 @@
 | **Priority** | Medium |
 | **Complexity** | Moderate |
 | **Phase** | 2 — Engine skeleton |
+| **Order** | 170 |
 | **Created** | 2026-08-03 |
 
 ## Why

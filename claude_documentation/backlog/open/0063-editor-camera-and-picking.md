@@ -6,6 +6,7 @@
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 6 — Editor |
+| **Order** | 620 |
 | **Created** | 2026-08-03 |
 
 ## Why

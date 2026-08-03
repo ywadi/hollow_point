@@ -6,6 +6,7 @@
 | **Priority** | Medium |
 | **Complexity** | Complex |
 | **Phase** | 10 — Audio |
+| **Order** | 820 |
 | **Created** | 2026-08-03 |
 
 > **Placeholder epic**, and the library is **not yet chosen**. Recorded to keep

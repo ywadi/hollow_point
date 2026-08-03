@@ -6,6 +6,7 @@
 | **Priority** | Medium |
 | **Complexity** | Moderate |
 | **Phase** | 11 — World & environment |
+| **Order** | 840 |
 | **Created** | 2026-08-03 |
 
 ## Why

@@ -6,6 +6,7 @@
 | **Priority** | Medium |
 | **Complexity** | Complex |
 | **Phase** | 4 — Render layer |
+| **Order** | 550 |
 | **Created** | 2026-08-03 |
 
 ## Why

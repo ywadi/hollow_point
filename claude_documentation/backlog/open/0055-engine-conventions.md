@@ -6,6 +6,7 @@
 | **Priority** | High |
 | **Complexity** | Trivial |
 | **Phase** | 2 — Engine skeleton |
+| **Order** | 10 |
 | **Created** | 2026-08-03 |
 
 ## Why

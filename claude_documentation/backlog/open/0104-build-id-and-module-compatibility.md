@@ -6,6 +6,7 @@
 | **Priority** | High |
 | **Complexity** | Simple |
 | **Phase** | 2 — Engine skeleton |
+| **Order** | 130 |
 | **Created** | 2026-08-03 |
 | **Blocks** | T0048 |
 | **Refs** | [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D12, T0095 |

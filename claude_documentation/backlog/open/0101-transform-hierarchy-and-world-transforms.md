@@ -6,6 +6,7 @@
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 3 — Data model |
+| **Order** | 210 |
 | **Created** | 2026-08-03 |
 | **Refs** | T0021, T0028, T0035, T0045, T0049, T0051, T0057, T0100 |
 

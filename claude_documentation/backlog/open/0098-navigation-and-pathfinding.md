@@ -6,6 +6,7 @@
 | **Priority** | Medium |
 | **Complexity** | Complex |
 | **Phase** | 9 — Physics |
+| **Order** | 810 |
 | **Created** | 2026-08-03 |
 | **Refs** | T0044, T0049, T0051, T0061, T0093 |
 

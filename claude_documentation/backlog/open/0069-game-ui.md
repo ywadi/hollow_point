@@ -6,6 +6,7 @@
 | **Priority** | Medium |
 | **Complexity** | Complex |
 | **Phase** | 12 — Game UI |
+| **Order** | 880 |
 | **Created** | 2026-08-03 |
 
 > **Placeholder epic.** The library is not chosen. Recorded because it is a real

@@ -5,7 +5,8 @@
 | **Status** | 🔜 TODO |
 | **Priority** | High |
 | **Complexity** | Moderate |
-| **Phase** | 2 — Engine skeleton |
+| **Phase** | 3 — Data model |
+| **Order** | 350 |
 | **Created** | 2026-08-03 |
 
 ## Why
@@ -104,3 +105,18 @@ do not run, and need not exist, while *editing* — same default as behaviours
 (T0062's edit-mode policy). If some future autoload genuinely must run in the
 editor, that is an explicit opt-in, not the default. Word 76.3 accordingly
 ("created when a game session starts", not "on project open").
+
+### Re-phased 2 → 3 (2026-08-03)
+
+The two review notes above already establish that this ticket's substance lives
+in Phase 3: "configured as data" needs the `.hpproj` format (T0024) and scene
+files (T0022), and the second pass redefined project scope as *game-session*
+scope — semantics that only mean anything once scene loading and transitions
+(T0077) exist to survive. Registration alongside behaviours (76.2) also follows
+T0062, itself re-phased to 3. So the phase field now matches, and the Order
+field places this after T0077.
+
+Two acceptance items still reach further out, deliberately: 76.9 (editor UI) is
+Phase 6 surface, and "the runtime (T0042) honours them identically" is a Phase 8
+verification. Both are the usual phase-spanning-acceptance pattern (compare
+T0062's editor items) — they close late without moving the ticket again.

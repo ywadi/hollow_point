@@ -6,6 +6,7 @@
 | **Priority** | Low |
 | **Complexity** | Moderate |
 | **Phase** | 14 — Deferred |
+| **Order** | 900 |
 | **Created** | 2026-08-02 |
 
 ## Why

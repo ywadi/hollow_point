@@ -6,6 +6,7 @@
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 5 — Profiling |
+| **Order** | 560 |
 | **Created** | 2026-08-02 |
 
 ## Why

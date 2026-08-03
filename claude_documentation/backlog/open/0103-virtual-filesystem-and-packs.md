@@ -6,6 +6,7 @@
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 3 — Data model |
+| **Order** | 180 |
 | **Created** | 2026-08-03 |
 | **Blocks** | T0023, T0043, T0083 |
 | **Refs** | [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D13 |

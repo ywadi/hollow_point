@@ -6,6 +6,7 @@
 | **Priority** | Low |
 | **Complexity** | Moderate |
 | **Phase** | 8 — Runtime & export |
+| **Order** | 790 |
 | **Created** | 2026-08-03 |
 | **Refs** | T0054, T0055, T0083, T0084 |
 

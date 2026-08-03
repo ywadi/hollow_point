@@ -6,7 +6,9 @@
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 2 — Engine skeleton |
+| **Order** | 30 |
 | **Created** | 2026-08-02 |
+| **Refs** | [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D12; gated by T0095 (see notes) |
 
 ## Why
 

@@ -5,7 +5,8 @@
 | **Status** | 🔜 TODO |
 | **Priority** | High |
 | **Complexity** | Very Complex |
-| **Phase** | 2 — Engine skeleton |
+| **Phase** | 3 — Data model |
+| **Order** | 270 |
 | **Created** | 2026-08-03 |
 
 ## Why
@@ -143,7 +144,8 @@ Practical order: T0053 → T0095 → this mechanism (registry + lifecycle +
 in-memory snapshot, tested headless) → T0021/T0020 make it real → T0035 gives
 it an editor surface. The ticket stays Phase 2 as the *design/mechanism*
 keystone, but the plan should not expect it to be demonstrable end-to-end
-before mid-Phase 3.
+before mid-Phase 3. *(Superseded on the phase question the same day — see the
+re-phasing note below; the practical order stands.)*
 
 
 ### Architecture decision (2026-08-03) — behaviours are keyed by stable name (D14)
@@ -172,3 +174,15 @@ Two further consequences:
 Linkage is settled: rich C++ across the boundary, engine as a shared library,
 lockstep with a build-id check (D12). This ticket is no longer blocked on T0095
 for that.
+
+### Re-phased 2 → 3 (2026-08-03)
+
+The second review pass above already laid the sequencing out honestly — nothing
+here truly closes before T0021 (entities to attach to) and T0020/T0022
+(serialization for 62.5) exist, and those are Phase 3. The phase field now says
+so, rather than leaving "Phase 2" to contradict the ticket's own analysis. What
+stays earlier is unchanged: T0053 (reflection) and T0095 (module ABI) are the
+Phase 2 prerequisites, and the editor surface (62.11, inspector items) still
+lands with T0035 in Phase 6. The Order field places this after T0071 (entity
+references), since behaviour properties hold `EntityRef`s, and before
+T0072/T0075, whose handlers assume behaviours exist to receive them.

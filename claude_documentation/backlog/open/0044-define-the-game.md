@@ -6,6 +6,7 @@
 | **Priority** | High |
 | **Complexity** | Trivial |
 | **Phase** | 2 — Engine skeleton |
+| **Order** | 160 |
 | **Created** | 2026-08-02 |
 | **Supersedes** | part of T0006 |
 

@@ -6,6 +6,7 @@
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 2 — Engine skeleton |
+| **Order** | 120 |
 | **Created** | 2026-08-03 |
 | **Refs** | T0014, T0018, T0026, T0048, T0057, T0058, T0062, T0072, T0075, T0077, T0101 |
 

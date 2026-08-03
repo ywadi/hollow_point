@@ -6,6 +6,7 @@
 | **Priority** | Low |
 | **Complexity** | Trivial |
 | **Phase** | 14 — Deferred |
+| **Order** | 910 |
 | **Created** | 2026-08-02 |
 | **Refs** | [../../documentation/04-cross-compile-gotchas.md](../../documentation/04-cross-compile-gotchas.md) G7 |
 

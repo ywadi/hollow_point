@@ -6,6 +6,7 @@
 | **Priority** | High |
 | **Complexity** | Complex |
 | **Phase** | 3 — Data model |
+| **Order** | 220 |
 | **Created** | 2026-08-02 |
 
 ## Why

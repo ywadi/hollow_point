@@ -6,6 +6,7 @@
 | **Priority** | High |
 | **Complexity** | Very Complex |
 | **Phase** | 9 — Physics |
+| **Order** | 800 |
 | **Created** | 2026-08-03 |
 
 > **Placeholder epic.** Recorded now so the architecture accounts for it, not

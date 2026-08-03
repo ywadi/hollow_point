@@ -6,6 +6,7 @@
 | **Priority** | Medium |
 | **Complexity** | Simple |
 | **Phase** | 8 — Runtime & export |
+| **Order** | 760 |
 | **Created** | 2026-08-02 |
 
 ## Why

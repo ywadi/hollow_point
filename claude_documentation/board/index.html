@@ -111,6 +111,9 @@
   .card:hover { border-color:var(--accent); transform:translateY(-1px); }
   .card .idline { display:flex; align-items:center; gap:8px; margin-bottom:5px; }
   .id { font:600 11px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--accent); }
+  /* the ticket's execution-order number (the Order header field), right-aligned
+     on the id line so "what comes next" is readable in any sort mode */
+  .ordnum { margin-left:auto; font:600 10px ui-monospace,SFMono-Regular,Menlo,monospace; color:var(--dim); }
   .card h3 { font-size:13.5px; margin:0 0 8px; font-weight:600; line-height:1.35; }
   .tags { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
   .tag { font-size:10.5px; padding:1.5px 7px; border-radius:20px; border:1px solid var(--line); color:var(--dim); }
@@ -203,6 +206,7 @@
   <div class="controls">
     <label for="sortby">Sort</label>
     <select id="sortby">
+      <option value="order">Execution order</option>
       <option value="phase">Phase</option>
       <option value="priority">Priority</option>
       <option value="id">ID</option>
@@ -271,19 +275,42 @@ const SORT_KEY = 'hpBoard.sortBy.v1';
 
 // Sort mode is a *view* concern, so it is applied client-side rather than by the
 // server -- the folders remain the source of truth either way.
-let sortBy = localStorage.getItem(SORT_KEY) || 'phase';
+//
+// The default is execution order: the whole point of opening the board is
+// knowing what to work next, so the top of the Open column must be that ticket
+// rather than whichever id happens to sort first within a phase.
+let sortBy = localStorage.getItem(SORT_KEY) || 'order';
+
+// Each open ticket carries an `| **Order** | N |` row in its header table --
+// the hand-derived execution order from backlog/README.md, kept in the tickets
+// so this board and that table read one field and cannot disagree. The server
+// predates the field and does not parse it, but it already ships each ticket's
+// full markdown, so it is read here with the same regex shape as server.js's
+// field(). Tickets without one (completed, in progress) sort after those with.
+const ORDER_NONE = 1e9;
+function orderOf(md) {
+  const m = (md || '').match(/\|\s*\*\*Order\*\*\s*\|\s*(\d+)\s*\|/i);
+  return m ? Number(m[1]) : null;
+}
+const ord = (t) => (t.order == null ? ORDER_NONE : t.order);
 
 const PRIO_RANK = { High: 0, Medium: 1, Low: 2 };
 function sortTasks(tasks) {
   const t = tasks.slice();
-  if (sortBy === 'priority') {
+  if (sortBy === 'order') {
+    t.sort((a, b) => ord(a) - ord(b) || a.phaseOrder - b.phaseOrder || a.id.localeCompare(b.id));
+  } else if (sortBy === 'priority') {
     t.sort((a, b) => (PRIO_RANK[a.priority] ?? 9) - (PRIO_RANK[b.priority] ?? 9)
                   || a.phaseOrder - b.phaseOrder
+                  || ord(a) - ord(b)
                   || a.id.localeCompare(b.id));
   } else if (sortBy === 'id') {
     t.sort((a, b) => a.id.localeCompare(b.id));
   } else {
-    t.sort((a, b) => a.phaseOrder - b.phaseOrder || a.id.localeCompare(b.id));
+    // Phase view: groups by phase, and *within* a group cards follow the same
+    // Order field -- so this view and the execution-order view agree on what
+    // sits on top, they just differ in whether the phase headings show.
+    t.sort((a, b) => a.phaseOrder - b.phaseOrder || ord(a) - ord(b) || a.id.localeCompare(b.id));
   }
   return t;
 }
@@ -426,7 +453,7 @@ function card(t) {
 
   return `
     <div class="card${closedUndone ? ' undone' : ''}" data-id="${esc(t.id)}">
-      <div class="idline"><span class="id">${esc(t.id)}</span></div>
+      <div class="idline"><span class="id">${esc(t.id)}</span>${t.order != null ? `<span class="ordnum" title="Execution order">${t.order}</span>` : ''}</div>
       <h3>${esc(t.title)}</h3>
       <div class="tags">
         ${prio ? `<span class="tag ${prio}">${prio}</span>` : ''}
@@ -455,8 +482,10 @@ let current = null;
 function cardsHtml(tasks, colId) {
   if (!tasks.length) return '<div class="empty">Nothing here</div>';
   tasks = sortTasks(tasks);
-  // Phase grouping only makes sense while sorting by phase; the other modes
-  // deliberately cut across phases, so they render flat.
+  // Phase grouping only applies while sorting by phase. Priority and ID cut
+  // across phases, so groups would misrepresent the ordering; execution order
+  // respects phases but renders flat on purpose -- it is the "what's next"
+  // list, and phase structure is what the Phase view is for.
   if (sortBy !== 'phase' || !tasks.some((t) => t.phase)) return tasks.map(card).join('');
 
   const groups = [];
@@ -496,6 +525,9 @@ function cardsHtml(tasks, colId) {
 
 function draw(data) {
   current = data;
+  // Derive each task's execution order from its markdown once per repaint,
+  // not once per sort comparison -- see the comment above orderOf().
+  data.columns.forEach((c) => c.tasks.forEach((t) => { t.order = orderOf(t.markdown); }));
   document.getElementById('board').innerHTML = data.columns.map((c) => `
     <section class="col col-${c.id}">
       <h2>${c.title} <span class="count">${c.tasks.length}</span></h2>

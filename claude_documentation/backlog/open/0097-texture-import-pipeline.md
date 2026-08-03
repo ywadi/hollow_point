@@ -6,6 +6,7 @@
 | **Priority** | Medium |
 | **Complexity** | Moderate |
 | **Phase** | 7 — Content pipeline |
+| **Order** | 710 |
 | **Created** | 2026-08-03 |
 | **Refs** | T0023, T0038, T0096 |
 

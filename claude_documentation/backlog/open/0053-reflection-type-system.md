@@ -6,7 +6,9 @@
 | **Priority** | High |
 | **Complexity** | Very Complex |
 | **Phase** | 2 — Engine skeleton |
+| **Order** | 140 |
 | **Created** | 2026-08-03 |
+| **Blocks** | T0022, T0035, T0062 |
 
 ## Why
 
@@ -99,3 +101,13 @@ registry (T0076).
 
 Types defined in the gameplay module must register on load and deregister on
 unload, since the module is reloadable (T0048).
+
+### Blocks field recorded (2026-08-03)
+
+The header now carries `Blocks: T0022, T0035, T0062` — not a new judgement,
+just the promotion of what this file and those tickets already state in prose:
+"this must land before T0022 (serialization) and T0035 (inspector), or both get
+written twice", and T0062 calls reflection "a hard prerequisite" because its
+hot-reload cycle only works if behaviour state can be serialized generically.
+The same getting-it-wrong-means-redoing-work test that justified the other
+Blocks fields (T0095, T0103, T0104) applies here.

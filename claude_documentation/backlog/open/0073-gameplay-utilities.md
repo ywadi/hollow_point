@@ -5,7 +5,8 @@
 | **Status** | 🔜 TODO |
 | **Priority** | Medium |
 | **Complexity** | Moderate |
-| **Phase** | 2 — Engine skeleton |
+| **Phase** | 3 — Data model |
+| **Order** | 280 |
 | **Created** | 2026-08-03 |
 
 ## Why
@@ -70,3 +71,18 @@ after every reload, never stored across one.* The state machine has the same
 split: current-state-as-enum serializes; transition condition functions are
 code, re-registered on load. Say this in the utilities' documentation, because
 it is invisible until the first reload eats someone's timer.
+
+### Re-phased 2 → 3 (2026-08-03)
+
+These utilities live inside behaviours (the review note above), and behaviours
+are Phase 3 (T0062's re-phasing) — a utility library for gameplay code that
+cannot exist yet is speculative in exactly the way this backlog avoids. The
+blackboard (73.5) is per-entity and the spatial queries (73.6) run against the
+scene, so T0021 is a real prerequisite too. Ordered directly after T0062.
+
+One correction while moving it: the backlog README previously said this ticket
+"actually needs T0045 (Phase 4) and T0049 (Phase 7)". Re-reading the ticket,
+neither is a dependency — T0045 is cited only as an analogy for the
+linear-scan-first trade-off, and T0049 only to *distinguish* its animation
+state machine from this gameplay one. The real cross-phase dependencies are
+T0021 and T0062, both Phase 3, which is where this now sits.

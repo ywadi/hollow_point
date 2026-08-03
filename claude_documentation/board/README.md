@@ -65,17 +65,27 @@ The header carries a **Sort** control and **Collapse all** / **Expand all**.
 
 | Sort | Behaviour |
 |---|---|
-| Phase (default) | Grouped under collapsible phase headings, ascending |
-| Priority | Flat, High → Medium → Low, phase as tiebreak |
+| Execution order (default) | Flat, by each ticket's `Order` field — the top card is what to work next |
+| Phase | Grouped under collapsible phase headings; cards within a group follow `Order` |
+| Priority | Flat, High → Medium → Low, phase then order as tiebreaks |
 | ID | Flat, ticket order |
 
-Phase grouping only applies while sorting by phase — the other modes deliberately
-cut across phases, so they render flat rather than showing groups that no longer
-reflect the ordering.
+The `Order` field is an `| **Order** | N |` row in each open ticket's header
+table — the execution order from `backlog/README.md`, kept in the tickets so
+that table and this board read one field and cannot disagree. `server.js` does
+not parse it; the client derives it from the full markdown the server already
+sends. Tickets without one (completed, in progress) sort after those with, and
+each card shows its number on the id line. Execution order respects phases, so
+the Phase view and the default view agree on what sits on top — they differ
+only in whether the phase headings (and their aggregate bars) show.
+
+Phase grouping only applies while sorting by phase — the other modes render
+flat: Priority and ID deliberately cut across phases, and Execution order is
+the "what's next" list, where headings would just be in the way.
 
 The sort choice persists in `localStorage`, as does per-phase collapse state.
-With 39 open tickets in one column, Collapse all is the fastest way to see the
-phase structure at a glance.
+With 91 open tickets in one column, Collapse all (in the Phase view) is the
+fastest way to see the phase structure at a glance.
 
 ## Search
 
