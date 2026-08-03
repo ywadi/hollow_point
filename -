@@ -1,0 +1,263 @@
+	.file	"without.cpp"
+	.text
+	.globl	_Z3hoti                         # -- Begin function _Z3hoti
+	.p2align	4
+	.type	_Z3hoti,@function
+_Z3hoti:                                # @_Z3hoti
+.Lfunc_begin0:
+	.file	1 "/tmp/claude-1000/-media-ywadi-second-hollow-point/81b81447-0d04-4263-ac8c-259751e3a6d2/scratchpad" "without.cpp"
+	.loc	1 2 0                           # /tmp/claude-1000/-media-ywadi-second-hollow-point/81b81447-0d04-4263-ac8c-259751e3a6d2/scratchpad/without.cpp:2:0
+	.cfi_startproc
+# %bb.0:
+	#DEBUG_VALUE: hot:n <- $edi
+	pushq	%rbp
+	.cfi_def_cfa_offset 16
+	.cfi_offset %rbp, -16
+	movq	%rsp, %rbp
+	.cfi_def_cfa_register %rbp
+                                        # kill: def $edi killed $edi def $rdi
+.Ltmp0:
+	#DEBUG_VALUE: hot:acc <- 0
+	#DEBUG_VALUE: i <- 0
+	.loc	1 4 23 prologue_end             # /tmp/claude-1000/-media-ywadi-second-hollow-point/81b81447-0d04-4263-ac8c-259751e3a6d2/scratchpad/without.cpp:4:23
+	testl	%edi, %edi
+.Ltmp1:
+	.loc	1 4 5 is_stmt 0                 # /tmp/claude-1000/-media-ywadi-second-hollow-point/81b81447-0d04-4263-ac8c-259751e3a6d2/scratchpad/without.cpp:4:5
+	jle	.LBB0_1
+.Ltmp2:
+# %bb.2:
+	#DEBUG_VALUE: hot:n <- $edi
+	#DEBUG_VALUE: hot:acc <- 0
+	#DEBUG_VALUE: i <- 0
+	#DEBUG_VALUE: i <- undef
+	#DEBUG_VALUE: hot:acc <- undef
+	leal	-1(%rdi), %eax
+	leal	-2(%rdi), %ecx
+	imulq	%rax, %rcx
+	shrq	%rcx
+	addl	%edi, %ecx
+	leal	(%rcx,%rcx,2), %eax
+	addl	$-3, %eax
+.Ltmp3:
+	.loc	1 7 5 epilogue_begin is_stmt 1  # /tmp/claude-1000/-media-ywadi-second-hollow-point/81b81447-0d04-4263-ac8c-259751e3a6d2/scratchpad/without.cpp:7:5
+	popq	%rbp
+	.cfi_def_cfa %rsp, 8
+	retq
+.Ltmp4:
+.LBB0_1:
+	.cfi_def_cfa %rbp, 16
+	#DEBUG_VALUE: hot:n <- $edi
+	#DEBUG_VALUE: hot:acc <- 0
+	.loc	1 0 5 is_stmt 0                 # /tmp/claude-1000/-media-ywadi-second-hollow-point/81b81447-0d04-4263-ac8c-259751e3a6d2/scratchpad/without.cpp:0:5
+	xorl	%eax, %eax
+	.loc	1 7 5 epilogue_begin is_stmt 1  # /tmp/claude-1000/-media-ywadi-second-hollow-point/81b81447-0d04-4263-ac8c-259751e3a6d2/scratchpad/without.cpp:7:5
+	popq	%rbp
+	.cfi_def_cfa %rsp, 8
+	retq
+.Ltmp5:
+.Lfunc_end0:
+	.size	_Z3hoti, .Lfunc_end0-_Z3hoti
+	.cfi_endproc
+                                        # -- End function
+	.section	.debug_loc,"",@progbits
+.Ldebug_loc0:
+	.quad	.Ltmp0-.Lfunc_begin0
+	.quad	.Ltmp2-.Lfunc_begin0
+	.short	3                               # Loc expr size
+	.byte	17                              # DW_OP_consts
+	.byte	0                               # 0
+	.byte	159                             # DW_OP_stack_value
+	.quad	.Ltmp4-.Lfunc_begin0
+	.quad	.Lfunc_end0-.Lfunc_begin0
+	.short	3                               # Loc expr size
+	.byte	17                              # DW_OP_consts
+	.byte	0                               # 0
+	.byte	159                             # DW_OP_stack_value
+	.quad	0
+	.quad	0
+.Ldebug_loc1:
+	.quad	.Ltmp0-.Lfunc_begin0
+	.quad	.Ltmp2-.Lfunc_begin0
+	.short	3                               # Loc expr size
+	.byte	17                              # DW_OP_consts
+	.byte	0                               # 0
+	.byte	159                             # DW_OP_stack_value
+	.quad	0
+	.quad	0
+	.section	.debug_abbrev,"",@progbits
+	.byte	1                               # Abbreviation Code
+	.byte	17                              # DW_TAG_compile_unit
+	.byte	1                               # DW_CHILDREN_yes
+	.byte	37                              # DW_AT_producer
+	.byte	14                              # DW_FORM_strp
+	.byte	19                              # DW_AT_language
+	.byte	5                               # DW_FORM_data2
+	.byte	3                               # DW_AT_name
+	.byte	14                              # DW_FORM_strp
+	.byte	16                              # DW_AT_stmt_list
+	.byte	23                              # DW_FORM_sec_offset
+	.byte	27                              # DW_AT_comp_dir
+	.byte	14                              # DW_FORM_strp
+	.byte	17                              # DW_AT_low_pc
+	.byte	1                               # DW_FORM_addr
+	.byte	18                              # DW_AT_high_pc
+	.byte	6                               # DW_FORM_data4
+	.byte	0                               # EOM(1)
+	.byte	0                               # EOM(2)
+	.byte	2                               # Abbreviation Code
+	.byte	46                              # DW_TAG_subprogram
+	.byte	1                               # DW_CHILDREN_yes
+	.byte	17                              # DW_AT_low_pc
+	.byte	1                               # DW_FORM_addr
+	.byte	18                              # DW_AT_high_pc
+	.byte	6                               # DW_FORM_data4
+	.byte	64                              # DW_AT_frame_base
+	.byte	24                              # DW_FORM_exprloc
+	.ascii	"\227B"                         # DW_AT_GNU_all_call_sites
+	.byte	25                              # DW_FORM_flag_present
+	.byte	110                             # DW_AT_linkage_name
+	.byte	14                              # DW_FORM_strp
+	.byte	3                               # DW_AT_name
+	.byte	14                              # DW_FORM_strp
+	.byte	58                              # DW_AT_decl_file
+	.byte	11                              # DW_FORM_data1
+	.byte	59                              # DW_AT_decl_line
+	.byte	11                              # DW_FORM_data1
+	.byte	73                              # DW_AT_type
+	.byte	19                              # DW_FORM_ref4
+	.byte	63                              # DW_AT_external
+	.byte	25                              # DW_FORM_flag_present
+	.byte	0                               # EOM(1)
+	.byte	0                               # EOM(2)
+	.byte	3                               # Abbreviation Code
+	.byte	5                               # DW_TAG_formal_parameter
+	.byte	0                               # DW_CHILDREN_no
+	.byte	2                               # DW_AT_location
+	.byte	24                              # DW_FORM_exprloc
+	.byte	3                               # DW_AT_name
+	.byte	14                              # DW_FORM_strp
+	.byte	58                              # DW_AT_decl_file
+	.byte	11                              # DW_FORM_data1
+	.byte	59                              # DW_AT_decl_line
+	.byte	11                              # DW_FORM_data1
+	.byte	73                              # DW_AT_type
+	.byte	19                              # DW_FORM_ref4
+	.byte	0                               # EOM(1)
+	.byte	0                               # EOM(2)
+	.byte	4                               # Abbreviation Code
+	.byte	52                              # DW_TAG_variable
+	.byte	0                               # DW_CHILDREN_no
+	.byte	2                               # DW_AT_location
+	.byte	23                              # DW_FORM_sec_offset
+	.byte	3                               # DW_AT_name
+	.byte	14                              # DW_FORM_strp
+	.byte	58                              # DW_AT_decl_file
+	.byte	11                              # DW_FORM_data1
+	.byte	59                              # DW_AT_decl_line
+	.byte	11                              # DW_FORM_data1
+	.byte	73                              # DW_AT_type
+	.byte	19                              # DW_FORM_ref4
+	.byte	0                               # EOM(1)
+	.byte	0                               # EOM(2)
+	.byte	5                               # Abbreviation Code
+	.byte	11                              # DW_TAG_lexical_block
+	.byte	1                               # DW_CHILDREN_yes
+	.byte	17                              # DW_AT_low_pc
+	.byte	1                               # DW_FORM_addr
+	.byte	18                              # DW_AT_high_pc
+	.byte	6                               # DW_FORM_data4
+	.byte	0                               # EOM(1)
+	.byte	0                               # EOM(2)
+	.byte	6                               # Abbreviation Code
+	.byte	36                              # DW_TAG_base_type
+	.byte	0                               # DW_CHILDREN_no
+	.byte	3                               # DW_AT_name
+	.byte	14                              # DW_FORM_strp
+	.byte	62                              # DW_AT_encoding
+	.byte	11                              # DW_FORM_data1
+	.byte	11                              # DW_AT_byte_size
+	.byte	11                              # DW_FORM_data1
+	.byte	0                               # EOM(1)
+	.byte	0                               # EOM(2)
+	.byte	0                               # EOM(3)
+	.section	.debug_info,"",@progbits
+.Lcu_begin0:
+	.long	.Ldebug_info_end0-.Ldebug_info_start0 # Length of Unit
+.Ldebug_info_start0:
+	.short	4                               # DWARF version number
+	.long	.debug_abbrev                   # Offset Into Abbrev. Section
+	.byte	8                               # Address Size (in bytes)
+	.byte	1                               # Abbrev [1] 0xb:0x7e DW_TAG_compile_unit
+	.long	.Linfo_string0                  # DW_AT_producer
+	.short	33                              # DW_AT_language
+	.long	.Linfo_string1                  # DW_AT_name
+	.long	.Lline_table_start0             # DW_AT_stmt_list
+	.long	.Linfo_string2                  # DW_AT_comp_dir
+	.quad	.Lfunc_begin0                   # DW_AT_low_pc
+	.long	.Lfunc_end0-.Lfunc_begin0       # DW_AT_high_pc
+	.byte	2                               # Abbrev [2] 0x2a:0x57 DW_TAG_subprogram
+	.quad	.Lfunc_begin0                   # DW_AT_low_pc
+	.long	.Lfunc_end0-.Lfunc_begin0       # DW_AT_high_pc
+	.byte	1                               # DW_AT_frame_base
+	.byte	86
+                                        # DW_AT_GNU_all_call_sites
+	.long	.Linfo_string3                  # DW_AT_linkage_name
+	.long	.Linfo_string4                  # DW_AT_name
+	.byte	1                               # DW_AT_decl_file
+	.byte	2                               # DW_AT_decl_line
+	.long	129                             # DW_AT_type
+                                        # DW_AT_external
+	.byte	3                               # Abbrev [3] 0x47:0xd DW_TAG_formal_parameter
+	.byte	1                               # DW_AT_location
+	.byte	85
+	.long	.Linfo_string6                  # DW_AT_name
+	.byte	1                               # DW_AT_decl_file
+	.byte	2                               # DW_AT_decl_line
+	.long	129                             # DW_AT_type
+	.byte	4                               # Abbrev [4] 0x54:0xf DW_TAG_variable
+	.long	.Ldebug_loc0                    # DW_AT_location
+	.long	.Linfo_string7                  # DW_AT_name
+	.byte	1                               # DW_AT_decl_file
+	.byte	3                               # DW_AT_decl_line
+	.long	129                             # DW_AT_type
+	.byte	5                               # Abbrev [5] 0x63:0x1d DW_TAG_lexical_block
+	.quad	.Ltmp0                          # DW_AT_low_pc
+	.long	.Ltmp3-.Ltmp0                   # DW_AT_high_pc
+	.byte	4                               # Abbrev [4] 0x70:0xf DW_TAG_variable
+	.long	.Ldebug_loc1                    # DW_AT_location
+	.long	.Linfo_string8                  # DW_AT_name
+	.byte	1                               # DW_AT_decl_file
+	.byte	4                               # DW_AT_decl_line
+	.long	129                             # DW_AT_type
+	.byte	0                               # End Of Children Mark
+	.byte	0                               # End Of Children Mark
+	.byte	6                               # Abbrev [6] 0x81:0x7 DW_TAG_base_type
+	.long	.Linfo_string5                  # DW_AT_name
+	.byte	5                               # DW_AT_encoding
+	.byte	4                               # DW_AT_byte_size
+	.byte	0                               # End Of Children Mark
+.Ldebug_info_end0:
+	.section	.debug_str,"MS",@progbits,1
+.Linfo_string0:
+	.asciz	"clang version 21.1.0"          # string offset=0
+.Linfo_string1:
+	.asciz	"/tmp/claude-1000/-media-ywadi-second-hollow-point/81b81447-0d04-4263-ac8c-259751e3a6d2/scratchpad/without.cpp" # string offset=21
+.Linfo_string2:
+	.asciz	"/media/ywadi/second/hollow_point" # string offset=131
+.Linfo_string3:
+	.asciz	"_Z3hoti"                       # string offset=164
+.Linfo_string4:
+	.asciz	"hot"                           # string offset=172
+.Linfo_string5:
+	.asciz	"int"                           # string offset=176
+.Linfo_string6:
+	.asciz	"n"                             # string offset=180
+.Linfo_string7:
+	.asciz	"acc"                           # string offset=182
+.Linfo_string8:
+	.asciz	"i"                             # string offset=186
+	.ident	"clang version 21.1.0"
+	.section	".note.GNU-stack","",@progbits
+	.addrsig
+	.section	.debug_line,"",@progbits
+.Lline_table_start0:

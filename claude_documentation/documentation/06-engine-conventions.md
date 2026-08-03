@@ -243,6 +243,52 @@ developer tool, not a build input, and the build does not depend on it.
 
 ---
 
+## Profiling instrumentation
+
+Zones are added **as code is written**, not retrofitted. That is the whole
+reason the macro surface (T0019) landed before the systems it instruments —
+retrofitting instrumentation across an engine is the kind of sweep nobody ever
+schedules.
+
+```cpp
+#include <hp/Profiling.hpp>
+
+void Renderer::submit() {
+    HP_PROFILE_ZONE();                       // named after the function
+    for (const auto& batch : batches_) {
+        HP_PROFILE_ZONE_NAMED("batch");      // explicit name
+        ...
+    }
+    HP_PROFILE_VALUE("draws", drawCount_);   // correlate a spike with its cause
+}
+```
+
+Where they belong: any function that runs per frame, any loop over entities or
+assets, anything doing IO, and every thread entry point (`HP_PROFILE_THREAD`).
+Where they do not: trivial accessors, and inside a zone that already covers the
+same work at a useful granularity — a profile with ten thousand zones per frame
+is harder to read than one with fifty.
+
+**Disabled means absent, not skipped.** With `HP_PROFILING` off the macros
+expand to nothing and do not name their arguments, so `HP_PROFILE_VALUE("n",
+expensiveCount())` does not call `expensiveCount()`. Verified: the emitted
+assembly for an instrumented function is identical to the same function without
+the macros, and a test asserts arguments are never evaluated.
+
+The consequence to be aware of: a variable used *only* inside a profiling macro
+looks unused when profiling is off. That trade is deliberate — a warning is
+cheaper than a call in a shipped build.
+
+**`HP_PROFILING` is PUBLIC, and part of the ABI.** Every consumer compiles
+against the same setting as the engine, because enabling it changes the engine's
+symbol surface. A gameplay module built with profiling against an engine built
+without it is exactly the mismatch T0104 refuses at load.
+
+**Two switches, and only one preserves performance.** `HP_PROFILING` is compile
+time and is the one that removes cost. An editor toggle controls *capture* —
+whether a connected profiler is recording — and cannot recover shipped-build
+cost, because the instrumentation is still compiled in. Say so in the UI.
+
 ## What is deliberately not decided here
 
 - **Math, memory and container policy** — T0056. Whether we use Diligent's math

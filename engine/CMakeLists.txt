@@ -36,6 +36,26 @@ set_target_properties(hp_engine PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)
 
+# --- profiling (T0019) -------------------------------------------------------
+#
+# One switch, off by default, and it is a *compile-time* switch: off means the
+# instrumentation does not exist rather than being skipped at run time. That is
+# what preserves shipped-build performance, and it is why the macros must not so
+# much as name their arguments when disabled.
+#
+# PUBLIC, not PRIVATE, and this is the part that matters. The macros live in a
+# public header, so every consumer -- the editor, the runtime, every gameplay
+# module -- must compile against the *same* setting as the engine. A module
+# built with profiling on against an engine built without it is exactly the
+# mismatch T0104 exists to refuse at load, because enabling profiling changes
+# the engine's symbol surface. Making this PRIVATE would let that happen
+# silently and is the single easiest way to get this wrong.
+option(HP_PROFILING "Compile in profiling instrumentation (Tracy, T0029)" OFF)
+if (HP_PROFILING)
+    target_compile_definitions(hp_engine PUBLIC HP_PROFILING)
+    message(STATUS "hp_engine: profiling instrumentation ENABLED")
+endif()
+
 # Deliberately links nothing from Diligent yet.
 #
 # 13.3 asks for PUBLIC vs PRIVATE to be chosen deliberately, and the deliberate

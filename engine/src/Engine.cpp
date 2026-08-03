@@ -1,5 +1,7 @@
 #include <hp/Engine.hpp>
 
+#include <hp/Profiling.hpp>
+
 #include <string>
 #include <vector>
 
@@ -30,6 +32,7 @@ std::uint32_t engineInstanceCount() {
 }
 
 void engineRegisterConsumer(const char* name) {
+    HP_PROFILE_ZONE();
     if (name == nullptr) {
         return;
     }

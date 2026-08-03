@@ -49,6 +49,13 @@ function(hp_add_test_bucket bucket)
     # whole point. The linker drops what a bucket does not reference.
     target_link_libraries(${_target} PRIVATE enkiTS meshoptimizer)
 
+    # The engine's public headers, so tests can exercise engine-facing surfaces
+    # like <hp/Profiling.hpp> without linking the library -- that header is
+    # deliberately dependency-free (T0019), and a test that had to link the
+    # engine to use it would not be testing that property.
+    target_include_directories(${_target} PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../engine/include")
+
     # enkiTS's headers are not exported by its target in a usable form for
     # consumers outside its own tree.
     target_include_directories(${_target} PRIVATE
