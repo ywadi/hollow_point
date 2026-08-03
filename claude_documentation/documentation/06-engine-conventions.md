@@ -243,6 +243,44 @@ developer tool, not a build input, and the build does not depend on it.
 
 ---
 
+## Math, containers and memory
+
+**Math is Diligent's** — `BasicMath.hpp` and `AdvancedMath.hpp`. 🔶 as to which
+helpers we wrap; settled as to the library.
+
+Not glm, and the reason is not preference. Every renderer call takes Diligent
+math types, so a second vector and matrix library means conversions at every
+boundary — cheap individually, everywhere, forever, and a constant source of
+"which convention is this in" bugs. The two also disagree about row versus
+column major, which is the kind of mismatch that produces a transposed matrix
+once a month. Diligent ships `BasicMathSSE.hpp` and `BasicMathNEON.hpp`, so
+using it is not a performance concession.
+
+The corollary: **gameplay uses the same types**, not an engine-specific wrapper
+over them. They are header-only value types with no linkage, so they cross the
+module boundary safely (D12) — the boundary hazard is *stateful* engine code and
+RHI interface pointers, not PODs.
+
+**Containers are the standard library's.** No EASTL, no bespoke vector. The
+justification for replacing them is allocator control and debug-build
+performance, and neither has been measured here — adopting a container library
+on the strength of other projects' measurements is how a codebase acquires a
+dependency nobody can remove. Revisit with a profile, not an argument.
+
+`std::vector`, `std::unordered_map` and friends until something demonstrates
+otherwise. Where a hot path needs different behaviour, change *that* path.
+
+**Memory** 🔶 — the strategy is: default to ordinary allocation, and introduce
+pools and scratch allocators only where a profile justifies them. Diligent
+provides `DynamicLinearAllocator` for per-frame scratch and
+`FixedBlockMemoryAllocator` for pooling, so those are adoptions rather than
+implementations when the time comes. **Adopting them is blocked** on the engine
+linking Diligent at all, which T0013 deliberately deferred.
+
+One rule that is not provisional, because it is a correctness constraint rather
+than a performance one: **memory does not cross the module boundary to be
+freed** — see the module boundary section above.
+
 ## Profiling instrumentation
 
 Zones are added **as code is written**, not retrofitted. That is the whole

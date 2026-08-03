@@ -47,7 +47,28 @@ function(hp_add_test_bucket bucket)
     # Everything a test might want to exercise. Linked to every bucket so that
     # adding a test file never requires touching this file -- which is the
     # whole point. The linker drops what a bucket does not reference.
-    target_link_libraries(${_target} PRIVATE enkiTS meshoptimizer)
+    #
+    # hp_engine is here for the same reason: a test for GUIDs or the clock
+    # should be droppable into tests/fast/ without editing this file. It is a
+    # shared library, so each bucket needs to find it beside itself at run time
+    # -- handled below, the same way the apps do it.
+    target_link_libraries(${_target} PRIVATE enkiTS meshoptimizer hp_engine)
+
+    if (WIN32)
+        add_custom_command(TARGET ${_target} POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "$<TARGET_RUNTIME_DLLS:${_target}>" "$<TARGET_FILE_DIR:${_target}>"
+            COMMAND_EXPAND_LISTS
+            VERBATIM)
+    else()
+        set_target_properties(${_target} PROPERTIES
+            BUILD_WITH_INSTALL_RPATH ON
+            INSTALL_RPATH "$ORIGIN")
+        add_custom_command(TARGET ${_target} POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "$<TARGET_FILE:hp_engine>" "$<TARGET_FILE_DIR:${_target}>"
+            VERBATIM)
+    endif()
 
     # The engine's public headers, so tests can exercise engine-facing surfaces
     # like <hp/Profiling.hpp> without linking the library -- that header is
@@ -109,9 +130,7 @@ endforeach()
 # The integration bucket links the engine fixture and loads the module fixture.
 # Guarded because a bucket with no sources produces no target at all.
 if(TARGET hp_tests_integration)
-    # The engine itself, so integration tests can exercise its public API
-    # (logging, T0054). RPATH already points at $ORIGIN below.
-    target_link_libraries(hp_tests_integration PRIVATE hp_abi_engine hp_engine)
+    target_link_libraries(hp_tests_integration PRIVATE hp_abi_engine)
     add_dependencies(hp_tests_integration hp_abi_module)
     # The module is opened by name at run time, and the name is not the same on
     # both targets -- MinGW produces libhp_abi_module.dll, keeping the `lib`
@@ -120,12 +139,11 @@ if(TARGET hp_tests_integration)
     target_compile_definitions(hp_tests_integration PRIVATE
         HP_ABI_MODULE_NAME="$<TARGET_FILE_NAME:hp_abi_module>")
     if(NOT WIN32)
-        # So the test executable finds libhp_abi_engine.so beside itself rather
-        # than via LD_LIBRARY_PATH, which the harness would otherwise have to
-        # set for every invocation. Windows searches the executable's own
-        # directory already.
-        set_target_properties(hp_tests_integration PROPERTIES
-            BUILD_RPATH "$ORIGIN"
-            INSTALL_RPATH "$ORIGIN")
+        # The boundary fixture, beside the executable for the same reason the
+        # engine is. RPATH is already $ORIGIN from the bucket helper above.
+        add_custom_command(TARGET hp_tests_integration POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "$<TARGET_FILE:hp_abi_engine>" "$<TARGET_FILE_DIR:hp_tests_integration>"
+            VERBATIM)
     endif()
 endif()

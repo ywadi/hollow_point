@@ -12,7 +12,9 @@
 # tests/integration/module_boundary_test.cpp and T0095.
 add_library(hp_engine SHARED
     src/Engine.cpp
+    src/Guid.cpp
     src/Log.cpp
+    src/Time.cpp
 )
 add_library(hp::engine ALIAS hp_engine)
 
