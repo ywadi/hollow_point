@@ -184,6 +184,52 @@ holds on both targets; nothing in `zig build test` would notice if a future
 change broke it. Two Done-when conditions above are blocked on exactly that, and
 it is also the natural home for the hot-reload half of 95.3.
 
+### The prototype is now a test — and it found a defect the prototype could not
+
+`tests/integration/module_boundary_test.cpp` plus two fixture shared libraries
+(`tests/fixtures/abi_engine.cpp`, `abi_module.cpp`) now run in `zig build test`
+on both targets: 6 cases, 31 assertions, Linux natively and Windows under wine.
+The fixtures are a miniature of the real layout — a *shared* engine that both
+the test executable and a loadable module link.
+
+**`dlclose` segfaults the process at exit, and it is a toolchain property, not
+an engine one.** Reduced to a shared library containing one `static
+std::string` and no engine code whatsoever:
+
+```
+before dlopen
+after dlopen: 0x1ddee300 (ok)
+before dlclose
+after dlclose: 0
+returning from main
+Segmentation fault (core dumped)     <- after main returned
+```
+
+Zig links libc++ statically into every shared library, so each module carries
+its own copy. A static object needing destruction registers with
+`__cxa_atexit`; `dlclose` unmaps the code without retiring the registration,
+and the process dies at exit against unmapped memory — arbitrarily far from the
+unload, with nothing pointing at the cause. `dlopen` *without* `dlclose` is
+clean, which is exactly why the earlier prototype missed it: it never unloaded.
+
+`RTLD_NODELETE` avoids it by keeping the mapping alive, and the test loader uses
+it. **That means the suite does not prove a module can be unloaded — it proves
+two independently loaded generations agree.** The reload case was rewritten to
+match what T0048 actually does (copy the module to a fresh path, load the copy,
+leave the previous image resident) rather than to claim an unload that does not
+work.
+
+**This is T0048's problem now and it is not solved.** Options not yet
+evaluated: linking libc++ dynamically so one copy is shared, forbidding statics
+requiring destruction in modules as a convention (T0055), or accepting
+NODELETE and relying on copy-before-load permanently. Whichever is chosen, a
+long-running editor that reloads many times accumulates module images.
+
+Also found, and cheap to get wrong: MinGW keeps the `lib` prefix on shared
+libraries, so the module is `libhp_abi_module.dll` on Windows. Hardcoding
+`hp_abi_module.dll` compiled cleanly and failed every Windows test at run time;
+the name now comes from CMake via `$<TARGET_FILE_NAME:>`.
+
 ### Still open in this ticket
 
 **95.3 is only half done.** Two component types created on one side and queried

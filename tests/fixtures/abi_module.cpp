@@ -1,0 +1,48 @@
+// The "gameplay module" half of the fixture (T0095, D12).
+//
+// Built as a shared library, links the engine shared library, and is loaded at
+// runtime by the test rather than linked to it. It declares EngineComponent
+// independently -- same layout, separate declaration -- which is exactly what a
+// real gameplay module does when it includes an engine header: it gets its own
+// template instantiations, and cross-boundary identity has to survive that.
+
+#include "abi_boundary.h"
+
+#include <entt/entt.hpp>
+
+namespace {
+struct EngineComponent {
+    int value;
+};
+struct ModuleComponent {
+    float value;
+};
+} // namespace
+
+extern "C" {
+
+HP_ABI_EXPORT void* hp_mod_global_addr(void) { return hp_abi_global_addr(); }
+HP_ABI_EXPORT int   hp_mod_bump(void)        { return hp_abi_bump(); }
+
+HP_ABI_EXPORT uint64_t hp_mod_engine_type_hash(void) {
+    return static_cast<uint64_t>(entt::type_hash<EngineComponent>::value());
+}
+HP_ABI_EXPORT uint32_t hp_mod_engine_type_index(void) {
+    return static_cast<uint32_t>(entt::type_index<EngineComponent>::value());
+}
+
+// The behaviour that matters: read, through the module's own instantiation, a
+// component the engine wrote.
+HP_ABI_EXPORT int hp_mod_count_engine_components(void* r) {
+    return static_cast<int>(static_cast<entt::registry*>(r)->view<EngineComponent>().size());
+}
+
+// And write a module-defined type into an engine-owned registry.
+HP_ABI_EXPORT void hp_mod_emplace_module_component(void* r, uint32_t e, float value) {
+    static_cast<entt::registry*>(r)->emplace<ModuleComponent>(
+        static_cast<entt::entity>(e), ModuleComponent{value});
+}
+HP_ABI_EXPORT int hp_mod_count_module_components(void* r) {
+    return static_cast<int>(static_cast<entt::registry*>(r)->view<ModuleComponent>().size());
+}
+}

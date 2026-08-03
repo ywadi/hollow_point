@@ -62,6 +62,61 @@ function(hp_add_test_bucket bucket)
     message(STATUS "tests: ${_target} (${bucket})")
 endfunction()
 
+# --- module boundary fixtures (T0095, D12) -----------------------------------
+#
+# A miniature of the real artifact layout: a *shared* "engine" that both the
+# test executable and a loadable "gameplay module" link, so engine state exists
+# once per process. The module is loaded with dlopen/LoadLibrary at run time and
+# is deliberately NOT linked to the test.
+#
+# Shared, not static, is the whole point. Statically linking the engine into
+# both sides still compiles and links -- and then each side gets its own copy of
+# every engine global, which is the silent failure D12 exists to prevent. If
+# these ever become STATIC, tests/integration/module_boundary_test.cpp fails,
+# which is exactly what it is for.
+add_library(hp_abi_engine SHARED "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/abi_engine.cpp")
+add_library(hp_abi_module SHARED "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/abi_module.cpp")
+
+foreach(_fixture hp_abi_engine hp_abi_module)
+    target_compile_features(${_fixture} PRIVATE cxx_std_17)
+    # EnTT arrives via DiligentFX (D7); the fixtures only need its headers.
+    target_include_directories(${_fixture} SYSTEM PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/entt/src")
+    # Everything crossing the boundary is exported explicitly, so hide the rest.
+    set_target_properties(${_fixture} PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+endforeach()
+
+# The module resolves engine symbols from the engine library, on both platforms:
+# ELF by SONAME, PE by import from a named DLL. Neither needs the executable to
+# export anything, which is why D12 could reject the exe-exports alternative.
+target_link_libraries(hp_abi_module PRIVATE hp_abi_engine)
+
 foreach(_bucket fast integration gpu perf)
     hp_add_test_bucket(${_bucket})
 endforeach()
+
+# The integration bucket links the engine fixture and loads the module fixture.
+# Guarded because a bucket with no sources produces no target at all.
+if(TARGET hp_tests_integration)
+    target_link_libraries(hp_tests_integration PRIVATE hp_abi_engine)
+    add_dependencies(hp_tests_integration hp_abi_module)
+    # The module is opened by name at run time, and the name is not the same on
+    # both targets -- MinGW produces libhp_abi_module.dll, keeping the `lib`
+    # prefix that MSVC would drop. Ask CMake rather than guessing: hardcoding
+    # "hp_abi_module.dll" built fine and failed every Windows test at run time.
+    target_compile_definitions(hp_tests_integration PRIVATE
+        HP_ABI_MODULE_NAME="$<TARGET_FILE_NAME:hp_abi_module>")
+    if(NOT WIN32)
+        # So the test executable finds libhp_abi_engine.so beside itself rather
+        # than via LD_LIBRARY_PATH, which the harness would otherwise have to
+        # set for every invocation. Windows searches the executable's own
+        # directory already.
+        set_target_properties(hp_tests_integration PROPERTIES
+            BUILD_RPATH "$ORIGIN"
+            INSTALL_RPATH "$ORIGIN")
+    endif()
+endif()
