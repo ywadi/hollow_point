@@ -28,7 +28,7 @@ This is the work. For what is already proven to work — and what only appears t
 | [T0004](completed/0004-verify-windows-host-build.md) | Verify building *on* a Windows host | 1 — Harden the build | ✅ DONE | Medium | Moderate |
 | [T0007](completed/0007-retire-imgui-probe.md) | Retire `apps/imgui_probe` | 1 — Harden the build | ✅ DONE | Low | Simple |
 | [T0010](completed/0010-offline-configure.md) | Make `configure` work offline | 1 — Harden the build | ✅ DONE | Low | Moderate |
-| [T0012](open/0012-test-harness.md) | Build a test harness for TDD | 1 — Harden the build | 🔜 TODO | High | Complex |
+| [T0012](completed/0012-test-harness.md) | Build a test harness for TDD | 1 — Harden the build | ✅ DONE | High | Complex |
 | [T0084](open/0084-continuous-integration.md) | Continuous integration | 1 — Harden the build | 🔜 TODO | Medium | Moderate |
 | [T0006](completed/0006-define-real-application.md) | Define and scaffold the real application | 2 — Engine skeleton | ❌ SUPERSEDED | High | Trivial |
 | [T0013](open/0013-engine-library-app-split.md) | Split the tree into an engine library and app consumers | 2 — Engine skeleton | 🔜 TODO | High | Moderate |

@@ -26,3 +26,6 @@
 [submodule "third_party/rapidjson"]
 	path = third_party/rapidjson
 	url = https://github.com/Tencent/rapidjson
+[submodule "third_party/doctest"]
+	path = third_party/doctest
+	url = https://github.com/doctest/doctest.git

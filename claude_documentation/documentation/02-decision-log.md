@@ -207,3 +207,55 @@ queries, filtering and content authoring.
 Two mitigations for the bus's traceability cost are built into T0075: a debug
 view of recent messages and their subscribers, and Tracy integration — a message
 log is a real debugging asset.
+
+---
+
+## D11 — doctest for C++ tests; Zig's own runner for the harness
+
+The test framework question (T0012.1) turned out to be two questions, because
+the first tests worth writing are not C++ at all.
+
+**Harness logic uses Zig's built-in test runner.** `cacheHas()` is a Zig
+function in `build.zig`, and `dist.cmake` is a `cmake -P` script. Testing either
+through a C++ framework would be absurd. `zig test` costs no new dependency and
+gives file:line failures, so `cacheHas` moved to `tools/harness/cache.zig` where
+both `build.zig` and a test can import it. `dist.cmake` is driven as a
+subprocess against a synthetic build tree rather than reimplemented — what is
+worth testing is the behaviour of the exact file `zig build dist` runs.
+
+**Project code uses doctest 2.5.3**, vendored as a submodule. It is a single
+header, so it is consumed by adding an include directory rather than by adding
+its CMake project — its install rules, package-config generation and its own
+test targets are all things this project does not want, and skipping them keeps
+`third_party/doctest` entirely unexecuted.
+
+**Rejected — Diligent's vendored GoogleTest 1.16.0.** It is already on disk at
+`DiligentCore/ThirdParty/googletest`, which is genuinely tempting. But consuming
+it means reaching into the engine submodule's internal directory layout, which
+breaks whenever Diligent reorganises, and it defines `gtest`/`gtest_main` target
+names that would collide if Diligent ever enables its own tests. That is exactly
+the coupling D1 exists to avoid, and it would be paid on every build for the
+rest of the project's life to save one submodule.
+
+**Rejected — Catch2 v3.** Its tag system is genuinely better than doctest's:
+real multi-dimensional tags with boolean selection (`[gpu]` but not `[slow]`),
+where doctest has only a single `test_suite` per case. The reason it lost is
+that v3 is a compiled library and materially slower to compile per translation
+unit — which works against the same goal that made tags attractive. See below.
+
+**Buckets are separate executables, not tags.** This is the part worth
+remembering. The concern that motivated tags was "this will become a huge system
+and we do not want to wait hours", and a tag only ever saves you the *running*
+of a test — you still pay to compile and link it. A separate binary per bucket
+(`fast`, `integration`, `gpu`, `perf`) costs nothing at all when you are not
+running it, and `zig build test` builds the bucket by name so Ninja resolves
+only that executable's dependencies. With the coarse split handled there, the
+remaining need for tags is weak enough that doctest's simpler model suffices.
+This also satisfies T0012's requirement that GPU tests stay out of the default
+suite, structurally rather than by convention.
+
+**Cross-target execution** mirrors D3's build matrix: the suite that only runs
+for the host target proves half of what it should. A Windows suite runs on a
+Linux host via WSL interop if available (a real Windows process — better than
+emulation, and proven in T0004), else wine (proven in T0001), else it is built
+but not run *with a warning*, never a silent pass.

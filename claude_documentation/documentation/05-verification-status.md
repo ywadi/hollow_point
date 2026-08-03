@@ -49,6 +49,33 @@ Zig-based, incremental, cross-compiling from either host. See
 | meshoptimizer | 300f7d3 | `meshoptimizer` |
 | ozz-animation | 0.17.0 | `ozz_base`, `ozz_animation`, `ozz_geometry`, `ozz_animation_offline` |
 
+### Test harness ✅
+`zig build test` (T0012). Two runners: doctest 2.5.3 binaries per bucket for
+project code, and Zig's own test runner for the build harness. Verified by
+red-green, not by observing a pass:
+
+- ✅ **A failing test fails the build.** Exit 1, and the output names the
+  assertion with file:line (`tests/fast/…:4: ERROR: CHECK( answer == 42 )`).
+  Confirmed independently for the C++ and Zig runners
+- ✅ **The dist tests catch a real regression** — pointing `dist.cmake`'s
+  Windows DLL destination at `lib/` instead of `bin/` failed exactly the test
+  that claims to cover it, and only that test
+- ✅ **Adding a test needs one file.** A new `.cpp` dropped into `tests/fast/`
+  was picked up with no CMake edit and no manual reconfigure
+- ✅ **Both targets run.** `test (linux-x86_64, fast)` and
+  `test (windows-x86_64, fast)` both pass; the Windows suite executed through
+  WSL interop as a real Windows process
+- ✅ **Full suite green** — 12/12 steps, 10/10 tests across the fast and
+  integration buckets
+
+### enkiTS and meshoptimizer, exercised ✅
+Previously recorded as "compile and link, but no code calls them". The first
+C++ tests call them, **on both targets**: meshoptimizer's vertex remap welds a
+6-vertex quad to 4 and the remapped indices still describe the original corners;
+`meshopt_optimizeVertexCache` permutes triangles without changing which vertices
+each references; enkiTS runs a 10,000-element `TaskSet` with every element
+visited exactly once. 10,029 assertions, Linux and Windows.
+
 ### ImGui docking, end to end ✅
 `apps/imgui_probe` built **and ran** (since retired — see T0007; the evidence
 below stands but can no longer be reproduced without restoring it from git):
@@ -79,8 +106,8 @@ dockspace. `1.92.9b` (not Diligent's 1.92.1) proves the swap took effect.
   was going to be tried.
 - ⚠️ **Vulkan backend.** The headless run used OpenGL via llvmpipe. `--mode vk`
   is untested.
-- ⚠️ **enkiTS / meshoptimizer / ozz** compile and link, but **no code calls
-  them**. Their APIs have never been exercised.
+- ⚠️ **ozz** compiles and links, but **no code calls it**. Its API has never
+  been exercised. (enkiTS and meshoptimizer no longer belong here — see below.)
 - ⚠️ **`dist` on Windows** — the Linux path is verified (4 shared + 82 static);
   the Windows DLL staging is not.
 - ⚠️ **aarch64 Linux host** — bootstrap has hashes for it; never run.

@@ -149,3 +149,8 @@ foreach(_app IN LISTS _hp_apps)
         add_subdirectory("${_app}")
     endif()
 endforeach()
+
+# Test suites (T0012). Added unconditionally: the bucket executables are small
+# next to ~1100 engine targets, and `zig build test` builds only the bucket it
+# needs by name, so a normal build is not slowed by tests it will not run.
+add_subdirectory(tests)

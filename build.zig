@@ -69,6 +69,89 @@ const specs = [_]TargetSpec{
 /// translated back into these, so expose the CMake vocabulary directly.
 const Config = enum { Release, Debug, RelWithDebInfo, MinSizeRel };
 
+/// Test buckets, separated at the *binary* level rather than by runtime tags.
+/// A tag still costs you the compile and the link; a separate executable costs
+/// nothing at all when you are not running it. `fast` is the default because
+/// the inner loop is what decides whether tests actually get written.
+const test_buckets = [_][]const u8{ "fast", "integration", "gpu", "perf" };
+
+/// Zig-side suites covering the harness itself. They sit in the same buckets as
+/// the C++ ones so `-Dtest=fast` means the same thing on both sides.
+const harness_tests = [_]struct {
+    name: []const u8,
+    bucket: []const u8,
+    path: []const u8,
+}{
+    .{ .name = "harness-cache", .bucket = "fast", .path = "tests/harness/cache_test.zig" },
+    .{ .name = "harness-dist", .bucket = "integration", .path = "tests/harness/dist_test.zig" },
+};
+
+fn bucketSelected(sel: []const u8, bucket: []const u8) bool {
+    return std.mem.eql(u8, sel, "all") or std.mem.eql(u8, sel, bucket);
+}
+
+/// True when `tests/<bucket>/` exists. The CMake side creates a bucket target
+/// only when that directory holds sources, so asking Ninja to build a target
+/// for an absent bucket would be an error rather than a no-op.
+fn hasBucketDir(b: *Build, bucket: []const u8) bool {
+    b.build_root.handle.access(b.graph.io, b.fmt("tests/{s}", .{bucket}), .{}) catch return false;
+    return true;
+}
+
+/// argv prefix needed to execute a binary built for `target_os` on this host.
+/// An empty slice means "run it directly"; null means it cannot be run here.
+///
+/// The 2x2 of hosts and targets, deliberately mirroring D3's build matrix --
+/// a test suite that only runs for the host target proves half of what it
+/// should.
+fn runnerFor(b: *Build, target_os: std.Target.Os.Tag) ?[]const []const u8 {
+    const host = b.graph.host.result.os.tag;
+    if (host == target_os) return &.{};
+
+    if (host == .linux and target_os == .windows) {
+        // Under WSL, binfmt_misc hands a PE to the real Windows loader, so the
+        // .exe runs as a genuine Windows process -- higher fidelity than wine
+        // and needing nothing installed. Proven in T0004.
+        if (wslInteropEnabled(b)) return &.{};
+        // A real Linux box falls back to wine, which T0001 proved works for
+        // this project's binaries including DLL loading.
+        if (b.findProgram(&.{"wine"}, &.{})) |wine| {
+            const arr = b.allocator.alloc([]const u8, 1) catch @panic("OOM");
+            arr[0] = wine;
+            return arr;
+        } else |_| {}
+        return null;
+    }
+
+    if (host == .windows and target_os == .linux) {
+        // The mirror image: reach the Linux binary through WSL. `wslpath`
+        // translates the drive path, and `exec` keeps the child's exit code,
+        // which is what makes a failing test fail the build.
+        if (b.findProgram(&.{"wsl.exe"}, &.{})) |wsl| {
+            const argv = [_][]const u8{
+                wsl, "-e", "sh", "-c",
+                "p=$(wslpath -a \"$1\"); shift; exec \"$p\" \"$@\"",
+                "sh",
+            };
+            return b.allocator.dupe([]const u8, &argv) catch @panic("OOM");
+        } else |_| {}
+        return null;
+    }
+
+    return null;
+}
+
+/// Whether this Linux host can execute Windows binaries directly.
+fn wslInteropEnabled(b: *Build) bool {
+    const data = std.Io.Dir.cwd().readFileAlloc(
+        b.graph.io,
+        "/proc/sys/fs/binfmt_misc/WSLInterop",
+        b.allocator,
+        .limited(256),
+    ) catch return false;
+    return std.mem.indexOf(u8, data, "enabled") != null;
+}
+
 pub fn build(b: *Build) void {
     const config = b.option(Config, "config", "CMake build type (default: Release)") orelse .Release;
     const build_type = @tagName(config);
@@ -77,6 +160,8 @@ pub fn build(b: *Build) void {
     const verbose = b.option(bool, "verbose", "Echo every compiler command line") orelse false;
     const want_ccache = b.option(bool, "ccache", "Use ccache when present (default: yes)") orelse true;
     const only = b.option([]const u8, "target", "Restrict 'all'/'dist' to one target key");
+    const test_sel = b.option([]const u8, "test", "Test bucket: fast|integration|gpu|perf|all (default: fast)") orelse "fast";
+    const test_filter = b.option([]const u8, "test-filter", "Run only tests whose name matches this pattern");
 
     checkPinnedZig(b);
 
@@ -86,6 +171,7 @@ pub fn build(b: *Build) void {
     const all_step = b.step("all", "Build every target");
     const dist_step = b.step("dist", "Stage runnable output into dist/");
     const configure_step = b.step("configure", "Run CMake configure without building");
+    const test_step = b.step("test", "Build and run the test suites");
 
     const host_os = b.graph.host.result.os.tag;
 
@@ -132,9 +218,8 @@ pub fn build(b: *Build) void {
         compile.stdio = .inherit;
         compile.has_side_effects = true;
 
-        if (needsConfigure(b, build_dir, build_type, cmake, ninja)) {
-            compile.step.dependOn(&configure.step);
-        }
+        const needs_cfg = needsConfigure(b, build_dir, build_type, cmake, ninja);
+        if (needs_cfg) compile.step.dependOn(&configure.step);
 
         const target_step = b.step(spec.step_name, spec.desc);
         target_step.dependOn(&compile.step);
@@ -159,8 +244,100 @@ pub fn build(b: *Build) void {
         stage.step.dependOn(&compile.step);
         dist_step.dependOn(&stage.step);
 
+        // --- tests -------------------------------------------------------
+        //
+        // Each bucket is built by name rather than building everything: Ninja
+        // resolves just that executable's dependencies, so running the fast
+        // suite does not drag in ~1100 engine targets.
+        for (test_buckets) |bucket| {
+            if (!bucketSelected(test_sel, bucket)) continue;
+            if (!hasBucketDir(b, bucket)) continue;
+
+            const tgt = b.fmt("hp_tests_{s}", .{bucket});
+            const build_tests = b.addSystemCommand(&.{ cmake, "--build", build_dir, "--target", tgt });
+            build_tests.setName(b.fmt("build tests ({s}, {s})", .{ spec.key, bucket }));
+            build_tests.stdio = .inherit;
+            build_tests.has_side_effects = true;
+            if (needs_cfg) build_tests.step.dependOn(&configure.step);
+
+            const exe = b.fmt("{s}/{s}/tests/{s}{s}", .{
+                b.build_root.path orelse ".",
+                build_dir,
+                tgt,
+                if (spec.os == .windows) ".exe" else "",
+            });
+
+            const prefix = runnerFor(b, spec.os) orelse {
+                // Never silently pass: a suite that cannot be executed here is
+                // reported, and the build still fails if it was asked for
+                // explicitly rather than picked up by `all`.
+                std.debug.print(
+                    "warning: cannot run the {s} test suite for {s} on this host " ++
+                        "(no WSL interop, no wine) -- built but not run\n",
+                    .{ bucket, spec.key },
+                );
+                test_step.dependOn(&build_tests.step);
+                continue;
+            };
+
+            const run = if (prefix.len == 0)
+                b.addSystemCommand(&.{exe})
+            else blk: {
+                const r = b.addSystemCommand(prefix);
+                r.addArg(exe);
+                break :blk r;
+            };
+            if (test_filter) |f| run.addArg(b.fmt("--test-case={s}", .{f}));
+            run.setName(b.fmt("test ({s}, {s})", .{ spec.key, bucket }));
+            run.stdio = .inherit;
+            // Tests must re-run every time; a cached "pass" is not a pass.
+            run.has_side_effects = true;
+            run.step.dependOn(&build_tests.step);
+            test_step.dependOn(&run.step);
+        }
+
         // `zig build` with no step builds whatever the host runs.
         if (spec.os == host_os) b.getInstallStep().dependOn(&compile.step);
+    }
+
+    // --- harness tests (Zig) ---------------------------------------------
+    //
+    // These test the build harness itself -- CMakeCache parsing, the dist
+    // staging script. Host-only by design: they exercise logic that only ever
+    // runs on the host, so cross-compiling them would prove nothing. The C++
+    // suites above are what run for both targets.
+    const cache_mod = b.createModule(.{ .root_source_file = b.path("tools/harness/cache.zig") });
+
+    // Paths the harness knows and a test cannot discover for itself, handed
+    // over as build options rather than environment variables so the suite
+    // needs nothing set up around it.
+    const test_config = b.addOptions();
+    test_config.addOption([]const u8, "cmake", cmake);
+    test_config.addOption([]const u8, "repo_root", b.build_root.path orelse ".");
+
+    for (harness_tests) |h| {
+        if (!bucketSelected(test_sel, h.bucket)) continue;
+
+        const mod = b.createModule(.{
+            .root_source_file = b.path(h.path),
+            .target = b.graph.host,
+            .optimize = .Debug,
+            .imports = &.{
+                .{ .name = "harness_cache", .module = cache_mod },
+                .{ .name = "test_config", .module = test_config.createModule() },
+            },
+        });
+
+        const filters: []const []const u8 = if (test_filter) |f| one: {
+            const arr = b.allocator.alloc([]const u8, 1) catch @panic("OOM");
+            arr[0] = f;
+            break :one arr;
+        } else &.{};
+
+        const t = b.addTest(.{ .name = h.name, .root_module = mod, .filters = filters });
+        const run = b.addRunArtifact(t);
+        run.has_side_effects = true;
+        test_step.dependOn(&run.step);
     }
 
     // --- clean -----------------------------------------------------------
@@ -215,20 +392,9 @@ fn needsConfigure(b: *Build, build_dir: []const u8, build_type: []const u8, cmak
 
 /// Look up `name` in a CMakeCache.txt and report whether it equals `want`.
 ///
-/// Entries are `NAME:TYPE=VALUE`, and the type is not predictable: a value
-/// passed as `-DHP_ZIG=...` without a declared type lands as `UNINITIALIZED`,
-/// not `FILEPATH`. Matching on the name alone avoids depending on that.
-fn cacheHas(cache: []const u8, name: []const u8, want: []const u8) bool {
-    var lines = std.mem.splitScalar(u8, cache, '\n');
-    while (lines.next()) |raw| {
-        const line = std.mem.trimEnd(u8, raw, "\r");
-        if (!std.mem.startsWith(u8, line, name)) continue;
-        if (line.len <= name.len or line[name.len] != ':') continue;
-        const eq = std.mem.indexOfScalarPos(u8, line, name.len, '=') orelse continue;
-        return std.mem.eql(u8, line[eq + 1 ..], want);
-    }
-    return false;
-}
+/// Lives in `tools/harness/cache.zig` so it can be unit tested (T0012); the
+/// tests import that file as a module. See it for why the type is ignored.
+const cacheHas = @import("tools/harness/cache.zig").cacheHas;
 
 fn checkPinnedZig(b: *Build) void {
     const running = @import("builtin").zig_version_string;

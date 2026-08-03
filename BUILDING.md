@@ -42,11 +42,79 @@ Options:
 | `-Dverbose` | echo every compiler command line |
 | `-Dccache=false` | ignore ccache even if installed |
 | `-Dtarget=linux\|windows` | restrict `all`/`dist` to one target |
+| `-Dtest=fast\|integration\|gpu\|perf\|all` | which test bucket to run (default `fast`) |
+| `-Dtest-filter=<pattern>` | run only tests whose name matches |
 
 Each target and config gets its own tree under `build/`, so switching between
 them never invalidates the other. `zig build all` runs the two targets one after
 the other rather than at once — each already saturates the machine, and serial
 output is readable.
+
+## Tests
+
+```sh
+zig build test                       # the fast suite, both targets
+zig build test -Dtest=all            # every bucket
+zig build test -Dtest=integration    # one bucket
+zig build test -Dtest-filter='cache*'
+```
+
+A failing test fails the build, and the failure names the assertion and its
+file and line.
+
+### Adding a test
+
+Drop **one `.cpp` file** into `tests/<bucket>/`. Nothing else — no CMake edit,
+no reconfigure. The bucket globs with `CONFIGURE_DEPENDS`, so Ninja notices the
+new file by itself.
+
+```cpp
+#include <doctest/doctest.h>
+
+TEST_CASE("a thing behaves" * doctest::test_suite("mysuite")) {
+    CHECK(1 + 1 == 2);
+}
+```
+
+### Buckets
+
+Tests are separated into **separate executables**, not runtime tags. A tag would
+still cost you the compile and the link; another binary costs nothing at all
+when you are not running it. This is what keeps the inner loop quick as the
+suite grows.
+
+| Bucket | For | Runs by default |
+|---|---|---|
+| `fast` | pure unit tests, no device, no subprocesses | yes |
+| `integration` | drives real subprocesses; seconds not milliseconds | no |
+| `gpu` | needs a graphics device (software rasterisation is fine) | no |
+| `perf` | timing-sensitive; noisy on a loaded machine | no |
+
+A bucket with no `tests/<bucket>/*.cpp` produces no target at all, so the empty
+ones cost nothing until someone writes the first test.
+
+### The two runners
+
+`zig build test` drives two things, and both must pass:
+
+- **doctest** binaries built from `tests/<bucket>/`, for **both targets**
+- **Zig tests** covering the build harness itself — `CMakeCache` parsing and
+  the `dist.cmake` staging rules, in `tests/harness/`
+
+The harness tests are host-only by design: they exercise logic that only ever
+runs on the host, so cross-compiling them would prove nothing. The C++ suites
+are the ones that run for both targets.
+
+### How a cross-built suite is executed
+
+The Windows suite is run on a Linux host by the first of these that works:
+
+1. **WSL interop**, if enabled — the `.exe` runs as a genuine Windows process,
+   which is better than emulation and needs nothing installed
+2. **wine**, the fallback on a real Linux box
+3. otherwise it is **built but not run**, with a warning — never a silent pass
+
+A Windows host reaches the Linux suite through `wsl.exe` by the same logic.
 
 ## What gets built
 
