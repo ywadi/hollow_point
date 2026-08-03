@@ -54,6 +54,35 @@
   .search-clear:hover { color:var(--fg); }
   .search-wrap.has-value .search-clear { display:block; }
 
+  /* GitHub Actions status badges + repo link. The badge <img> comes from
+     github.com, so it is the one thing in this header that depends on the
+     network -- everything else is served locally. .gh-badge-img is a fixed
+     box (not just an img size) so the header's width never jumps between
+     "loading", "loaded" and "failed to load": the box is reserved up front
+     and the SVG (or, if the request fails, the text fallback below) is fit
+     inside it. */
+  .gh-links { display:flex; align-items:center; gap:10px; }
+  .gh-badge {
+    display:flex; align-items:center; gap:6px; text-decoration:none;
+    color:var(--dim); font-size:11px; white-space:nowrap;
+  }
+  .gh-badge:hover { color:var(--fg); }
+  .gh-badge-img {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:92px; height:20px; border-radius:3px; background:var(--panel2);
+    flex:none; overflow:hidden;
+  }
+  .gh-badge-img img { width:100%; height:100%; object-fit:contain; display:block; }
+  .gh-badge-fallback { display:none; font:10px ui-monospace,Menlo,monospace; color:var(--dim); }
+  /* Set by the error handler in the script below when the badge image fails
+     to load -- no network, github.com unreachable, or no access to the repo
+     (an unauthenticated request to a private repo also fails to load the
+     image) -- swap the broken-image icon for plain text rather than let the
+     browser show it. The class is named "offline" for the common case, but
+     the fallback covers any load failure, not just that one. */
+  .gh-badge-img.offline img { display:none; }
+  .gh-badge-img.offline .gh-badge-fallback { display:block; }
+
   /* search hides cards/groups by class rather than by leaving them out of the
      render, so phase aggregates (computed from the full task list) never see
      a filtered subset */
@@ -185,6 +214,27 @@
     <span class="meta" id="search-count"></span>
     <button class="ctl" id="collapse-all">Collapse all</button>
     <button class="ctl" id="expand-all">Expand all</button>
+  </div>
+  <div class="gh-links">
+    <a class="gh-badge" href="https://github.com/ywadi/hollow_point/actions/workflows/ci.yml"
+       target="_blank" rel="noopener" title="CI workflow — view runs on GitHub">
+      <span>CI</span>
+      <span class="gh-badge-img">
+        <img src="https://github.com/ywadi/hollow_point/actions/workflows/ci.yml/badge.svg"
+             alt="CI workflow status" width="92" height="20">
+        <span class="gh-badge-fallback">status unavailable</span>
+      </span>
+    </a>
+    <a class="gh-badge" href="https://github.com/ywadi/hollow_point/actions/workflows/full-build.yml"
+       target="_blank" rel="noopener" title="Full build workflow — view runs on GitHub">
+      <span>Full build</span>
+      <span class="gh-badge-img">
+        <img src="https://github.com/ywadi/hollow_point/actions/workflows/full-build.yml/badge.svg"
+             alt="Full build workflow status" width="92" height="20">
+        <span class="gh-badge-fallback">status unavailable</span>
+      </span>
+    </a>
+    <a class="nav" href="https://github.com/ywadi/hollow_point" target="_blank" rel="noopener">GitHub ↗</a>
   </div>
   <div class="spacer"></div>
   <div class="meta"><span class="dot" id="dot"></span><span id="status">loading…</span></div>
@@ -614,6 +664,19 @@ document.getElementById('search-clear').addEventListener('click', () => {
   searchInput.value = '';
   setSearchQuery('');
   searchInput.focus();
+});
+
+// The GitHub Actions badge images live on github.com, unlike everything else
+// in this file -- so unlike everything else, they can fail to load: no
+// network (see T0010: offline configure is a verified property of this
+// project), github.com unreachable, or -- just as likely, and not a network
+// problem at all -- an unauthenticated request with no access to the repo,
+// if it is ever private. A bare <img> can't tell those apart and shouldn't
+// try to; either way it would leave a broken-image icon sitting in the
+// header, which reads as a bug. Swap it for a text fallback instead, inside
+// the same reserved box, so nothing shifts.
+document.querySelectorAll('.gh-badge-img img').forEach((img) => {
+  img.addEventListener('error', () => img.closest('.gh-badge-img').classList.add('offline'), { once: true });
 });
 
 async function poll() {

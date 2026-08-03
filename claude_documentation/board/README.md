@@ -101,6 +101,49 @@ The search term is not persisted. Every reload starts with an empty box,
 because a stale filter left over from last time you looked would just be
 confusing — unlike sort and collapse state, which are meant to stick.
 
+## GitHub status badges
+
+The header also carries two GitHub Actions badges, next to Sort and search,
+plus a plain link to the repository. Each badge is a link straight to that
+workflow's run history (`/actions/workflows/<file>`); the repo link goes to
+`github.com/ywadi/hollow_point` itself. All three open in a new tab
+(`target="_blank" rel="noopener"`) — this is a working dashboard, and a click
+that navigates it away from where you left it is just annoying.
+
+Both workflows get a badge, not just one, because both matter for different
+reasons: `ci.yml` ("CI") is the fast suite that runs on every push and is the
+thing that should basically always be green, while `full-build.yml` ("Full
+build") is the ~1100-target nightly build that catches breakage nothing else
+compiles against. A single badge would hide whichever workflow it left out —
+if only CI were shown, a broken nightly build could go unnoticed for a long
+time, and that is exactly the kind of drift this board exists to surface.
+
+The badge `<img>` is the one thing in this file that depends on the network —
+everything else is served from disk or computed client-side. That matters
+here specifically because offline configure is a verified property of this
+project (T0010), so a header that shows a broken-image icon reads as a bug in
+the board, not as "you're offline." But a failed image load isn't only an
+offline signal: the same failure happens if github.com is unreachable for
+any other reason, or — not a network problem at all — if the repository is
+private and the request is unauthenticated, which an unauthenticated
+`badge.svg` request always is. (Checking this while building the feature: as
+of writing, `github.com/ywadi/hollow_point` returns 404 to an anonymous
+request, consistent with the repo currently being private.) The fallback
+therefore doesn't claim a specific cause. Two things handle it:
+
+- `.gh-badge-img` is a fixed-size box, not just an `<img>` with intrinsic
+  dimensions. The box is reserved before the image ever starts loading, so
+  there is no layout shift between "loading," "loaded" and "failed to load."
+- an `error` listener on each `<img>` (in the script, not an inline
+  `onerror`, to match how every other handler in this file is wired up)
+  swaps the image for a small "status unavailable" text fallback inside that
+  same box, instead of letting the browser render its own broken-image icon.
+
+The badges are unauthenticated `badge.svg` requests, so they also render
+correctly for anyone with a network path to github.com and read access to the
+workflow — the fallback exists for "the request didn't succeed," not for a
+specific reason why.
+
 ## Superseded and dropped tickets
 
 A ticket closed as `❌ SUPERSEDED` or `❌ DROPPED` was closed **without the work
