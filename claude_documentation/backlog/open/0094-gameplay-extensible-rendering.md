@@ -44,6 +44,8 @@ same three capabilities. Without them, every one of these becomes an engine patc
 - [ ] 94.7 **Hot-reload safety** — unregister and re-register custom layers
 - [ ] 94.8 Debug validation: writing a target being read, using a freed target
 - [ ] 94.9 Worked example: accumulate visibility into a persistent texture
+- [ ] 94.10 Screenshot capture: grab the presented frame, encode to PNG, write
+      to a decided location (see the 2026-08-03 amendment)
 
 ## Notes / findings
 
@@ -86,3 +88,19 @@ profile.
 
 See T0030's amendment for the mechanism and T0029's for why the Tracy client
 lives in the engine shared library.
+
+### Amendment (2026-08-03) -- screenshot capture is assigned here (94.10)
+
+T0083.3 requires save-slot metadata including a "screenshot", and no ticket
+provided one -- the design-gap survey (`documentation/07-design-gaps.md`,
+item 9) found `screenshot` only as T0083's metadata line, an editor-evidence
+line in T0032, and verification prose. The adjacent machinery is this ticket's
+94.6 (async readback to CPU), which is why capture lands here rather than
+growing a ticket of its own: capture-the-presented-frame is a readback with a
+known source, plus PNG encode, plus a destination.
+
+Scope of 94.10: capture the final presented frame (post-tonemap, T0096 -- a
+screenshot of the raw HDR target is a bug), encode PNG, and write via the
+write-directory rules (T0103.4). Consumers: T0083's slot thumbnails (scaled-
+down variant wanted), a developer hotkey, and eventually T0036's asset
+thumbnails -- which remain explicitly deferred; 94.10 does not take them on.

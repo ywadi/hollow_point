@@ -33,6 +33,8 @@ rather than an opinion.
 - [ ] 31.5 Evaluate Tracy's allocation tracking; it is powerful but costly, so
       decide deliberately rather than enabling it by reflex
 - [ ] 31.6 Consider capturing a baseline trace to compare against later
+- [ ] 31.7 Memory budgets alongside the frame-time ones (see the 2026-08-03
+      note)
 
 ## Notes / findings
 
@@ -45,3 +47,18 @@ bottleneck and produces misleading traces.
 
 A baseline trace committed as a reference is unusual but valuable: it makes
 "this got slower" detectable rather than a matter of memory.
+
+### Note (2026-08-03) -- budgets means memory too
+
+The design-gap survey (`documentation/07-design-gaps.md`, item 16) found
+frame-*time* budgets owned here and memory budgets owned nowhere: `memory
+budget`, `texture streaming`, `residency` -- zero hits. What exists is
+per-system (D15's fixed particle buffer, T0107.5's effect cap, T0046.6's
+render-target memory reporting) with no total and no per-category split. 31.7
+adds memory to the same budget-setting exercise: a GPU total and an asset-RAM
+total with a rough category split, sized against T0044's content-scale answer
+("does anything ever stream?" is now on its question list). For a
+confined-scene desktop game the numbers may be generous and never binding --
+that is fine; the point is that outgrowing RAM becomes a measured event
+rather than a quiet one. No eviction machinery is proposed beyond T0058.2's
+release policy unless a budget is actually exceeded.

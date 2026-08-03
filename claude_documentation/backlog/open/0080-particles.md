@@ -112,3 +112,25 @@ Consequences this ticket was not written for:
 GPU: previewing without entering play mode means running compute outside the
 normal frame loop, and scrubbing an effect backwards is not possible without
 re-simulating from the start.
+
+### Amendment (2026-08-03) -- do not let 80.2's buffer layout preclude ribbons
+
+From the design-gap survey (`documentation/07-design-gaps.md`, item 8):
+trails, ribbons and beams have zero hits anywhere, and this ticket's rendering
+is exclusively "camera-facing quads" (80.4). For a shooter-shaped game (T0093's
+vision cones, T0098's agents) tracers, projectile trails and beam weapons are
+near-certain requests.
+
+A ribbon is **not an emitter-parameter tweak** -- it is a different topology, a
+strip built through a particle's history -- and it touches D15's fixed GPU
+buffer layout. It does not need building now. What is needed now is one
+constraint on 80.2, before the buffer layout freezes: the particle buffer and
+dispatch structure should not *preclude* strip-topology emitters -- concretely,
+do not design away the possibility of addressing a particle's recent positions
+(a history window or a stable ordering within an emitter's allocation). If
+honouring that turns out to have a real cost, escalate the trade-off instead of
+silently dropping it; the survey's claim is that keeping the door open is
+cheap, and that claim should be tested against the actual layout, not assumed.
+
+Screen distortion -- the other VFX shape the survey flagged -- is a frame-layout
+constraint, not a particle-buffer one; it is recorded on T0046.

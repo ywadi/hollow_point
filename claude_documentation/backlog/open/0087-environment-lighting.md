@@ -35,6 +35,8 @@ it is largely provided already by `EnvMapRenderer`.
 - [ ] 87.5 Scene-level environment settings, serialized
 - [ ] 87.6 Feed IBL inputs into `PBR_Renderer`
 - [ ] 87.7 Consider a procedural sky, given `EpipolarLightScattering` exists
+- [ ] 87.8 Disposition local ambient control -- interiors under a scene-global
+      IBL -- before scenes are lit (see the 2026-08-03 amendment)
 
 ## Notes / findings
 
@@ -53,3 +55,31 @@ covered by geometry.
 DiligentFX ships `EpipolarLightScattering`, which the old `terrain_lab` used — so
 a procedural atmosphere is available if outdoor scenes matter, rather than a fixed
 cubemap.
+
+### Amendment (2026-08-03) -- interiors under a global IBL have no answer
+
+The design-gap survey (`documentation/07-design-gaps.md`, item 6) found
+`lightmap`, `light probe`, `reflection probe` and `global illumination` at zero
+hits in every sense. The lighting stack is punctual lights (T0079), shadows
+(T0086), and **one environment map per scene** with a global ambient intensity
+(this ticket). The consequence: a single scene-global IBL illuminates interiors
+with sky light -- a basement is lit by the same environment as the street above
+it. Every engine with authored indoor/outdoor spaces grows *some* answer, and
+this backlog had none, not even a rejection.
+
+T0093's visibility decision raises the stakes beyond cosmetics: "a dark room
+inside the vision cone is *visible and dark* -- lit by whatever lights exist",
+so interior light levels are gameplay-legible.
+
+The failure mode if this waits is the one T0096 names for colour-space bugs:
+lights get tuned per scene to compensate for ambient leakage, then every one of
+those scenes needs re-tuning when a real mechanism lands. Hence 87.8:
+**disposition a cheap first answer before scenes are lit.** The candidate is an
+ambient/IBL-intensity *volume* or per-room scalar applied where 87.6 feeds IBL
+inputs into `PBR_Renderer` -- deliberately not probes, not lightmaps, not GI,
+none of which should be built speculatively. "Rejected, scenes will be lit to
+tolerate it" is also an acceptable disposition; silence is not.
+
+If the game turns out to be all-outdoor or all-interior this collapses -- which
+is why the indoor/outdoor question is now on T0044's list rather than a reason
+to leave this unwritten.

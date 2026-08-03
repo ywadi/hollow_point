@@ -74,3 +74,11 @@ gets patched, and "your saves are gone" is unacceptable.
   (singular) under-specifies. The save needs the active scene plus any
   additively loaded ones (and their autoload state, T0076), or loading a save
   taken mid-stream reconstructs a different world.
+
+### Note (2026-08-03) -- the screenshot in 83.3 now has a provider
+
+83.3's slot metadata assumed screenshot capture that no ticket provided
+(design-gap survey item 9). It is now assigned: **T0094.10** owns capturing
+the presented frame and encoding it; this ticket consumes the result for slot
+thumbnails. The dependency runs that way round -- do not grow a second capture
+path here.

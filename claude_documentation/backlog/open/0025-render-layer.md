@@ -46,3 +46,16 @@ stubs from — G6).
 
 Turn validation on in debug from the very first frame. Every hour spent without
 it is an hour of bugs deferred to a worse time.
+
+### Note (2026-08-03) -- two tickets now attach to this one's device code
+
+From the design-gap survey (`documentation/07-design-gaps.md`, items 1 and 5):
+
+- **T0110 (presentation) gates this ticket** and is ordered before it. The
+  swap chain this ticket creates must be created against T0110's present-mode
+  policy -- without it, Diligent defaults to `VK_PRESENT_MODE_IMMEDIATE_KHR`
+  (uncapped, tearing), which is what completed T0003's own log shows already
+  happening. Do not harden 25.1 with an unexamined present mode.
+- **T0113 (device loss)** adds detection to this ticket's present/submission
+  error paths. Creation, resize and shutdown were owned here; the device dying
+  *mid-run* was owned nowhere.

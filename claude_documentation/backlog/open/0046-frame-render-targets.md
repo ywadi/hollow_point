@@ -52,3 +52,27 @@ shows it costs something.
 
 `DiligentFX/Components/GBuffer.hpp` already manages a GBuffer's targets — use it
 rather than duplicating it if deferred shading is wanted.
+
+### Amendment (2026-08-03) -- constraints to honour before the frame layout solidifies
+
+Collected from T0106 and the design-gap survey (`documentation/07-design-gaps.md`,
+items 2 and 8), because this ticket is where they become cheap or expensive:
+
+- **Depth must be readable during the transparent pass.** Already flagged by
+  T0106.5 -- soft particles fade against scene depth while drawing transparents.
+  Restated here so the requirement lives with the resource design, not only
+  with its first consumer.
+- **Scene colour must be readable during the transparent pass, eventually.**
+  Screen distortion appears exactly once in the backlog, as a line in T0107's
+  anatomy of an explosion ("optionally screen distortion for the shockwave"),
+  and no ticket owns a distortion pass. It has the same shape as the
+  soft-particle constraint: distortion needs *scene colour* readable mid-frame
+  exactly as soft particles need *depth*. One sentence here keeps the door
+  open -- a resolve/copy point of the colour target that a later pass can
+  consume; discovering it after the frame layout solidifies is a refactor.
+  The distortion pass itself remains unowned and unbuilt until VFX demand it.
+- **T0111 lands first, by design** (it Blocks this ticket): the anti-aliasing
+  decision changes what "formats are declared in one place" declares (sample
+  counts, TAA history buffers or their absence), and the render-scale decision
+  means world targets may size from render scale rather than swap-chain size.
+  Do not freeze the declarations before T0111's answers exist.

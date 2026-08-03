@@ -58,3 +58,16 @@ tinygltf's write support is confirmed present in the bundled copy
 
 T0039 hooks LOD generation into this same tool, so structure it as a pipeline of
 stages rather than one monolithic convert function.
+
+### Note (2026-08-03) -- morph targets are deliberately not in the subtask list
+
+The subtasks convert meshes, materials, skinning and (via T0041) animations.
+**Morph targets / blend shapes are not listed, and that is currently an
+absence, not a rejection** (design-gap survey item 14): this converter does
+not carry them, ozz does not handle them (they are vertex animation, not
+joint animation), and the skinned vertex layout being assigned in T0041's
+review note does not include morph deltas. If the game needs facial animation
+or shape-key props, the feature touches this importer, the vertex format and
+the animation runtime (T0049) *at once* -- which is why the yes/no question is
+now on T0044's list. If the answer is no, one rejection line there closes
+this; if yes, scope it as its own ticket rather than growing it here quietly.

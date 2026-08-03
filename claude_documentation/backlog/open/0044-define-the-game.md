@@ -55,3 +55,35 @@ Answering this early is cheap and changes real decisions already on the board:
 
 Deciding late is not fatal, but it means building for a hypothetical. Nothing in
 Phases 2-3 is wasted either way, which is why they can start first.
+
+### Questions added by the design-gap survey (2026-08-03)
+
+The survey (`documentation/07-design-gaps.md`) found several absences whose
+right size depends entirely on this ticket's answer. Each is one question to
+ask when the game is defined; the referenced tickets hold the consequences.
+
+- **Indoor/outdoor mix** (survey item 6) -- extends the terrain bullet above in
+  the other direction: if the game has authored interiors under a scene-global
+  IBL, some local ambient control is needed and T0087.8 owns dispositioning
+  it. All-outdoor or all-interior collapses the question.
+- **Scripted scenes / cutscenes** (item 7) -- does this game have them at all?
+  A sequencer/timeline is a subsystem and must not be built speculatively;
+  T0081's amendment keeps a cheap camera-offset/blend seam open either way.
+- **Platform / store** (item 10) -- platforms are currently asked only as
+  "Windows + Linux confirmed". Whether the game ships on Steam decides
+  achievements, cloud saves and overlay work at shipping time; the two cheap
+  constraints that do not wait are already noted on T0103 (write-directory
+  layout) and T0075 (platform code subscribes to gameplay events).
+- **Ragdoll, and morph targets** (item 14) -- death physics is a yes/no with a
+  seam consequence (T0051's note); facial animation or shape-key props touch
+  importer, vertex format and animation runtime at once (T0038's note). A
+  rejection line in either direction closes them cheaply.
+- **Aspect-ratio policy** (item 15) -- a *design* question for this game, not
+  polish: 21:9 sees more world, which in a vision-cone stealth game (T0093) is
+  a gameplay advantage. Free aspect, letterbox to a design ratio, or clamped
+  horizontal FOV -- decide, then one line each in T0081 and T0069.
+- **Content scale: does anything ever stream?** (item 16) -- for a
+  confined-scene desktop game the answer is probably no, and memory budgets
+  (T0031's note) get sized accordingly. If the answer is ever yes, streaming
+  is a Phase-4-shaped retrofit -- which is exactly why the question is asked
+  once, here, now.

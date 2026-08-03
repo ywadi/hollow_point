@@ -85,3 +85,13 @@ iterated). One point, one assertion, three bugs prevented.
 This ticket produces mostly a document plus wiring — the systems it orders are
 built in their own tickets. Keep it that way; the value is the contract, not
 code volume.
+
+### Note (2026-08-03) -- the anatomy must name the present/pacing step
+
+The design-gap survey (item 1) observed that this ticket owns "the single
+ordered list of what runs when" and never mentions presentation or pacing --
+the natural owner, blind to it. Fixed by division of labour: the frame-anatomy
+document (100.1) must include the present step and the pacing/cap point as
+named phases of the frame; the *policy* behind them (present mode, vsync,
+frame-rate cap, focus loss) is owned by **T0110**. Neither document should
+duplicate the other's half.

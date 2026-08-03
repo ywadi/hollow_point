@@ -45,6 +45,8 @@ authoring tools? And does the licence suit how this ships?
 - [ ] **Animation-event-driven playback** (T0049 track triggers)
 - [ ] Streaming for music vs fully-decoded for short effects
 - [ ] Buses/groups with independent volume, and a mute-all for the editor
+- [ ] **Subtitles/captions**: playback events expose what is playing, with
+      caption text/timing hooks (see the 2026-08-03 accessibility note)
 
 ## Notes / findings
 
@@ -81,3 +83,15 @@ vendor a higher-level library (miniaudio is single-header and permissive and
 would sit alongside SDL rather than conflict with it). Worth deciding before
 Phase 10 rather than during it, because animation-event-driven playback (T0049)
 and the message bus (T0075) both assume an API that does not exist yet.
+
+### Accessibility note (2026-08-03) -- captions are scoped now, while the API is unshaped
+
+From the design-gap survey (`documentation/07-design-gaps.md`, item 11):
+`subtitle` had zero hits anywhere. Subtitles/captions belong in this epic's
+scope because the event-driven playback this ticket already plans is exactly
+where captions hook -- a played sound event that can carry "what text, when" is
+a caption source for free. **Retrofitting caption timing into an audio API
+that never considered it is the expensive version.** Nothing needs building
+until this epic breaks into tickets; the scope bullet above is the whole fix
+today. Caption *display* is T0069's side; caption text identity follows
+T0112's string-key convention.

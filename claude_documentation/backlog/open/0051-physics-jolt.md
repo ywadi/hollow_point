@@ -39,6 +39,7 @@ than to retrofit.
 - [ ] Back Jolt's job system with enkiTS rather than a second thread pool
 - [ ] Debug draw of collision shapes through the render stack
 - [ ] Physics/animation interaction: root motion vs simulated movement
+- [ ] **Ragdoll: decide yes/no, and powered or pure** (see the 2026-08-03 note)
 
 ## Notes / findings
 
@@ -62,3 +63,16 @@ actually gets difficult. Expect this to be the bulk of the work.
 
 Determinism is worth deciding on early if networking is ever a possibility, since
 it constrains float usage and threading.
+
+### Note (2026-08-03) -- ragdoll was the unnamed half of the seam
+
+The design-gap survey (`documentation/07-design-gaps.md`, item 14) noticed
+that root motion versus simulation is called out in T0049, in this ticket
+*and* in the README's Very Complex list -- yet ragdoll, the other big feature
+on exactly that animation/physics seam, was never named anywhere. The scope
+bullet above makes the absence a decision to take when this epic breaks into
+tickets: **no ragdoll** (death animations only -- legitimate and much cheaper),
+**pure ragdoll** on death (Jolt's ragdoll support driving the ozz skeleton's
+joints), or **powered/blended** (animation-driven targets with physics take-
+over, the expensive one). The game decision is T0044's; the mechanism, if
+wanted, lands here.

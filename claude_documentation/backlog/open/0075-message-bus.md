@@ -90,3 +90,14 @@ the same problem, both consequences of messages being typed:
   a point where the queue is drained (the natural place: the same
   between-frames point T0048 already needs), and that invariant should be
   asserted, not assumed.
+
+### Note (2026-08-03) -- platform integration would subscribe here
+
+If the game ever ships on a store platform (undecided -- now on T0044's
+question list), achievements and rich presence want a gameplay event source,
+and this bus is exactly that. The rule that preserves the option for free:
+**platform integration subscribes to gameplay events; gameplay stays ignorant
+of the platform.** No gameplay code ever calls a Steamworks-shaped API -- a
+platform layer, if one ever exists, listens to the same typed messages
+everything else publishes. Recorded so nobody wires an achievement call into a
+behaviour "just for now". (Design-gap survey item 10.)

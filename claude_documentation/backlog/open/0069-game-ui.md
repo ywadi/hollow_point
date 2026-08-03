@@ -63,3 +63,26 @@ is the concrete reason it matters.
 
 Resist "we will just use ImGui for now". Player-facing UI written in immediate
 mode is very hard to make feel good, and the migration later is a rewrite.
+
+### Amendment (2026-08-03) -- from the design-gap survey
+
+Three adjustments, from `documentation/07-design-gaps.md` items 3, 11 and 15:
+
+- **String identity is pulled out of this epic into T0112**, which decides
+  keys-versus-literals *before* Phase 3-7 authoring, because every literal
+  authored ahead of that decision is a migration. What stays here is the half
+  that genuinely belongs to a UI system: fonts, shaping, text layout, and
+  language-specific rendering. Fonts are also the standing reason the library
+  choice above cannot drift forever -- each candidate brings its own font
+  stack, and no text can be drawn until one is picked.
+- **Two accessibility items join the decision list.** UI scale as a *user
+  option* -- distinct from the DPI correctness already in scope; a player with
+  low vision wants "make everything bigger" regardless of DPI -- and a
+  colourblind-safe palette policy for HUD/UI colour semantics. Both are far
+  cheaper as requirements on an unbuilt system than as patches to a built
+  one. (Input rebinding, the highest-value accessibility feature, is already
+  fully owned by T0068 and is not re-raised.)
+- **HUD anchoring inherits the aspect-ratio policy** T0044 decides (T0081's
+  amendment has the projection half): whatever the answer -- free aspect,
+  letterbox, clamped FOV -- HUD elements anchor to screen edges/corners under
+  it, and a safe-area inset is the cheap generalisation to carry.

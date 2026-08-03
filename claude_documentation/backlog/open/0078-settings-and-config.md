@@ -41,6 +41,8 @@ to the project, or a project setting gets overwritten per machine.
 - [ ] 78.6 Change notification so systems react without polling
 - [ ] 78.7 Editor panel for project settings
 - [ ] 78.8 Command-line overrides for development
+- [ ] 78.9 Display and graphics-quality section of game options -- see the
+      2026-08-03 amendment below
 
 ## Notes / findings
 
@@ -59,3 +61,32 @@ lost.
 
 Command-line overrides are worth having early; they make automated testing and
 bug reproduction dramatically easier.
+
+### Amendment (2026-08-03) -- the quality settings four tickets cite must exist here
+
+Four rendering tickets wire themselves into a quality section of this ticket
+that this ticket did not have: T0086.9 "Quality settings wired to project/user
+config (T0078)", T0091.7 "Quality tiers driven by settings (T0078)", T0089's
+"the fallback on lower quality settings", T0096.7 "behind quality settings
+(T0078)". The game-options row above says "resolution, volume, keybinds" and no
+subtask mentioned graphics tiers. Four consumers, no producer -- found by the
+design-gap survey (`documentation/07-design-gaps.md`, item 4).
+
+Nothing here is hard; the risk is drift -- each rendering ticket inventing its
+own quality enum, then a settings screen trying to unify four shapes. 78.9
+closes it, and its scope is:
+
+- **Display options**, populated by T0110 (presentation): vsync, frame-rate
+  cap, fullscreen/borderless (applied by T0015), resolution -- the "resolution"
+  already listed stops being alone
+- **A small set of named quality tiers** (the exact set is decided when the
+  first consumer lands, not invented here) that the four tickets above key
+  off, plus the policy for **per-system overrides**: tiers set defaults,
+  individual toggles may override them, and the file records overrides rather
+  than a mutated tier
+- **Gamma/brightness** -- `gamma` and `brightness` had zero hits anywhere at
+  survey time; a player-facing brightness control is standard and belongs in
+  this same section (its render-side application is T0096's business)
+
+The shape to avoid: quality enums defined in T0086/T0089/T0091/T0096 and
+merely *stored* here. The schema is this ticket's; the consumers read it.

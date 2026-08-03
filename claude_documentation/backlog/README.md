@@ -42,6 +42,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 160 | [T0044](open/0044-define-the-game.md) | Define the game | 2 — Engine skeleton | 🔜 TODO | High | Trivial |
 | 170 | [T0068](open/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
 | 180 | [T0103](open/0103-virtual-filesystem-and-packs.md) | Virtual filesystem and content packs | 3 — Data model | 🔜 TODO | High | Moderate |
+| 185 | [T0112](open/0112-string-identity-and-localisation.md) | String identity: keys before literals | 3 — Data model | 🔜 TODO | Medium | Simple |
 | 190 | [T0020](open/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | 🔜 TODO | High | Complex |
 | 200 | [T0021](open/0021-scene-and-ecs.md) | Scene and entity-component system | 3 — Data model | 🔜 TODO | High | Moderate |
 | 210 | [T0101](open/0101-transform-hierarchy-and-world-transforms.md) | Transform hierarchy propagation and world transforms | 3 — Data model | 🔜 TODO | High | Moderate |
@@ -61,7 +62,10 @@ This is the work. For what is already proven to work — and what only appears t
 | 350 | [T0076](open/0076-autoloads.md) | Autoloads: project and scene scoped services | 3 — Data model | 🔜 TODO | High | Moderate |
 | 360 | [T0078](open/0078-settings-and-config.md) | Settings and configuration | 3 — Data model | 🔜 TODO | Medium | Simple |
 | 370 | [T0082](open/0082-schema-versioning.md) | Schema versioning and migration | 3 — Data model | 🔜 TODO | Medium | Moderate |
+| 375 | [T0110](open/0110-presentation-and-frame-pacing.md) | Presentation: vsync, present modes, frame pacing and focus loss | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 380 | [T0025](open/0025-render-layer.md) | Render layer and device lifecycle | 4 — Render layer | 🔜 TODO | High | Moderate |
+| 382 | [T0113](open/0113-device-loss.md) | Device loss: decide the policy, fail distinguishably | 4 — Render layer | 🔜 TODO | Medium | Simple |
+| 385 | [T0111](open/0111-anti-aliasing-and-render-scale.md) | Anti-aliasing and render scale: decide before the formats freeze | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 390 | [T0046](open/0046-frame-render-targets.md) | Frame render target management | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | 400 | [T0027](open/0027-render-stack.md) | RenderStack: composited visual layers | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 410 | [T0028](open/0028-scene-draw-submission.md) | Scene draw submission and the frame-rendered event | 4 — Render layer | 🔜 TODO | High | Moderate |
@@ -93,7 +97,9 @@ This is the work. For what is already proven to work — and what only appears t
 | 640 | [T0064](open/0064-transform-gizmos.md) | Transform gizmos | 6 — Editor | 🔜 TODO | High | Moderate |
 | 650 | [T0065](open/0065-undo-redo.md) | Undo/redo command system | 6 — Editor | 🔜 TODO | High | Complex |
 | 660 | [T0036](open/0036-assets-panel.md) | Assets panel | 6 — Editor | 🔜 TODO | Medium | Moderate |
+| 665 | [T0115](open/0115-editor-content-operations.md) | Editor content operations at scale | 6 — Editor | 🔜 TODO | Medium | Moderate |
 | 670 | [T0066](open/0066-console-panel.md) | Console panel | 6 — Editor | 🔜 TODO | Medium | Simple |
+| 675 | [T0114](open/0114-developer-console-and-cvars.md) | Runtime developer console and cvars | 6 — Editor | 🔜 TODO | Low | Moderate |
 | 680 | [T0037](open/0037-play-mode.md) | Play / simulation mode | 6 — Editor | 🔜 TODO | Medium | Moderate |
 | 690 | [T0067](open/0067-launcher.md) | Project launcher | 6 — Editor | 🔜 TODO | Medium | Simple |
 | 700 | [T0038](open/0038-fbx-to-gltf-converter.md) | FBX → glTF converter (host tool) | 7 — Content pipeline | 🔜 TODO | High | Complex |
@@ -154,6 +160,11 @@ The order is derived, in this priority:
    fields record that T0095 gates T0048/T0062, T0104 gates T0048, T0103 gates
    T0023, and T0053 gates T0022/T0035/T0062 (the last recorded 2026-08-03 — a
    promotion of what those tickets already said in prose, not a new judgement).
+   Two more recorded 2026-08-03 out of the design-gap survey: T0110 gates T0025
+   (the present-mode policy must exist before the swap-chain code hardens — the
+   default that runs otherwise is already visible in T0003's log), and T0111
+   gates T0046 (the anti-aliasing/render-scale decision changes what the
+   frame-target format declarations declare).
    T0095 also gates T0013's layout; that one is recorded on T0013's side, in
    its Refs and notes, because T0095 is in progress and its file is not being
    rewritten under whoever is working it. Each blocker exists because getting
@@ -256,7 +267,7 @@ is. Priority says whether to do it; complexity says what you are walking into.
 | Complex | Several interacting concerns; expect it to take longer than planned |
 | Very Complex | Genuinely hard, with a real chance of needing a different approach |
 
-Current spread: 7 Trivial, 20 Simple, 39 Moderate, 28 Complex, 9 Very Complex.
+Current spread: 7 Trivial, 23 Simple, 46 Moderate, 30 Complex, 9 Very Complex.
 
 The **Very Complex** ones are worth knowing up front: **T0048** hot-reloadable
 gameplay module (state must survive reload), **T0030** Tracy GPU zones (Diligent
