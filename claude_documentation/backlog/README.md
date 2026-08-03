@@ -24,8 +24,8 @@ This is the work. For what is already proven to work — and what only appears t
 |---|---|---|---|---|---|---|
 | — | [T0095](completed/0095-gameplay-module-abi-and-linkage.md) | Gameplay module ABI: engine linkage, one engine state, entt across the boundary | 2 — Engine skeleton | ✅ DONE | High | Complex |
 | 10 | [T0055](completed/0055-engine-conventions.md) | Engine conventions and error handling policy | 2 — Engine skeleton | ✅ DONE | High | Trivial |
-| 20 | [T0019](open/0019-profiling-macro-surface.md) | Profiling macro surface (Tracy-ready, no-op for now) | 2 — Engine skeleton | 🔜 TODO | Medium | Trivial |
-| 30 | [T0013](open/0013-engine-library-app-split.md) | Split the tree into an engine library and app consumers | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
+| 30 | [T0013](completed/0013-engine-library-app-split.md) | Split the tree into an engine library and app consumers | 2 — Engine skeleton | ✅ DONE | High | Moderate |
+| 35 | [T0019](open/0019-profiling-macro-surface.md) | Profiling macro surface (Tracy-ready, no-op for now) | 2 — Engine skeleton | 🔜 TODO | Medium | Trivial |
 | 40 | [T0054](open/0054-logging.md) | Logging and diagnostics | 2 — Engine skeleton | 🔜 TODO | High | Simple |
 | 50 | [T0056](open/0056-core-utilities-policy.md) | Core utilities: math, memory, containers | 2 — Engine skeleton | 🔜 TODO | Medium | Simple |
 | 60 | [T0016](open/0016-guid-system.md) | GUID system | 2 — Engine skeleton | 🔜 TODO | High | Trivial |
@@ -101,6 +101,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 720 | [T0039](open/0039-meshoptimizer-auto-lod.md) | Automatic LOD generation with meshoptimizer | 7 — Content pipeline | 🔜 TODO | High | Moderate |
 | 730 | [T0040](open/0040-runtime-lod-selection.md) | Runtime LOD selection | 7 — Content pipeline | 🔜 TODO | Medium | Moderate |
 | 740 | [T0041](open/0041-ozz-animation.md) | ozz-animation runtime and import | 7 — Content pipeline | 🔜 TODO | High | Complex |
+| 745 | [T0109](open/0109-external-game-projects.md) | How an external game project builds against the engine | 8 — Runtime & export | 🔜 TODO | High | Complex |
 | 750 | [T0049](open/0049-animation-runtime.md) | Animation runtime library | 7 — Content pipeline | 🔜 TODO | High | Very Complex |
 | 760 | [T0042](open/0042-runtime-application.md) | Runtime application | 8 — Runtime & export | 🔜 TODO | Medium | Simple |
 | 770 | [T0043](open/0043-export-pipeline.md) | Export pipeline and asset relocation | 8 — Runtime & export | 🔜 TODO | Medium | Complex |

@@ -138,11 +138,24 @@ set(ozz_build_data           OFF CACHE BOOL "" FORCE)
 set(ozz_build_postfix        OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/ozz-animation)
 
-# No app target yet -- the build currently produces the engine libraries and the
-# GraphicsEngineOpenGL/GraphicsEngineVk shared libraries. To add one, create
-# apps/<name>/CMakeLists.txt using Diligent's add_sample_app(), which handles
-# the platform entry points and copies the required DLLs next to the exe, then
-# add_subdirectory it here.
+# The engine library, and the four-artifact layout it anchors (T0013).
+#
+# engine/  a SHARED library -- the editor, the runtime and the gameplay module
+#          all link this one copy, so engine state exists once per process (D12)
+# samples/ the engine's own sample gameplay module -- a MODULE library loaded at
+#          runtime and reloadable by T0048. NOT "the game": HollowPoint powers
+#          several games, and a game is a separate project built against an
+#          installed engine. This one exists so the module boundary is exercised
+#          by the engine's own CI rather than only by whichever game is open
+# apps/*   consumers, globbed below
+#
+# engine/ must come before apps/ and game/, which link it.
+add_subdirectory(engine)
+add_subdirectory(samples/sandbox)
+
+# Apps are globbed, so adding one needs no edit here. They deliberately do NOT
+# use Diligent's add_sample_app(): that is DiligentSamples' framework, and the
+# app shell comes from DiligentTools/NativeApp in T0015.
 file(GLOB _hp_apps LIST_DIRECTORIES true "${CMAKE_CURRENT_SOURCE_DIR}/apps/*")
 foreach(_app IN LISTS _hp_apps)
     if (IS_DIRECTORY "${_app}" AND EXISTS "${_app}/CMakeLists.txt")

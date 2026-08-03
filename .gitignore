@@ -16,3 +16,6 @@
 
 # Generated for clangd
 compile_commands.json
+
+# Engine build outputs are covered by /build/ and /dist/ above; nothing else
+# under engine/, apps/ or samples/ is generated.

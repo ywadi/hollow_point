@@ -6,7 +6,7 @@
 | **Priority** | Medium |
 | **Complexity** | Trivial |
 | **Phase** | 2 — Engine skeleton |
-| **Order** | 20 |
+| **Order** | 35 |
 | **Created** | 2026-08-02 |
 
 ## Why
@@ -83,3 +83,19 @@ performance.
 **This makes profiling a build-configuration axis**, which is T0104's problem
 too: enabling it changes the engine's symbol surface, so a module built with
 profiling and an engine built without must not load. See that ticket.
+
+
+### Ordering correction (2026-08-03) — this cannot precede T0013
+
+Placed at order 20, ahead of T0013, on the argument that the profiling macros
+should exist before engine code is written so instrumentation is added by habit
+rather than retrofitted. The argument is right and the placement was impossible:
+19.1 puts the header at `engine/include/hp/Profiling.hpp`, which does not exist
+until T0013 creates the engine library, and 19.3 instruments the frame loop and
+`LayerStack::OnUpdate`, which need T0014 and T0017.
+
+Moved to 35, immediately after T0013. **The ticket completes in two parts**: the
+macro surface (19.1, 19.2, 19.4, 19.5) can land as soon as `engine/` exists, and
+19.3 waits for the frame loop. Doing the first part early still buys what the
+original placement was reaching for — the macros are available before there is
+much to instrument.
