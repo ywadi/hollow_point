@@ -77,6 +77,30 @@ The sort choice persists in `localStorage`, as does per-phase collapse state.
 With 39 open tickets in one column, Collapse all is the fastest way to see the
 phase structure at a glance.
 
+## Search
+
+The header carries a search box next to Sort. It filters live as you type, no
+submit button, and matches ticket id, title, phase name, priority and
+complexity, case-insensitively, against all three columns at once. The id
+match is a little smarter than plain substring: "93", "0093" and "T0093" all
+find T0093, since the query is also checked against the ticket's numeric id.
+Everything else is deliberately dumb substring matching rather than fuzzy
+search — with about a hundred tickets, substring is fast enough and its
+results are predictable, which matters more than being clever.
+
+A card that doesn't match is hidden rather than removed from the DOM, so a
+phase's aggregate progress bar keeps showing the phase's real totals — search
+narrows what you see, it does not change what's true. A phase group with no
+matches is hidden entirely; one with a match is forced open even if you had
+it collapsed, but that's a display-only override — it never writes to the
+collapse state in `localStorage`, so clearing the search (the ✕ in the box,
+or Escape) puts every group back exactly where you left it. Each column shows
+its own "no tickets match" message when a search comes up empty there.
+
+The search term is not persisted. Every reload starts with an empty box,
+because a stale filter left over from last time you looked would just be
+confusing — unlike sort and collapse state, which are meant to stick.
+
 ## Superseded and dropped tickets
 
 A ticket closed as `❌ SUPERSEDED` or `❌ DROPPED` was closed **without the work

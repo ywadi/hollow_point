@@ -37,6 +37,28 @@
   }
   .controls select:hover, .ctl:hover { border-color:var(--accent); }
 
+  .search-wrap { position:relative; display:flex; align-items:center; }
+  .search-wrap input {
+    background:var(--panel2); color:var(--fg); border:1px solid var(--line);
+    border-radius:6px; padding:3px 22px 3px 8px; font-size:11.5px; cursor:text;
+    width:180px; font-family:inherit;
+  }
+  .search-wrap input::placeholder { color:var(--dim); }
+  .search-wrap input:hover { border-color:var(--accent); }
+  .search-wrap input:focus { outline:none; border-color:var(--accent); }
+  .search-clear {
+    position:absolute; right:2px; top:50%; transform:translateY(-50%);
+    background:none; border:none; color:var(--dim); cursor:pointer;
+    font-size:12px; line-height:1; padding:4px 5px; border-radius:4px; display:none;
+  }
+  .search-clear:hover { color:var(--fg); }
+  .search-wrap.has-value .search-clear { display:block; }
+
+  /* search hides cards/groups by class rather than by leaving them out of the
+     render, so phase aggregates (computed from the full task list) never see
+     a filtered subset */
+  .card.search-hidden, .phase.search-hidden { display:none; }
+
   .board { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; padding:20px; align-items:start; }
   @media (max-width:900px){ .board{ grid-template-columns:1fr; } }
 
@@ -156,6 +178,11 @@
       <option value="priority">Priority</option>
       <option value="id">ID</option>
     </select>
+    <span class="search-wrap" id="search-wrap">
+      <input type="text" id="search" placeholder="Search tickets…" autocomplete="off" spellcheck="false" aria-label="Search tickets">
+      <button class="search-clear" id="search-clear" title="Clear search (Esc)" aria-label="Clear search">✕</button>
+    </span>
+    <span class="meta" id="search-count"></span>
     <button class="ctl" id="collapse-all">Collapse all</button>
     <button class="ctl" id="expand-all">Expand all</button>
   </div>
@@ -227,6 +254,41 @@ function applyCollapsedPhases() {
     const head = el.querySelector('.phase-head');
     if (head) head.setAttribute('aria-expanded', String(!collapsed));
   });
+}
+
+// --- search / filter ---------------------------------------------------------
+//
+// Search is a view concern, like sort: it never touches the underlying task
+// data, so a card is hidden by adding a class to the element draw() already
+// built, not by leaving it out of the render. That keeps phase aggregate
+// totals (computed from the full task list in cardsHtml) honest, and keeps a
+// repaint cheap -- reapplying the filter after a poll is just re-running this
+// same class toggle, not re-sorting or re-fetching anything.
+//
+// Matching is deliberately dumb substring matching, not fuzzy search -- with
+// ~100 tickets a plain substring is fast enough and its results are
+// predictable. The one bit of smarts is the ticket id: "93", "0093" and
+// "T0093" all need to find T0093, so the id is checked against its numeric
+// form as well as the raw string.
+//
+// Not persisted to localStorage on purpose (unlike sort and collapse state):
+// a stale filter left over from a previous visit would be confusing, so every
+// load starts with an empty box.
+let searchQuery = '';
+
+function idVariants(id) {
+  const m = id.match(/^T(\d+)$/i);
+  if (!m) return [id.toLowerCase()];
+  const digits = m[1];                 // "0093"
+  const bare = String(Number(digits)); // "93"
+  return [id.toLowerCase(), digits, bare];
+}
+
+function taskMatchesQuery(t, q) {
+  if (!q) return true;
+  if (idVariants(t.id).some((v) => v.includes(q))) return true;
+  return [t.title, t.phaseLabel, t.priority, t.complexity]
+    .some((f) => (f || '').toLowerCase().includes(q));
 }
 
 const esc = (s) => s.replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -387,7 +449,10 @@ function draw(data) {
   document.getElementById('board').innerHTML = data.columns.map((c) => `
     <section class="col col-${c.id}">
       <h2>${c.title} <span class="count">${c.tasks.length}</span></h2>
-      <div class="cards">${cardsHtml(c.tasks, c.id)}</div>
+      <div class="cards">
+        ${cardsHtml(c.tasks, c.id)}
+        ${c.tasks.length ? '<div class="empty search-empty" style="display:none">No tickets match &#8220;<span class="q"></span>&#8221;</div>' : ''}
+      </div>
     </section>`).join('');
 
   const total = data.columns.reduce((n, c) => n + c.tasks.length, 0);
@@ -406,6 +471,7 @@ function draw(data) {
     collapsedPhases[key] = !collapsedPhases[key];
     saveCollapsedPhases();
     applyCollapsedPhases();
+    if (searchQuery) applySearchFilter();
   };
   document.querySelectorAll('.phase-head').forEach((el) => {
     el.addEventListener('click', (e) => { e.stopPropagation(); togglePhase(el); });
@@ -414,6 +480,7 @@ function draw(data) {
     });
   });
   applyCollapsedPhases();
+  applySearchFilter(); // a poll's repaint must re-apply the filter, not drop it
 
   if (openTaskId) renderDetail(openTaskId, true);
 }
@@ -421,6 +488,59 @@ function draw(data) {
 function findTask(id) {
   for (const c of current.columns) { const t = c.tasks.find((t) => t.id === id); if (t) return t; }
   return null;
+}
+
+// Toggles visibility on the DOM draw() just built; never mutates task data,
+// sort order, or collapsedPhases/localStorage. See the "search / filter"
+// comment above taskMatchesQuery for why.
+function applySearchFilter() {
+  if (!current) return;
+  const q = searchQuery;
+  const active = !!q;
+
+  let total = 0, matched = 0;
+  current.columns.forEach((c) => c.tasks.forEach((t) => {
+    total++;
+    if (taskMatchesQuery(t, q)) matched++;
+  }));
+  searchCountEl.textContent = active ? `${matched} of ${total} tickets` : '';
+
+  document.querySelectorAll('.col').forEach((colEl) => {
+    let visible = 0;
+    colEl.querySelectorAll('.card').forEach((cardEl) => {
+      const t = findTask(cardEl.dataset.id);
+      const isMatch = !active || (t && taskMatchesQuery(t, q));
+      cardEl.classList.toggle('search-hidden', !isMatch);
+      if (isMatch) visible++;
+    });
+
+    // A phase group with no matches is hidden entirely; one with matches is
+    // force-expanded so the result is visible even if the user had it
+    // collapsed -- but collapsedPhases (and therefore localStorage) is never
+    // written here, so clearing the search and calling applyCollapsedPhases()
+    // again puts every group back exactly where the user left it.
+    colEl.querySelectorAll('.phase').forEach((phaseEl) => {
+      if (!active) { phaseEl.classList.remove('search-hidden'); return; }
+      const anyVisible = !!phaseEl.querySelector('.card:not(.search-hidden)');
+      phaseEl.classList.toggle('search-hidden', !anyVisible);
+      if (anyVisible) {
+        phaseEl.classList.remove('collapsed');
+        const head = phaseEl.querySelector('.phase-head');
+        if (head) head.setAttribute('aria-expanded', 'true');
+      }
+    });
+
+    const noResults = colEl.querySelector('.search-empty');
+    if (noResults) {
+      const show = active && !!colEl.querySelector('.card') && visible === 0;
+      noResults.style.display = show ? '' : 'none';
+      if (show) noResults.querySelector('.q').textContent = searchInput.value.trim();
+    }
+  });
+
+  // Search cleared -- restore exactly the collapse state the user saved,
+  // undoing any forced expand above.
+  if (!active) applyCollapsedPhases();
 }
 
 function renderDetail(id, silent) {
@@ -456,6 +576,7 @@ function setAllCollapsed(collapsed) {
   });
   saveCollapsedPhases();
   applyCollapsedPhases();
+  if (searchQuery) applySearchFilter();
 }
 
 const sortSel = document.getElementById('sortby');
@@ -467,6 +588,33 @@ sortSel.addEventListener('change', () => {
 });
 document.getElementById('collapse-all').addEventListener('click', () => setAllCollapsed(true));
 document.getElementById('expand-all').addEventListener('click', () => setAllCollapsed(false));
+
+const searchInput = document.getElementById('search');
+const searchWrap = document.getElementById('search-wrap');
+const searchCountEl = document.getElementById('search-count');
+
+function setSearchQuery(raw) {
+  searchQuery = raw.trim().toLowerCase();
+  searchWrap.classList.toggle('has-value', !!raw);
+  applySearchFilter();
+}
+
+searchInput.addEventListener('input', () => setSearchQuery(searchInput.value));
+searchInput.addEventListener('keydown', (e) => {
+  // Scoped to the box itself (stopPropagation) so Escape here clears the
+  // search rather than also tripping the document-level handler that closes
+  // the detail panel.
+  if (e.key === 'Escape') {
+    e.stopPropagation();
+    searchInput.value = '';
+    setSearchQuery('');
+  }
+});
+document.getElementById('search-clear').addEventListener('click', () => {
+  searchInput.value = '';
+  setSearchQuery('');
+  searchInput.focus();
+});
 
 async function poll() {
   const dot = document.getElementById('dot'), status = document.getElementById('status');
