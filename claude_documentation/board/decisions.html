@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HollowPoint — Decisions</title>
+<style>
+  /* Same custom properties as index.html/architecture.html -- not shared via
+     a stylesheet because neither of those two share one with each other
+     either; this project's one page-per-file, no-build-step approach means
+     each page's <style> is self-contained, and that was true before this
+     page existed. */
+  :root {
+    --bg:#0f1115; --panel:#161922; --panel2:#1c2029; --line:#272c38;
+    --fg:#e6e9ef; --dim:#8b93a7; --accent:#5b9dff;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:14px/1.5 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; }
+  header { display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+           padding:14px 20px; border-bottom:1px solid var(--line); background:var(--panel);
+           position:sticky; top:0; z-index:20; }
+  h1 { font-size:16px; margin:0; font-weight:650; }
+  .spacer { flex:1; }
+  .meta { color:var(--dim); font-size:12px; }
+  a.nav { color:var(--accent); text-decoration:none; font-size:12.5px;
+          border:1px solid var(--line); border-radius:6px; padding:4px 10px; }
+  a.nav:hover { border-color:var(--accent); }
+
+  /* Prose reads better narrow than the dashboard-style pages -- this is the
+     one page here that's mostly paragraphs, not cards/chips/tables of
+     tickets, so it gets a centred reading column instead of the full-width
+     grid the other two pages use. */
+  .wrap { max-width:860px; margin:0 auto; padding:22px 20px 100px;
+          display:flex; flex-direction:column; gap:18px; }
+
+  .intro { color:var(--dim); }
+  .intro p { margin:6px 0; }
+
+  .toc { border:1px solid var(--line); border-radius:10px; background:var(--panel); padding:14px 18px; }
+  .toc h2 { margin:0 0 10px; font-size:12px; text-transform:uppercase; letter-spacing:.8px; color:var(--dim); }
+  .toc ol { margin:0; padding-left:0; list-style:none;
+            display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:5px 18px; }
+  .toc li { font-size:12.5px; line-height:1.4; }
+  .toc a { color:var(--fg); text-decoration:none; }
+  .toc a:hover { color:var(--accent); }
+  .toc .tag { font:600 11px ui-monospace,Menlo,monospace; color:var(--accent); margin-right:7px; }
+
+  .decision {
+    border:1px solid var(--line); border-radius:10px; background:var(--panel);
+    padding:16px 22px 20px;
+    /* The header is sticky, so a plain scrollIntoView() on #d12 would tuck
+       its top edge right under it. scroll-margin-top leaves room for that --
+       it's honoured by both the browser's native #hash jump and the manual
+       scrollIntoView() this page does after fetch (see the script below for
+       why the manual one is needed at all). */
+    scroll-margin-top:66px;
+  }
+  /* Briefly outline whichever decision the URL points at, so a jump from a
+     ticket's "see D12" actually reads as having landed somewhere, not just
+     scrolled the page. */
+  .decision:target { border-color:var(--accent); }
+  .d-tag {
+    display:inline-block; font:600 11.5px ui-monospace,Menlo,monospace; color:var(--accent);
+    text-decoration:none; border:1px solid var(--line); border-radius:5px;
+    padding:2px 7px; margin-bottom:8px;
+  }
+  .d-tag:hover { border-color:var(--accent); text-decoration:underline; }
+
+  .warnbox { border:1px solid #5a2b2b; background:#241a1a; color:#ffb4b1;
+             border-radius:8px; padding:10px 12px; font-size:12.5px; }
+
+  /* Rendered markdown -- identical rules to index.html's .md block. Copied,
+     not linked: see the :root comment above for why this project doesn't
+     share a stylesheet between pages. If you fix something here, the same
+     fix belongs in index.html's <style>, and vice versa. */
+  .md h1 { font-size:19px; margin:0 0 14px; }
+  .md h2 { font-size:16px; margin:0 0 10px; padding-bottom:8px; border-bottom:1px solid var(--line); }
+  .md h3 { font-size:13.5px; margin:18px 0 6px; color:var(--dim); text-transform:uppercase; letter-spacing:.5px; }
+  .md p { margin:9px 0; }
+  .md ul { margin:8px 0; padding-left:22px; }
+  .md li { margin:4px 0; }
+  .md li.task { list-style:none; margin-left:-18px; }
+  .md code { font:12px ui-monospace,Menlo,monospace; background:#0d0f14; padding:1.5px 5px; border-radius:4px; }
+  .md pre { background:#0d0f14; border:1px solid var(--line); border-radius:8px; padding:12px; overflow:auto; }
+  .md pre code { background:none; padding:0; font-size:12px; line-height:1.5; }
+  .md table { border-collapse:collapse; margin:10px 0; width:100%; display:block; overflow-x:auto; }
+  .md th,.md td { border:1px solid var(--line); padding:6px 10px; text-align:left; font-size:12.5px; }
+  .md th { background:var(--panel2); }
+  .md a { color:var(--accent); }
+  .md hr { border:none; border-top:1px solid var(--line); margin:20px 0; }
+  .md blockquote { margin:10px 0; padding-left:12px; border-left:3px solid var(--line); color:var(--dim); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>HollowPoint — Decisions</h1>
+  <span class="meta" id="summary"></span>
+  <div class="spacer"></div>
+  <a class="nav" href="/">← Backlog board</a>
+  <a class="nav" href="/architecture">Architecture →</a>
+</header>
+
+<div class="wrap">
+  <div class="intro md" id="intro"></div>
+  <nav class="toc" id="toc"></nav>
+  <div id="decisions"></div>
+</div>
+
+<script src="/markdown.js"></script>
+<script>
+'use strict';
+
+// Split the raw decision log into per-decision chunks along its own
+// "## D<N> -- title" headings. This lives here rather than in markdown.js
+// because it is specific to this one document's convention, not a general
+// markdown concern.
+//
+// The anchor id is derived from the "D<N>" tag alone, e.g. "d12", never from
+// a slug of the full title. That is the whole point: tickets already refer to
+// decisions as "D12" in prose, and several titles here already carry a
+// "(retired)" suffix or a dated correction, which means titles *do* get
+// edited. A title-based slug would break every link that already exists the
+// next time that happens; a tag-based id can't, short of renumbering the
+// decision itself, which is a change nobody has made and would be its own
+// deliberate act.
+function parseDecisions(md) {
+  const headingRe = /^##\s+(D\d+)\s*[—–-]\s*(.*)$/;
+  const lines = md.split('\n');
+  const intro = [];
+  const decisions = [];
+  let cur = null;
+  for (const line of lines) {
+    const m = line.match(headingRe);
+    if (m) {
+      cur = { tag: m[1], num: Number(m[1].slice(1)), title: m[2].trim(), body: [] };
+      decisions.push(cur);
+      continue;
+    }
+    (cur ? cur.body : intro).push(line);
+  }
+  // File order already is numeric order, but sort explicitly anyway -- the
+  // point of generating the index from the content is that it stays correct
+  // even if that ever stops being true.
+  decisions.sort((a, b) => a.num - b.num);
+
+  return {
+    // The log's own "# Decision log" H1 is dropped: this page already has its
+    // own <h1> in the header, and rendering a second, larger one right under
+    // it would just be a duplicate title.
+    introMd: intro.filter((l) => !/^#\s/.test(l)).join('\n'),
+    decisions: decisions.map((d) => ({
+      id: d.tag.toLowerCase(),
+      tag: d.tag,
+      title: d.title,
+      // The doc uses a bare "---" purely to rule off one section from the
+      // next. Re-rendering it inside the card would draw a second divider
+      // for the same seam the card's own border already draws, so it's
+      // dropped here rather than left for renderMarkdown() to turn into
+      // an <hr>. The heading itself is put back without its "D<N> -- "
+      // prefix -- that prefix becomes the .d-tag badge instead, so it isn't
+      // said twice on screen.
+      bodyMd: '## ' + d.title + '\n' + d.body.filter((l) => !/^\s*-{3,}\s*$/.test(l)).join('\n'),
+    })),
+  };
+}
+
+function render(md) {
+  const { introMd, decisions } = parseDecisions(md);
+
+  document.getElementById('intro').innerHTML = renderMarkdown(introMd);
+  document.getElementById('summary').textContent = decisions.length + ' decisions';
+
+  document.getElementById('toc').innerHTML = `
+    <h2>Index</h2>
+    <ol>
+      ${decisions.map((d) => `<li><a href="#${d.id}"><span class="tag">${esc(d.tag)}</span>${mdInline(d.title)}</a></li>`).join('')}
+    </ol>`;
+
+  document.getElementById('decisions').innerHTML = decisions.map((d) => `
+    <section class="decision md" id="${d.id}">
+      <a class="d-tag" href="#${d.id}" title="Link directly to ${esc(d.tag)}">${esc(d.tag)}</a>
+      ${renderMarkdown(d.bodyMd)}
+    </section>`).join('');
+}
+
+async function load() {
+  try {
+    const r = await fetch('/api/decisions', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    render(data.markdown);
+
+    // The content is fetched, not server-rendered, so if the page was opened
+    // as e.g. /decisions#d12, the browser's own jump-to-#hash already ran
+    // and failed -- #d12 didn't exist in the DOM yet at that point. Do it
+    // again now that render() has actually created the section.
+    if (location.hash) {
+      const el = document.querySelector(location.hash);
+      if (el) el.scrollIntoView();
+    }
+  } catch (e) {
+    document.getElementById('decisions').innerHTML =
+      '<div class="warnbox">Could not reach the server. Is it running?</div>';
+  }
+}
+load();
+</script>
+</body>
+</html>

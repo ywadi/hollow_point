@@ -20,6 +20,7 @@ const path = require('path');
 const PORT = Number(process.argv[2] || process.env.PORT || 8071);
 const BOARD_DIR = __dirname;
 const BACKLOG_DIR = path.join(BOARD_DIR, '..', 'backlog');
+const DECISION_LOG = path.join(BOARD_DIR, '..', 'documentation', '02-decision-log.md');
 
 const COLUMNS = [
   { id: 'open', dir: 'open', title: 'Open' },
@@ -219,6 +220,20 @@ function readArchitecture() {
   return { generated: new Date().toISOString(), layers, edges, unplaced };
 }
 
+// --- decision log --------------------------------------------------------------
+//
+// Unlike a ticket, a decision has no header table, no Status, no checkboxes --
+// it's just prose under a "## D<N> -- title" heading. There is nothing here
+// worth parsing server-side, so unlike readArchitecture() above, this does
+// none: the raw file goes to the client as-is, and decisions.html splits it
+// into per-decision sections and renders each with the same renderMarkdown()
+// the ticket detail panel uses (see markdown.js). That keeps the "## D<N> --
+// title" convention understood in exactly one place instead of two, and means
+// a new decision appended to the file needs no change here at all.
+function readDecisionLog() {
+  return { generated: new Date().toISOString(), markdown: fs.readFileSync(DECISION_LOG, 'utf8') };
+}
+
 // --- http --------------------------------------------------------------------
 
 const server = http.createServer((req, res) => {
@@ -240,10 +255,31 @@ const server = http.createServer((req, res) => {
       return res.end(JSON.stringify(readArchitecture()));
     }
 
+    if (url === '/api/decisions') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(JSON.stringify(readDecisionLog()));
+    }
+
     if (url === '/architecture' || url === '/architecture.html') {
       const html = fs.readFileSync(path.join(BOARD_DIR, 'architecture.html'));
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end(html);
+    }
+
+    if (url === '/decisions' || url === '/decisions.html') {
+      const html = fs.readFileSync(path.join(BOARD_DIR, 'decisions.html'));
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(html);
+    }
+
+    // markdown.js is shared by index.html and decisions.html (see its header
+    // comment) -- the one static asset this board has, everything else being
+    // either a full page or a JSON endpoint. No caching, same as every other
+    // response here: this is a local dev tool, not a thing fronted by a CDN.
+    if (url === '/markdown.js') {
+      const js = fs.readFileSync(path.join(BOARD_DIR, 'markdown.js'));
+      res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(js);
     }
 
     if (url === '/' || url === '/index.html') {

@@ -203,6 +203,7 @@
   <h1>HollowPoint — Backlog</h1>
   <div class="meta" id="summary"></div>
   <a class="nav" href="/architecture">Architecture →</a>
+  <a class="nav" href="/decisions">Decisions →</a>
   <div class="controls">
     <label for="sortby">Sort</label>
     <select id="sortby">
@@ -259,6 +260,7 @@
   <div class="body md" id="d-body"></div>
 </aside>
 
+<script src="/markdown.js"></script>
 <script>
 'use strict';
 
@@ -379,75 +381,9 @@ function taskMatchesQuery(t, q) {
     .some((f) => (f || '').toLowerCase().includes(q));
 }
 
-const esc = (s) => s.replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-
-// Compact markdown renderer -- enough for these task files: headings, tables,
-// fenced code, task lists, inline code/bold/links.
-function renderMarkdown(md) {
-  const lines = md.split('\n');
-  let out = '', i = 0, inCode = false, codeBuf = [];
-
-  const inline = (t) => esc(t)
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    if (/^```/.test(line)) {
-      if (inCode) { out += '<pre><code>' + esc(codeBuf.join('\n')) + '</code></pre>'; codeBuf = []; inCode = false; }
-      else inCode = true;
-      i++; continue;
-    }
-    if (inCode) { codeBuf.push(line); i++; continue; }
-
-    // table: header row followed by a separator row
-    if (/^\s*\|/.test(line) && i + 1 < lines.length && /^\s*\|[\s:|-]+\|\s*$/.test(lines[i + 1])) {
-      const cells = (r) => r.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
-      let html = '<table><thead><tr>' + cells(line).map((c) => '<th>' + inline(c) + '</th>').join('') + '</tr></thead><tbody>';
-      i += 2;
-      while (i < lines.length && /^\s*\|/.test(lines[i])) {
-        html += '<tr>' + cells(lines[i]).map((c) => '<td>' + inline(c) + '</td>').join('') + '</tr>';
-        i++;
-      }
-      out += html + '</tbody></table>';
-      continue;
-    }
-
-    let m;
-    if ((m = line.match(/^(#{1,6})\s+(.*)$/))) { const n = m[1].length; out += `<h${n}>${inline(m[2])}</h${n}>`; i++; continue; }
-    if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) { out += '<hr>'; i++; continue; }
-    if (/^>\s?/.test(line)) { out += '<blockquote>' + inline(line.replace(/^>\s?/, '')) + '</blockquote>'; i++; continue; }
-
-    if (/^\s*[-*]\s+/.test(line)) {
-      let html = '<ul>';
-      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
-        let t = lines[i].replace(/^\s*[-*]\s+/, '');
-        const box = t.match(/^\[([ xX])\]\s*(.*)$/);
-        if (box) {
-          const checked = box[1].toLowerCase() === 'x';
-          html += `<li class="task">${checked ? '☑' : '☐'} ${checked ? '<span style="opacity:.6">' + inline(box[2]) + '</span>' : inline(box[2])}</li>`;
-        } else html += '<li>' + inline(t) + '</li>';
-        i++;
-      }
-      out += html + '</ul>';
-      continue;
-    }
-
-    if (line.trim() === '') { i++; continue; }
-
-    let para = [];
-    while (i < lines.length && lines[i].trim() !== '' && !/^(#{1,6}\s|\s*[-*]\s|```|\s*\||>)/.test(lines[i])) {
-      para.push(lines[i]); i++;
-    }
-    if (para.length) out += '<p>' + inline(para.join(' ')) + '</p>';
-    else i++;
-  }
-  if (inCode && codeBuf.length) out += '<pre><code>' + esc(codeBuf.join('\n')) + '</code></pre>';
-  return out;
-}
+// esc() and renderMarkdown() live in markdown.js now, shared with
+// decisions.html -- see that file for why, and for the header comment this
+// used to carry.
 
 function card(t) {
   const pct = t.checksTotal ? Math.round((t.checksDone / t.checksTotal) * 100) : 0;
