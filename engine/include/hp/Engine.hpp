@@ -32,6 +32,10 @@ HP_API const char* engineVersion();
 HP_API std::uint32_t engineInstanceCount();
 
 /// Registers this consumer with the engine. Idempotent per caller name.
+///
+/// @param name identifies the caller -- "editor", "runtime", a gameplay
+///        module. Registering the same name twice is a no-op. A null pointer
+///        is ignored rather than treated as an error.
 HP_API void engineRegisterConsumer(const char* name);
 
 /// How many consumers have registered. Shared state, by construction.

@@ -35,12 +35,12 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Engine.hpp>`](Engine.md) | 4 | 4 |
 | [`<hp/EntryPoint.hpp>`](EntryPoint.md) | 1 | 0 |
 | [`<hp/Guid.hpp>`](Guid.md) | 13 | 5 |
-| [`<hp/Log.hpp>`](Log.md) | 22 | 11 |
+| [`<hp/Log.hpp>`](Log.md) | 22 | 12 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 12 | 4 |
 
-**87 public declarations across 9 headers, 39 documented.**
+**87 public declarations across 9 headers, 40 documented.**
 
 ## Every symbol
 

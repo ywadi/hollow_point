@@ -50,6 +50,9 @@ void advance(double rawDeltaSeconds)
  behaviour can be tested deterministically -- a test that had to sleep to
  exercise the accumulator would be slow and flaky.
 
+ @param rawDeltaSeconds elapsed seconds before clamping or scaling.
+        Negative values are treated as zero; time never runs backwards.
+
 ## `Clock::delta`
 
 ```cpp
@@ -101,6 +104,9 @@ void setTimeScale(double scale)
  backwards is not supported and silently accepting it produces animation
  and physics that disagree about which way time goes.
 
+ @param scale multiplier applied to `delta()`. Clamped to zero at the
+        bottom; there is no upper bound, so fast-forward is available.
+
 ## `Clock::timeScale`
 
 ```cpp
@@ -117,6 +123,10 @@ void setPaused(bool paused)
 
  Pause is separate from a zero time scale so that unpausing restores the
  scale that was set, rather than snapping to 1.0.
+
+ @param paused true to freeze scaled time. `unscaledDelta()` keeps
+        running either way, which is what lets the editor stay alive
+        while the game is stopped.
 
 ## `Clock::paused`
 
@@ -135,6 +145,8 @@ void setMaxDelta(double seconds)
  Longest raw delta accepted, in seconds. Anything larger is treated as
  this -- time is *lost*, deliberately, because the alternative is a
  simulation step so large that objects pass through each other.
+
+ @param seconds the clamp, in seconds. Defaults to 0.25.
 
 ## `Clock::maxDelta`
 

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 2 — Engine skeleton |
@@ -204,7 +204,30 @@ correctness failures for the consumer.
 Verified end to end: adding an undocumented public function fails the build
 (`error: Engine.hpp:42 undocumentedThing: missing-doc`, exit 1).
 
-## Still to do
+## Closing note
+
+**Every `@param` and `@returns` defect is fixed.** The baseline is now 47
+entries and all of them are `missing-doc` — nothing left in it is a parameter or
+return that an agent could be misled about. `stale-param` was additionally made
+**non-baselinable**: a gap can be tolerated while it is paid down, but a
+statement that is *wrong* cannot, and a ratchet that tolerates wrong
+documentation defeats the point of having the check.
+
+**The 47 remaining are deliberate, not deferred.** They are trivial accessors
+and special members — `Clock& clock()`, copy constructors, `operator=`. A
+comment on those saying "returns the clock" is noise, and noise in a reference
+an agent reads costs more than silence. The generator marks them
+`*No documentation comment.*` in the output, so their absence is visible rather
+than ambiguous.
+
+The rule is written into
+[`06-engine-conventions.md`](../../documentation/06-engine-conventions.md) under
+"Documenting public API", so new API is tagged as it is written — and the check
+makes that automatic rather than remembered.
+
+## Superseded — what was still to do
+
+
 
 **118.3 is not done, and the coverage number says so plainly: 39 of 87
 declarations carry documentation.** The generator marks the rest

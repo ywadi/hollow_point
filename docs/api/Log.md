@@ -6,7 +6,7 @@
 #include <hp/Log.hpp>
 ```
 
-22 public declaration(s), 11 documented.
+22 public declaration(s), 12 documented.
 
 ## `LogLevel`
 
@@ -61,6 +61,10 @@ LogCategory(std::string_view name)
 ```
 
  Registers `name`, or returns the existing id if already registered.
+
+ @param name the channel name, e.g. "render" or "game.combat". Two
+        declarations of the same name -- in different translation units,
+        or in a gameplay module -- resolve to one channel.
 
 ## `LogCategory::name`
 
@@ -148,6 +152,8 @@ void logAddSink(ILogSink * sink)
  would mean the engine freeing memory a gameplay module allocated, which the
  conventions forbid: each library carries its own statically linked libc++
  (see 06-engine-conventions.md, "the module boundary").
+ @param sink destination to add. Ignored if null, and registering the same
+        sink twice does not duplicate delivery.
 
 ## `logRemoveSink`
 
@@ -191,6 +197,9 @@ void logSetGlobalLevel(LogLevel level)
 
  Sets the level on every registered category at once.
 
+ @param level the new minimum for every category. Blunt by design -- it is
+        for "quiet everything" rather than for tuning.
+
 ## `logCategoryCount`
 
 ```cpp
@@ -199,13 +208,16 @@ std::uint16_t logCategoryCount()
 
  Enumerates categories, for an editor filter UI (T0066).
 
+ @returns the number of registered categories. Only ever grows.
+
 ## `logCategoryAt`
 
 ```cpp
 LogCategory logCategoryAt(std::uint16_t index)
 ```
 
-*No documentation comment.*
+ @param index a value in `[0, logCategoryCount())`.
+ @returns the category at `index`. Out-of-range returns a category named "?".
 
 ## `logWrite`
 
@@ -213,7 +225,15 @@ LogCategory logCategoryAt(std::uint16_t index)
 void logWrite(const LogCategory & category, LogLevel level, std::string_view file, int line, std::string_view message)
 ```
 
- The formatted-message entry point. Prefer the macros.
+ The formatted-message entry point. Prefer the macros, which check the level
+ before formatting.
+
+ @param category channel the record belongs to.
+ @param level severity of this record.
+ @param file source file, normally `__FILE__`.
+ @param line source line, normally `__LINE__`.
+ @param message the already-formatted text. Not copied -- sinks that keep a
+        record must copy it, because the view dies with this call.
 
 ## `logEnabled`
 
@@ -224,3 +244,7 @@ bool logEnabled(const LogCategory & category, LogLevel level)
  True when a record at `level` in `category` would reach at least one sink.
  The macros check this *before* formatting, because formatting is the
  expensive part and a filtered-out line should cost a comparison.
+
+ @param category channel to test.
+ @param level severity to test.
+ @returns true when a record at `level` would be delivered.

@@ -65,6 +65,9 @@ void requestExit(int exitCode)
  Asks the loop to finish after the current frame. Safe to call from a
  frame hook; the loop is not torn down underneath the caller.
 
+ @param exitCode value `run()` returns, and therefore the process exit
+        code. Defaults to 0.
+
 ## `Application::config`
 
 ```cpp
@@ -122,5 +125,8 @@ std::unique_ptr<Application> createApplication(int argc, char ** argv)
 
  Defined by each application, not by the engine.
 
- Returns the concrete `Application`. `argc`/`argv` are passed through so an
- app can parse its own command line without the engine imposing a scheme.
+ @param argc argument count, straight from `main`.
+ @param argv argument vector, straight from `main`. Passed through so an app
+        can parse its own command line without the engine imposing a scheme.
+ @returns the concrete application. Returning null makes the process exit
+        with code 1 without running a frame.

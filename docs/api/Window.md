@@ -53,7 +53,9 @@ class Window
 static std::unique_ptr<Window> create(const WindowConfig & config)
 ```
 
- Returns null on failure, having logged why.
+ @param config size, title and resizability of the window to open.
+ @returns the window, or null on failure -- having already logged why, so
+        a caller that only needs to abort does not have to ask.
 
 ## `Window::Window`
 

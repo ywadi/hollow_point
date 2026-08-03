@@ -51,6 +51,10 @@ public:
 
     /// Ordering exists so a GUID can key a sorted container. It is arbitrary and
     /// carries no meaning -- do not present it to a user as an order.
+    ///
+    /// @param a left-hand GUID.
+    /// @param b right-hand GUID.
+    /// @returns true when `a` sorts before `b`.
     friend constexpr bool operator<(Guid a, Guid b) { return a.value_ < b.value_; }
 
     /// 16 lowercase hex digits, zero-padded, no separators or prefix.
@@ -66,6 +70,11 @@ public:
     /// Strict because this parses *data files*. A lenient parser that accepts
     /// "0x1234" and " 1234 " turns a corrupt scene file into a silently wrong
     /// asset reference, which surfaces much later as a missing mesh.
+    ///
+    /// @param text exactly 16 hex digits. Uppercase is accepted, though never
+    ///        produced by `toString`.
+    /// @returns the parsed GUID, or `std::nullopt` if `text` is not exactly
+    ///        16 hex digits.
     static HP_API std::optional<Guid> parse(std::string_view text);
 
 private:

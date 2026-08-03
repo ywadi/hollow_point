@@ -460,7 +460,10 @@ def main() -> int:
 
     if args.check:
         known = load_baseline(baseline_path)
-        new_defects = [d for d in defects if d not in known]
+        # stale-param is never baselinable. The others are gaps; this one is a
+        # statement that is *wrong*, and a ratchet that tolerates wrong
+        # documentation defeats the purpose of having the check at all.
+        new_defects = [d for d in defects if d not in known or "stale-param" in d]
         fixed = len(known) - (len(defects) - len(new_defects))
         for defect in new_defects:
             print(f"error: {defect}", file=sys.stderr)

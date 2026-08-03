@@ -41,6 +41,10 @@ void engineRegisterConsumer(const char * name)
 
  Registers this consumer with the engine. Idempotent per caller name.
 
+ @param name identifies the caller -- "editor", "runtime", a gameplay
+        module. Registering the same name twice is a no-op. A null pointer
+        is ignored rather than treated as an error.
+
 ## `engineConsumerCount`
 
 ```cpp

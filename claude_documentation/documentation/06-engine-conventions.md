@@ -327,6 +327,43 @@ time and is the one that removes cost. An editor toggle controls *capture* —
 whether a connected profiler is recording — and cannot recover shipped-build
 cost, because the instrumentation is still compiled in. Say so in the UI.
 
+## Documenting public API
+
+Public headers under `engine/include/hp/` are the API surface for gameplay code
+— and, increasingly, for a coding agent writing it (T0118). `zig build docs`
+generates `docs/api/` from them and **checks them**, so this is enforced rather
+than encouraged.
+
+**Every parameter gets an `@param`.** Not because tags are inherently good, but
+because the generator can verify them: it knows the real parameter names, so it
+catches both a missing tag and — the one that matters — an `@param` naming a
+parameter that was since renamed.
+
+```cpp
+/// Registers `name`, or returns the existing id if already registered.
+///
+/// @param name the channel name, e.g. "render" or "game.combat". Two
+///        declarations of the same name resolve to one channel.
+explicit LogCategory(std::string_view name);
+```
+
+**Keep writing the prose.** The tags are for the checker; the paragraph
+explaining *why* is what stops an agent misusing the API, and it is reproduced
+in full in the generated reference. A tag-only comment is a worse comment.
+
+**`@returns` where the return is not obvious from the signature.** `int frame()
+const` needs nothing. `std::optional<Guid> parse(std::string_view)` needs to say
+what `nullopt` means.
+
+**Trivial accessors and special members need no comment.** A doc comment on
+`Clock& clock()` saying "returns the clock" is noise, and noise in a reference an
+agent reads costs more than silence. The checker tracks these in
+`tools/api_docs_baseline.txt`, a ratchet that may shrink but never grow.
+
+**A stale `@param` is never acceptable** and cannot be baselined. A missing
+comment leaves a reader to work it out; a wrong one tells them something untrue
+with confidence. That distinction is the whole reason the check exists.
+
 ## What is deliberately not decided here
 
 - **Math, memory and container policy** — T0056. Whether we use Diligent's math

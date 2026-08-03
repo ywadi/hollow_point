@@ -83,6 +83,10 @@ bool operator<(Guid a, Guid b)
  Ordering exists so a GUID can key a sorted container. It is arbitrary and
  carries no meaning -- do not present it to a user as an order.
 
+ @param a left-hand GUID.
+ @param b right-hand GUID.
+ @returns true when `a` sorts before `b`.
+
 ## `Guid::toString`
 
 ```cpp
@@ -107,6 +111,11 @@ static std::optional<Guid> parse(std::string_view text)
  Strict because this parses *data files*. A lenient parser that accepts
  "0x1234" and " 1234 " turns a corrupt scene file into a silently wrong
  asset reference, which surfaces much later as a missing mesh.
+
+ @param text exactly 16 hex digits. Uppercase is accepted, though never
+        produced by `toString`.
+ @returns the parsed GUID, or `std::nullopt` if `text` is not exactly
+        16 hex digits.
 
 ## `hash`
 
