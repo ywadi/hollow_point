@@ -67,5 +67,27 @@ import path and the metafile — not building a compressor.
 - KTX2/BasisU is the heavier alternative (transcodable, smaller on disk). Not
   needed for two desktop targets where BC is universally supported; note it as
   the revisit path if download size ever matters.
-- Texture *arrays* and atlases are out of scope; Diligent has
-  `DynamicTextureAtlas` if they are ever wanted.
+- ~~Texture *arrays* and atlases are out of scope~~ — **reversed by T0106.**
+  Diligent has `DynamicTextureAtlas` and it is now wanted: a VFX sprite sheet
+  *is* an atlas with regular spacing, and flipbook explosions are the core of
+  the effect system (D15, T0106). This exclusion was written before VFX were
+  considered. Texture *arrays* remain out of scope; the reversal is about
+  atlases and sprite sheets only.
+
+
+### Architecture amendment (2026-08-03) — VFX pulls three things into this pipeline
+
+T0106 (VFX sprites and flipbooks) makes demands this ticket did not anticipate:
+
+- **Sprite sheet metadata.** A flipbook needs rows, columns and frame count
+  travelling with the texture. Whether that is a distinct asset type or fields
+  on the texture import is T0106.1's decision, but the metafile is where it
+  would live and that is this ticket's territory.
+- **Premultiplied alpha.** T0106 argues for it — it avoids the dark halos
+  standard alpha blending produces at sprite edges and lets one texture hold
+  both glowing and soft-edged content. It is a *convention in the import
+  pipeline* (multiply RGB by A at import), so if it is adopted it belongs here,
+  and it is far cheaper to adopt before there is art than after.
+- **Colour space for VFX textures.** The linear-workflow policy (T0096) applies,
+  but effect textures are frequently authored as masks and gradients rather than
+  albedo, and tagging those sRGB is a common and hard-to-spot error.

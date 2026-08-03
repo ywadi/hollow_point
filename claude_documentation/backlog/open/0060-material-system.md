@@ -94,3 +94,28 @@ limited to standard materials by accident rather than by decision.
 
 Also note T0096 (HDR/tonemapping) now owns where material output lands —
 custom shaders write linear HDR and must not tonemap themselves.
+
+
+### Architecture amendment (2026-08-03) — particles need a material path this ticket does not describe
+
+This ticket never mentions particles, blending, additive, or unlit — it is
+implicitly about opaque, lit surfaces. VFX need a material path with different
+requirements, and deciding now whether they share the material *system* or get
+their own is cheaper than retrofitting either:
+
+- **Blend mode is material state** — additive, alpha, and probably
+  premultiplied alpha (T0106.4). Opaque materials have no such concept.
+- **Usually unlit.** Fire and magic are emissive and must not be shaded by scene
+  lights; smoke arguably should be. T0106.7 owns the fork, but "can a material
+  opt out of lighting entirely" is a question about *this* system's shape.
+- **Soft particles** need the material to sample scene depth, which is a
+  resource an opaque material never binds (T0046).
+- **Per-particle input.** A particle material is fed colour, opacity and
+  flipbook frame *per instance* from the simulation buffer, not from uniform
+  material parameters. That is a different data path from a mesh material.
+
+The likely answer is that VFX materials are a distinct material *domain* sharing
+the asset and shader-authoring machinery rather than a separate system — the
+same way engines distinguish surface, decal and post-process domains. Decals
+(T0108) are a third such domain and land in the same conversation, so it is
+worth having once rather than three times.
