@@ -2,9 +2,17 @@
 #
 # Split out of ci.yml on purpose. This compiles ~1100 targets per target on a
 # 4-core runner, which is far too slow to sit between a push and knowing whether
-# it broke something -- and on a private repository it would consume a monthly
-# allowance quickly. ci.yml carries the fast jobs that run on every push; this
+# it broke something. ci.yml carries the fast jobs that run on every push; this
 # one runs nightly, and on demand when you want it.
+#
+# Cost used to be the second reason for the split: at ~54 minutes a night this
+# alone would have consumed roughly 1,620 minutes a month against a private
+# repository's 2,000-minute allowance, before a single push. The repository is
+# public, so standard runners are unmetered and that argument no longer applies
+# -- the latency one still does, and is sufficient on its own. If it is ever
+# made private again, this is the first thing to put back on a leash: guard the
+# job so it exits early on a day with no commits (billing rounds up per job, so
+# a no-op night costs ~2 minutes rather than 54).
 #
 # What this catches that the fast jobs do not: breakage in engine code that no
 # test links against. The test binaries pull in only enkiTS, meshoptimizer and

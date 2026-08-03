@@ -123,13 +123,16 @@ everything else is served from disk or computed client-side. That matters
 here specifically because offline configure is a verified property of this
 project (T0010), so a header that shows a broken-image icon reads as a bug in
 the board, not as "you're offline." But a failed image load isn't only an
-offline signal: the same failure happens if github.com is unreachable for
-any other reason, or — not a network problem at all — if the repository is
-private and the request is unauthenticated, which an unauthenticated
-`badge.svg` request always is. (Checking this while building the feature: as
-of writing, `github.com/ywadi/hollow_point` returns 404 to an anonymous
-request, consistent with the repo currently being private.) The fallback
-therefore doesn't claim a specific cause. Two things handle it:
+offline signal: the same failure happens if github.com is unreachable for any
+other reason, or — not a network problem at all — if the repository is private,
+because GitHub serves `badge.svg` anonymously only for public repositories and
+an `<img>` request is always anonymous (it is a cross-site subresource, and
+GitHub's session cookie is `SameSite=Lax`, so even a logged-in viewer sends
+none). This was not hypothetical: the badges were written while the repo was
+still private and rendered as the fallback for exactly that reason. The repo is
+public now and both badges serve `image/svg+xml` and read `passing`. The
+fallback therefore doesn't claim a specific cause — it survives the repo going
+private again, which is the point. Two things handle it:
 
 - `.gh-badge-img` is a fixed-size box, not just an `<img>` with intrinsic
   dimensions. The box is reserved before the image ever starts loading, so
