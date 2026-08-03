@@ -49,6 +49,23 @@ Zig-based, incremental, cross-compiling from either host. See
 | meshoptimizer | 300f7d3 | `meshoptimizer` |
 | ozz-animation | 0.17.0 | `ozz_base`, `ozz_animation`, `ozz_geometry`, `ozz_animation_offline` |
 
+### Continuous integration ✅
+GitHub Actions (T0084). Every workflow has run green at least once:
+
+- ✅ `ci.yml` on push — Linux-host tests (both target suites, the Windows one
+  under **wine on a real Linux runner**), Windows-host tests (`bootstrap.ps1`,
+  the `.cmd` shims and the case probe's false branch, natively), and a
+  configure that asserts no dependency was downloaded
+- ✅ `full-build.yml` on dispatch — full ~1100-target build of both targets,
+  `dist` staging, artifact upload
+- ✅ **Failures block, and are diagnosable from the log alone.** The first run
+  failed; the root cause (`build.zig` adopting an old ccache off the runner's
+  PATH) was found from the CI output without reproducing locally
+
+Not measured: job durations. The only datum is a 282s Windows configure on the
+runner against ~28s locally, unexplained. Not set up: publishing to GitHub
+Releases — `dist/` is a 7-day workflow artifact, which is a different thing.
+
 ### Test harness ✅
 `zig build test` (T0012). Two runners: doctest 2.5.3 binaries per bucket for
 project code, and Zig's own test runner for the build harness. Verified by
