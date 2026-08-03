@@ -372,3 +372,55 @@ independently by serialization. T0095 measured that `entt::type_index` is a
 per-module runtime number that differs across the module boundary and cannot be
 persisted, so scenes and prefabs must reference behaviours by name whatever else
 is true. See T0053 and T0062.
+
+---
+
+## D15 — Particles simulate on the GPU only, and are purely cosmetic
+
+**Decision:** the particle system simulates on the **GPU** via compute shaders.
+There is no CPU simulation path, not even as a fallback. In exchange, **particles
+are cosmetic: gameplay never reads particle state**, and nothing in the
+simulation feeds back into the ECS.
+
+The game is 3D, and VFX are billboarded sprites rather than 2D sprite content.
+
+**Rejected — CPU simulation with the job system**, which is what T0080
+originally recommended as a starting point. The reasoning there was that CPU is
+simpler, debuggable, and lets gameplay read particle state, and that it is fine
+for thousands of particles. The counter-argument that wins: "fine for thousands"
+is the problem, not the reassurance. An explosion with smoke, embers and
+distortion is tens of thousands of particles on its own, and a CPU path that
+works until the third simultaneous explosion is a performance cliff discovered
+during a demo. Building it CPU-first also means the render path quietly acquires
+CPU-only assumptions — per-particle writes into a mapped vertex buffer, sorting
+on the CPU — and each becomes a rewrite when the numbers force the move.
+
+**Rejected — a hybrid with CPU for small emitters.** Superficially attractive,
+because a muzzle flash is a handful of particles and a compute dispatch per tiny
+emitter is wasteful. It is rejected because two simulation paths means two
+implementations of every feature — curves, emission shapes, sorting, budgets —
+and they will drift. The correct answer to the small-emitter problem is a
+**unified** system where all emitters share buffers and are simulated by one
+dispatch, not a second code path.
+
+**What this costs, accepted deliberately:**
+
+- **No exact collision.** GPU particles collide against the depth buffer, which
+  is screen-space and approximate: particles collide with what the camera can
+  see and pass through everything else. Exact scene collision needs an SDF or
+  voxel representation, which is its own project.
+- **No readback into gameplay.** This is the enabling constraint above rather
+  than a limitation to work around. If an effect must drive gameplay — an
+  explosion that damages — gameplay computes that itself from the *event*, and
+  the particles merely depict it. The two never share state.
+- **Non-determinism.** GPU simulation is not bit-reproducible across hardware,
+  so particles can never participate in anything requiring determinism
+  (T0070 networking, replays). Follows from them being cosmetic.
+- **Harder debugging.** Particle state lives in GPU buffers. A debug readback
+  path for development is worth building early, and it is a *tool*, not a
+  simulation fallback.
+
+Diligent supports compute shaders on both backends (Vulkan and OpenGL 4.3+),
+which is what makes this available on both targets. **The OpenGL floor moves:**
+compute requires 4.3, and the fallback path assumptions in T0025 should be
+checked against that.
