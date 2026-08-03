@@ -1,10 +1,16 @@
 #!/usr/bin/env sh
 # Install the pinned build toolchain into .harness/.
 #
-#   ./bootstrap.sh          then    .harness/zig/0.16.0/zig build
+#   ./bootstrap.sh          then    .harness/zig/linux-x86_64/0.16.0/zig build
 #
 # Installs Zig, CMake and Ninja -- everything the build needs. Nothing has to be
 # present on the host beyond curl (or wget), tar and a POSIX shell.
+#
+# Installs are keyed by host: .harness/<tool>/<host-key>/<version>/. This script
+# and bootstrap.ps1 used to share .harness/<tool>/<version>/ and both delete the
+# destination before extracting, so on a Windows machine with WSL either one
+# silently destroyed the other's toolchain (T0102). Keep the key in step with
+# hostKey() in tools/harness/paths.zig.
 #
 # CMake is pinned to the 3.x line on purpose. CMake 4 rejects
 # `cmake_minimum_required(VERSION <3.5)`, and DiligentEngine's vendored
@@ -25,6 +31,7 @@ DL="$ROOT/.harness/dl"
 ARCH=$(uname -m)
 case "$(uname -s)-$ARCH" in
     Linux-x86_64)
+        HOST_KEY=linux-x86_64
         ZIG_SLUG=x86_64-linux
         ZIG_SHA=70e49664a74374b48b51e6f3fdfbf437f6395d42509050588bd49abe52ba3d00
         CMAKE_SLUG=linux-x86_64
@@ -33,6 +40,7 @@ case "$(uname -s)-$ARCH" in
         NINJA_SHA=5749cbc4e668273514150a80e387a957f933c6ed3f5f11e03fb30955e2bbead6
         ;;
     Linux-aarch64)
+        HOST_KEY=linux-aarch64
         ZIG_SLUG=aarch64-linux
         ZIG_SHA=ea4b09bfb22ec6f6c6ceac57ab63efb6b46e17ab08d21f69f3a48b38e1534f17
         CMAKE_SLUG=linux-aarch64
@@ -81,25 +89,41 @@ fetch() {
     fi
 }
 
+# Report a pre-T0102 install still sitting at the old shared path.
+#
+# Only reports. Deleting it here would be the very bug this layout fixes: on a
+# dual-host machine that directory may be the *other* host's toolchain.
+warn_legacy() {
+    _tool=$1; _tool_version=$2
+    if [ -d "$ROOT/.harness/$_tool/$_tool_version" ]; then
+        echo "note: an install predating T0102 remains at .harness/$_tool/$_tool_version/"
+        echo "      Installs are now keyed by host ($HOST_KEY), so nothing uses it. Remove it"
+        echo "      once you are sure no other host still needs it:"
+        echo "        rm -rf .harness/$_tool/$_tool_version"
+    fi
+}
+
 # --- zig ---------------------------------------------------------------------
 
-ZIG_DIR="$ROOT/.harness/zig/$ZIG_VERSION"
+ZIG_HOST_DIR="$ROOT/.harness/zig/$HOST_KEY"
+ZIG_DIR="$ZIG_HOST_DIR/$ZIG_VERSION"
 if [ -x "$ZIG_DIR/zig" ]; then
     echo "zig $ZIG_VERSION already present"
 else
     ZIG_ARCHIVE="zig-$ZIG_SLUG-$ZIG_VERSION.tar.xz"
     fetch "https://ziglang.org/download/$ZIG_VERSION/$ZIG_ARCHIVE" "$ZIG_ARCHIVE" "$ZIG_SHA"
     echo "==> installing zig $ZIG_VERSION"
-    mkdir -p "$ROOT/.harness/zig"
-    rm -rf "$ZIG_DIR" "$ROOT/.harness/zig/zig-$ZIG_SLUG-$ZIG_VERSION"
-    tar -xJf "$DL/$ZIG_ARCHIVE" -C "$ROOT/.harness/zig"
-    mv "$ROOT/.harness/zig/zig-$ZIG_SLUG-$ZIG_VERSION" "$ZIG_DIR"
+    mkdir -p "$ZIG_HOST_DIR"
+    rm -rf "$ZIG_DIR" "$ZIG_HOST_DIR/zig-$ZIG_SLUG-$ZIG_VERSION"
+    tar -xJf "$DL/$ZIG_ARCHIVE" -C "$ZIG_HOST_DIR"
+    mv "$ZIG_HOST_DIR/zig-$ZIG_SLUG-$ZIG_VERSION" "$ZIG_DIR"
 fi
 "$ZIG_DIR/zig" version >/dev/null
 
 # --- cmake -------------------------------------------------------------------
 
-CMAKE_DIR="$ROOT/.harness/cmake/$CMAKE_VERSION"
+CMAKE_HOST_DIR="$ROOT/.harness/cmake/$HOST_KEY"
+CMAKE_DIR="$CMAKE_HOST_DIR/$CMAKE_VERSION"
 if [ -x "$CMAKE_DIR/bin/cmake" ]; then
     echo "cmake $CMAKE_VERSION already present"
 else
@@ -107,10 +131,10 @@ else
     fetch "https://github.com/Kitware/CMake/releases/download/v$CMAKE_VERSION/$CMAKE_ARCHIVE" \
           "$CMAKE_ARCHIVE" "$CMAKE_SHA"
     echo "==> installing cmake $CMAKE_VERSION"
-    mkdir -p "$ROOT/.harness/cmake"
-    rm -rf "$CMAKE_DIR" "$ROOT/.harness/cmake/cmake-$CMAKE_VERSION-$CMAKE_SLUG"
-    tar -xzf "$DL/$CMAKE_ARCHIVE" -C "$ROOT/.harness/cmake"
-    mv "$ROOT/.harness/cmake/cmake-$CMAKE_VERSION-$CMAKE_SLUG" "$CMAKE_DIR"
+    mkdir -p "$CMAKE_HOST_DIR"
+    rm -rf "$CMAKE_DIR" "$CMAKE_HOST_DIR/cmake-$CMAKE_VERSION-$CMAKE_SLUG"
+    tar -xzf "$DL/$CMAKE_ARCHIVE" -C "$CMAKE_HOST_DIR"
+    mv "$CMAKE_HOST_DIR/cmake-$CMAKE_VERSION-$CMAKE_SLUG" "$CMAKE_DIR"
 fi
 "$CMAKE_DIR/bin/cmake" --version >/dev/null
 
@@ -119,7 +143,7 @@ fi
 # Shipped as a zip. Rather than require unzip, extract with the CMake that was
 # just installed -- `cmake -E tar` handles zip archives.
 
-NINJA_DIR="$ROOT/.harness/ninja/$NINJA_VERSION"
+NINJA_DIR="$ROOT/.harness/ninja/$HOST_KEY/$NINJA_VERSION"
 if [ -x "$NINJA_DIR/ninja" ]; then
     echo "ninja $NINJA_VERSION already present"
 else
@@ -134,9 +158,14 @@ fi
 "$NINJA_DIR/ninja" --version >/dev/null
 
 echo
-echo "toolchain ready in .harness/"
+echo "toolchain ready in .harness/<tool>/$HOST_KEY/"
 echo "  zig    $ZIG_VERSION"
 echo "  cmake  $CMAKE_VERSION"
 echo "  ninja  $NINJA_VERSION"
+
+warn_legacy zig "$ZIG_VERSION"
+warn_legacy cmake "$CMAKE_VERSION"
+warn_legacy ninja "$NINJA_VERSION"
+
 echo
 echo "next:  $ZIG_DIR/zig build all"

@@ -29,7 +29,11 @@ third_party/
   ufbx/                     v0.23.0 -- present but NOT wired into the build
   dxc/                      v1.8.2407 binaries -- present but NOT wired in
   sysroot/linux-x86_64/     X11/xcb/GL headers + generated link stubs
-.harness/                   bootstrapped toolchain (gitignored)
+tests/
+  fast/ integration/        C++ suites (doctest), one binary per bucket
+  harness/                  Zig suites covering the build harness itself
+tools/harness/              harness logic split out so tests can import it
+.harness/<tool>/<host>/     bootstrapped toolchain, keyed by host (gitignored)
 build/<target>-<config>/    build trees
 dist/<target>/              staged output
 ```

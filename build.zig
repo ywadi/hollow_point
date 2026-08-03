@@ -83,6 +83,8 @@ const harness_tests = [_]struct {
     path: []const u8,
 }{
     .{ .name = "harness-cache", .bucket = "fast", .path = "tests/harness/cache_test.zig" },
+    .{ .name = "harness-paths", .bucket = "fast", .path = "tests/harness/paths_test.zig" },
+    .{ .name = "harness-pins", .bucket = "fast", .path = "tests/harness/pins_test.zig" },
     .{ .name = "harness-dist", .bucket = "integration", .path = "tests/harness/dist_test.zig" },
 };
 
@@ -165,8 +167,8 @@ pub fn build(b: *Build) void {
 
     checkPinnedZig(b);
 
-    const cmake = harnessTool(b, "cmake", b.fmt(".harness/cmake/{s}/bin", .{pinned_cmake_version}));
-    const ninja = harnessTool(b, "ninja", b.fmt(".harness/ninja/{s}", .{pinned_ninja_version}));
+    const cmake = harnessTool(b, "cmake", pinned_cmake_version, "bin");
+    const ninja = harnessTool(b, "ninja", pinned_ninja_version, null);
 
     const all_step = b.step("all", "Build every target");
     const dist_step = b.step("dist", "Stage runnable output into dist/");
@@ -333,6 +335,7 @@ pub fn build(b: *Build) void {
     // runs on the host, so cross-compiling them would prove nothing. The C++
     // suites above are what run for both targets.
     const cache_mod = b.createModule(.{ .root_source_file = b.path("tools/harness/cache.zig") });
+    const paths_mod = b.createModule(.{ .root_source_file = b.path("tools/harness/paths.zig") });
 
     // Paths the harness knows and a test cannot discover for itself, handed
     // over as build options rather than environment variables so the suite
@@ -340,6 +343,10 @@ pub fn build(b: *Build) void {
     const test_config = b.addOptions();
     test_config.addOption([]const u8, "cmake", cmake);
     test_config.addOption([]const u8, "repo_root", b.build_root.path orelse ".");
+    // So the pins test can hold the bootstrap scripts to what this file pins.
+    test_config.addOption([]const u8, "pinned_zig", pinned_zig_version);
+    test_config.addOption([]const u8, "pinned_cmake", pinned_cmake_version);
+    test_config.addOption([]const u8, "pinned_ninja", pinned_ninja_version);
 
     for (harness_tests) |h| {
         if (!bucketSelected(test_sel, h.bucket)) continue;
@@ -350,6 +357,7 @@ pub fn build(b: *Build) void {
             .optimize = .Debug,
             .imports = &.{
                 .{ .name = "harness_cache", .module = cache_mod },
+                .{ .name = "harness_paths", .module = paths_mod },
                 .{ .name = "test_config", .module = test_config.createModule() },
             },
         });
@@ -375,15 +383,60 @@ pub fn build(b: *Build) void {
 }
 
 /// Absolute path to a bootstrapped tool, or the bare name for PATH lookup if it
-/// was never installed. `dir` is relative to the build root.
+/// was never installed. `subdir` is the directory holding the executable inside
+/// the install, if it is not the install root -- `bin` for CMake, none for Ninja.
 ///
 /// Falling back rather than failing keeps the harness usable with a
-/// system-provided cmake/ninja; the pin is a default, not a requirement.
-fn harnessTool(b: *Build, name: []const u8, dir: []const u8) []const u8 {
-    const exe = if (b.graph.host.result.os.tag == .windows) b.fmt("{s}.exe", .{name}) else name;
-    const rel = b.fmt("{s}/{s}", .{ dir, exe });
-    b.build_root.handle.access(b.graph.io, rel, .{}) catch return name;
+/// system-provided cmake/ninja; the pin is a default, not a requirement. But it
+/// falls back *loudly*: a silent fallback means a half-migrated `.harness/`
+/// quietly builds with whatever the distribution ships, which is worse than an
+/// error because the build still succeeds and nothing says it used a different
+/// CMake (T0102).
+fn harnessTool(b: *Build, name: []const u8, version: []const u8, subdir: ?[]const u8) []const u8 {
+    const host = b.graph.host.result;
+
+    // No bootstrap script covers this host, so there is nothing to look for and
+    // nothing to warn about -- PATH is the only option and always was.
+    const key = harness_paths.hostKey(host.os.tag, host.cpu.arch) orelse return name;
+
+    const dir = harness_paths.toolDir(b.allocator, name, key, version) catch @panic("OOM");
+    const exe = if (host.os.tag == .windows) b.fmt("{s}.exe", .{name}) else name;
+    const rel = if (subdir) |s|
+        b.fmt("{s}/{s}/{s}", .{ dir, s, exe })
+    else
+        b.fmt("{s}/{s}", .{ dir, exe });
+
+    b.build_root.handle.access(b.graph.io, rel, .{}) catch {
+        std.debug.print(
+            "warning: {s} {s} is not installed at {s}/ -- falling back to '{s}' on PATH.\n" ++
+                "  The pinned toolchain exists so the build does not vary with the host; run " ++
+                "./bootstrap.sh (or bootstrap.ps1) to install it.\n",
+            .{ name, version, dir, name },
+        );
+        warnLegacyInstall(b, name, version);
+        return name;
+    };
     return b.fmt("{s}/{s}", .{ b.build_root.path orelse ".", rel });
+}
+
+/// Say so when a pre-T0102 install is still sitting at the old shared path.
+///
+/// This is the half-migrated case the fallback above would otherwise disguise:
+/// the toolchain *is* downloaded, just in the layout that predates host keying,
+/// so "not installed" reads as wrong to anyone looking at the directory.
+///
+/// It only reports. Deleting it here would be a bug: on a dual-host machine the
+/// directory at the old path may be the *other* host's toolchain, and removing
+/// it is precisely the destruction T0102 is about.
+fn warnLegacyInstall(b: *Build, name: []const u8, version: []const u8) void {
+    const legacy = harness_paths.legacyToolDir(b.allocator, name, version) catch return;
+    b.build_root.handle.access(b.graph.io, legacy, .{}) catch return;
+    std.debug.print(
+        "note: an install predating T0102 remains at {s}/. The layout is now keyed by host\n" ++
+            "  so that a Windows and a WSL bootstrap no longer overwrite each other. Once the\n" ++
+            "  new one is in place, and if no other host still needs it, remove it.\n",
+        .{legacy},
+    );
 }
 
 fn asciiLower(b: *Build, s: []const u8) []const u8 {
@@ -421,6 +474,10 @@ fn needsConfigure(b: *Build, build_dir: []const u8, build_type: []const u8, cmak
 /// Lives in `tools/harness/cache.zig` so it can be unit tested (T0012); the
 /// tests import that file as a module. See it for why the type is ignored.
 const cacheHas = @import("tools/harness/cache.zig").cacheHas;
+
+/// The `.harness/` layout, shared with the tests that pin it down. See that
+/// file for why the directories are keyed by host (T0102).
+const harness_paths = @import("tools/harness/paths.zig");
 
 fn checkPinnedZig(b: *Build) void {
     const running = @import("builtin").zig_version_string;

@@ -59,7 +59,7 @@ jobs:
       - name: Put the pinned zig on PATH
         run: |
           zig_version=$(grep -m1 '^ZIG_VERSION=' bootstrap.sh | cut -d= -f2)
-          echo "$PWD/.harness/zig/$zig_version" >> "$GITHUB_PATH"
+          echo "$PWD/.harness/zig/linux-$(uname -m)/$zig_version" >> "$GITHUB_PATH"
 
       - name: Build
         run: zig build ${{ matrix.target }}

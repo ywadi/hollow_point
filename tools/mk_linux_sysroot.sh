@@ -25,7 +25,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$ROOT/third_party/sysroot/linux-x86_64"
 SRC_INC=/usr/include
 SRC_LIB=/usr/lib/x86_64-linux-gnu
-ZIG="${ZIG:-$ROOT/.harness/zig/0.16.0/zig}"
+# Host-keyed since T0102; this script already refuses to run anywhere but Linux.
+ZIG="${ZIG:-$ROOT/.harness/zig/linux-$(uname -m)/0.16.0/zig}"
 
 # Must match cmake/toolchains/x86_64-linux-gnu.cmake.
 ZIG_TARGET=x86_64-linux-gnu.2.28

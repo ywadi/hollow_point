@@ -13,7 +13,9 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ZIG="${ZIG:-$ROOT/.harness/zig/0.16.0/zig}"
+# Host-keyed since T0102. A Linux-host helper: it inspects the case-sensitivity
+# problem that only arises when cross-compiling from one.
+ZIG="${ZIG:-$ROOT/.harness/zig/linux-$(uname -m)/0.16.0/zig}"
 SRC="$ROOT/third_party/DiligentEngine"
 
 [ -x "$ZIG" ] || { echo "error: no zig at $ZIG (set ZIG=...)" >&2; exit 1; }

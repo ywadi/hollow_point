@@ -12,7 +12,41 @@ does the incremental work, so only what actually changed gets rebuilt.
 
 That installs the whole toolchain into `.harness/` — **Zig 0.16.0, CMake 3.31.12
 and Ninja 1.13.2**, each checksum-verified. Nothing else needs to be on the
-host. Anything already on PATH is used only as a fallback.
+host. Anything already on PATH is used only as a fallback, and the build now
+says out loud when it falls back rather than quietly building with a different
+CMake.
+
+Installs are keyed by host, `.harness/<tool>/<host-key>/<version>/`, so a Linux
+and a Windows toolchain sit side by side in one working tree:
+
+```
+.harness/zig/linux-x86_64/0.16.0/zig
+.harness/zig/windows-x86_64/0.16.0/zig.exe
+```
+
+### On a machine that is both hosts
+
+A Windows box with WSL is two hosts sharing one working tree, which is how this
+project is actually developed. Run each bootstrap once, from its own side:
+
+```sh
+./bootstrap.sh        # from WSL
+.\bootstrap.ps1       # from Windows
+```
+
+Neither disturbs the other, so you can switch hosts and build without
+re-bootstrapping. The downloads are shared — `.harness/dl/` holds both hosts'
+archives, and they are named for their host (`zig-x86_64-linux-0.16.0.tar.xz`
+against `zig-x86_64-windows-0.16.0.zip`), so each is fetched once.
+
+This was not always true. Until T0102 both scripts installed into
+`.harness/<tool>/<version>/` and both deleted the destination before
+extracting, so running either one silently destroyed the other host's
+toolchain — and neither noticed, because each checks only for its own binary
+name. If your tree predates that change, the bootstrap will point out the
+leftover directories at the old paths. It will not remove them: on a dual-host
+machine the leftovers may be the *other* host's only copy, and deleting them is
+the exact failure being fixed.
 
 CMake is held on the 3.x line deliberately: CMake 4 rejects
 `cmake_minimum_required(VERSION <3.5)` and DiligentEngine's vendored

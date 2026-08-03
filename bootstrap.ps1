@@ -1,9 +1,15 @@
 # Install the pinned build toolchain into .harness\.
 #
-#   .\bootstrap.ps1     then    .harness\zig\0.16.0\zig.exe build
+#   .\bootstrap.ps1     then    .harness\zig\windows-x86_64\0.16.0\zig.exe build
 #
 # Installs Zig, CMake and Ninja -- everything the build needs. Nothing else has
 # to be present on the host.
+#
+# Installs are keyed by host: .harness\<tool>\<host-key>\<version>\. This script
+# and bootstrap.sh used to share .harness\<tool>\<version>\ and both delete the
+# destination before extracting, so on a Windows machine with WSL either one
+# silently destroyed the other's toolchain (T0102). Keep the key in step with
+# hostKey() in tools/harness/paths.zig.
 #
 # CMake is pinned to the 3.x line on purpose. CMake 4 rejects
 # `cmake_minimum_required(VERSION <3.5)`, and DiligentEngine's vendored
@@ -25,6 +31,11 @@ $Dl   = Join-Path $Root '.harness\dl'
 if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64') {
     Write-Error "unsupported host architecture '$env:PROCESSOR_ARCHITECTURE' (need AMD64)"
 }
+
+# Matches the AMD64 arm of hostKey() in tools/harness/paths.zig, and the
+# `Windows-x86_64` case bootstrap.sh does not have because it refuses to run
+# here. AMD64 is the only architecture this script accepts, so it is a constant.
+$HostKey = 'windows-x86_64'
 
 New-Item -ItemType Directory -Force -Path $Dl | Out-Null
 
@@ -54,12 +65,15 @@ function Get-Pinned {
     return $path
 }
 
-# Extract <archive> into .harness\<tool>\, then rename the single top-level
-# directory it unpacks to the pinned version number.
+# Extract <archive> into .harness\<tool>\<host-key>\, then rename the single
+# top-level directory it unpacks to the pinned version number.
+#
+# The host key is what keeps the Remove-Item below off bootstrap.sh's toolchain:
+# it can only ever delete inside this host's own subtree.
 function Install-Archive {
     param([string]$Archive, [string]$Tool, [string]$StagedName, [string]$Dest)
 
-    $parent = Join-Path $Root ".harness\$Tool"
+    $parent = Join-Path $Root ".harness\$Tool\$HostKey"
     New-Item -ItemType Directory -Force -Path $parent | Out-Null
     $staged = Join-Path $parent $StagedName
     if (Test-Path $Dest)   { Remove-Item $Dest   -Recurse -Force }
@@ -70,7 +84,7 @@ function Install-Archive {
 
 # --- zig ---------------------------------------------------------------------
 
-$ZigDir = Join-Path $Root ".harness\zig\$ZigVersion"
+$ZigDir = Join-Path $Root ".harness\zig\$HostKey\$ZigVersion"
 if (Test-Path (Join-Path $ZigDir 'zig.exe')) {
     Write-Host "zig $ZigVersion already present"
 } else {
@@ -84,7 +98,7 @@ if (Test-Path (Join-Path $ZigDir 'zig.exe')) {
 
 # --- cmake -------------------------------------------------------------------
 
-$CMakeDir = Join-Path $Root ".harness\cmake\$CMakeVersion"
+$CMakeDir = Join-Path $Root ".harness\cmake\$HostKey\$CMakeVersion"
 if (Test-Path (Join-Path $CMakeDir 'bin\cmake.exe')) {
     Write-Host "cmake $CMakeVersion already present"
 } else {
@@ -100,7 +114,7 @@ if (Test-Path (Join-Path $CMakeDir 'bin\cmake.exe')) {
 #
 # ninja-win.zip holds ninja.exe at the root, so unpack straight into place.
 
-$NinjaDir = Join-Path $Root ".harness\ninja\$NinjaVersion"
+$NinjaDir = Join-Path $Root ".harness\ninja\$HostKey\$NinjaVersion"
 if (Test-Path (Join-Path $NinjaDir 'ninja.exe')) {
     Write-Host "ninja $NinjaVersion already present"
 } else {
@@ -113,10 +127,30 @@ if (Test-Path (Join-Path $NinjaDir 'ninja.exe')) {
 }
 & (Join-Path $NinjaDir 'ninja.exe') --version | Out-Null
 
+# Report a pre-T0102 install still sitting at the old shared path.
+#
+# Only reports. Deleting it here would be the very bug this layout fixes: on a
+# machine with WSL that directory may be the *other* host's toolchain.
+function Write-LegacyNote {
+    param([string]$Tool, [string]$ToolVersion)
+
+    if (Test-Path (Join-Path $Root ".harness\$Tool\$ToolVersion")) {
+        Write-Host "note: an install predating T0102 remains at .harness\$Tool\$ToolVersion\"
+        Write-Host "      Installs are now keyed by host ($HostKey), so nothing uses it. Remove it"
+        Write-Host "      once you are sure no other host still needs it:"
+        Write-Host "        Remove-Item -Recurse -Force .harness\$Tool\$ToolVersion"
+    }
+}
+
 Write-Host ''
-Write-Host 'toolchain ready in .harness\'
+Write-Host "toolchain ready in .harness\<tool>\$HostKey\"
 Write-Host "  zig    $ZigVersion"
 Write-Host "  cmake  $CMakeVersion"
 Write-Host "  ninja  $NinjaVersion"
+
+Write-LegacyNote 'zig'   $ZigVersion
+Write-LegacyNote 'cmake' $CMakeVersion
+Write-LegacyNote 'ninja' $NinjaVersion
+
 Write-Host ''
 Write-Host "next:  $ZigDir\zig.exe build all"

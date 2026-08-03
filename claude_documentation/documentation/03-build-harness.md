@@ -11,7 +11,7 @@ configures, Ninja decides *what* to rebuild, Zig compiles and links.
 
 ## Pinned toolchain
 
-`bootstrap.sh` / `bootstrap.ps1` install into `.harness/`:
+`bootstrap.sh` / `bootstrap.ps1` install into `.harness/<tool>/<host-key>/<version>/`:
 
 | Tool | Version | Why pinned there |
 |---|---|---|
@@ -19,9 +19,28 @@ configures, Ninja decides *what* to rebuild, Zig compiles and links.
 | cmake | 3.31.12 | **must stay on 3.x** — see D5 in the decision log |
 | ninja | 1.13.2 | incremental engine |
 
+The host key is `<os>-<arch>` — `linux-x86_64`, `windows-x86_64`,
+`linux-aarch64` — the same vocabulary as the target keys and the `build/` and
+`dist/` directory names. It is there because one working tree can be used from
+two hosts at once (Windows plus WSL), and until T0102 both scripts installed to
+`.harness/<tool>/<version>/` and deleted the destination before extracting, so
+either bootstrap destroyed the other's toolchain. `.harness/dl/` stays shared
+and unkeyed: the archives are already named for their host, so they cannot
+collide, and a dual-host machine downloads each one once.
+
+The layout has one definition, `tools/harness/paths.zig`, which `build.zig` uses
+and `tests/harness/paths_test.zig` pins down. The bootstrap scripts cannot
+import it — a shell script, a PowerShell script and a Zig file have no way to
+share a constant — so `tests/harness/pins_test.zig` reads both scripts and fails
+if their versions or their layout drift from what `build.zig` expects.
+
 `build.zig`'s `harnessTool()` prefers `.harness/`, falling back to `PATH` so the
-harness still works with system tools. The bootstrap scripts checksum-verify
-every download and delete corrupt archives so a bad download is not reused.
+harness still works with system tools. It warns when it falls back, and points
+out an install left at the pre-T0102 path: a silent fallback means a
+half-migrated `.harness/` builds with whatever the distribution ships while
+looking like it used the pin, which is worse than an error because the build
+still succeeds. The bootstrap scripts checksum-verify every download and delete
+corrupt archives so a bad download is not reused.
 
 On Linux, ninja ships as a zip; rather than require `unzip`, it is extracted with
 the CMake installed a moment earlier (`cmake -E tar xf` handles zip).

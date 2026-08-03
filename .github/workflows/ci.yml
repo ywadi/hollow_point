@@ -62,7 +62,7 @@ jobs:
         # a second copy of the pin is a second thing to forget to update.
         run: |
           zig_version=$(grep -m1 '^ZIG_VERSION=' bootstrap.sh | cut -d= -f2)
-          echo "$PWD/.harness/zig/$zig_version" >> "$GITHUB_PATH"
+          echo "$PWD/.harness/zig/linux-$(uname -m)/$zig_version" >> "$GITHUB_PATH"
 
       - name: Install wine
         # Needed to run the *Windows* suite on a Linux host. Without it the
@@ -103,7 +103,7 @@ jobs:
         # double-quoted string rather than passing it to the matcher.
         run: |
           $v = (Select-String -Path bootstrap.ps1 -Pattern "ZigVersion\s*=\s*'([\d.]+)'" | Select-Object -First 1).Matches[0].Groups[1].Value
-          "$PWD\.harness\zig\$v" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          "$PWD\.harness\zig\windows-x86_64\$v" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Run every test bucket, Windows target
         # -Dtarget=windows on purpose. Without it the harness would also
@@ -136,7 +136,7 @@ jobs:
       - name: Put the pinned zig on PATH
         run: |
           zig_version=$(grep -m1 '^ZIG_VERSION=' bootstrap.sh | cut -d= -f2)
-          echo "$PWD/.harness/zig/$zig_version" >> "$GITHUB_PATH"
+          echo "$PWD/.harness/zig/linux-$(uname -m)/$zig_version" >> "$GITHUB_PATH"
 
       - name: Configure, then prove nothing was downloaded
         # Guards D7/T0010: EnTT, abseil and rapidjson must resolve to the

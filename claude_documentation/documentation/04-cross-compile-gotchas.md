@@ -16,9 +16,9 @@ called out, because it is the reason to distrust "it compiled" as evidence.
 
 ```
 $ cd /repo && zig env | grep lib_dir
-    .lib_dir = ".harness/zig/0.16.0/lib",      # relative!
+    .lib_dir = ".harness/zig/linux-x86_64/0.16.0/lib",      # relative!
 $ cd /tmp && zig env | grep lib_dir
-    .lib_dir = "/repo/.harness/zig/0.16.0/lib" # absolute
+    .lib_dir = "/repo/.harness/zig/linux-x86_64/0.16.0/lib" # absolute
 ```
 
 **Silent failure mode:** the relative path works at configure time (CMake runs
