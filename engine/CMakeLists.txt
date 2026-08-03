@@ -12,6 +12,7 @@
 # tests/integration/module_boundary_test.cpp and T0095.
 add_library(hp_engine SHARED
     src/Engine.cpp
+    src/Log.cpp
 )
 add_library(hp::engine ALIAS hp_engine)
 
@@ -35,6 +36,19 @@ target_compile_features(hp_engine PUBLIC cxx_std_20)
 set_target_properties(hp_engine PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)
+
+# --- logging (T0054) ---------------------------------------------------------
+#
+# The compile-time floor. Levels below this are removed by the preprocessor
+# rather than filtered at run time, so verbose logging is absent from a shipped
+# build instead of merely skipped -- and, as with the profiling macros, its
+# arguments are not evaluated.
+#
+# PUBLIC for the same reason HP_PROFILING is: the macros live in a public header
+# and consumers must compile against the same floor as the engine.
+set(HP_LOG_MIN_LEVEL "0" CACHE STRING
+    "Compile-time minimum log level: 0=trace 1=debug 2=info 3=warning (error/fatal always on)")
+target_compile_definitions(hp_engine PUBLIC HP_LOG_MIN_LEVEL=${HP_LOG_MIN_LEVEL})
 
 # --- profiling (T0019) -------------------------------------------------------
 #

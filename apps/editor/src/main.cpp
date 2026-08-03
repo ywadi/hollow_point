@@ -10,14 +10,22 @@
 // inspector can see game-defined types (T0032, T0035). That is not built yet;
 // T0014 brings the Application and main loop.
 #include <hp/Engine.hpp>
+#include <hp/Log.hpp>
 
 #include <cstdio>
 
+namespace {
+const hp::LogCategory kLog("editor");
+} // namespace
+
 int main() {
+    hp::logAddConsoleSink();
     hp::engineRegisterConsumer("editor");
 
-    std::printf("HollowPoint editor\n");
-    std::printf("  engine %s, %u instance(s), %u consumer(s)\n", hp::engineVersion(),
+    HP_LOG_INFO(kLog, "HollowPoint editor");
+    HP_LOG_INFO(kLog, "engine {}, {} instance(s), {} consumer(s)", hp::engineVersion(),
                 hp::engineInstanceCount(), hp::engineConsumerCount());
+
+    hp::logFlush();
     return 0;
 }

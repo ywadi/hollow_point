@@ -109,7 +109,9 @@ endforeach()
 # The integration bucket links the engine fixture and loads the module fixture.
 # Guarded because a bucket with no sources produces no target at all.
 if(TARGET hp_tests_integration)
-    target_link_libraries(hp_tests_integration PRIVATE hp_abi_engine)
+    # The engine itself, so integration tests can exercise its public API
+    # (logging, T0054). RPATH already points at $ORIGIN below.
+    target_link_libraries(hp_tests_integration PRIVATE hp_abi_engine hp_engine)
     add_dependencies(hp_tests_integration hp_abi_module)
     # The module is opened by name at run time, and the name is not the same on
     # both targets -- MinGW produces libhp_abi_module.dll, keeping the `lib`
