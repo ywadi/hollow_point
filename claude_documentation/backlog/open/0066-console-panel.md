@@ -85,6 +85,6 @@ and `logCategoryAt` exist to enumerate categories for exactly this UI, and
 gameplay categories appear in that list alongside engine ones automatically --
 there is nothing for a game developer to register.
 
-Not to be confused with [T0114](0114-runtime-developer-console-and-cvars.md),
+Not to be confused with [T0114](0114-developer-console-and-cvars.md),
 which is a *command* console for typing at the running game. This one is the log
 viewer.
