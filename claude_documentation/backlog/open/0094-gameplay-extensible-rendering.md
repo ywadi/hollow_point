@@ -68,3 +68,21 @@ Diligent much harder. A thin engine-owned wrapper is worth the indirection here.
 
 The worked example in 94.9 is not optional documentation — this is a capability
 whose whole point is being usable by someone who did not write the engine.
+
+
+### Amendment (2026-08-03) — the submission seam decides whether game draws can be profiled
+
+Add to this ticket's acceptance: **a GPU zone can be scoped around work
+submitted by gameplay code, and it appears correctly attributed in a Tracy
+capture.**
+
+This is not a profiling nicety that belongs only to T0030. It is a constraint on
+*this* ticket's API shape, because a submission interface that has no place to
+put a zone scope cannot gain one later without changing every call site. Game
+code does not own the device or the command list, so if this seam does not
+carry the zone, game draws are attributed to whichever engine pass wrapped them
+— which hides the cost of exactly the code a game developer is trying to
+profile.
+
+See T0030's amendment for the mechanism and T0029's for why the Tracy client
+lives in the engine shared library.

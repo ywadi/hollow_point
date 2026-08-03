@@ -65,8 +65,8 @@ The header carries a **Sort** control and **Collapse all** / **Expand all**.
 
 | Sort | Behaviour |
 |---|---|
-| Execution order (default) | Flat, by each ticket's `Order` field — the top card is what to work next |
-| Phase | Grouped under collapsible phase headings; cards within a group follow `Order` |
+| Phase (default) | Grouped under collapsible phase headings; cards within a group follow `Order`, so the top card is still what to work next |
+| Execution order | Flat, by each ticket's `Order` field — the same queue without the phase scaffolding |
 | Priority | Flat, High → Medium → Low, phase then order as tiebreaks |
 | ID | Flat, ticket order |
 
@@ -82,6 +82,17 @@ only in whether the phase headings (and their aggregate bars) show.
 Phase grouping only applies while sorting by phase — the other modes render
 flat: Priority and ID deliberately cut across phases, and Execution order is
 the "what's next" list, where headings would just be in the way.
+
+Phase is the default rather than Execution order, and the reason is worth
+recording because the other way was tried first. Both put the *same* ticket on
+top, since phase groups order their cards by the same `Order` field — so the
+"what next" question is answered either way, and the difference is everything
+else on screen. The phase view keeps the headings and their aggregate progress
+bars, which is how ninety-one open tickets stay navigable; Execution order
+renders flat, and a flat list of ninety-one is a worse first impression than a
+grouped one that starts in the same place. The `localStorage` sort key was
+bumped to `v2` when this was corrected, so anyone who loaded the board while
+the flat view was the default is not left permanently stuck in it.
 
 The sort choice persists in `localStorage`, as does per-phase collapse state.
 With 91 open tickets in one column, Collapse all (in the Phase view) is the

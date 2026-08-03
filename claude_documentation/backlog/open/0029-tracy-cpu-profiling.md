@@ -68,3 +68,34 @@ Either those verifications are deferred, or this ticket is pulled to the
 code that should be built with a profiler attached, and the T0019 macro
 surface means the wiring cost is small. Flagged rather than re-phased —
 owner's call.
+
+
+### Architecture amendment (2026-08-03) — one Tracy client, and it lives in the engine
+
+D12 makes the engine a shared library that the editor, the runtime and every
+gameplay module link. Tracy's client has global state — a profiler singleton, a
+queue, a background thread — and so falls under exactly the rule D12 exists to
+enforce: **it must exist once per process.**
+
+- **Compile Tracy into the engine shared library.** The gameplay module links
+  the engine and imports those symbols; it must never embed its own copy. Two
+  clients means two queues, the module's zones missing from the capture, and
+  two things trying to own the listen socket.
+- **Zones from game code are the point**, not a bonus. Verify a zone emitted
+  inside the gameplay module appears in the same capture as engine zones, on
+  both targets — that is the acceptance test for this ticket under D12.
+
+**The sharp edge: Tracy does not copy its strings.** Each zone has a static
+`SourceLocationData` holding pointers to `__FILE__`, the function name and the
+zone name, and Tracy keeps those pointers, resolving them when the capture is
+serialised. For a zone in the gameplay module, those strings live in *the
+module's* memory. Unload the module and Tracy holds pointers into unmapped
+memory — garbage names at best, a crash at capture time at worst.
+
+This is the same constraint as the hot-reload problem, not a separate one.
+T0095 found that a genuine `dlclose` already segfaults at exit under this
+toolchain (zig links libc++ statically into every module), so modules are
+currently loaded `RTLD_NODELETE` and stay mapped — which incidentally keeps
+these strings valid. **Whatever T0048 decides about true unloading has to account
+for Tracy's retained pointers**, and if modules ever genuinely unload, zone
+names from a reloaded module are a correctness problem, not a cosmetic one.

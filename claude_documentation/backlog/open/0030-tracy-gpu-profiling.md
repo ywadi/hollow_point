@@ -68,3 +68,25 @@ helpers for it — `DurationQueryHelper.hpp` and `ScopedQueryHelper.hpp` in
 double-buffering that makes `IQuery` fiddly to use directly. If 30.2 concludes
 Tracy's same-command-buffer requirement cannot be met through the RHI, the
 fallback path is genuinely small.
+
+
+### Architecture amendment (2026-08-03) — GPU zones from game code need a seam
+
+This ticket is already Very Complex because Diligent manages command buffers
+internally. D12 adds a case it was not written for: **gameplay code that
+submits draws.**
+
+A GPU zone must be recorded against a Tracy GPU context bound to the device's
+command list. Game code does not own the device — under T0094 it submits work
+through the render-extension seam. So either that seam exposes a scoped GPU
+zone as part of its submission API, or game-submitted draws land inside
+whichever engine pass happened to wrap them, attributed to the engine.
+
+Unattributed game draws are the worst outcome for the person profiling: the
+capture shows time in a pass they did not write, and the actual cost — their
+own draw call — is invisible. Decide this when T0094's API is designed, because
+retrofitting a zone scope into a submission interface means changing every call
+site.
+
+Also inherits T0029's constraint: one Tracy client, in the engine shared
+library, and GPU context creation belongs to the engine rather than the module.

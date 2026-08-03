@@ -84,3 +84,19 @@ starting point anyway.
 **The editor is a module host too** (see the T0032/T0035 amendments). The check
 belongs in the shared loader, not in the runtime's copy of it, or the editor
 will happily load a stale module and blame the inspector.
+
+
+### Amendment (2026-08-03) — the profiling flag is part of the ABI
+
+Enabling profiling changes which symbols the engine exports and can change the
+layout of anything embedding a zone object. A gameplay module built with
+profiling on, loaded by an engine built with it off, is therefore exactly the
+mismatch this ticket exists to refuse — and it is a *likely* one, because
+profiling is a build-configuration switch a developer flips casually and
+independently of whether they rebuilt everything.
+
+So the build id must fold in the profiling setting alongside build type and
+target triple (see 104.1). More generally the rule is: **any flag that changes
+the engine's symbol surface or type layout belongs in the id.** Profiling is
+the first such flag to appear; it will not be the last, so 104.1 should record
+the principle rather than just the flag.

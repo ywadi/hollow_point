@@ -206,8 +206,8 @@
   <div class="controls">
     <label for="sortby">Sort</label>
     <select id="sortby">
-      <option value="order">Execution order</option>
       <option value="phase">Phase</option>
+      <option value="order">Execution order</option>
       <option value="priority">Priority</option>
       <option value="id">ID</option>
     </select>
@@ -271,15 +271,26 @@ let lastSignature = '';
 // task data signature changes -- without persistence every redraw would
 // re-expand every group, which defeats the point of collapsing them).
 const COLLAPSE_KEY = 'hpBoard.collapsedPhases.v1';
-const SORT_KEY = 'hpBoard.sortBy.v1';
+const SORT_KEY = 'hpBoard.sortBy.v2';
 
 // Sort mode is a *view* concern, so it is applied client-side rather than by the
 // server -- the folders remain the source of truth either way.
 //
-// The default is execution order: the whole point of opening the board is
-// knowing what to work next, so the top of the Open column must be that ticket
-// rather than whichever id happens to sort first within a phase.
-let sortBy = localStorage.getItem(SORT_KEY) || 'order';
+// The default is Phase, and it is worth saying why it is not Execution order.
+// Both put the same ticket on top -- phase groups order their cards by the
+// same Order field -- so the "what do I work next" question is answered either
+// way. The difference is everything else on screen: the phase view keeps the
+// headings and their aggregate progress bars, which is the structure people
+// actually navigate 91 open tickets by. Execution order renders flat, and a
+// flat list of ninety-one is a worse default than a grouped one that happens
+// to start in the same place. Pick Execution order when you want the queue
+// without the scaffolding.
+//
+// The key is versioned: making Execution order the default was tried briefly
+// and lost the phase headings, so anyone who loaded the board in that window
+// has 'order' persisted and would never see this default. Bumping v1 -> v2
+// retires those values. Collapse state lives under its own key and survives.
+let sortBy = localStorage.getItem(SORT_KEY) || 'phase';
 
 // Each open ticket carries an `| **Order** | N |` row in its header table --
 // the hand-derived execution order from backlog/README.md, kept in the tickets
