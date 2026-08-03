@@ -1,0 +1,81 @@
+# The full engine build, both targets (T0084).
+#
+# Split out of ci.yml on purpose. This compiles ~1100 targets per target on a
+# 4-core runner, which is far too slow to sit between a push and knowing whether
+# it broke something -- and on a private repository it would consume a monthly
+# allowance quickly. ci.yml carries the fast jobs that run on every push; this
+# one runs nightly, and on demand when you want it.
+#
+# What this catches that the fast jobs do not: breakage in engine code that no
+# test links against. The test binaries pull in only enkiTS, meshoptimizer and
+# doctest, so a change that breaks, say, DiligentFX compiles nowhere in ci.yml.
+#
+# Note GitHub disables scheduled workflows after 60 days without repository
+# activity, and only ever runs them from the default branch.
+
+name: Full build
+
+on:
+  schedule:
+    # 03:17 UTC. Deliberately not on the hour -- scheduled jobs queue behind
+    # everyone else's on-the-hour crons.
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }} (Linux host)
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      # Both targets are worth knowing about independently -- one failing
+      # should not hide the other's result.
+      fail-fast: false
+      matrix:
+        target: [linux, windows]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Cache the pinned toolchain
+        uses: actions/cache@v4
+        with:
+          # Same key as ci.yml: same host, same pins, same 635 MB download.
+          key: harness-linux-${{ hashFiles('bootstrap.sh') }}
+          path: .harness
+
+      - name: Bootstrap the toolchain
+        run: ./bootstrap.sh
+
+      - name: Put the pinned zig on PATH
+        run: |
+          zig_version=$(grep -m1 '^ZIG_VERSION=' bootstrap.sh | cut -d= -f2)
+          echo "$PWD/.harness/zig/$zig_version" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: zig build ${{ matrix.target }}
+
+      - name: Stage dist
+        run: zig build dist -Dtarget=${{ matrix.target }}
+
+      - name: Upload dist
+        # On demand only. dist/ is ~900 MB for Linux and ~400 MB for Windows,
+        # nearly all static libraries, so a nightly upload would churn the
+        # artifact quota for something nobody asked for. Run the workflow
+        # manually when you actually want the staged tree.
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/
+          retention-days: 7
+          if-no-files-found: error

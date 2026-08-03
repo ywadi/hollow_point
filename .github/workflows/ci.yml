@@ -1,0 +1,158 @@
+# Continuous integration -- the fast half (T0084).
+#
+# Everything here is meant to finish in minutes, because a CI run slow enough to
+# be ignored provides no signal. These jobs configure, build only the test
+# binaries and run the suites; the full ~1100-target engine build lives in
+# full-build.yml and runs nightly, where its cost does not sit between a push
+# and knowing whether it broke something.
+#
+# `.harness/` is cached because it is 635 MB of pure download and nothing else.
+# Build trees are NOT cached: they are ~1.7 GB (Linux) and ~1.3 GB (Windows),
+# which would consume most of the repository's 10 GB cache quota, and restoring
+# that much is not obviously faster than rebuilding it.
+#
+# ccache is deliberately absent. `build.zig` enables it whenever it is on PATH,
+# but that path has never been exercised against the generated `zig cc` shims --
+# ccache identifies a compiler by hashing it, and here the "compiler" is a
+# wrapper script. Enabling it in CI would be introducing an untested variable to
+# a job whose purpose is to catch problems. See T0084 notes.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A superseded push should not keep burning runners.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  tests-linux-host:
+    name: Tests (Linux host, both targets)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Cache the pinned toolchain
+        uses: actions/cache@v4
+        with:
+          path: .harness
+          # The pins and their checksums live in bootstrap.sh, so it is the
+          # correct thing to key on: bump a version, get a fresh toolchain.
+          key: harness-linux-${{ hashFiles('bootstrap.sh') }}
+
+      - name: Bootstrap the toolchain
+        run: ./bootstrap.sh
+
+      - name: Put the pinned zig on PATH
+        # Read the version out of bootstrap.sh rather than repeating it here --
+        # a second copy of the pin is a second thing to forget to update.
+        run: |
+          zig_version=$(grep -m1 '^ZIG_VERSION=' bootstrap.sh | cut -d= -f2)
+          echo "$PWD/.harness/zig/$zig_version" >> "$GITHUB_PATH"
+
+      - name: Install wine
+        # Needed to run the *Windows* suite on a Linux host. Without it the
+        # harness builds that suite and declines to run it with a warning
+        # (never a silent pass), so this is what makes the second half of the
+        # matrix real. Package name differs across Ubuntu releases.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends wine \
+            || sudo apt-get install -y --no-install-recommends wine64
+
+      - name: Run every test bucket, both targets
+        run: zig build test -Dtest=all
+
+  tests-windows-host:
+    name: Tests (Windows host, native)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Cache the pinned toolchain
+        uses: actions/cache@v4
+        with:
+          path: .harness
+          key: harness-windows-${{ hashFiles('bootstrap.ps1') }}
+
+      - name: Bootstrap the toolchain
+        # Exercises bootstrap.ps1 end to end, including the archive
+        # extract-and-rename logic that differs from the Linux path.
+        run: .\bootstrap.ps1
+
+      - name: Put the pinned zig on PATH
+        # No '$' in the regex: PowerShell would interpolate it inside a
+        # double-quoted string rather than passing it to the matcher.
+        run: |
+          $v = (Select-String -Path bootstrap.ps1 -Pattern "ZigVersion\s*=\s*'([\d.]+)'" | Select-Object -First 1).Matches[0].Groups[1].Value
+          "$PWD\.harness\zig\$v" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      - name: Run every test bucket, Windows target
+        # -Dtarget=windows on purpose. Without it the harness would also
+        # configure and build the *Linux* target here -- a second full CMake
+        # configure -- only to decline to run it, since a Windows runner has
+        # neither WSL nor wine. This job exists to prove the native Windows
+        # path; tests-linux-host covers the Linux suite, and T0004 already
+        # proved Linux-from-Windows cross-compiles.
+        run: zig build test -Dtest=all -Dtarget=windows
+
+  offline-configure:
+    name: Configure with FetchContent disconnected
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Cache the pinned toolchain
+        uses: actions/cache@v4
+        with:
+          path: .harness
+          key: harness-linux-${{ hashFiles('bootstrap.sh') }}
+
+      - name: Bootstrap the toolchain
+        run: ./bootstrap.sh
+
+      - name: Put the pinned zig on PATH
+        run: |
+          zig_version=$(grep -m1 '^ZIG_VERSION=' bootstrap.sh | cut -d= -f2)
+          echo "$PWD/.harness/zig/$zig_version" >> "$GITHUB_PATH"
+
+      - name: Configure, then prove nothing was downloaded
+        # Guards D7/T0010: EnTT, abseil and rapidjson must resolve to the
+        # vendored checkouts via FETCHCONTENT_SOURCE_DIR_*. When a redirect is
+        # in place FetchContent populates only `_deps/<name>-build`; if one is
+        # ever lost it downloads to `_deps/<name>-src`, which is what this
+        # catches. Verified by hand during T0004.
+        #
+        # Note this asserts on the *result* rather than setting
+        # FETCHCONTENT_FULLY_DISCONNECTED, which is a cache variable and is not
+        # read from the environment -- setting it here would look like a check
+        # and test nothing. A job with genuinely no network is stronger still
+        # and is not set up here; see the T0084 notes.
+        run: |
+          zig build configure -Dtarget=linux
+          if ls -d build/linux-x86_64-release/_deps/*-src 2>/dev/null | grep -q .; then
+            echo "::error::FetchContent downloaded into _deps/*-src -- a vendored redirect was lost"
+            ls -d build/linux-x86_64-release/_deps/*-src
+            exit 1
+          fi
+          echo "no _deps/*-src: every dependency resolved to its vendored checkout"
