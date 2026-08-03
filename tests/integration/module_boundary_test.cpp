@@ -307,6 +307,14 @@ TEST_CASE("a second generation of the module agrees with the first") {
     CHECK(second_count(registry) == 1);
 
     hp_abi_destroy_registry(registry);
+
+    // Best-effort cleanup. On Windows this *fails*, and the failure is itself
+    // evidence: a loaded DLL cannot be deleted, and the second generation is
+    // still mapped because nothing unloads it. That is the same constraint
+    // RTLD_NODELETE encodes on Linux, arriving from the other direction --
+    // see T0105, which owns whether a module can ever truly be unloaded.
+    // The stray file is harmless; ignoring the error rather than asserting on
+    // it keeps the test about the boundary rather than about the filesystem.
     fs::remove(second_path, ec);
 }
 
