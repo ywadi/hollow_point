@@ -62,3 +62,22 @@ glitches.
 The **editor needs a global mute**, and play mode (T0037) needs audio to start
 and stop with simulation — otherwise sounds leak across play sessions, which is
 maddening during development.
+
+
+### Architecture decision (2026-08-03) — the backend question is answered; the engine question is not (D16)
+
+SDL3 is the platform layer, and it includes audio. That removes the *backend*
+blocker this placeholder epic carried: there is a cross-platform way to get
+samples to the device on both targets without choosing another dependency.
+
+It does **not** answer this ticket. SDL's audio is deliberately low-level — a
+callback and a stream of samples. What a game needs is mixing, 3D positional
+audio with attenuation and occlusion, buses and submixes, streaming for music,
+and playback driven by animation events (T0049). That is an audio *engine*, and
+it sits on top of SDL rather than being replaced by it.
+
+So the choice narrows rather than closes: build a mixer over SDL audio, or
+vendor a higher-level library (miniaudio is single-header and permissive and
+would sit alongside SDL rather than conflict with it). Worth deciding before
+Phase 10 rather than during it, because animation-event-driven playback (T0049)
+and the message bus (T0075) both assume an API that does not exist yet.

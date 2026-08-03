@@ -424,3 +424,70 @@ Diligent supports compute shaders on both backends (Vulkan and OpenGL 4.3+),
 which is what makes this available on both targets. **The OpenGL floor moves:**
 compute requires 4.3, and the fallback path assumptions in T0025 should be
 checked against that.
+
+---
+
+## D16 — SDL3 for window, input and audio backend, not DiligentTools NativeApp
+
+**Decision:** the window, input and platform layer is **SDL3**. Diligent renders
+into an SDL-created window via its native-handle interface; `DiligentTools/NativeApp`
+is not used.
+
+This works because Diligent's device and swap chain creation is **decoupled from
+window creation** — `LinuxNativeWindow` takes an X11 `WindowId` plus a `Display*`,
+and the Win32 equivalent takes an `HWND`. Diligent attaches to a window made by
+anything, so choosing SDL costs nothing in engine integration. T0015 framed the
+choice as "NativeApp versus writing our own `IWindow` over GLFW", which was the
+wrong pair: the real choice was NativeApp versus a platform library, and Diligent
+supports both identically.
+
+**Rejected — `DiligentTools/NativeApp`**, which T0015 originally specified. It
+provides window creation and basic keyboard/mouse across an impressive platform
+list, and it already cross-compiles in this harness. What it does not provide,
+verified by grepping the vendored tree during T0068: **no gamepad, joystick or
+XInput code at all**, no clipboard, no DPI or multi-monitor helpers, no relative
+mouse capture, no audio. Each of those becomes per-platform code we write and
+maintain forever. T0068 had already concluded gamepad meant XInput on Windows
+plus raw `/dev/input` scanning on Linux, because udev is not in the vendored
+sysroot (D3/D4) — hand-written hot-plug enumeration, for a solved problem.
+
+**Rejected — GLFW.** The closer call, and it was the initial recommendation.
+GLFW covers window, keyboard, mouse, clipboard, DPI, monitors, relative mouse,
+and gamepads including the SDL_GameControllerDB mapping database and hot-plug
+callbacks. It is smaller and simpler than SDL. It lost on one specific
+capability: **GLFW has no rumble, haptics or force-feedback API at all**, nor
+battery, gyro or touchpad. Controller rumble is wanted, and bolting it on means
+platform-specific code (`XInputSetState`, Linux force-feedback ioctls) — which
+is precisely the class of work this decision exists to avoid. GLFW also needs
+Xrandr, Xinerama, Xcursor, Xi and xkbcommon, none of which the vendored sysroot
+currently has.
+
+**Not a reason, stated so it is not later believed:** SDL is *not* faster than
+GLFW or NativeApp. All three are thin shims over the same OS calls, and none is
+in a hot path — windowing and input happen once per frame, not per draw. This
+decision is about capability, not performance.
+
+**What it brings beyond input:**
+
+- **Rumble** — `SDL_RumbleGamepad()`, and `SDL_RumbleGamepadTriggers()` on
+  hardware that supports it
+- **Audio**, which partially answers T0052's open library question. SDL's audio
+  is lower-level than a dedicated library, so a higher-level layer over it (or a
+  separate library) may still be wanted; the point is that the platform backend
+  is no longer a blocker
+- Clipboard, DPI awareness, monitor enumeration, fullscreen/borderless handling
+
+**Costs, accepted:**
+
+- A larger dependency than GLFW, vendored and cross-compiled like everything
+  else. SDL is very well tested under MinGW, which is the risk that matters here
+  (G2/G3/G4)
+- SDL3 is a different API from SDL2 — `SDL_GameController` became `SDL_Gamepad`
+  and much else was renamed. Pin SDL3 and do not follow SDL2 examples
+- **Unverified:** SDL is understood to `dlopen` most X11 dependencies at runtime
+  rather than linking them, which would avoid the sysroot additions GLFW needed.
+  That should be confirmed when it is vendored, not assumed — the hermetic-Linux
+  property (D4, and a verified item in `05-verification-status.md`) depends on
+  knowing exactly what is resolved and from where
+
+SDL3 has been stable since January 2025 and is actively maintained.

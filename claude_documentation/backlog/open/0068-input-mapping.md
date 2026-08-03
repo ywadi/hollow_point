@@ -71,3 +71,33 @@ polling state at frame boundaries.
   Either gameplay polls actions by name/handle (safe), or callback
   registration must be rebuilt on reload like behaviours. Decide which; do not
   offer both silently.
+
+
+### Architecture decision (2026-08-03) — SDL3 supplies the device layer (D16)
+
+The review above concluded gamepad support was "entirely ours": XInput on
+Windows, and raw `/dev/input` scanning on Linux because udev-based hot-plug
+would need a library the vendored sysroot does not provide. **That work
+disappears.** SDL3 provides gamepad enumeration, the SDL_GameControllerDB
+mapping database so different controllers report one layout, hot-plug events,
+and **rumble** (`SDL_RumbleGamepad`, plus trigger rumble on hardware that has
+it).
+
+What this ticket still owns, and it is the valuable half:
+
+- The **action mapping** layer — physical inputs to named actions — which is
+  engine design, not platform code, and nothing off the shelf provides
+- **Input contexts with consumption**, which the notes above correctly identify
+  as the part people leave out and regret
+- **Edge detection across variable frame rates** — a key pressed and released
+  within one frame must still register, so events are consumed rather than
+  state polled at frame boundaries
+- **Relative mouse capture**, flagged above as missing from the subtasks. SDL
+  provides the mechanism; this ticket owns when it is engaged
+- The **hot-reload hazard** for action callbacks registered by the gameplay
+  module, which is unaffected by any of this
+
+68.5 ("gamepad support, with hot-plug handling") shrinks from a platform
+implementation to wiring SDL's events into the action layer. **Rumble is now
+in scope** and was not before — it needs a place in the action/feedback API,
+and output-to-the-player is a different shape from input-from-the-player.

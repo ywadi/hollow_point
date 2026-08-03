@@ -31,7 +31,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 60 | [T0016](open/0016-guid-system.md) | GUID system | 2 — Engine skeleton | 🔜 TODO | High | Trivial |
 | 70 | [T0057](open/0057-time-system.md) | Time system | 2 — Engine skeleton | 🔜 TODO | High | Simple |
 | 80 | [T0014](open/0014-application-and-main-loop.md) | Application class, main loop and entry point | 2 — Engine skeleton | 🔜 TODO | High | Simple |
-| 90 | [T0015](open/0015-window-platform-layer.md) | Window and platform layer via DiligentTools NativeApp | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
+| 90 | [T0015](open/0015-window-platform-layer.md) | Window, input and platform layer via SDL3 | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | 100 | [T0018](open/0018-event-system.md) | Event system | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | 110 | [T0017](open/0017-layer-stack.md) | LayerStack (system layers) | 2 — Engine skeleton | 🔜 TODO | High | Simple |
 | 120 | [T0100](open/0100-frame-lifecycle-and-update-order.md) | Frame lifecycle and system update order | 2 — Engine skeleton | 🔜 TODO | High | Moderate |

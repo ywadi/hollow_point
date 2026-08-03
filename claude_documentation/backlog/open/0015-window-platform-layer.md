@@ -1,4 +1,4 @@
-# T0015 — Window and platform layer via DiligentTools NativeApp
+# T0015 — Window, input and platform layer via SDL3
 
 | | |
 |---|---|
@@ -76,3 +76,40 @@ side). Scope it here: borderless-fullscreen toggle + runtime resolution change
 multi-monitor selection can wait for evidence. `AppBase` has a
 `HOT_KEY_FLAG_ALLOW_FULL_SCREEN_SWITCH` hint but the actual mode work is in
 the per-platform bases — check what they provide before writing it.
+
+
+### Architecture decision (2026-08-03) — SDL3, not NativeApp (D16)
+
+**This ticket's premise is superseded.** It framed the choice as "rather than
+write an `IWindow` abstraction over GLFW, build on `DiligentTools/NativeApp`" —
+the wrong pair. The real choice was NativeApp versus a platform library, and
+**Diligent attaches to a window created by anything**: `LinuxNativeWindow` takes
+an X11 `WindowId` and `Display*`, the Win32 form takes an `HWND`. Device and
+swap-chain creation are decoupled from window creation, so using SDL costs
+nothing in engine integration.
+
+The layer is **SDL3**. What changes here:
+
+- 15.1 becomes: study SDL3's window, event and gamepad APIs. `AppBase` is not
+  involved
+- 15.2's "how do `Application` and `AppBase` relate" dissolves — `Application`
+  owns an SDL window and pumps SDL events. There is no framework base class to
+  inherit from, which is simpler than either original option
+- Window creation, the per-frame pump, should-close, resize and raw input all
+  come from SDL rather than being surfaced by hand
+- **Add: clipboard, DPI/display scale, monitor enumeration and
+  fullscreen/borderless.** None were in this ticket and all are needed by the
+  editor; SDL provides them, so they are configuration rather than code
+- **Add: confirm what SDL resolves at link time versus `dlopen` on Linux.** SDL
+  is understood to load most X11 dependencies at runtime, which matters because
+  the hermetic-Linux property (D4) is a *verified* claim in
+  `05-verification-status.md` and must not quietly become false
+
+**The threading caveat in the notes above still applies unchanged.** SDL's event
+pump has the same property: it runs on the thread that owns the window, so
+dragging the title bar stalls the loop unless the pump is moved off the frame
+thread. Do not build anything that assumes pump and logic share a thread.
+
+**Pin SDL3, and ignore SDL2 material.** SDL3 renamed a great deal —
+`SDL_GameController` became `SDL_Gamepad` among much else — so SDL2 examples and
+answers will mislead.
