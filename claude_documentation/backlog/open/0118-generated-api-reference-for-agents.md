@@ -159,6 +159,51 @@ api docs: 87 declarations across 9 headers (39 documented) -> docs/api
 
 Generated: `docs/api/index.md` plus one file per public header.
 
+## Enforcement (2026-08-03)
+
+The question "how do we ensure `@param` is strictly there and nothing is
+missing" has one good answer: **the generator already parses every declaration
+and knows every parameter name, so it can prove the documentation matches.** It
+is the enforcer, and the check runs by default rather than behind a flag — a
+lint nobody remembers to enable is a lint that does not exist.
+
+Three defect classes, in increasing order of how badly they mislead:
+
+| Class | What an agent does with it |
+|---|---|
+| `missing-doc` | Sees a signature and guesses the semantics |
+| `missing-param` | Guesses that one parameter |
+| `stale-param` | **Believes documentation that is wrong** |
+
+**`stale-param` is the reason this exists.** An `@param` naming a parameter that
+was renamed is not a gap — it is a confident lie, strictly more dangerous than
+silence, and nothing else in the toolchain catches it. Proven:
+
+```
+$ zig build docs      # after renaming a parameter but not its @param
+error: Log.hpp:59 LogCategory: missing-param 'categoryName'
+error: Log.hpp:59 LogCategory: stale-param 'name' (no such parameter)
+```
+
+**A ratchet, not a wall.** Turning the check on strictly at 39-of-87 documented
+would fail every build until someone wrote 48 comments in one sitting, which in
+practice means the check gets disabled. `tools/api_docs_baseline.txt` records
+the 75 known defects and **may shrink but never grow**: new public API must be
+documented from its first commit, while the existing gap is paid down over time.
+It lists specific defects rather than a count, deliberately — a count lets
+someone fix one, break another, and stay green.
+
+Rewriting the baseline is explicit (`zig build docs -Ddocs-baseline`) and should
+never be done to make a failure go away.
+
+**Enforced in two places, for two different failures.** `zig build docs` fails
+on a new documentation defect; CI additionally fails if the tree is dirty
+afterwards, which catches changing a header without regenerating. Both are
+correctness failures for the consumer.
+
+Verified end to end: adding an undocumented public function fails the build
+(`error: Engine.hpp:42 undocumentedThing: missing-doc`, exit 1).
+
 ## Still to do
 
 **118.3 is not done, and the coverage number says so plainly: 39 of 87
@@ -167,9 +212,9 @@ declarations carry documentation.** The generator marks the rest
 to an agent rather than silent — an undocumented symbol is far safer than an
 absent one, because absence invites invention.
 
-What remains is the tag discipline: adding `@param`/`@returns` to public
-functions where the parameters are not self-evident, and writing that
-expectation into `06-engine-conventions.md` so new API is tagged as it is
-written. That is the same "land the rule before the surface grows" reasoning
+What remains is paying down those 75 baselined defects — adding
+`@param`/`@returns` to existing public functions — and writing the expectation
+into `06-engine-conventions.md`. **The rule itself is now enforced**, so the
+surface cannot grow undocumented while that happens, which was the urgent half. That is the same "land the rule before the surface grows" reasoning
 that put T0019 ahead of the code it instruments — and it is worth doing before
 the header count grows past nine.

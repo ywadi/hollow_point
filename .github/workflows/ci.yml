@@ -179,7 +179,17 @@ jobs:
       # Stale output here is a correctness bug rather than a documentation one --
       # the consumer is a coding agent, and an outdated reference makes it write
       # calls to functions that do not exist (T0118).
-      - name: Regenerate and check for drift
+      - name: Regenerate, lint and check for drift
+        # `zig build docs` does two things, both enforced here rather than
+        # available: it *checks* the documentation against a ratchet baseline
+        # (missing doc comments, missing @param, and -- the one that matters --
+        # an @param naming a parameter that no longer exists), and it
+        # regenerates the reference. The dirty-tree test below then catches
+        # anyone who changed a header without regenerating.
+        #
+        # Both failures are correctness failures for the consumer: the reader is
+        # a coding agent, and documentation that is confidently wrong makes it
+        # write confidently wrong code (T0118).
         run: |
           zig build docs
           if ! git diff --quiet -- docs/api; then

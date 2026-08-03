@@ -1,0 +1,84 @@
+# Known API documentation defects (T0118).
+#
+# A ratchet: this list may shrink, never grow. `zig build docs -Dcheck`
+# fails on any defect not listed here, so new public API must be
+# documented from its first commit while the existing gap is paid down
+# over time.
+#
+# Regenerate deliberately with --write-baseline; do not do it to make a
+# failure go away.
+Application.hpp:117 createApplication: missing-param 'argc'
+Application.hpp:117 createApplication: missing-param 'argv'
+Application.hpp:117 createApplication: missing-returns (std::unique_ptr<Application>)
+Application.hpp:30 ApplicationConfig: missing-doc
+Application.hpp:49 Application: missing-doc
+Application.hpp:51 Application: missing-doc
+Application.hpp:54 Application: missing-doc
+Application.hpp:55 operator=: missing-doc
+Application.hpp:62 requestExit: missing-param 'exitCode'
+Application.hpp:64 config: missing-doc
+Application.hpp:70 clock: missing-doc
+Application.hpp:72 frame: missing-doc
+Application.hpp:77 window: missing-doc
+Engine.hpp:35 engineRegisterConsumer: missing-param 'name'
+EntryPoint.hpp:25 main: missing-doc
+Guid.hpp:30 Guid: missing-doc
+Guid.hpp:37 Guid: missing-doc
+Guid.hpp:42 value: missing-doc
+Guid.hpp:44 isValid: missing-doc
+Guid.hpp:48 operator==: missing-doc
+Guid.hpp:50 operator!=: missing-doc
+Guid.hpp:54 operator<: missing-param 'a'
+Guid.hpp:54 operator<: missing-param 'b'
+Guid.hpp:54 operator<: missing-returns (bool)
+Guid.hpp:69 parse: missing-param 'text'
+Guid.hpp:69 parse: missing-returns (std::optional<Guid>)
+Guid.hpp:78 hash: missing-doc
+Guid.hpp:79 operator(): missing-doc
+Log.hpp:105 logAddSink: missing-param 'sink'
+Log.hpp:106 logRemoveSink: missing-doc
+Log.hpp:111 logAddFileSink: missing-doc
+Log.hpp:118 logSetGlobalLevel: missing-param 'level'
+Log.hpp:122 logCategoryAt: missing-doc
+Log.hpp:125 logWrite: missing-param 'category'
+Log.hpp:125 logWrite: missing-param 'file'
+Log.hpp:125 logWrite: missing-param 'level'
+Log.hpp:125 logWrite: missing-param 'line'
+Log.hpp:125 logWrite: missing-param 'message'
+Log.hpp:131 logEnabled: missing-param 'category'
+Log.hpp:131 logEnabled: missing-param 'level'
+Log.hpp:131 logEnabled: missing-returns (bool)
+Log.hpp:30 LogLevel: missing-doc
+Log.hpp:40 logLevelName: missing-doc
+Log.hpp:58 LogCategory: missing-param 'name'
+Log.hpp:60 name: missing-doc
+Log.hpp:61 level: missing-doc
+Log.hpp:62 setLevel: missing-doc
+Log.hpp:64 id: missing-doc
+Log.hpp:93 write: missing-doc
+Log.hpp:95 flush: missing-doc
+Time.hpp:100 setMaxFixedStepsPerFrame: missing-doc
+Time.hpp:102 maxFixedStepsPerFrame: missing-doc
+Time.hpp:37 Clock: missing-doc
+Time.hpp:48 advance: missing-param 'rawDeltaSeconds'
+Time.hpp:57 elapsed: missing-doc
+Time.hpp:59 unscaledElapsed: missing-doc
+Time.hpp:61 frame: missing-doc
+Time.hpp:66 setTimeScale: missing-param 'scale'
+Time.hpp:68 timeScale: missing-doc
+Time.hpp:72 setPaused: missing-param 'paused'
+Time.hpp:74 paused: missing-doc
+Time.hpp:79 setMaxDelta: missing-param 'seconds'
+Time.hpp:81 maxDelta: missing-doc
+Time.hpp:85 setFixedStep: missing-doc
+Time.hpp:87 fixedStep: missing-doc
+Window.hpp:22 WindowConfig: missing-doc
+Window.hpp:51 Window: missing-doc
+Window.hpp:54 create: missing-param 'config'
+Window.hpp:54 create: missing-returns (std::unique_ptr<Window>)
+Window.hpp:58 Window: missing-doc
+Window.hpp:59 operator=: missing-doc
+Window.hpp:64 width: missing-doc
+Window.hpp:65 height: missing-doc
+Window.hpp:67 title: missing-doc
+Window.hpp:69 nativeHandles: missing-doc

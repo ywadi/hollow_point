@@ -10,7 +10,7 @@
 //!   zig build all             build both
 //!   zig build dist            stage runnable output into dist/
 //!   zig build configure       (re)run CMake configure only
-//!   zig build docs            regenerate docs/api/ (the agent-facing API reference)
+//!   zig build docs            regenerate + check docs/api/ (agent-facing API reference)
 //!   zig build clean           delete build/ and dist/
 //!
 //!   -Dconfig=Release|Debug|RelWithDebInfo|MinSizeRel   (default: Release)
@@ -393,6 +393,19 @@ pub fn build(b: *Build) void {
     //
     // Host-only and target-independent: the API is the same for every target,
     // so there is nothing to generate twice.
+    // The check runs by *default*, not on request. A lint nobody remembers to
+    // pass a flag to is a lint that does not exist, and the failure it prevents
+    // -- an @param naming a parameter that was renamed -- is documentation that
+    // is confidently wrong, which misleads an agent worse than no documentation
+    // at all.
+    //
+    // It is a ratchet against tools/api_docs_baseline.txt: new public API must
+    // be documented from its first commit, while the existing gap is paid down
+    // over time. Rewriting that baseline is deliberate and explicit
+    // (-Ddocs-baseline), never something that happens to make a failure go away.
+    const rewrite_baseline = b.option(bool, "docs-baseline",
+        "Rewrite the API documentation baseline (deliberate; shrinks the ratchet)") orelse false;
+
     const docs = b.addSystemCommand(&.{
         "python3",
         "tools/gen_api_docs.py",
@@ -403,7 +416,8 @@ pub fn build(b: *Build) void {
         "--zig",
         b.graph.zig_exe,
     });
-    docs.setName("generate api docs");
+    docs.addArg(if (rewrite_baseline) "--write-baseline" else "--check");
+    docs.setName(if (rewrite_baseline) "generate api docs (rewriting baseline)" else "generate api docs");
     docs.stdio = .inherit;
     docs.has_side_effects = true;
     b.step("docs", "Generate the markdown API reference for coding agents").dependOn(&docs.step);

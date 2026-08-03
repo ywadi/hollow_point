@@ -65,6 +65,13 @@ DOCUMENTED_KINDS = {
     cx.CursorKind.TYPE_ALIAS_DECL,
 }
 
+CALLABLE_KINDS = {
+    cx.CursorKind.FUNCTION_DECL,
+    cx.CursorKind.CXX_METHOD,
+    cx.CursorKind.CONSTRUCTOR,
+    cx.CursorKind.FUNCTION_TEMPLATE,
+}
+
 CONTAINER_KINDS = {
     cx.CursorKind.CLASS_DECL,
     cx.CursorKind.STRUCT_DECL,
@@ -171,6 +178,14 @@ def collect(tu, header: pathlib.Path):
                     "doc": clean_comment(child.raw_comment),
                     "owner": owner,
                     "enumerators": [],
+                    "params": [p.spelling for p in child.get_arguments()]
+                    if child.kind in CALLABLE_KINDS
+                    else [],
+                    "returns": child.result_type.spelling
+                    if child.kind in CALLABLE_KINDS
+                    else "",
+                    "is_callable": child.kind in CALLABLE_KINDS,
+                    "line": child.location.line,
                 }
                 if child.kind == cx.CursorKind.ENUM_DECL:
                     entry["enumerators"] = [
@@ -296,11 +311,87 @@ document an agent may not read.
 Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`."""
 
 
+TAG_RE = re.compile(r"^\s*[@\\](param|returns?|throws?)\b\s*(\S+)?", re.M)
+
+
+def check_entry(header: str, entry: dict) -> list[str]:
+    """Documentation defects in one declaration, as human-readable strings.
+
+    Three kinds, in increasing order of how badly they mislead:
+
+      missing-doc    no comment at all. An agent sees the signature and guesses
+                     the semantics.
+      missing-param  a parameter with no @param. The agent guesses that one.
+      stale-param    an @param naming a parameter that does not exist. **This is
+                     the worst of the three** and the reason this check exists:
+                     it is documentation that is confidently wrong, which is
+                     strictly more dangerous than documentation that is absent.
+                     It happens whenever someone renames a parameter and does
+                     not update the comment, which nothing else would catch.
+    """
+    where = f"{header}:{entry['line']} {entry['name']}"
+    problems: list[str] = []
+    doc = entry["doc"]
+
+    if not doc:
+        return [f"{where}: missing-doc"]
+
+    if not entry["is_callable"]:
+        return problems
+
+    tagged = {m.group(2) for m in TAG_RE.finditer(doc) if m.group(1) == "param" and m.group(2)}
+    declared = {p for p in entry["params"] if p}
+
+    for name in sorted(declared - tagged):
+        problems.append(f"{where}: missing-param '{name}'")
+    for name in sorted(tagged - declared):
+        problems.append(f"{where}: stale-param '{name}' (no such parameter)")
+
+    returns_something = entry["returns"] not in ("", "void")
+    documents_return = any(
+        m.group(1).startswith("return") for m in TAG_RE.finditer(doc)
+    )
+    if returns_something and not documents_return and entry["params"]:
+        # Only demanded where the function also takes parameters: a bare
+        # `int frame() const` whose prose already says what it returns does not
+        # need a tag, and demanding one produces noise nobody reads.
+        problems.append(f"{where}: missing-returns ({entry['returns']})")
+
+    return problems
+
+
+def load_baseline(path: pathlib.Path) -> set[str]:
+    """Known defects, so the check can be strict about *new* ones today.
+
+    A ratchet, not an exemption list. Turning the check on strictly at 39-of-87
+    documented would fail every build until someone wrote 48 comments in one
+    sitting, which means the check would simply be disabled instead. With a
+    baseline, new public API must be documented from the first commit and the
+    existing gap can only shrink -- removing a line is a one-line diff.
+
+    Deliberately a list of specific defects rather than a count: a count lets
+    someone fix one and break another and stay green.
+    """
+    if not path.exists():
+        return set()
+    return {
+        line.strip()
+        for line in path.read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--include", required=True, help="engine/include")
     parser.add_argument("--out", required=True, help="output directory")
     parser.add_argument("--zig", default="", help="zig executable, for include paths")
+    parser.add_argument("--check", action="store_true",
+                        help="fail on documentation defects not present in the baseline")
+    parser.add_argument("--baseline", default="tools/api_docs_baseline.txt",
+                        help="known defects, which may shrink but never grow")
+    parser.add_argument("--write-baseline", action="store_true",
+                        help="record current defects as the baseline (use deliberately)")
     args = parser.parse_args()
 
     include_root = pathlib.Path(args.include).resolve()
@@ -344,6 +435,47 @@ def main() -> int:
         print(f"error: {fatal} error(s) in public headers -- refusing to write a "
               f"reference that may be incomplete", file=sys.stderr)
         return 1
+
+    # --- documentation checks ------------------------------------------------
+    defects: list[str] = []
+    for header in headers:
+        for entry in per_header[header.name]:
+            defects.extend(check_entry(header.name, entry))
+
+    baseline_path = pathlib.Path(args.baseline)
+    if args.write_baseline:
+        baseline_path.write_text(
+            "# Known API documentation defects (T0118).\n"
+            "#\n"
+            "# A ratchet: this list may shrink, never grow. `zig build docs -Dcheck`\n"
+            "# fails on any defect not listed here, so new public API must be\n"
+            "# documented from its first commit while the existing gap is paid down\n"
+            "# over time.\n"
+            "#\n"
+            "# Regenerate deliberately with --write-baseline; do not do it to make a\n"
+            "# failure go away.\n"
+            + "\n".join(sorted(defects)) + "\n"
+        )
+        print(f"api docs: baseline written with {len(defects)} known defect(s)")
+
+    if args.check:
+        known = load_baseline(baseline_path)
+        new_defects = [d for d in defects if d not in known]
+        fixed = len(known) - (len(defects) - len(new_defects))
+        for defect in new_defects:
+            print(f"error: {defect}", file=sys.stderr)
+        if new_defects:
+            print(
+                f"error: {len(new_defects)} new API documentation defect(s).\n"
+                f"  Public API must be documented as it is written. Add the missing\n"
+                f"  comment or @param tag -- do not add it to the baseline.",
+                file=sys.stderr,
+            )
+            return 1
+        if fixed > 0:
+            print(f"api docs: {fixed} baselined defect(s) now fixed -- "
+                  f"regenerate the baseline with --write-baseline to lock that in")
+        print(f"api docs: check passed ({len(defects)} known defect(s) remaining)")
 
     out_dir.mkdir(parents=True, exist_ok=True)
     for header in headers:
