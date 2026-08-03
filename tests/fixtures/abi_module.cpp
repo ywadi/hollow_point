@@ -8,12 +8,16 @@
 
 #include "abi_boundary.h"
 
+#include "abi_polymorphic.h"
+
 #include <entt/entt.hpp>
+#include <typeinfo>
 
 namespace {
 struct EngineComponent {
     int value;
 };
+
 struct ModuleComponent {
     float value;
 };
@@ -21,12 +25,18 @@ struct ModuleComponent {
 
 extern "C" {
 
-HP_ABI_EXPORT void* hp_mod_global_addr(void) { return hp_abi_global_addr(); }
-HP_ABI_EXPORT int   hp_mod_bump(void)        { return hp_abi_bump(); }
+HP_ABI_EXPORT void* hp_mod_global_addr(void) {
+    return hp_abi_global_addr();
+}
+
+HP_ABI_EXPORT int hp_mod_bump(void) {
+    return hp_abi_bump();
+}
 
 HP_ABI_EXPORT uint64_t hp_mod_engine_type_hash(void) {
     return static_cast<uint64_t>(entt::type_hash<EngineComponent>::value());
 }
+
 HP_ABI_EXPORT uint32_t hp_mod_engine_type_index(void) {
     return static_cast<uint32_t>(entt::type_index<EngineComponent>::value());
 }
@@ -39,9 +49,19 @@ HP_ABI_EXPORT int hp_mod_count_engine_components(void* r) {
 
 // And write a module-defined type into an engine-owned registry.
 HP_ABI_EXPORT void hp_mod_emplace_module_component(void* r, uint32_t e, float value) {
-    static_cast<entt::registry*>(r)->emplace<ModuleComponent>(
-        static_cast<entt::entity>(e), ModuleComponent{value});
+    static_cast<entt::registry*>(r)->emplace<ModuleComponent>(static_cast<entt::entity>(e),
+                                                              ModuleComponent{value});
 }
+
+// The measurement: a Derived created by the engine, cast by the module.
+HP_ABI_EXPORT int hp_mod_dynamic_cast_works(void* b) {
+    return dynamic_cast<hp_abi::Derived*>(static_cast<hp_abi::Base*>(b)) != nullptr ? 1 : 0;
+}
+
+HP_ABI_EXPORT const char* hp_mod_typeid_name(void* b) {
+    return typeid(*static_cast<hp_abi::Base*>(b)).name();
+}
+
 HP_ABI_EXPORT int hp_mod_count_module_components(void* r) {
     return static_cast<int>(static_cast<entt::registry*>(r)->view<ModuleComponent>().size());
 }

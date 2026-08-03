@@ -21,6 +21,7 @@ namespace {
 
 struct Vertex {
     float x, y, z;
+
     bool operator==(const Vertex& o) const { return x == o.x && y == o.y && z == o.z; }
 };
 
@@ -35,16 +36,16 @@ TEST_CASE("meshoptimizer welds duplicate vertices" * doctest::test_suite("librar
     };
 
     std::vector<unsigned int> remap(unindexed.size());
-    const size_t unique = meshopt_generateVertexRemap(
-        remap.data(), nullptr, unindexed.size(),
-        unindexed.data(), unindexed.size(), sizeof(Vertex));
+    const size_t unique =
+        meshopt_generateVertexRemap(remap.data(), nullptr, unindexed.size(), unindexed.data(),
+                                    unindexed.size(), sizeof(Vertex));
 
     REQUIRE(unique == 4);
 
     std::vector<Vertex> vertices(unique);
     std::vector<unsigned int> indices(unindexed.size());
-    meshopt_remapVertexBuffer(vertices.data(), unindexed.data(), unindexed.size(),
-                              sizeof(Vertex), remap.data());
+    meshopt_remapVertexBuffer(vertices.data(), unindexed.data(), unindexed.size(), sizeof(Vertex),
+                              remap.data());
     meshopt_remapIndexBuffer(indices.data(), nullptr, unindexed.size(), remap.data());
 
     // The index buffer must still describe the original six corners.
@@ -55,8 +56,8 @@ TEST_CASE("meshoptimizer welds duplicate vertices" * doctest::test_suite("librar
     }
 }
 
-TEST_CASE("meshoptimizer vertex cache optimisation preserves the triangles"
-          * doctest::test_suite("libraries")) {
+TEST_CASE("meshoptimizer vertex cache optimisation preserves the triangles" *
+          doctest::test_suite("libraries")) {
     // Reordering for the vertex cache must permute triangles, never change
     // which vertices each one references.
     const std::vector<unsigned int> indices = {0, 1, 2, 2, 3, 0, 4, 5, 6, 6, 7, 4};
@@ -66,7 +67,8 @@ TEST_CASE("meshoptimizer vertex cache optimisation preserves the triangles"
     meshopt_optimizeVertexCache(optimized.data(), indices.data(), indices.size(), vertex_count);
 
     REQUIRE(optimized.size() == indices.size());
-    for (unsigned int i : optimized) CHECK(i < vertex_count);
+    for (unsigned int i : optimized)
+        CHECK(i < vertex_count);
 
     // Same multiset of triangles, order-independent.
     auto triangles = [](const std::vector<unsigned int>& idx) {
@@ -82,14 +84,15 @@ TEST_CASE("meshoptimizer vertex cache optimisation preserves the triangles"
     CHECK(triangles(optimized) == triangles(indices));
 }
 
-TEST_CASE("enkiTS runs every element of a task set exactly once"
-          * doctest::test_suite("libraries")) {
+TEST_CASE("enkiTS runs every element of a task set exactly once" *
+          doctest::test_suite("libraries")) {
     enki::TaskScheduler scheduler;
     scheduler.Initialize();
 
     constexpr uint32_t kSetSize = 10000;
     std::vector<std::atomic<uint32_t>> visits(kSetSize);
-    for (auto& v : visits) v.store(0, std::memory_order_relaxed);
+    for (auto& v : visits)
+        v.store(0, std::memory_order_relaxed);
 
     std::atomic<uint32_t> total{0};
 
@@ -107,7 +110,8 @@ TEST_CASE("enkiTS runs every element of a task set exactly once"
     // the total catches any element skipped entirely.
     CHECK(total.load() == kSetSize);
     for (uint32_t i = 0; i < kSetSize; ++i) {
-        REQUIRE_MESSAGE(visits[i].load() == 1, "element ", i, " visited ", visits[i].load(), " times");
+        REQUIRE_MESSAGE(visits[i].load() == 1, "element ", i, " visited ", visits[i].load(),
+                        " times");
     }
 
     scheduler.WaitforAllAndShutdown();

@@ -1,0 +1,40 @@
+# Formatting for HollowPoint's own code (T0055).
+#
+# Third-party trees are not formatted by this: nothing under third_party/ is
+# modified, which is a build-harness rule as much as a style one (D1).
+#
+# Derived from the style already in tests/ rather than imposed on top of it --
+# 4-space indent, braces attached, pointer bound to the type. The point of a
+# formatter is to end the discussion, so this is deliberately unremarkable.
+Language: Cpp
+BasedOnStyle: LLVM
+
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+
+# `void* p`, not `void *p` -- the pointer is part of the type.
+PointerAlignment: Left
+ReferenceAlignment: Left
+DerivePointerAlignment: false
+
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+BreakBeforeBraces: Attach
+SeparateDefinitionBlocks: Always
+
+AccessModifierOffset: -4
+EmptyLineBeforeAccessModifier: LogicalBlock
+
+# Include order mirrors the conventions doc: own header, engine, third-party,
+# standard library. clang-format sorts within each block but never moves an
+# include between blocks, so the ordering rule stays a human one and this only
+# keeps each group tidy.
+SortIncludes: CaseSensitive
+IncludeBlocks: Preserve
+
+AlwaysBreakTemplateDeclarations: Yes
+FixNamespaceComments: true
+NamespaceIndentation: None

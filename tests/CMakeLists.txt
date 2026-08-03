@@ -42,7 +42,7 @@ function(hp_add_test_bucket bucket)
     target_link_libraries(${_target} PRIVATE hp_doctest)
     set_target_properties(${_target} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
-    target_compile_features(${_target} PRIVATE cxx_std_17)
+    target_compile_features(${_target} PRIVATE cxx_std_20)
 
     # Everything a test might want to exercise. Linked to every bucket so that
     # adding a test file never requires touching this file -- which is the
@@ -78,7 +78,7 @@ add_library(hp_abi_engine SHARED "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/abi_engin
 add_library(hp_abi_module SHARED "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/abi_module.cpp")
 
 foreach(_fixture hp_abi_engine hp_abi_module)
-    target_compile_features(${_fixture} PRIVATE cxx_std_17)
+    target_compile_features(${_fixture} PRIVATE cxx_std_20)
     # EnTT arrives via DiligentFX (D7); the fixtures only need its headers.
     target_include_directories(${_fixture} SYSTEM PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/entt/src")

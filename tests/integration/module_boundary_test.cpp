@@ -25,11 +25,11 @@
 #include <string>
 
 #if defined(_WIN32)
-#  include <windows.h>
+#include <windows.h>
 #else
-#  include <dlfcn.h>
-#  include <limits.h>
-#  include <unistd.h>
+#include <dlfcn.h>
+#include <limits.h>
+#include <unistd.h>
 #endif
 
 namespace {
@@ -55,7 +55,8 @@ std::string exe_dir() {
 #else
     char buf[PATH_MAX] = {};
     const ssize_t n = ::readlink("/proc/self/exe", buf, sizeof buf - 1);
-    if (n <= 0) return ".";
+    if (n <= 0)
+        return ".";
     std::string path(buf, static_cast<size_t>(n));
     const auto slash = path.find_last_of('/');
     return slash == std::string::npos ? std::string(".") : path.substr(0, slash);
@@ -81,18 +82,22 @@ std::string module_path() {
 class LoadedModule {
 public:
     LoadedModule() : path_(module_path()) { open(); }
+
     explicit LoadedModule(std::string path) : path_(std::move(path)) { open(); }
+
     ~LoadedModule() { close(); }
 
     LoadedModule(const LoadedModule&) = delete;
     LoadedModule& operator=(const LoadedModule&) = delete;
 
     bool ok() const { return handle_ != nullptr; }
+
     const std::string& error() const { return error_; }
 
     template <class Fn>
     Fn sym(const char* name) const {
-        if (!handle_) return nullptr;
+        if (!handle_)
+            return nullptr;
 #if defined(_WIN32)
         return reinterpret_cast<Fn>(
             reinterpret_cast<void*>(GetProcAddress(static_cast<HMODULE>(handle_), name)));
@@ -111,7 +116,8 @@ private:
         const std::string& path = path_;
 #if defined(_WIN32)
         handle_ = static_cast<void*>(LoadLibraryA(path.c_str()));
-        if (!handle_) error_ = path + ": LoadLibraryA failed, error " + std::to_string(GetLastError());
+        if (!handle_)
+            error_ = path + ": LoadLibraryA failed, error " + std::to_string(GetLastError());
 #else
         // RTLD_LOCAL so the module's symbols do not leak into the global
         // namespace — a gameplay module must not be able to satisfy another
@@ -142,7 +148,8 @@ private:
     }
 
     void close() {
-        if (!handle_) return;
+        if (!handle_)
+            return;
 #if defined(_WIN32)
         FreeLibrary(static_cast<HMODULE>(handle_));
 #else
@@ -279,7 +286,8 @@ TEST_CASE("a second generation of the module agrees with the first") {
     REQUIRE_MESSAGE(second.ok(), second.error());
 
     auto second_hash = second.sym<hp_mod_engine_type_hash_fn>("hp_mod_engine_type_hash");
-    auto second_count = second.sym<hp_mod_count_engine_components_fn>("hp_mod_count_engine_components");
+    auto second_count =
+        second.sym<hp_mod_count_engine_components_fn>("hp_mod_count_engine_components");
     auto second_addr = second.sym<hp_mod_global_addr_fn>("hp_mod_global_addr");
     REQUIRE(second_hash != nullptr);
     REQUIRE(second_count != nullptr);
@@ -300,4 +308,47 @@ TEST_CASE("a second generation of the module agrees with the first") {
 
     hp_abi_destroy_registry(registry);
     fs::remove(second_path, ec);
+}
+
+TEST_CASE("RTTI across the module boundary") {
+    // Measured, not assumed: this decides a T0055 convention (95.4). Both
+    // fixtures build with -fvisibility=hidden and the polymorphic type is
+    // marked default-visibility, which is the configuration that *should*
+    // unify vtables and typeinfo. Whether it actually does under zig's clang,
+    // for both ELF and PE, is what this records.
+    //
+    // PE has no concept of symbol interposition, so a pessimistic expectation
+    // would be that Windows fails here even when Linux passes. If a target ever
+    // fails, the convention becomes "no dynamic_cast or typeid on types that
+    // cross the boundary" and this test documents why.
+    LoadedModule mod;
+    REQUIRE_MESSAGE(mod.ok(), mod.error());
+
+    auto mod_cast = mod.sym<hp_mod_dynamic_cast_works_fn>("hp_mod_dynamic_cast_works");
+    auto mod_name = mod.sym<hp_mod_typeid_name_fn>("hp_mod_typeid_name");
+    REQUIRE(mod_cast != nullptr);
+    REQUIRE(mod_name != nullptr);
+
+    void* base = hp_abi_make_derived();
+    REQUIRE(base != nullptr);
+
+    // Sanity: the engine can obviously cast its own type.
+    CHECK(hp_abi_engine_dynamic_cast_works(base) == 1);
+
+    // The real question — the module casting a type the engine created.
+    const int module_cast = mod_cast(base);
+    const char* engine_name = hp_abi_engine_typeid_name(base);
+    const char* module_name = mod_name(base);
+    INFO("engine typeid: ", engine_name, "  module typeid: ", module_name);
+    MESSAGE("dynamic_cast across the boundary from the module: ", module_cast ? "WORKS" : "FAILS");
+    MESSAGE("typeid names agree: ",
+            std::string(engine_name) == std::string(module_name) ? "yes" : "no");
+
+    // Asserted so the suite fails if this ever changes. If it fails on a fresh
+    // toolchain, do not "fix" the test -- change the convention in T0055 and
+    // record which target regressed.
+    CHECK(module_cast == 1);
+    CHECK(std::string(engine_name) == std::string(module_name));
+
+    hp_abi_destroy_base(base);
 }
