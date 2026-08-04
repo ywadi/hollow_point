@@ -7,9 +7,12 @@
 # and knowing whether it broke something.
 #
 # `.harness/` is cached because it is 635 MB of pure download and nothing else.
-# Build trees are NOT cached: they are ~1.7 GB (Linux) and ~1.3 GB (Windows),
-# which would consume most of the repository's 10 GB cache quota, and restoring
-# that much is not obviously faster than rebuilding it.
+# Build trees ARE cached (see the buildtree steps below): ~2.1 GB Linux and
+# ~880 MB Windows, compressing to ~376 MB and ~156 MB per run. Restoring one is
+# only useful because the checkout's mtimes are corrected first -- see the
+# "Restore commit-derived mtimes" step and T0131 for the failure that taught
+# this: a restored tree whose outputs are older than a freshly-cloned source
+# tree is 525 MB of bytes that ninja ignores completely.
 #
 # Nothing here installs ccache -- and that turned out not to matter, which is
 # the lesson. The windows-latest image already ships one at C:\Strawberry\c\bin,
@@ -77,6 +80,19 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
+      # The build-tree cache below preserves output mtimes (tar --posix round-
+      # trip), but checkout stamps every source with clone time -- so on a warm
+      # run every output is older than every input, ninja marks the whole graph
+      # dirty, and the restored tree buys nothing. Run 30946039676 restored 376
+      # MB and then rebuilt all 1476 compile edges anyway, ~18 of its 22
+      # minutes. Re-stamp sources with the newest commit that could have
+      # changed them: files the push touched become newer than the cached
+      # outputs and rebuild, everything else predates them and is left alone.
+      # The same inversion re-ran CMake every run, which rewrote the compiler
+      # shims, which is what starved ccache in T0121. Details in T0131.
+      - name: Restore commit-derived mtimes
+        run: python3 tools/ci_restore_mtimes.py
+
       - name: Cache the pinned toolchain
         uses: actions/cache@v6
         with:
@@ -109,6 +125,13 @@ jobs:
       # recompile. Ninja rebuilds only the handful of engine files that changed
       # and leaves SDL, Diligent, enkiTS, ozz and meshoptimizer alone.
       #
+      # That sentence was aspiration when first written: restoring the tree is
+      # NOT sufficient, because ninja decides by mtime and a fresh checkout is
+      # always newer than a restored output. The "Restore commit-derived
+      # mtimes" step above is what makes it true -- with it, a warm run is
+      # "ninja: no work to do"; without it, run 30946039676 rebuilt all 1476
+      # compile edges of a fully restored tree (T0131).
+      #
       # The key is unique per run, deliberately. `actions/cache` writes an entry
       # only when the primary key MISSES; a key that hits is never updated. The
       # previous key -- submodule SHAs plus root CMake and toolchains -- hit on
@@ -131,10 +154,13 @@ jobs:
       # do the matching instead.
       #
       # This is the principle the previous attempt missed: pinned code that has
-      # not moved must not recompile. ccache was tried first and did not deliver
-      # it -- it saw 82 of roughly 4,248 compilations, for reasons recorded in
-      # T0121 -- so this caches the *output* rather than hoping to cache the
-      # compilations.
+      # not moved must not recompile. ccache was tried first and did not
+      # deliver it. T0121 recorded that as "82 of roughly 4,248 compilations"
+      # -- a misreading, corrected in T0131: ccache saw every one of the 615
+      # compiles, but 529 were uncacheable under the apt ccache 4.9.1, and the
+      # mtime inversion re-ran CMake each run, rewriting the compiler shims,
+      # which compiler_check=mtime treats as a new compiler. Caching the
+      # *output* sidesteps all of that.
       #
       # This job is the expensive one: build.zig lays trees out as
       # build/<target>-<buildtype>, and this job builds BOTH targets, so `build`
@@ -153,10 +179,10 @@ jobs:
       # A unique key per run means saving every run rather than once, so this is
       # a real cost rather than a rounding error. Repo usage was 1.33 GB of 10 GB
       # when this changed; eviction is least-recently-used, so the effect is a
-      # rolling window of recent trees rather than a wall. The compressed sizes
-      # are an *estimate* until a run actually saves one -- the ratio has been
-      # ~5x, but no post-Diligent tree had ever been written. Read the real
-      # numbers off the first successful save and correct this comment again.
+      # rolling window of recent trees rather than a wall. Measured off run
+      # 30946039676, as the previous revision of this comment asked: **376 MB
+      # Linux and 156 MB Windows per run**, so the 10 GB quota holds a window
+      # of roughly 18 runs alongside the two ~250 MB toolchain entries.
       - name: Key the build cache on the pinned dependencies
         run: |
           git submodule status --recursive | awk '{print $1, $2}' > .ci-dep-key
@@ -197,6 +223,13 @@ jobs:
         with:
           submodules: recursive
           fetch-depth: 1
+
+      # Same reason as the Linux job: without honest source mtimes the restored
+      # build tree is dead weight. `python`, not `python3` -- that is what the
+      # windows-latest image registers; bash so the invocation reads the same.
+      - name: Restore commit-derived mtimes
+        shell: bash
+        run: python tools/ci_restore_mtimes.py
 
       - name: Cache the pinned toolchain
         uses: actions/cache@v6

@@ -308,3 +308,27 @@ path to `build/*/third_party` is the lever.
 ccache is unrelated and remains correctly absent — this ticket removed it after
 measuring 82 of ~4,248 compilations. The leftover `ccache-linux-*` cache entries
 predate that removal and will age out on their own.
+
+## Amendment (2026-08-05) — superseded by T0131, and two claims here corrected
+
+The unique-key fix made the cache *save*; it still bought zero compile
+avoidance, because the checkout's mtimes are always newer than the restored
+outputs and ninja rebuilds the whole graph regardless. That, the every-run
+CMake re-run, and this ticket's ccache numbers all turned out to be one
+mechanism — diagnosed, fixed and measured in
+[T0131](0131-ci-warm-cache-rebuilds-everything.md).
+
+Corrections to what this file says, so nobody inherits it as written:
+
+- **"82 of ~4,248 compilations" misread the stats.** The block in run
+  30884687594 reads `Cacheable calls: 86 / 615` — ccache saw the *entire*
+  615-compile graph; 529 calls were uncacheable under apt ccache 4.9.1, and
+  the CMake re-run rewrote the compiler shims each run, which
+  `compiler_check=mtime` treats as a new compiler. The launcher wiring this
+  ticket suspected was fine.
+- **The measured "estimate" is now measured:** 376 MB (Linux) + 156 MB
+  (Windows) per run, read off run 30946039676's save, versus the ~565 MB
+  guessed above.
+- **The 3m38s era was never compile avoidance** — 661 compiles ran in ~127 s
+  there; what the restored tree avoided was the ~14-minute fresh configure.
+  This cache has been a configure cache all along.
