@@ -6,7 +6,7 @@
 #include <hp/Render.hpp>
 ```
 
-19 public declaration(s), 19 documented.
+22 public declaration(s), 22 documented.
 
 ## `RenderBackend`
 
@@ -215,3 +215,37 @@ void setClearColour(float r, float g, float b, float a)
  @param g green.
  @param b blue.
  @param a alpha.
+
+## `RenderLayer::device`
+
+```cpp
+Diligent::IRenderDevice * device() const
+```
+
+ @returns the graphics device, or nullptr when the layer is inert.
+
+ Handed out so passes and gameplay-authored layers can create resources
+ and issue draws (D22). The engine owns it and destroys it in `onDetach`;
+ **anything holding this pointer must release its GPU resources by then**,
+ which is the whole reason `RenderLayer` is a layer and gets `onDetach`
+ before teardown (25.4).
+
+## `RenderLayer::context`
+
+```cpp
+Diligent::IDeviceContext * context() const
+```
+
+ @returns the immediate context, or nullptr when the layer is inert.
+
+ **Valid for the frame, not beyond**, and not thread-safe: it is the
+ immediate context, so it belongs to whichever thread runs the frame.
+
+## `RenderLayer::swapChain`
+
+```cpp
+Diligent::ISwapChain * swapChain() const
+```
+
+ @returns the swap chain, or nullptr when the layer is inert. Its back
+          buffer is where a composited frame ultimately lands.

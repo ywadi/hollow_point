@@ -1,7 +1,15 @@
 // The render layer: device, context and swap chain (T0025, T0110, D15, D16).
 //
-// **No Diligent type appears in this header, and that is a rule rather than a
-// preference.** `engine/CMakeLists.txt` links Diligent PRIVATE, and the moment a
+// **Amended by D22 (2026-08-05).** This header used to say no Diligent type
+// could appear in it at all. It now forward-declares three, and hands them out,
+// because a gameplay-authored render layer (T0027, T0094) cannot draw anything
+// without the device context. That is sound rather than a concession: Diligent's
+// interfaces are pure-virtual, so a module calls through these pointers with no
+// Diligent library linked, while device *creation* stays impossible for it —
+// the factories are free functions in libraries linked PRIVATE, so a module that
+// tries fails to link. Gameplay may use what it is handed and may never make one.
+//
+// The forward declarations are what keep the original concern addressed: `engine/CMakeLists.txt` links Diligent PRIVATE, and the moment a
 // public header names one of its types every consumer — the editor, the
 // runtime, every gameplay module — inherits Diligent's include path. That is not
 // a build error; it silently widens the dependency surface, which is exactly
@@ -32,6 +40,12 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+
+namespace Diligent {
+struct IRenderDevice;
+struct IDeviceContext;
+struct ISwapChain;
+} // namespace Diligent
 
 namespace hp {
 
@@ -179,6 +193,25 @@ public:
     /// @param b blue.
     /// @param a alpha.
     void setClearColour(float r, float g, float b, float a);
+
+    /// @returns the graphics device, or nullptr when the layer is inert.
+    ///
+    /// Handed out so passes and gameplay-authored layers can create resources
+    /// and issue draws (D22). The engine owns it and destroys it in `onDetach`;
+    /// **anything holding this pointer must release its GPU resources by then**,
+    /// which is the whole reason `RenderLayer` is a layer and gets `onDetach`
+    /// before teardown (25.4).
+    [[nodiscard]] Diligent::IRenderDevice* device() const;
+
+    /// @returns the immediate context, or nullptr when the layer is inert.
+    ///
+    /// **Valid for the frame, not beyond**, and not thread-safe: it is the
+    /// immediate context, so it belongs to whichever thread runs the frame.
+    [[nodiscard]] Diligent::IDeviceContext* context() const;
+
+    /// @returns the swap chain, or nullptr when the layer is inert. Its back
+    ///          buffer is where a composited frame ultimately lands.
+    [[nodiscard]] Diligent::ISwapChain* swapChain() const;
 
 private:
     struct Impl;

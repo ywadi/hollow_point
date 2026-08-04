@@ -22,21 +22,21 @@ explicitly-managed set of frame resources.
 
 ## Done when
 
-- [ ] Frame targets created once and resized with the viewport, not per frame
-- [ ] Passes request targets by name/handle rather than creating their own
-- [ ] Resize is debounced and leak-free
-- [ ] Formats are declared in one place, not scattered across passes
-- [ ] GPU memory used by frame targets is reportable
-- [ ] Gameplay-owned persistent targets are supported alongside frame targets (T0094)
+- [x] Frame targets created once and resized with the viewport, not per frame — `resize` is a no-op at an unchanged size, so a layer may call it every frame
+- [x] Passes request targets by name/handle rather than creating their own
+- [~] Resize is debounced and leak-free — **debounced, yes** (tested); **leak-free is not verified**, see below
+- [x] Formats are declared in one place, not scattered across passes — `formatFor()` in `FrameTargets.cpp` is the only place a role becomes a format, made structural by passes naming a *role*
+- [~] GPU memory used by frame targets is reportable — `memoryBytes()` exists; **its output has never been observed against a real device**
+- [ ] Gameplay-owned persistent targets are supported alongside frame targets (T0094) — **not done**, see below
 
 ## Subtasks
 
-- [ ] 46.1 A frame-resources object owning the render targets
-- [ ] 46.2 Named lookup for passes
-- [ ] 46.3 Resize handling, debounced (T0033 has the same requirement)
-- [ ] 46.4 Depth buffer shared between world pass and post-processing
-- [ ] 46.5 Ping-pong pair for multi-pass effects
-- [ ] 46.6 Report allocated target memory for the profiler
+- [x] 46.1 A frame-resources object owning the render targets
+- [x] 46.2 Named lookup for passes — raw `ITextureView*` per D22
+- [~] 46.3 Resize handling, debounced (T0033 has the same requirement) — debounce done and tested; the recreate path itself is unverified
+- [x] 46.4 Depth buffer shared between world pass and post-processing — every target carries `BIND_SHADER_RESOURCE`, depth included
+- [~] 46.5 Ping-pong pair for multi-pass effects — expressible today (declare two, scale 0.5), but no helper and nothing has used it
+- [~] 46.6 Report allocated target memory for the profiler — computed, not yet wired to the profiler
 
 ## Notes / findings
 
@@ -107,3 +107,83 @@ deliberate part of the design rather than a leak. Full reasoning in **D22**.
 borrow them for the frame. Handing out a refcounted pointer would let a gameplay
 module extend a target's lifetime past a resize, which is precisely the leak
 46.3 exists to prevent.
+
+### Built 2026-08-05 — and what is honestly not verified
+
+`engine/include/hp/FrameTargets.hpp`, `engine/src/FrameTargets.cpp`,
+`tests/fast/frame_targets_test.cpp`. Also `hp/Render.hpp` gained `device()`,
+`context()` and `swapChain()`, which is what any of this is reachable through.
+
+**Verified:** `zig build test -Dtest=all` green on both targets — 80 fast and 56
+integration cases, Linux natively and Windows under wine. Seven new cases.
+
+- **Roles, not formats, at the call site.** A pass declares
+  `TargetFormat::ColourHDR`; `formatFor()` in the .cpp is the only place a role
+  becomes a `TEXTURE_FORMAT`. That makes 46.4's "one place" structural rather
+  than a convention someone has to remember.
+- **Depth is `D32_FLOAT`, not `D24S8`, and that is the reverse-Z decision
+  deferred at zero cost.** A float depth buffer is what reverse-Z needs;
+  `D24S8` would foreclose it silently, and this format costs nothing today.
+  **T0130.3 still owns whether to actually use reverse-Z**, and it should,
+  because the decision is not just the format — it is the comparison function in
+  every pipeline state and any shader reconstructing position from depth, and it
+  has to be measured on both backends (GL clip-space Z is `[-1, 1]`, Vulkan's is
+  `[0, 1]`). No stencil, because nothing needs one and an unused stencil is
+  memory spent on nothing.
+- **Every target carries `BIND_SHADER_RESOURCE`, depth included.** The
+  transparent pass must read scene depth to fade soft particles (T0106.5), and a
+  later distortion pass needs scene colour the same way. Cheap now, a full
+  recreate to add later.
+- **The resize debounce lives here, not in callers**, so a render layer calls
+  `resize()` unconditionally every frame.
+- **A failed creation releases the whole set** rather than leaving a partial one.
+  A half-created set is what produces a null view three passes later with nothing
+  pointing at the cause.
+- **Forward declarations, not includes** (D22). The public header names
+  `IRenderDevice` and `ITextureView` without inflicting Diligent's 146,000
+  preprocessed lines (D21) on every consumer that wants a render target.
+
+**`tools/gen_api_docs.py` now skips forward declarations.** It was flagging
+Diligent's as undocumented public API, which would have meant writing doc
+comments for someone else's types.
+
+### Not verified — and this is the honest part
+
+**No target has ever been created on a real device.** Every test here is in the
+`fast` bucket, which has no device, so what is proven is declaration, duplicate
+refusal, null-on-unknown-name, the debounce and the failure paths. What is *not*
+proven is the part that touches the GPU:
+
+- that `CreateTexture` succeeds for all three roles on both Vulkan and OpenGL —
+  `RGBA8_UNORM_SRGB` as a render target and `D32_FLOAT` with
+  `BIND_SHADER_RESOURCE` are both places a backend can legitimately refuse;
+- that `GetDefaultView` returns the views this assumes;
+- that resize is **leak-free** — the Done-when says so and nothing here shows it.
+  `RefCntAutoPtr` releasing on `clear()` is the mechanism, and it is the right
+  one, but "the mechanism is right" is not a measurement;
+- that `memoryBytes()` reports anything sane.
+
+**Why no test was added rather than this being an oversight:** `-Dtest=all`
+includes the `gpu` bucket, and CI runners have no known GPU. A device test there
+either fails the four jobs that currently pass or skips silently and proves
+nothing, and adding it blind — with unpushed commits already queued — is how a
+green board turns red for a reason unrelated to the change. The right shape is a
+`tests/gpu/` case that creates a window and a `RenderLayer`, skips cleanly when
+no device comes up, and is run locally on the RTX 2080 this repo has measured
+against before. **That is the first thing T0027 should do**, since T0027 needs a
+live device anyway.
+
+### Not done
+
+- **46.5, the ping-pong pair, has no helper.** Two declarations at `scale 0.5`
+  express it, and nothing has used it, so a helper now would be a guess at what
+  the first blur actually wants.
+- **46.6 is computed but not wired to the profiler.** `memoryBytes()` returns a
+  figure; nothing displays it. It is also *requested* bytes rather than allocated
+  — alignment and tiling make the real number larger — which is fine for "what is
+  eating VRAM" and should not be presented as exact.
+- **T0094's gameplay-owned persistent targets are untouched.** `FrameTargets` is
+  frame-scoped by construction: it recreates everything on resize, which is
+  exactly wrong for a target a gameplay module wants to accumulate into across
+  frames (fog of war is the motivating case). That needs a separate lifetime and
+  it belongs with T0094.

@@ -194,6 +194,15 @@ def collect(tu, header: pathlib.Path):
             loc = child.location.file
             if loc is None or pathlib.Path(loc.name) != header:
                 continue
+            # A forward declaration is not API. `hp/Render.hpp` and
+            # `hp/FrameTargets.hpp` forward-declare Diligent's interfaces so
+            # they can hand out pointers (D22) without inflicting Diligent's
+            # 146,000-line include on every consumer (D21) -- those are other
+            # people's types, and demanding a doc comment on them would be
+            # documenting a dependency rather than our own surface.
+            if (child.kind in (cx.CursorKind.CLASS_DECL, cx.CursorKind.STRUCT_DECL)
+                    and not child.is_definition()):
+                continue
             if child.kind in DOCUMENTED_KINDS and is_public(child):
                 entry = {
                     "kind": child.kind,

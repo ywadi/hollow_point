@@ -35,6 +35,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Engine.hpp>`](Engine.md) | 4 | 4 |
 | [`<hp/EntryPoint.hpp>`](EntryPoint.md) | 1 | 0 |
 | [`<hp/Event.hpp>`](Event.md) | 72 | 15 |
+| [`<hp/FrameTargets.hpp>`](FrameTargets.md) | 20 | 20 |
 | [`<hp/Guid.hpp>`](Guid.md) | 13 | 5 |
 | [`<hp/Input.hpp>`](Input.md) | 26 | 26 |
 | [`<hp/Layer.hpp>`](Layer.md) | 28 | 16 |
@@ -45,12 +46,12 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Paths.hpp>`](Paths.md) | 1 | 1 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
-| [`<hp/Render.hpp>`](Render.md) | 19 | 19 |
-| [`<hp/Scene.hpp>`](Scene.md) | 56 | 56 |
+| [`<hp/Render.hpp>`](Render.md) | 22 | 22 |
+| [`<hp/Scene.hpp>`](Scene.md) | 55 | 55 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 
-**347 public declarations across 19 headers, 230 documented.**
+**369 public declarations across 20 headers, 252 documented.**
 
 ## Every symbol
 
@@ -155,6 +156,26 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `MouseScrolledEvent::categories` | [`Event.hpp`](Event.md) |
 | `MouseScrolledEvent::name` | [`Event.hpp`](Event.md) |
 | `dispatchEvent` | [`Event.hpp`](Event.md) |
+| `TargetFormat` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargetDesc` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::FrameTargets` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::FrameTargets` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::operator=` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::FrameTargets` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::operator=` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::declare` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::create` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::resize` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::release` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::renderTarget` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::depthStencil` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::shaderResource` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::ready` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::width` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::height` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::memoryBytes` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::declared` | [`FrameTargets.hpp`](FrameTargets.md) |
 | `Guid` | [`Guid.hpp`](Guid.md) |
 | `Guid::Guid` | [`Guid.hpp`](Guid.md) |
 | `Guid::Guid` | [`Guid.hpp`](Guid.md) |
@@ -307,7 +328,9 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `RenderLayer::vsync` | [`Render.hpp`](Render.md) |
 | `RenderLayer::setVsync` | [`Render.hpp`](Render.md) |
 | `RenderLayer::setClearColour` | [`Render.hpp`](Render.md) |
-| `Scene` | [`Scene.hpp`](Scene.md) |
+| `RenderLayer::device` | [`Render.hpp`](Render.md) |
+| `RenderLayer::context` | [`Render.hpp`](Render.md) |
+| `RenderLayer::swapChain` | [`Render.hpp`](Render.md) |
 | `Id` | [`Scene.hpp`](Scene.md) |
 | `Tag` | [`Scene.hpp`](Scene.md) |
 | `Transform` | [`Scene.hpp`](Scene.md) |

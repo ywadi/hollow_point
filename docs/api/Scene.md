@@ -6,18 +6,7 @@
 #include <hp/Scene.hpp>
 ```
 
-56 public declaration(s), 56 documented.
-
-## `Scene`
-
-```cpp
-class Scene
-```
-
- Owns an `entt::registry` and every entity in it.
-
- Not copyable, because a copy has to answer the GUID question above and there
- is no correct default answer. Use `clone` and say which you mean.
+55 public declaration(s), 55 documented.
 
 ## `Id`
 

@@ -70,6 +70,7 @@ add_library(hp_engine SHARED
     src/Guid.cpp
     src/Input.cpp
     src/Paths.cpp
+    src/FrameTargets.cpp
     src/Render.cpp
     src/Scene.cpp
     src/Layer.cpp

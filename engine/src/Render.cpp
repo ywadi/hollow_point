@@ -471,4 +471,16 @@ void RenderLayer::setClearColour(float r, float g, float b, float a) {
     impl_->clearColour = {r, g, b, a};
 }
 
+Diligent::IRenderDevice* RenderLayer::device() const {
+    return impl_ ? impl_->device.RawPtr() : nullptr;
+}
+
+Diligent::IDeviceContext* RenderLayer::context() const {
+    return impl_ ? impl_->context.RawPtr() : nullptr;
+}
+
+Diligent::ISwapChain* RenderLayer::swapChain() const {
+    return impl_ ? impl_->swapChain.RawPtr() : nullptr;
+}
+
 } // namespace hp
