@@ -1,4 +1,4 @@
-# T0122 — `.zig-cache` and `build/` collide across hosts, the way `.harness/` used to
+# T0122 — Zig cannot build from a working tree on `/mnt/c` under WSL
 
 | | |
 |---|---|
@@ -9,79 +9,133 @@
 | **Order** | 1 |
 | **Created** | 2026-08-04 |
 | **Found by** | T0100 |
-| **Refs** | T0102, T0004, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D5 |
+| **Blocks** | T0123 |
+| **Refs** | T0102, T0004, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D3, D5, D18 |
 
 ## Why
 
-**T0102 fixed this for `.harness/` and only `.harness/`.** Installs are now keyed
-by host (`.harness/zig/linux-x86_64/0.16.0/`), so the two bootstraps no longer
-destroy each other. The two *other* shared, host-agnostic directories were not
-touched:
-
-- **`.zig-cache/`** — one path, no host discriminator
-- **`build/<target>-<buildtype>/`** — one path per target, no host discriminator,
-  and it contains absolute host paths
-
-This is not hypothetical; it blocked T0100's local verification. On a Windows box
-with WSL — which is how this project is actually developed — running the Linux
-`zig build` against a tree last built from Windows fails:
+`zig build` fails on WSL when the working tree is on `/mnt/c`, before compiling
+anything:
 
 ```
-error: failed to rename compilation results ('.zig-cache/tmp/17b026b44f6c6824')
-       into local cache ('.zig-cache/o/213c45259d0009b8481e686cd149efc4'):
+error: failed to rename compilation results ('.zig-cache/tmp/0f37fe50ce00be6e')
+       into local cache ('.zig-cache/o/e238ee67df134356a93b6a24a3f149a0'):
        AccessDenied
 ```
 
-The directory is `drwxrwxrwx`, so this is not a permission bit. It is drvfs/9p
-rename semantics against cache entries the Windows toolchain owns.
+This blocked T0100's local verification entirely; that ticket was verified
+through CI instead.
 
-And even past that, the build tree itself is wrong for the host:
+### The actual cause
 
-```
-CMAKE_C_COMPILER:FILEPATH=C:/Development/hollow_point/build/linux-x86_64-release/toolchain/zig-cc.cmd
-CMAKE_MAKE_PROGRAM:UNINITIALIZED=C:\Development\hollow_point/.harness/ninja/1.13.2/ninja.exe
-```
+A build cache must never be observable half-written, so Zig writes compilation
+output into `.zig-cache/tmp/<hash>/` and then **renames that directory** into
+`.zig-cache/o/<hash>`. `rename()` is atomic, which is what makes the cache safe
+against interruption and concurrent builds.
 
-Note `.harness/ninja/1.13.2/` — the *pre-T0102* layout. That tree predates the
-host-keying fix, which is its own reason to expect trouble from it.
+On Linux you may rename a directory while files inside it are still open — an
+open handle refers to the inode, not the path. **On Windows you may not**, and
+`/mnt/c` is not a Linux filesystem: it is a 9p bridge onto NTFS with Windows
+performing the operation. Windows' rule leaks through, and the rename is
+refused.
 
-So the practical state is: **a dual-host developer cannot build from both hosts
-without a reconfigure that destroys the other host's tree.** T0102's "Done when"
-said "both hosts can build from the same working tree without re-bootstrapping
-each time they switch" — that is true of the *toolchain* and false of everything
-downstream of it.
+Isolated to a single variable:
+
+| Test | Result |
+|---|---|
+| Rename a directory on `/mnt/c`, nothing open inside | OK |
+| Rename a directory on `/mnt/c`, one file held open inside | **`EACCES`** |
+| Rename a directory on ext4, one file held open inside | OK |
+
+So it is not permissions (the tree is `drwxrwxrwx`), not slowness, and not
+corruption. It is a POSIX guarantee the compiler depends on that drvfs does not
+implement — which is also why it cannot be fixed by relocating paths *within*
+`/mnt/c`.
+
+### It is a known upstream bug, and it is not being fixed
+
+- [ziglang/zig#24955 — "Zig cannot compile on Windows filesystem in WSL"][i]
+  is **open**, unassigned, with no maintainer response. Its recommended
+  workaround is to use a Linux filesystem rather than a `/mnt/` mount.
+- [PR #30588][p], which would have fixed it by extending Zig's existing Windows
+  `AccessDenied` retry to WSL, is **closed and unmerged**.
+- It is a regression: **0.14 and earlier worked; 0.15.1 broke it.** This project
+  pins **0.16.0**, so it is affected, and pinning backwards is not an option.
+
+Waiting is therefore not a strategy, and a local workaround would mean carrying
+a patch upstream has already declined.
+
+[i]: https://github.com/ziglang/zig/issues/24955
+[p]: https://codeberg.org/ziglang/zig/pulls/30588
+
+### What this ticket originally claimed, and why that was wrong
+
+The first version of this ticket asserted a **host collision** — that the Linux
+and Windows toolchains were fighting over shared `.zig-cache/` and `build/`
+paths, the same shape as T0102. That was a guess, and the evidence refutes it:
+the rename destination **did not exist** (`No such file or directory`), and the
+hash differed on every run. Nothing was colliding.
+
+Recorded because the wrong diagnosis pointed at the wrong fix: host-keying the
+cache path, as T0102 did for `.harness/`, would **not** have worked — a
+host-keyed cache is still on `/mnt/c` and still cannot be renamed.
+
+## The decision
+
+**The WSL working tree moves to the Linux filesystem.** WSL then *is* a native
+Linux host — the row CI already proves green every run — and produces both
+targets by cross-compilation exactly as D3 requires.
+
+Recorded as **D18** in the decision log, with the alternatives that were
+rejected.
+
+What this costs: one working tree cannot serve both hosts, because no filesystem
+gives Windows and Linux correct semantics simultaneously (`/mnt/c` breaks Linux,
+`\\wsl$` breaks Windows). Native Windows-host building on that tree is given up.
+It remains covered by CI's `tests-windows-host` job, which exists for exactly
+that purpose (T0004), so the 2×2 matrix stays honest even though no developer
+exercises it by hand.
+
+What this costs in build-system work: **nothing.** No wrapper, no environment
+variable, no `build.zig` change. That is the main argument for it over the
+alternatives in D18.
 
 ## Done when
 
-- [ ] Running `zig build` from one host does not invalidate or clobber the
-      other host's cache or build tree
-- [ ] A dual-host machine can alternate hosts without a full rebuild each time
-- [ ] `BUILDING.md` says what happens, matching how T0102 documented its half
-- [ ] Verified on a real dual-host tree, not reasoned about — this ticket exists
-      because the reasoning in T0102 stopped one directory short
+- [ ] A clone on the Linux filesystem builds both targets under WSL —
+      `zig build test -Dtest=fast` green, output pasted here
+- [ ] `BUILDING.md` says the tree must not live on `/mnt/*` under WSL, and why,
+      with a link to the upstream issue so the constraint is not mistaken for a
+      local quirk
+- [ ] D18 recorded in the decision log
+- [ ] T0102's host-keying is reviewed: still correct and worth keeping for a
+      genuine dual-host tree, but no longer the thing standing between a WSL
+      developer and a working build. Say so there rather than leaving it
+      implying more coverage than it has
 
 ## Subtasks
 
-- [ ] 122.1 Decide the layout. The obvious move is to mirror T0102: key both on
-      the host, `build/<host>/<target>-<buildtype>/` and a host-keyed zig cache
-      via `--cache-dir`/`ZIG_LOCAL_CACHE_DIR`. Weigh it against the disk cost —
-      two full trees, and T0121 measured a tree at 327 MB
-- [ ] 122.2 Check whether `dist/` has the same problem
-- [ ] 122.3 Confirm CI is unaffected: a runner is single-host, so this should be
-      invisible there. Confirm rather than assume — if the cache key ends up
-      host-keyed, T0121's `buildtree-${{ runner.os }}-` key may need to agree
-- [ ] 122.4 Decide what happens to an existing wrong-host tree: detect and
-      re-configure, or detect and refuse with a message saying what to run
+- [ ] 122.1 Clone to the Linux filesystem, `--recursive` (the `/mnt/c` tree has
+      `third_party/SDL` uninitialized), bootstrap, and build
+- [ ] 122.2 `BUILDING.md` — the constraint, the reason, the upstream link
+- [ ] 122.3 D18 in the decision log
+- [ ] 122.4 Note on T0102 that it solved a different problem from this one
+- [ ] 122.5 Decide the fate of the `/mnt/c` tree: keep as the Windows-host
+      checkout, or retire it. Do not delete before 122.1 is green
 
 ## Notes / findings
 
-**Found while verifying T0100.** The frame-anatomy change could not be built or
-tested locally on WSL because of this; verification was done through CI instead.
-That is a workable fallback now that CI is fast (T0121 took it to ~5 minutes),
-but it means a WSL-side developer has no local test loop at all, which is a worse
-day-to-day cost than the ticket's priority suggests.
+**Verification is the clone, not reasoning.** This ticket has already been wrong
+once by reasoning confidently from a plausible cause. It closes when a build on
+a Linux-filesystem tree is green and the output is in this file.
 
-**The legacy `.harness/zig/0.16.0/` directory still exists** in at least one real
-tree, holding the pre-T0102 Windows install. `bootstrap.sh` already prints a hint
-about removing it (lines 100–102), so this is known — but a stale toolchain
-sitting next to a host-keyed one is worth confirming nothing resolves to it.
+**A side effect worth expecting:** the permanently-dirty
+`third_party/sysroot/linux-x86_64/include/X11/bitmaps/stipple` disappears. It is
+a case-collision — the repo tracks both `Stipple` and `stipple`, and a
+case-insensitive Windows filesystem can only hold one, so whichever git writes
+last reports the other as modified forever. ext4 is case-sensitive and holds
+both. If that file is *still* dirty in the new tree, the tree is not where it
+was meant to be.
+
+**`df -h ~` is the check that matters** before trusting the move: `ext4` or
+`overlay` is right, `9p` or `drvfs` means nothing was actually gained.

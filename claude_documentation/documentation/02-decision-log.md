@@ -537,3 +537,66 @@ page or asserted as a whole.
 - Anyone adding a system to the frame adds it to a phase that already exists.
   If no phase fits, that is a change to this decision and to T0100's document —
   not a new call bolted into `run()`.
+
+---
+
+## D18 — Under WSL the working tree lives on the Linux filesystem, never `/mnt/c`
+
+**Decision:** A WSL checkout goes in the Linux filesystem (`~/dev/hollow_point`
+or similar). WSL is then a native Linux host and cross-compiles both targets,
+which is D3's matrix unchanged. Windows-host building, if wanted, uses a
+separate checkout on `C:\`.
+
+**Why it is forced, not preferred:** Zig commits its build cache by writing
+`.zig-cache/tmp/<hash>/` and renaming that directory to `.zig-cache/o/<hash>`.
+POSIX allows renaming a directory containing open files; Windows does not, and
+`/mnt/c` is a 9p bridge onto NTFS where Windows performs the operation. The
+rename is refused with `AccessDenied` and the build dies before compiling
+anything. Measured: the same rename succeeds on ext4 with a file held open, and
+succeeds on `/mnt/c` with nothing open.
+
+This is [ziglang/zig#24955](https://github.com/ziglang/zig/issues/24955) —
+**open**, no maintainer response, and its fix
+([PR #30588](https://codeberg.org/ziglang/zig/pulls/30588)) is **closed
+unmerged**. It regressed in 0.15.1; 0.14 worked. We pin 0.16.0.
+
+**Rejected — host-key the cache and build tree, as T0102 did for `.harness/`.**
+This was the first diagnosis and it was wrong. The rename destination did not
+exist and its hash differed every run, so nothing was colliding. A host-keyed
+cache is still on `/mnt/c` and still cannot be renamed.
+
+**Rejected — `ZIG_LOCAL_CACHE_DIR`, or a wrapper script that sets it.** Works,
+but it is a workaround carried forever for a bug upstream declined to fix, and
+it fails confusingly in any shell that missed the setup. It also cannot be made
+automatic: the cache location is chosen while Zig compiles `build.zig` itself,
+before any of our build logic runs, so `build.zig` cannot fix its own
+environment.
+
+**Rejected — out-of-tree artifact root** (`build/`, `dist/`, cache under a
+host-local directory). Sounds like the clean refactor and is structurally
+incomplete for the same reason: the failure happens while compiling the build
+runner, upstream of anything `build.zig` controls.
+
+**Rejected — keep one tree on `/mnt/c` and build Linux in a container.** Solves
+it and buys CI parity, but it is real infrastructure — a Docker dependency and a
+second environment to maintain — to work around a filesystem choice that can
+simply be made differently.
+
+**Rejected — move the single tree into WSL and build Windows over `\\wsl$`.**
+Trades a broken bridge for a different broken bridge; the Windows host then pays
+the performance and semantics cost instead.
+
+**Consequences:**
+
+- **No build-system change.** No wrapper, no environment variable, no
+  `build.zig` edit. This is the main argument for it.
+- One tree cannot serve both hosts. There is no filesystem that gives Windows
+  and Linux correct semantics at once.
+- Native Windows-host building is covered by CI's `tests-windows-host` job
+  (T0004) rather than by a developer, so the 2×2 matrix stays proven even when
+  nobody runs that row by hand.
+- T0102's host-keying of `.harness/` stays — it is correct and cheap — but it
+  solved a *different* problem and should not be read as making a shared
+  `/mnt/c` tree workable.
+- The case-collision on `X11/bitmaps/{Stipple,stipple}`, permanently dirty on a
+  case-insensitive Windows filesystem, resolves for free: ext4 holds both.

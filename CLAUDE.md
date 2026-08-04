@@ -23,7 +23,7 @@ you in the first ten minutes.
 | What is the design missing? | [`claude_documentation/documentation/07-design-gaps.md`](claude_documentation/documentation/07-design-gaps.md) |
 | What runs when, in a frame? | [`claude_documentation/documentation/08-frame-anatomy.md`](claude_documentation/documentation/08-frame-anatomy.md) |
 
-**The decision log is binding.** Entries D1–D17 record what was rejected and
+**The decision log is binding.** Entries D1–D18 record what was rejected and
 why, usually against a specific failure. If you are about to do something one of
 them forbids, read the entry first and change the decision deliberately — do not
 quietly diverge.
@@ -93,6 +93,16 @@ zig build dist                 # stage runnable output
 Everything is pinned in `.harness/` — zig, cmake, ninja. Nothing on `PATH` is
 required, and the build says so loudly if it falls back to something there.
 
+**On WSL, the working tree must NOT be under `/mnt/`** — clone it into the Linux
+filesystem (`~/dev/hollow_point`). Zig commits its cache by renaming a directory
+whose files are still open; POSIX allows that and Windows does not, and `/mnt/c`
+is a bridge onto NTFS where Windows performs the operation. You get
+`failed to rename compilation results ... AccessDenied` before anything
+compiles. It is [ziglang/zig#24955](https://github.com/ziglang/zig/issues/24955),
+open upstream with its fix PR closed unmerged, and it is **not** fixable by
+moving paths around inside `/mnt/c`. See **D18**. Check with `df -h ~`: `ext4`
+or `overlay` is right, `9p` or `drvfs` means you are still on the Windows side.
+
 **Run the editor:** `./build/linux-x86_64-release/apps/editor/hp_editor`
 
 ---
@@ -120,10 +130,12 @@ pushing again while a run is going kills it. That is intended — a superseded
 push should not burn runners — but it means **letting a run finish before
 pushing again** is the difference between verifying your work and silently not.
 
-**Three jobs must pass**: Linux host (both target suites, Windows one under
-wine), Windows host (native), offline-configure, plus the API-reference check.
-Expect **10–15 minutes** — build trees are deliberately not cached, so SDL and
-Diligent recompile every run.
+**Four jobs must pass**: Linux host (both target suites, Windows one under
+wine), Windows host (native), offline-configure, and the API-reference check.
+Expect **~5 minutes warm** — build trees are cached, keyed on the submodule SHAs
+plus the CMake and toolchain files (T0121). A **pin bump invalidates that key**
+and costs a full cold build, 16–18 minutes; that is the intended trade for a
+coarse key, not a regression.
 
 `full-build.yml` is the ~1100-target build, nightly and on dispatch.
 
