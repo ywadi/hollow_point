@@ -53,9 +53,10 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/RenderStack.hpp>`](RenderStack.md) | 21 | 21 |
 | [`<hp/Scene.hpp>`](Scene.md) | 54 | 54 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
+| [`<hp/Vfs.hpp>`](Vfs.md) | 23 | 23 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 
-**417 public declarations across 24 headers, 300 documented.**
+**440 public declarations across 25 headers, 323 documented.**
 
 ## Every symbol
 
@@ -459,6 +460,29 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Clock::setMaxFixedStepsPerFrame` | [`Time.hpp`](Time.md) |
 | `Clock::maxFixedStepsPerFrame` | [`Time.hpp`](Time.md) |
 | `Clock::interpolationAlpha` | [`Time.hpp`](Time.md) |
+| `MountOrder` | [`Vfs.hpp`](Vfs.md) |
+| `PathKind` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::Vfs` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::init` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::shutdown` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::ready` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::mount` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::unmount` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::mounts` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::setWriteDirectory` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::writeDirectory` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::preferenceDirectory` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::kind` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::exists` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::read` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::readText` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::write` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::writeText` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::createDirectory` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::remove` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::list` | [`Vfs.hpp`](Vfs.md) |
+| `Vfs::resolvedSource` | [`Vfs.hpp`](Vfs.md) |
 | `DisplayMode` | [`Window.hpp`](Window.md) |
 | `DisplayInfo` | [`Window.hpp`](Window.md) |
 | `WindowConfig` | [`Window.hpp`](Window.md) |

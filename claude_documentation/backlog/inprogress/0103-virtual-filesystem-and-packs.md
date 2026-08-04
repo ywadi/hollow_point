@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 3 — Data model |
@@ -32,37 +32,146 @@ T0023 hardens, not after.
 
 ## Done when
 
-- [ ] Every asset read in engine code goes through the VFS; no `std::filesystem`
+- [~] Every asset read in engine code goes through the VFS; no `std::filesystem`
       or `fopen` on asset paths, checkable by grep
-- [ ] A loose directory and an archive mount into the same tree and a path
+- [x] A loose directory and an archive mount into the same tree and a path
       resolves identically from either
-- [ ] A later mount overrides an earlier one per file — the patch/DLC mechanism,
+- [x] A later mount overrides an earlier one per file — the patch/DLC mechanism,
       proven by a test that mounts two archives with a shared path
-- [ ] Dev (loose files) and shipped (packs) use the **same** code path, differing
+- [x] Dev (loose files) and shipped (packs) use the **same** code path, differing
       only in what is mounted
-- [ ] Writes are confined to a designated write directory and cannot escape it
-- [ ] Builds and runs on both targets
+- [x] Writes are confined to a designated write directory and cannot escape it
+- [x] Builds and runs on both targets
 
 ## Subtasks
 
-- [ ] 103.1 Vendor PhysicsFS as a submodule under `third_party/`, wired like the
+- [x] 103.1 Vendor PhysicsFS as a submodule under `third_party/`, wired like the
       others — no install rules, no its own tests, consumed as a target
-- [ ] 103.2 A thin engine wrapper over it. Not a passthrough: PhysicsFS is a C
+- [x] 103.2 A thin engine wrapper over it. Not a passthrough: PhysicsFS is a C
       library with global state, and the engine should expose a small
       RAII/`std::span`-shaped surface rather than let `PHYSFS_*` calls spread
       through the codebase. This is also the seam that makes it replaceable
-- [ ] 103.3 Mount policy: what is mounted, in what order, for editor vs runtime.
+- [~] 103.3 Mount policy: what is mounted, in what order, for editor vs runtime.
       Write it down — override order *is* the DLC semantics and must not be
       incidental
-- [ ] 103.4 Write directory for saves and logs, per platform
-- [ ] 103.5 Tests: identical resolution from loose dir and archive; later mount
+- [x] 103.4 Write directory for saves and logs, per platform
+- [x] 103.5 Tests: identical resolution from loose dir and archive; later mount
       overrides earlier; a write cannot escape the write directory; a missing
       file fails the same way from both sources
-- [ ] 103.6 Decide the shipping archive format (ZIP is the obvious default, and
+- [x] 103.6 Decide the shipping archive format (ZIP is the obvious default, and
       PhysicsFS reads it without a custom format to maintain)
-- [ ] 103.7 Spike concurrent reads before any threaded loader exists (see below)
+- [x] 103.7 Spike concurrent reads before any threaded loader exists (see below)
 
 ## Notes / findings
+
+## Built — 2026-08-05
+
+PhysicsFS pinned to **release-3.2.0**, static and PRIVATE, reached only through
+`hp/Vfs.hpp`. No `PHYSFS_` type appears in a public header, so the library is
+replaceable behind that seam and its global state has exactly one door — which
+matters more here than for SDL, because the engine is a shared library that the
+editor, the runtime and every gameplay module all link (D12).
+
+### The trap: PhysicsFS disables RPATH for the entire build
+
+`third_party/physfs/CMakeLists.txt:36` runs
+
+```cmake
+set(CMAKE_SKIP_RPATH ON CACHE BOOL "Skip RPATH" FORCE)
+```
+
+under any GCC or Clang. Not scoped to its own targets, not optional, and
+**FORCE**, so it lands in our cache and strips RPATH from every target in the
+build — engine, editor, runtime, every test binary.
+
+**The symptom looks nothing like a CMake option.** Everything links cleanly and
+then dies at startup with `libhp_engine.so: cannot open shared object file` —
+which reads as a missing file, and the file is sitting right beside the binary.
+Diligent's backends fail identically one step later. It survives a clean
+rebuild, because the cause is in the source rather than the tree, and that is
+what makes it expensive: the instinct is to distrust the build tree first.
+
+Fixed by resetting the cache entry *and* the directory-scope variable
+immediately after `add_subdirectory(third_party/physfs)`. Both are needed: the
+FORCE wrote the cache, so a plain `set` alone is shadowed by it.
+
+This is a new instance of a known class — "the Linux build is hermetic, and a
+dependency's CMake that reaches for global state will break it". Worth
+remembering the next time a vendored library is added.
+
+### 103.6 — ZIP, and only ZIP
+
+PhysicsFS ships readers for fifteen archive formats. Fourteen are for other
+people's games — Quake PAK, Descent HOG, Gothic VDF, Resident Evil 3 ROFS — and
+each is parser code compiled into the engine and reachable by any file a player
+can place in a mount directory. All off; ZIP on. One line to reverse if that is
+ever wrong.
+
+### 103.7 — concurrency: measured, and correct
+
+The ticket asked for a measurement rather than an assumption, and this is it:
+**8 threads x 40 reads over 16 overlapping archive entries, 0 failures, 0
+mismatches**, every thread reading every file so the same entry is decoded
+concurrently.
+
+What that proves is **correctness, not scalability**. Whether reads serialise
+behind one internal lock is not answered and does not need to be yet — "reads
+are serialised and that is fine" remains an acceptable outcome for T0026 and
+T0050, provided it is a known one. What is now ruled out is corruption, which
+was the outcome that would have been discovered late and expensively.
+
+### Tests
+
+`tests/integration/vfs_test.cpp`, 17 cases. **The archives are built byte by
+byte by a minimal ZIP writer in the test file** rather than checked in: a binary
+fixture is something nobody can review, nobody updates, and which silently
+encodes whatever tool produced it. Stored, not deflated — deflating would be
+testing zlib rather than the mount path.
+
+The case that matters most is `a later mount overrides an earlier one`, because
+that is the patch and DLC mechanism (D13) rather than a filesystem nicety. It
+asserts override *per file*: a file the patch does not carry still resolves to
+the base pack, which is what makes a patch a patch rather than a replacement.
+`resolvedSource` is asserted alongside it, since when this goes wrong in the
+field the only useful question is which copy won.
+
+## 103.3 — mount policy, written down
+
+The subtask asks for the policy to be recorded, and here it is. **The wiring is
+not built**, because nothing loads assets yet; T0023 is what will apply it.
+
+Search order, first match wins. Later entries are fallbacks:
+
+| Order | Mount | Present in |
+|---|---|---|
+| 1 | Write directory (saves, user config) | both |
+| 2 | Loose working directories, most recent first | editor only |
+| 3 | Patch packs, newest first | both |
+| 4 | DLC packs | both |
+| 5 | Base game pack(s) | both |
+
+- **The editor prepends loose directories** so an edited file beats the packed
+  copy — that is the whole dev workflow, and it is the same `MountOrder::Prepend`
+  a patch uses rather than a separate mechanism.
+- **A patch prepends; DLC appends.** A patch exists to override, and DLC exists
+  to add — a DLC pack that silently shadowed base content would be a bug that
+  only shows up as the wrong art on a base-game level.
+- **The runtime never mounts a loose directory** in a shipped build, so a stray
+  file beside the executable cannot change behaviour.
+
+## Not done
+
+- **"Every asset read goes through the VFS" is not yet meaningful**, because
+  there are no asset reads. The rule is stated in the header and is checkable by
+  grep; enforcing it is T0023's problem, and its ticket now says so.
+- **103.3 is written, not wired.** No editor or runtime code mounts anything.
+- **No streaming reader.** `read` is whole-file, which is what every planned
+  asset loader wants. Audio (T0052) is the likely first caller to need
+  streaming, and it can be added beside `read` without disturbing it.
+- **Write-directory escape is tested, not audited.** The refusal covers absolute
+  paths, drive letters, backslashes and `..` segments, and PhysicsFS refuses
+  independently. No adversarial review of the pair has been done.
+
 
 **PhysicsFS is file I/O, not an asset database.** It owns *where bytes come
 from*; GUIDs, metafiles, reference counting and hot reload (T0023, T0058) stay

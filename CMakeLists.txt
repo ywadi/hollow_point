@@ -140,6 +140,68 @@ set(MESHOPT_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
 set(MESHOPT_INSTALL          OFF CACHE BOOL "" FORCE)
 add_subdirectory(third_party/meshoptimizer)
 
+# PhysicsFS -- the virtual filesystem every asset read goes through (T0103, D13).
+# Target: physfs-static
+#
+# Static and PRIVATE, like SDL. PhysicsFS has global init state, and the engine
+# is a shared library that the editor, the runtime and every gameplay module all
+# link (D12) -- so there must be exactly one copy of that state per process. A
+# shared physfs beside every executable would be a second file to ship for no
+# benefit; a static one linked into a second artifact would be the statics-per-
+# artifact hazard that produced T0105.1 and T0127. One static copy, inside
+# hp_engine, reached only through <hp/Vfs.hpp>.
+#
+# Everything else is off. The stdio test program is a console app nobody runs
+# here, the docs need doxygen, and the install rules would put a library we
+# consume as a target into the staging tree.
+set(PHYSFS_BUILD_STATIC      ON  CACHE BOOL "" FORCE)
+set(PHYSFS_BUILD_SHARED      OFF CACHE BOOL "" FORCE)
+set(PHYSFS_BUILD_TEST        OFF CACHE BOOL "" FORCE)
+set(PHYSFS_BUILD_DOCS        OFF CACHE BOOL "" FORCE)
+set(PHYSFS_DISABLE_INSTALL   ON  CACHE BOOL "" FORCE)
+# 103.6: ZIP is the shipping format and the only archive reader we keep. The
+# rest are readers for other people's games -- Quake PAK, Descent HOG, Gothic
+# VDF -- and each is attack surface and compile time for a format this engine
+# will never open. Turning them off is reversible in one line if that is ever
+# wrong; shipping a parser for Resident Evil 3 archives is not a default anyone
+# chose.
+set(PHYSFS_ARCHIVE_ZIP       ON  CACHE BOOL "" FORCE)
+set(PHYSFS_ARCHIVE_7Z        OFF CACHE BOOL "" FORCE)
+set(PHYSFS_ARCHIVE_GRP       OFF CACHE BOOL "" FORCE)
+set(PHYSFS_ARCHIVE_WAD       OFF CACHE BOOL "" FORCE)
+set(PHYSFS_ARCHIVE_CSM       OFF CACHE BOOL "" FORCE)
+set(PHYSFS_ARCHIVE_HOG       OFF CACHE BOOL "" FORCE)
+set(PHYSFS_ARCHIVE_MVL       OFF CACHE BOOL "" FORCE)
+set(PHYSFS_ARCHIVE_QPAK      OFF CACHE BOOL "" FORCE)
+set(PHYSFS_ARCHIVE_ROFS      OFF CACHE BOOL "" FORCE)
+set(PHYSFS_ARCHIVE_SLB       OFF CACHE BOOL "" FORCE)
+set(PHYSFS_ARCHIVE_ISO9660   OFF CACHE BOOL "" FORCE)
+set(PHYSFS_ARCHIVE_VDF       OFF CACHE BOOL "" FORCE)
+set(PHYSFS_ARCHIVE_LECARCHIVES OFF CACHE BOOL "" FORCE)
+set(PHYSFS_ARCHIVE_POD       OFF CACHE BOOL "" FORCE)
+add_subdirectory(third_party/physfs)
+
+# Undo PhysicsFS's global RPATH sabotage.
+#
+# Its CMakeLists does `set(CMAKE_SKIP_RPATH ON CACHE BOOL "" FORCE)` under any
+# GCC or Clang -- not scoped to its own targets, not optional, and FORCE, so it
+# lands in *our* cache and strips RPATH from **every target in this build**. It
+# is reasonable for a library that expects to be installed to a system prefix
+# and wrong for a subdirectory dependency.
+#
+# The symptom is worth writing down because it looks nothing like a CMake
+# option: every executable links fine and then dies at startup with
+# `libhp_engine.so: cannot open shared object file`, which reads as a missing
+# file rather than a missing RPATH -- and the file is right there beside the
+# binary. Diligent's backends fail the same way one step later. It survives a
+# clean rebuild, because the cause is in the source, not the tree.
+#
+# Reset immediately after the subdirectory so nothing else inherits it. Both
+# the cache entry and the directory-scope variable, because the FORCE wrote the
+# cache and a plain `set` here would be shadowed by it.
+set(CMAKE_SKIP_RPATH OFF CACHE BOOL "Use RPATH" FORCE)
+set(CMAKE_SKIP_RPATH OFF)
+
 # ozz-animation -- runtime skeletal animation.
 # Targets: ozz_base, ozz_animation, ozz_geometry (and ozz_animation_offline).
 # Everything else is off: the samples need GLFW/OpenGL and the FBX pipeline

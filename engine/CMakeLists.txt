@@ -79,6 +79,7 @@ add_library(hp_engine SHARED
     src/Layer.cpp
     src/Log.cpp
     src/Time.cpp
+    src/Vfs.cpp
     src/Window.cpp
 )
 add_library(hp::engine ALIAS hp_engine)
@@ -160,6 +161,21 @@ endif()
 target_link_libraries(hp_engine PUBLIC EnTT::EnTT)
 
 target_link_libraries(hp_engine PRIVATE SDL3::SDL3-static)
+
+# PhysicsFS, PRIVATE and static (T0103, D13). Same argument as SDL: no public
+# engine header names a PHYSFS_ type -- <hp/Vfs.hpp> is deliberately shaped in
+# std:: types so consumers never see physfs.h, which is what keeps the library
+# replaceable behind that seam and stops PHYSFS_* calls spreading through the
+# codebase.
+#
+# It matters more here than for SDL, because PhysicsFS keeps *global init
+# state*. The engine is a shared library that the editor, the runtime and every
+# gameplay module all link (D12), so exactly one copy of that state must exist
+# per process. Linking it into a second artifact would give that artifact its
+# own uninitialised filesystem -- the statics-per-artifact hazard behind T0105.1
+# and T0127, in a form where the symptom is "the file is missing" rather than a
+# crash.
+target_link_libraries(hp_engine PRIVATE physfs-static)
 
 # Diligent, PRIVATE (T0025).
 #

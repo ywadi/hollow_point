@@ -45,6 +45,27 @@ copy.
 
 ## Notes / findings
 
+**T0103 landed the VFS, and this ticket is where its central rule is kept or
+quietly broken.** Every asset read goes through `hp::Vfs` — no `std::filesystem`,
+no `fopen`, no absolute paths. That is checkable by grep and it is the whole
+reason T0103 had to land first: an `AssetManager` written against
+`std::filesystem` makes packs, patches and DLC each a rewrite of every read
+site instead of a mount.
+
+Concretely:
+
+- `hp::Vfs::read(path)` returns bytes; `readText` returns a string. Paths are
+  `/`-separated and relative to the mount tree. An absolute path does not
+  resolve, by design.
+- **An empty file returns an empty vector, not `nullopt`.** "Not there" and
+  "there and says nothing" are different answers and this ticket will care.
+- `hp::Vfs::resolvedSource(path)` reports which mount a file actually came from.
+  When a patch pack does not take effect, that is the only useful diagnostic.
+- The mount policy T0103.3 wrote down is **not wired to anything**. Applying it
+  — write directory, then editor loose dirs, then patches, then DLC, then base
+  packs — belongs here.
+
+
 **Do not copy Laura's "one big shared buffer + version-checked whole-pool GPU
 upload".** That is a path-tracer idiom — it uploads the entire scene as flat
 buffers for a compute shader. We rasterise, so meshes own their own GPU buffers

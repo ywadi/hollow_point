@@ -40,7 +40,7 @@ This is the work. For what is already proven to work — and what only appears t
 | — | [T0048](completed/0048-hot-reloadable-gameplay-module.md) | Hot-reloadable gameplay module | 2 — Engine skeleton | ✅ DONE | High | Very Complex |
 | — | [T0105](completed/0105-module-linkage-loose-ends.md) | Module linkage: the parts that need something built first | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | ▶ | [T0068](inprogress/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | ⏸ BLOCKED | Medium | Moderate |
-| 180 | [T0103](open/0103-virtual-filesystem-and-packs.md) | Virtual filesystem and content packs | 3 — Data model | 🔜 TODO | High | Moderate |
+| 180 | [T0103](inprogress/0103-virtual-filesystem-and-packs.md) | Virtual filesystem and content packs | 3 — Data model | 🚧 IN PROGRESS | High | Moderate |
 | 185 | [T0112](completed/0112-string-identity-and-localisation.md) | String identity: keys before literals | 3 — Data model | ✅ DONE | Medium | Simple |
 | 190 | [T0020](open/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | 🔜 TODO | High | Complex |
 | 200 | [T0021](completed/0021-scene-and-ecs.md) | Scene and entity-component system | 3 — Data model | ✅ DONE | High | Moderate |
