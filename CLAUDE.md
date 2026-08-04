@@ -194,9 +194,15 @@ sources.
 
 Two things it cannot settle, so do not send them:
 
-- **Decisions that are the owner's**, not technical — what the game *is*
-  (T0044), whether to support mods, what platforms matter. Research produces a
-  survey, not an answer. Leave these open and ask.
+- **Decisions that are the owner's**, not technical — whether to support mods,
+  what platforms matter, what the studio is willing to maintain. Research
+  produces a survey, not an answer. Leave these open and ask.
+
+  **Not "what the game is".** There is no such question here: this is an engine
+  for several games, and a game is a separate project (T0109). T0044 used to ask
+  it and was dropped for that reason — an engine scoped to one game, or to a
+  genre, cannot serve the second game the studio makes. Engine capabilities are
+  decided on their own tickets, on engineering grounds.
 - **Anything measurable here.** If the question is "does this compile", "is this
   in the pinned toolchain", or "what does this actually output", measure it. A
   web search returns what is usually true; the build returns what is true here,
