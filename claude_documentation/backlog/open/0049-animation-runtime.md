@@ -72,3 +72,22 @@ optimisation and gets much slower.
 The state machine (49.10) is deliberately a **C++ helper**, not an authored graph.
 If hand-writing transitions becomes painful at scale, that is the evidence for
 revisiting a data-driven authoring tool — not a reason to build one up front.
+
+### Cross-ticket obligation — T0101 (2026-08-04)
+
+**Sockets are yours: an entity parented to an animated joint.** T0101 built
+entity-transform propagation and closed on everything except this, because there
+is no animation runtime to parent to.
+
+The composition point is precise, and T0021/T0049 already decided the half that
+constrains it: **bones are not entities.** A skeleton with 80 joints per
+character would swamp the registry, and ozz keeps its own compact SoA pose
+buffers that the renderer consumes directly. So a socket is an entity whose
+*local* transform is written each frame from a sampled joint, after which normal
+`Scene::propagateTransforms` carries it down to that entity's own children —
+weapons in hands, props on sockets, cameras on rigs.
+
+Two things that follow: the joint sample must land **before** phase 7 so
+propagation sees it in the same frame, and the write should go through
+`Scene::setLocalTransform` (or be followed by `markTransformDirty`), because a
+direct write through `get<Transform>()` is invisible to the dirty tracking.

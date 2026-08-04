@@ -17,9 +17,9 @@
 //
 // Two things this header does *not* do, both on purpose:
 //
-//   * **It does not compute world transforms.** `Transform` is a local transform
-//     and `Hierarchy` is a parent link; propagating one into the other is T0101,
-//     which owns the dirty-marking and the traversal order.
+//   * **It does not decide when propagation runs.** `propagateTransforms` is a
+//     single pass the frame calls at phases 7 and 9 (D17); the Scene knows how to
+//     recompute, not when.
 //   * **It does not defer structural changes.** `create` and `destroy` take
 //     effect immediately. D17 places queued entity creation and destruction at
 //     frame phase 5 (structural apply), and the queue belongs to whatever drives
@@ -83,6 +83,33 @@ struct Transform {
     /// Scale relative to the parent.
     float3 scale{1.0F, 1.0F, 1.0F};
 };
+
+/// The world transform, plus the one from the previous propagation (T0101).
+///
+/// Derived state, written **only** by `Scene::propagateTransforms`. Assigning to
+/// it by hand is silently undone on the next pass, which is why there is no API
+/// that hands it out mutably.
+///
+/// `previous` exists from day one rather than being retrofitted: physics
+/// interpolation (T0057's alpha) needs a previous/current pair, and motion
+/// vectors for TAA and motion blur need one eventually (T0096 leaves the hook
+/// open). One extra matrix per entity now is cheaper than touching every
+/// transform consumer later. An entity that did not move has
+/// `previous == current`, which is the correct answer rather than a special case.
+struct WorldTransform {
+    /// The world matrix as of the last propagation.
+    float4x4 current;
+
+    /// The world matrix as of the propagation before that.
+    float4x4 previous;
+};
+
+/// Marks an entity whose world transform needs recomputing.
+///
+/// A tag component rather than a bool inside `Transform`, so propagation can ask
+/// entt for the dirty set instead of visiting every entity to read a flag — and
+/// so an unchanged subtree genuinely costs nothing.
+struct DirtyTransform {};
 
 /// The parent link and the child list, maintained **only** by `Scene`.
 ///
@@ -221,6 +248,23 @@ private:
     entt::entity handle_{entt::null};
 };
 
+/// What a reparent does to the entity's position in the world (T0101).
+enum class Reparent {
+    /// Keep the local transform; the entity moves with its new parent.
+    ///
+    /// The default because it is what code means: parenting a weapon to a hand
+    /// socket should snap it to the socket.
+    KeepLocal,
+
+    /// Keep the world transform; the local transform is recomputed so the entity
+    /// does not visibly move.
+    ///
+    /// What an editor drag in the hierarchy panel must do (T0035). Dropping an
+    /// object onto a new parent and watching it teleport is the behaviour users
+    /// read as a bug.
+    KeepWorld,
+};
+
 /// How a cloned scene treats the identities inside it.
 ///
 /// The two modes are not variations on one operation — they have **opposite**
@@ -316,10 +360,54 @@ public:
     /// parent first, so calling it repeatedly cannot duplicate a child entry.
     /// @param child the entity to reparent.
     /// @param parent the new parent, or a null handle to make `child` a root.
+    /// @param mode whether to keep the local or the world transform. Defaults to
+    ///        keeping the local one, which is what code usually means; an editor
+    ///        drag wants `KeepWorld`.
     /// @returns false when the handles are invalid or when `parent` is `child`
     ///          or one of its descendants — a cycle would make traversal
     ///          non-terminating, so it is refused rather than accepted.
-    bool setParent(Entity child, Entity parent);
+    bool setParent(Entity child, Entity parent, Reparent mode = Reparent::KeepLocal);
+
+    /// Writes an entity's local transform and marks its subtree for propagation.
+    ///
+    /// **The only write that is guaranteed to reach the world transform.**
+    /// `Entity::get<Transform>()` still hands out a mutable reference — entt's
+    /// storage is not going to stop it — and a write through that reference is
+    /// invisible to propagation until something marks the entity dirty. Prefer
+    /// this; if you must write directly, call `markTransformDirty` after.
+    /// @param entity the entity to move.
+    /// @param transform the new local transform.
+    /// @returns nothing.
+    void setLocalTransform(Entity entity, const Transform& transform);
+
+    /// Marks an entity's world transform stale, so the next propagation
+    /// recomputes it and everything below it.
+    /// @param entity the entity whose local transform changed.
+    /// @returns nothing.
+    void markTransformDirty(Entity entity);
+
+    /// Recomputes every stale world transform, in one pass, parents before
+    /// children.
+    ///
+    /// Belongs at frame phases 7 and 9 (D17): phase 7 serves the followers that
+    /// run at phase 8, and phase 9 catches whatever phase 8 itself moved. A
+    /// clean scene walks the hierarchy and writes nothing.
+    /// @returns how many entities were recomputed, which is what a test asserts
+    ///          on to prove an unchanged subtree cost nothing.
+    std::size_t propagateTransforms();
+
+    /// @returns the entity's world matrix as of the last propagation, or
+    ///          identity when the handle is invalid.
+    ///
+    /// A lookup, never a parent-chain walk — the walk is the propagation pass's
+    /// job, done once for the whole scene rather than once per query.
+    /// @param entity the entity to read.
+    [[nodiscard]] const float4x4& worldTransform(Entity entity) const;
+
+    /// @returns the entity's world matrix as of the propagation before last, for
+    ///          interpolation and motion vectors. Identity for an invalid handle.
+    /// @param entity the entity to read.
+    [[nodiscard]] const float4x4& previousWorldTransform(Entity entity) const;
 
     /// @returns every root entity, in creation order.
     [[nodiscard]] std::vector<Entity> roots();
@@ -345,6 +433,10 @@ public:
 private:
     void detachFromParent(entt::entity child);
     void destroyRecursive(entt::entity entity);
+    std::size_t propagateSubtree(entt::entity entity, const float4x4& parentWorld,
+                                 bool ancestorDirty);
+    void applyWorldTransform(entt::entity entity, const float4x4& world,
+                             const float4x4& parentWorld);
 
     entt::registry registry_;
 

@@ -276,3 +276,221 @@ TEST_CASE("core components are reflected under stable names") {
     CHECK(static_cast<bool>(hp::resolveType("MeshRenderer")));
     CHECK(static_cast<bool>(hp::resolveType("Camera")));
 }
+
+// --- world transforms (T0101) ---------------------------------------------
+
+namespace {
+
+/// The translation row of a world matrix, which is what most of these cases
+/// actually care about.
+hp::float3 world_position(const hp::Scene& scene, hp::Entity entity) {
+    const auto& m = scene.worldTransform(entity);
+    return hp::float3{m._41, m._42, m._43};
+}
+
+} // namespace
+
+TEST_CASE("a chain of translations composes down the hierarchy") {
+    hp::Scene scene;
+    auto a = scene.create("a");
+    auto b = scene.create("b");
+    auto c = scene.create("c");
+    REQUIRE(scene.setParent(b, a));
+    REQUIRE(scene.setParent(c, b));
+
+    scene.setLocalTransform(a, hp::Transform{hp::float3{1.0F, 0.0F, 0.0F}, {}, hp::float3{1, 1, 1}});
+    scene.setLocalTransform(b, hp::Transform{hp::float3{0.0F, 2.0F, 0.0F}, {}, hp::float3{1, 1, 1}});
+    scene.setLocalTransform(c, hp::Transform{hp::float3{0.0F, 0.0F, 3.0F}, {}, hp::float3{1, 1, 1}});
+
+    scene.propagateTransforms();
+
+    const auto world = world_position(scene, c);
+    CHECK(world.x == doctest::Approx(1.0F));
+    CHECK(world.y == doctest::Approx(2.0F));
+    CHECK(world.z == doctest::Approx(3.0F));
+}
+
+TEST_CASE("moving a parent moves its whole subtree in the same pass") {
+    hp::Scene scene;
+    auto parent = scene.create("parent");
+    auto child = scene.create("child");
+    REQUIRE(scene.setParent(child, parent));
+    scene.setLocalTransform(child, hp::Transform{hp::float3{0.0F, 0.0F, 5.0F}, {}, hp::float3{1, 1, 1}});
+    scene.propagateTransforms();
+    REQUIRE(world_position(scene, child).z == doctest::Approx(5.0F));
+
+    scene.setLocalTransform(parent, hp::Transform{hp::float3{10.0F, 0.0F, 0.0F}, {}, hp::float3{1, 1, 1}});
+    scene.propagateTransforms();
+
+    const auto world = world_position(scene, child);
+    CHECK(world.x == doctest::Approx(10.0F));
+    CHECK(world.z == doctest::Approx(5.0F));
+}
+
+TEST_CASE("an unchanged scene costs nothing to propagate") {
+    hp::Scene scene;
+    auto parent = scene.create("parent");
+    auto child = scene.create("child");
+    REQUIRE(scene.setParent(child, parent));
+
+    // Everything is dirty on creation, so the first pass does real work.
+    CHECK(scene.propagateTransforms() == 2);
+
+    // The second pass must recompute nothing at all. This is the assertion that
+    // makes "dirty tracking" a fact rather than a claim -- without it, a
+    // propagate that recomputed the whole scene every frame would pass every
+    // other case in this file.
+    CHECK(scene.propagateTransforms() == 0);
+
+    // One local edit dirties that entity and everything below it, and nothing
+    // above or beside it.
+    scene.setLocalTransform(parent, hp::Transform{hp::float3{1.0F, 0.0F, 0.0F}, {}, hp::float3{1, 1, 1}});
+    CHECK(scene.propagateTransforms() == 2);
+    CHECK(scene.propagateTransforms() == 0);
+
+    auto sibling = scene.create("sibling");
+    CHECK(scene.propagateTransforms() == 1);
+}
+
+TEST_CASE("previous-frame transforms are retained for interpolation") {
+    hp::Scene scene;
+    auto entity = scene.create("mover");
+    scene.setLocalTransform(entity, hp::Transform{hp::float3{0.0F, 0.0F, 0.0F}, {}, hp::float3{1, 1, 1}});
+    scene.propagateTransforms();
+
+    scene.setLocalTransform(entity, hp::Transform{hp::float3{4.0F, 0.0F, 0.0F}, {}, hp::float3{1, 1, 1}});
+    scene.propagateTransforms();
+
+    CHECK(scene.worldTransform(entity)._41 == doctest::Approx(4.0F));
+    CHECK(scene.previousWorldTransform(entity)._41 == doctest::Approx(0.0F));
+
+    // An entity that did not move reports previous == current, which is the
+    // correct answer for an interpolator rather than a case it must special-case.
+    scene.propagateTransforms();
+    CHECK(scene.previousWorldTransform(entity)._41 == doctest::Approx(0.0F));
+}
+
+TEST_CASE("KeepLocal reparenting snaps the entity to its new parent") {
+    hp::Scene scene;
+    auto origin = scene.create("origin");
+    auto socket = scene.create("socket");
+    auto item = scene.create("item");
+    scene.setLocalTransform(socket, hp::Transform{hp::float3{10.0F, 0.0F, 0.0F}, {}, hp::float3{1, 1, 1}});
+    scene.setLocalTransform(item, hp::Transform{hp::float3{0.0F, 1.0F, 0.0F}, {}, hp::float3{1, 1, 1}});
+    REQUIRE(scene.setParent(item, origin));
+    scene.propagateTransforms();
+
+    REQUIRE(scene.setParent(item, socket, hp::Reparent::KeepLocal));
+    scene.propagateTransforms();
+
+    // The local offset is preserved, so the item moves to the socket -- what
+    // parenting a weapon to a hand means.
+    const auto world = world_position(scene, item);
+    CHECK(world.x == doctest::Approx(10.0F));
+    CHECK(world.y == doctest::Approx(1.0F));
+}
+
+TEST_CASE("KeepWorld reparenting leaves the entity exactly where it was") {
+    hp::Scene scene;
+    auto origin = scene.create("origin");
+    auto socket = scene.create("socket");
+    auto item = scene.create("item");
+    scene.setLocalTransform(socket, hp::Transform{hp::float3{10.0F, -3.0F, 2.0F}, {}, hp::float3{1, 1, 1}});
+    scene.setLocalTransform(item, hp::Transform{hp::float3{0.0F, 1.0F, 0.0F}, {}, hp::float3{1, 1, 1}});
+    REQUIRE(scene.setParent(item, origin));
+    scene.propagateTransforms();
+    const auto before = world_position(scene, item);
+
+    REQUIRE(scene.setParent(item, socket, hp::Reparent::KeepWorld));
+    scene.propagateTransforms();
+    const auto after = world_position(scene, item);
+
+    // What an editor drag in the hierarchy panel must do: the parent changes and
+    // the object does not visibly move.
+    CHECK(after.x == doctest::Approx(before.x));
+    CHECK(after.y == doctest::Approx(before.y));
+    CHECK(after.z == doctest::Approx(before.z));
+    CHECK(item.get<hp::Hierarchy>().parent == socket.raw());
+}
+
+TEST_CASE("KeepWorld survives a scaled and rotated parent") {
+    hp::Scene scene;
+    auto parent = scene.create("parent");
+    auto item = scene.create("item");
+
+    hp::Transform parentLocal;
+    parentLocal.position = hp::float3{5.0F, 0.0F, 0.0F};
+    parentLocal.scale = hp::float3{2.0F, 2.0F, 2.0F};
+    parentLocal.rotation = hp::Quaternion::RotationFromAxisAngle(hp::float3{0.0F, 1.0F, 0.0F}, 1.0F);
+    scene.setLocalTransform(parent, parentLocal);
+    scene.setLocalTransform(item, hp::Transform{hp::float3{1.0F, 2.0F, 3.0F}, {}, hp::float3{1, 1, 1}});
+    scene.propagateTransforms();
+    const auto before = world_position(scene, item);
+
+    // The decomposition path is the interesting one here: a uniformly scaled,
+    // rotated parent is where a naive "just subtract the positions" reparent
+    // gets it wrong.
+    REQUIRE(scene.setParent(item, parent, hp::Reparent::KeepWorld));
+    scene.propagateTransforms();
+    const auto after = world_position(scene, item);
+
+    CHECK(after.x == doctest::Approx(before.x).epsilon(0.001));
+    CHECK(after.y == doctest::Approx(before.y).epsilon(0.001));
+    CHECK(after.z == doctest::Approx(before.z).epsilon(0.001));
+}
+
+TEST_CASE("unparenting with KeepWorld keeps the world position") {
+    hp::Scene scene;
+    auto parent = scene.create("parent");
+    auto child = scene.create("child");
+    scene.setLocalTransform(parent, hp::Transform{hp::float3{7.0F, 0.0F, 0.0F}, {}, hp::float3{1, 1, 1}});
+    scene.setLocalTransform(child, hp::Transform{hp::float3{0.0F, 0.0F, 1.0F}, {}, hp::float3{1, 1, 1}});
+    REQUIRE(scene.setParent(child, parent));
+    scene.propagateTransforms();
+    const auto before = world_position(scene, child);
+
+    REQUIRE(scene.setParent(child, hp::Entity{}, hp::Reparent::KeepWorld));
+    scene.propagateTransforms();
+
+    const auto after = world_position(scene, child);
+    CHECK(after.x == doctest::Approx(before.x));
+    CHECK(after.z == doctest::Approx(before.z));
+}
+
+TEST_CASE("a clone starts dirty, so a stale source is never inherited silently") {
+    hp::Scene scene;
+    auto entity = scene.create("e");
+    scene.setLocalTransform(entity, hp::Transform{hp::float3{3.0F, 0.0F, 0.0F}, {}, hp::float3{1, 1, 1}});
+    // Deliberately not propagated: the source's world transform is stale.
+
+    hp::Scene copy = scene.clone(hp::CloneIds::Preserve);
+    CHECK(copy.propagateTransforms() == 1);
+
+    auto found = copy.find(entity.guid());
+    REQUIRE(found.has_value());
+    CHECK(copy.worldTransform(*found)._41 == doctest::Approx(3.0F));
+}
+
+TEST_CASE("a deep chain propagates without losing precision or order") {
+    hp::Scene scene;
+    constexpr int kDepth = 64;
+    std::vector<hp::Entity> chain;
+    chain.reserve(kDepth);
+    for (int i = 0; i < kDepth; ++i) {
+        auto entity = scene.create("link");
+        scene.setLocalTransform(entity, hp::Transform{hp::float3{1.0F, 0.0F, 0.0F}, {}, hp::float3{1, 1, 1}});
+        if (i > 0) {
+            REQUIRE(scene.setParent(entity, chain.back()));
+        }
+        chain.push_back(entity);
+    }
+
+    CHECK(scene.propagateTransforms() == kDepth);
+    CHECK(world_position(scene, chain.back()).x == doctest::Approx(static_cast<float>(kDepth)));
+
+    // Parents must be visited before children in one pass -- if the order were
+    // wrong the tail of a 64-deep chain would lag by a frame per level.
+    scene.setLocalTransform(chain.front(), hp::Transform{hp::float3{100.0F, 0.0F, 0.0F}, {}, hp::float3{1, 1, 1}});
+    CHECK(scene.propagateTransforms() == kDepth);
+    CHECK(world_position(scene, chain.back()).x == doctest::Approx(100.0F + kDepth - 1.0F));
+}

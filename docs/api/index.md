@@ -46,11 +46,11 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
 | [`<hp/Render.hpp>`](Render.md) | 19 | 19 |
-| [`<hp/Scene.hpp>`](Scene.md) | 48 | 48 |
+| [`<hp/Scene.hpp>`](Scene.md) | 56 | 56 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 
-**339 public declarations across 19 headers, 222 documented.**
+**347 public declarations across 19 headers, 230 documented.**
 
 ## Every symbol
 
@@ -311,6 +311,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Id` | [`Scene.hpp`](Scene.md) |
 | `Tag` | [`Scene.hpp`](Scene.md) |
 | `Transform` | [`Scene.hpp`](Scene.md) |
+| `WorldTransform` | [`Scene.hpp`](Scene.md) |
+| `DirtyTransform` | [`Scene.hpp`](Scene.md) |
 | `Hierarchy` | [`Scene.hpp`](Scene.md) |
 | `MeshRenderer` | [`Scene.hpp`](Scene.md) |
 | `Camera` | [`Scene.hpp`](Scene.md) |
@@ -328,6 +330,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Entity::remove` | [`Scene.hpp`](Scene.md) |
 | `Entity::operator==` | [`Scene.hpp`](Scene.md) |
 | `Entity::operator!=` | [`Scene.hpp`](Scene.md) |
+| `Reparent` | [`Scene.hpp`](Scene.md) |
 | `CloneIds` | [`Scene.hpp`](Scene.md) |
 | `Scene` | [`Scene.hpp`](Scene.md) |
 | `Scene::Scene` | [`Scene.hpp`](Scene.md) |
@@ -341,6 +344,11 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Scene::valid` | [`Scene.hpp`](Scene.md) |
 | `Scene::find` | [`Scene.hpp`](Scene.md) |
 | `Scene::setParent` | [`Scene.hpp`](Scene.md) |
+| `Scene::setLocalTransform` | [`Scene.hpp`](Scene.md) |
+| `Scene::markTransformDirty` | [`Scene.hpp`](Scene.md) |
+| `Scene::propagateTransforms` | [`Scene.hpp`](Scene.md) |
+| `Scene::worldTransform` | [`Scene.hpp`](Scene.md) |
+| `Scene::previousWorldTransform` | [`Scene.hpp`](Scene.md) |
 | `Scene::roots` | [`Scene.hpp`](Scene.md) |
 | `Scene::size` | [`Scene.hpp`](Scene.md) |
 | `Scene::clone` | [`Scene.hpp`](Scene.md) |

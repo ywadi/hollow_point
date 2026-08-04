@@ -92,3 +92,18 @@ resources on the main thread.
 
 Both belong in 77.1's design, and T0083 now notes that saves must record the
 resident-scene set.
+
+### Cross-ticket obligation — T0101 (2026-08-04)
+
+**Nothing calls transform propagation in the frame, because nothing owns a
+`Scene`.** T0101 built `Scene::propagateTransforms()` — one pass, parents before
+children, dirty-tracked so an unchanged scene recomputes nothing — and D17 places
+it at frame phases 7 and 9: phase 7 serves the followers that run at phase 8,
+phase 9 catches whatever phase 8 itself moved.
+
+What is missing is an owner. `Application` holds a window, a layer stack and an
+input system, but no scene, so there is no place in `Application::run` for the
+call to go. When this ticket gives the engine a loaded, held scene, wiring the
+two propagation calls is the small remaining piece — and the second pass may be
+made incremental (most frames it has almost nothing to do) but **may not be
+removed**, per D17.

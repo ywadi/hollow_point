@@ -6,7 +6,7 @@
 #include <hp/Scene.hpp>
 ```
 
-48 public declaration(s), 48 documented.
+56 public declaration(s), 56 documented.
 
 ## `Scene`
 
@@ -58,6 +58,37 @@ struct Transform
  derived state is what lets a transform be copied, serialized and diffed
  without needing to know whether a cached world matrix is stale.
 
+## `WorldTransform`
+
+```cpp
+struct WorldTransform
+```
+
+ The world transform, plus the one from the previous propagation (T0101).
+
+ Derived state, written **only** by `Scene::propagateTransforms`. Assigning to
+ it by hand is silently undone on the next pass, which is why there is no API
+ that hands it out mutably.
+
+ `previous` exists from day one rather than being retrofitted: physics
+ interpolation (T0057's alpha) needs a previous/current pair, and motion
+ vectors for TAA and motion blur need one eventually (T0096 leaves the hook
+ open). One extra matrix per entity now is cheaper than touching every
+ transform consumer later. An entity that did not move has
+ `previous == current`, which is the correct answer rather than a special case.
+
+## `DirtyTransform`
+
+```cpp
+struct DirtyTransform
+```
+
+ Marks an entity whose world transform needs recomputing.
+
+ A tag component rather than a bool inside `Transform`, so propagation can ask
+ entt for the dirty set instead of visiting every entity to read a flag — and
+ so an unchanged subtree genuinely costs nothing.
+
 ## `Hierarchy`
 
 ```cpp
@@ -105,6 +136,10 @@ class Entity
  frame** — it does not know whether the entity still exists, and a destroyed
  entity's slot is reused, so a stale handle can silently address a different
  entity. Persist a `Guid` and resolve it with `Scene::find` instead.
+
+ `HP_API` because the engine builds with hidden visibility: `valid` and `guid`
+ are the two members defined out of line, and without the export they link
+ inside the engine and are undefined in every consumer.
 
 ## `Entity::Entity`
 
@@ -229,6 +264,19 @@ bool operator!=(Entity a, Entity b)
  @param a the left-hand handle.
  @param b the right-hand handle.
  @returns whether two handles differ; see `operator==`.
+
+## `Reparent`
+
+```cpp
+enum class Reparent
+```
+
+| Enumerator | Value |
+|---|---|
+| `KeepLocal` | 0 |
+| `KeepWorld` | 1 |
+
+ What a reparent does to the entity's position in the world (T0101).
 
 ## `CloneIds`
 
@@ -368,7 +416,7 @@ std::optional<Entity> find(Guid guid) const
 ## `Scene::setParent`
 
 ```cpp
-bool setParent(Entity child, Entity parent)
+bool setParent(Entity child, Entity parent, Reparent mode)
 ```
 
  Reparents an entity, maintaining both sides of the link.
@@ -377,9 +425,78 @@ bool setParent(Entity child, Entity parent)
  parent first, so calling it repeatedly cannot duplicate a child entry.
  @param child the entity to reparent.
  @param parent the new parent, or a null handle to make `child` a root.
+ @param mode whether to keep the local or the world transform. Defaults to
+        keeping the local one, which is what code usually means; an editor
+        drag wants `KeepWorld`.
  @returns false when the handles are invalid or when `parent` is `child`
           or one of its descendants — a cycle would make traversal
           non-terminating, so it is refused rather than accepted.
+
+## `Scene::setLocalTransform`
+
+```cpp
+void setLocalTransform(Entity entity, const Transform & transform)
+```
+
+ Writes an entity's local transform and marks its subtree for propagation.
+
+ **The only write that is guaranteed to reach the world transform.**
+ `Entity::get<Transform>()` still hands out a mutable reference — entt's
+ storage is not going to stop it — and a write through that reference is
+ invisible to propagation until something marks the entity dirty. Prefer
+ this; if you must write directly, call `markTransformDirty` after.
+ @param entity the entity to move.
+ @param transform the new local transform.
+ @returns nothing.
+
+## `Scene::markTransformDirty`
+
+```cpp
+void markTransformDirty(Entity entity)
+```
+
+ Marks an entity's world transform stale, so the next propagation
+ recomputes it and everything below it.
+ @param entity the entity whose local transform changed.
+ @returns nothing.
+
+## `Scene::propagateTransforms`
+
+```cpp
+std::size_t propagateTransforms()
+```
+
+ Recomputes every stale world transform, in one pass, parents before
+ children.
+
+ Belongs at frame phases 7 and 9 (D17): phase 7 serves the followers that
+ run at phase 8, and phase 9 catches whatever phase 8 itself moved. A
+ clean scene walks the hierarchy and writes nothing.
+ @returns how many entities were recomputed, which is what a test asserts
+          on to prove an unchanged subtree cost nothing.
+
+## `Scene::worldTransform`
+
+```cpp
+const float4x4 & worldTransform(Entity entity) const
+```
+
+ @returns the entity's world matrix as of the last propagation, or
+          identity when the handle is invalid.
+
+ A lookup, never a parent-chain walk — the walk is the propagation pass's
+ job, done once for the whole scene rather than once per query.
+ @param entity the entity to read.
+
+## `Scene::previousWorldTransform`
+
+```cpp
+const float4x4 & previousWorldTransform(Entity entity) const
+```
+
+ @returns the entity's world matrix as of the propagation before last, for
+          interpolation and motion vectors. Identity for an invalid handle.
+ @param entity the entity to read.
 
 ## `Scene::roots`
 
