@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
@@ -90,3 +90,33 @@ hangs during development on this very ticket's machinery. "Device lost: GPU hang
 or driver reset" versus an unlabelled crash is the difference between a shrug
 and a lost afternoon — and the message that makes that difference has never been
 seen working.
+### Design finding (2026-08-05) — gameplay can drive the RHI, so the extension point is real
+
+Measured before writing any API, because it decides the shape of both this
+ticket and T0046: a shared library calling `SetRenderTargets`,
+`ClearRenderTarget` and `Draw` through `IDeviceContext*` and `ITextureView*`
+**links cleanly under `-Wl,--no-undefined` with zero Diligent libraries linked.**
+Diligent's interfaces are pure-virtual, so a call through a pointer is virtual
+dispatch and needs no symbol.
+
+This is recorded as **D22**, and it turns 27.1's "the stack must accept layers
+implemented outside the engine" (T0094) from a design aspiration into something
+straightforward: `IRenderLayer` hands a gameplay layer the device context and the
+target views, and the layer issues real draw calls. No C API, no command-buffer
+abstraction, no reimplementation of the RHI.
+
+The asymmetry that keeps it safe enforces itself through the linker rather than
+through review: **gameplay can use anything it is handed a pointer to, and cannot
+create a device, swap chain or engine factory**, because those are free functions
+in libraries linked PRIVATE. A module that tries fails to link.
+
+Consequences for this ticket's API:
+
+- `IRenderLayer::onRender` takes a context struct carrying `IDeviceContext*` and
+  the target views, not an engine-owned wrapper type. Wrapping would buy nothing
+  and cost every gameplay author a translation layer.
+- **No `RefCntAutoPtr` crosses the boundary.** Refcount manipulation across the
+  module edge reintroduces the ownership question D12 exists to avoid. Raw
+  interface pointers, engine-owned, valid for the frame and not beyond — and that
+  lifetime rule has to be stated in the header, because it is the one thing a
+  gameplay author cannot infer from the type.

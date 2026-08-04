@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | Medium |
 | **Complexity** | Simple |
 | **Phase** | 4 — Render layer |
@@ -91,3 +91,19 @@ instances rather than frame targets. The two should share naming/lookup
 conventions (46.2) so GPU memory reporting (46.6, and T0120's own reporting)
 stays legible in one place, but they are not the same resource pool and
 should not be merged into one to save a ticket.
+
+### Design finding (2026-08-05) — target views are handed out as raw interface pointers (D22)
+
+46.2 asks for "named lookup for passes", and D22 settles what a lookup returns:
+a raw `Diligent::ITextureView*`, valid for the frame and not beyond.
+
+Measured first rather than assumed — a library calling the RHI through interface
+pointers links with zero Diligent libraries, because the interfaces are
+pure-virtual. So a gameplay-authored pass (T0094) can consume a frame target
+exactly as an engine pass does, and the public header naming `ITextureView` is a
+deliberate part of the design rather than a leak. Full reasoning in **D22**.
+
+**No `RefCntAutoPtr` in the public API.** This object owns the targets; callers
+borrow them for the frame. Handing out a refcounted pointer would let a gameplay
+module extend a target's lifetime past a resize, which is precisely the leak
+46.3 exists to prevent.

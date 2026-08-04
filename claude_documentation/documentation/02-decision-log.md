@@ -800,3 +800,50 @@ scale — the mitigation is a precompiled header, which D19 already commits to f
 iteration speed — or upstream splits the math hashers into their own header, at
 which point `hp/Math.hpp` is the single file that changes and the RHI stops being
 visible at all.
+
+## D22 — Gameplay may drive the RHI through interface pointers; it may never create one
+
+**Decided** 2026-08-05, on T0046/T0027, after measuring what D21 had accidentally
+made possible.
+
+D21 exposed Diligent's include directory so `hp/Math.hpp` could work, and noted
+in passing that this leaves the RHI types **visible to gameplay and unlinkable by
+it** — the graphics engines stay PRIVATE, so there is no symbol behind them.
+That was recorded as a tolerable side effect. It is more than that.
+
+**Measured 2026-08-05:** a shared library that calls `SetRenderTargets`,
+`ClearRenderTarget` and `Draw` through `IDeviceContext*` and `ITextureView*`
+links cleanly under `-Wl,--no-undefined` with **zero Diligent libraries linked**.
+Diligent's interfaces are pure-virtual COM-style types, so a call through a
+pointer is virtual dispatch and needs no external symbol at all.
+
+So the boundary is not "gameplay cannot touch the RHI". It is sharper and more
+useful than that:
+
+- **Gameplay CAN use anything it is handed a pointer to** — issue draws, set
+  render targets, bind pipelines, map buffers. This is what makes T0027's "the
+  stack accepts layers implemented outside the engine" a real extension point
+  rather than a token one, and it is why a gameplay-authored fog-of-war or
+  minimap pass is possible without a C API or a command-buffer abstraction.
+- **Gameplay CANNOT create a device, a swap chain or an engine factory.**
+  `CreateEngineFactoryVk` and friends are free functions in the PRIVATE
+  libraries; a module that calls one fails to link. That is the correct
+  asymmetry and it enforces itself — no policy, no review, just the linker.
+
+**Consequence, and it is an amendment to `hp/Render.hpp`'s rule:** public engine
+headers **may** name Diligent RHI interface types where a gameplay consumer needs
+to use them. `RenderLayer` still owns device creation and lifetime, and no header
+exposes a factory. What changes is that handing out an `IDeviceContext*` is now a
+deliberate, sound part of the design rather than a leak.
+
+**What this does not license.** Not `RefCntAutoPtr` in a public header — refcount
+manipulation across the boundary reintroduces exactly the ownership question D12
+avoids. Not engine-internal Diligent objects handed out casually; a pointer in a
+public API is a contract about lifetime, and the engine's answer is that
+frame-scoped pointers are valid for the frame and nothing else.
+
+**Revisit if** a second backend is ever wanted behind an abstraction, since this
+makes Diligent's interfaces part of the gameplay-facing API surface rather than
+an implementation detail. That is a real cost and it is accepted deliberately:
+D6 already chose Diligent, and an abstraction over an abstraction buys nothing
+until there is a concrete second target.

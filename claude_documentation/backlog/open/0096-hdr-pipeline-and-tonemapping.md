@@ -84,3 +84,15 @@ work here is wiring and policy, not writing a tonemapper.
   TAA-shaped hook 96.7 leaves open — its 111.2 names the full dependency list
   (motion vectors, jitter, history buffers, ordering against this tonemap).
   Check T0111's recorded decision before wiring anything into the hook.
+
+### Cross-ticket obligation — T0130 (2026-08-05)
+
+**Exposure ownership is contested between this ticket and T0130, and one of you
+must own it.** A camera is where exposure naturally belongs conceptually — it is
+a lens property in every physical model — while the HDR chain here is where it is
+actually applied. T0130 asks for the decision to be recorded with a stated
+precedence rather than each ticket assuming the other handles it.
+
+The failure this prevents is concrete: exposure implemented in both places,
+multiplying, and a scene that is correct only when one of them happens to be at
+its neutral value.

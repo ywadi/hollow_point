@@ -123,3 +123,24 @@ deal to a game that wanted a different one. Until decided, do not bake
 - **T0120.1** gives this camera component an optional texture target. Leave
   room in 81.1 rather than assuming every camera contributes to the composited
   swap-chain frame.
+
+### Cross-ticket obligation — T0130 (2026-08-05)
+
+**This ticket resolves *which* camera is active; T0130 decides what a camera
+describes.** They are easy to conflate and must not be: active-camera selection,
+priority, viewport rect and culling mask are yours, while the lens vocabulary —
+vertical FoV versus focal length and sensor size, aspect derivation, projection
+convention, exposure ownership, depth-of-field storage — is T0130's.
+
+Two of its outcomes bind this ticket directly:
+
+- **Aspect ratio is derived from the viewport, not stored on the camera.** That
+  makes it *this* ticket's job to supply, since the viewport rect lives here. A
+  stored aspect goes stale on every resize and yields subtly stretched output
+  that nobody notices for weeks.
+- **The projection convention (reverse-Z, depth range, handedness) must be
+  measured on both backends.** OpenGL's clip-space Z is `[-1, 1]` and Vulkan's is
+  `[0, 1]`, both ship here (D16), and Diligent's projection helpers take an
+  explicit GL flag. Whichever way T0130 decides, this ticket builds the matrices
+  and is where getting it wrong shows up as a mirrored or depth-fighting scene on
+  exactly one backend.
