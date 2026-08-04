@@ -14,6 +14,7 @@
 'use strict';
 
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
@@ -233,6 +234,245 @@ function readDecisionLog() {
   return { generated: new Date().toISOString(), markdown: fs.readFileSync(DECISION_LOG, 'utf8') };
 }
 
+// --- CI status ------------------------------------------------------------------
+//
+// This used to be two <img src=".../badge.svg"> tags in index.html, and the
+// badge is wrong for this repository in a way that matters.
+//
+// `ci.yml` sets `cancel-in-progress: true`, so pushing again while a run is in
+// flight cancels the previous one. That is routine here -- it is the intended
+// behaviour, not an incident. GitHub's badge renders the newest *completed*
+// run on the default branch and paints anything that is not `success` red, so
+// a cancelled run makes the badge say "CI - failing" in exactly the situation
+// where nothing at all is known about the code. Measured, 2026-08-04: run
+// 30943449243 was cancelled by the next push, and badge.svg served
+// `<title>CI - failing</title>` with the red gradient while the last run that
+// actually finished on its merits (30941522246) had succeeded. CLAUDE.md
+// already warns "`cancelled` is not `failed`" because reading it that way has
+// produced a confident, wrong conclusion here before -- and the board was
+// repeating the mistake in the header.
+//
+// The badge also has no in-flight state: while a run is executing it keeps
+// showing the previous verdict, so "building" and "finished" look identical.
+//
+// Neither is fixable in an <img>, so the status is computed here from the
+// Actions API instead, where `status` and `conclusion` are separate fields.
+
+const GH_REPO = process.env.HP_BOARD_REPO || 'ywadi/hollow_point';
+// Scoped to one branch for the same reason GitHub's badge is: the header
+// answers "is the project green", and a run on a scratch branch is not that.
+const GH_BRANCH = process.env.HP_BOARD_BRANCH || 'main';
+// Two requests per refresh, one per workflow. Anonymous is 60 requests/hour
+// per IP, so a 60s cache would exhaust it in half an hour of the board simply
+// being open -- hence the slower default when there is no token. Conditional
+// requests (see the ETag note below) make the idle case free either way; this
+// is only the ceiling for when they miss.
+const CI_TTL_DEFAULT = () => (ghToken ? 60000 : 120000);
+
+const CI_WORKFLOWS = [
+  { id: 'ci',   file: 'ci.yml',         label: 'CI' },
+  { id: 'full', file: 'full-build.yml', label: 'Full build' },
+];
+
+// Optional -- the repo is public and all of this works anonymously -- but with
+// a token the rate limit goes from 60 requests/hour to 5000 and stops being a
+// consideration at all. Environment first, then the gh CLI, which is what is
+// actually logged in on this machine.
+//
+// Three details here were each wrong on the first attempt:
+//   - `command -v gh` returns nothing in a non-interactive shell here
+//     (CLAUDE.md says so), so PATH alone loses a token that is sitting right
+//     there -- hence the absolute paths.
+//   - `gh auth token` only exists from gh 2.9; this machine has 2.4.0, where
+//     `auth status --show-token` is the only way to get it.
+//   - that command exits 0 and prints the token on *stderr*, which
+//     execFileSync discards on success -- hence spawnSync and both streams.
+let ghToken = process.env.GH_TOKEN || process.env.GITHUB_TOKEN || '';
+if (!ghToken) {
+  const run = (bin, args) => {
+    const r = require('child_process').spawnSync(bin, args, { encoding: 'utf8', timeout: 5000 });
+    return `${r.stdout || ''}\n${r.stderr || ''}`;
+  };
+  const findToken = (s) => {
+    const m = String(s).match(/\bgh[pousr]_[A-Za-z0-9]{16,}\b/);
+    return m ? m[0] : '';
+  };
+  for (const bin of [process.env.HP_BOARD_GH_BIN, 'gh', '/usr/bin/gh', '/usr/local/bin/gh'].filter(Boolean)) {
+    try {
+      ghToken = findToken(run(bin, ['auth', 'token']))
+             || findToken(run(bin, ['auth', 'status', '--show-token']));
+    } catch { /* no gh here -- anonymous is fine for a public repo */ }
+    if (ghToken) break;
+  }
+}
+
+// A 304 from a conditional request does not count against GitHub's primary
+// rate limit, and a board left open on a quiet afternoon asks the same question
+// over and over -- so remembering the ETag is the difference between an idle
+// board costing nothing and an anonymous one exhausting 60 requests/hour and
+// putting "unavailable" in the header. It stops helping while a run is in
+// flight, because `updated_at` moves and the response genuinely changes, which
+// is exactly when spending a request is worth it.
+const etags = new Map(); // url -> { etag, body }
+
+function githubJSON(pathAndQuery) {
+  return new Promise((resolve, reject) => {
+    const prior = etags.get(pathAndQuery);
+    const req = https.request({
+      hostname: 'api.github.com',
+      path: pathAndQuery,
+      method: 'GET',
+      headers: {
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        // GitHub rejects requests without one.
+        'User-Agent': 'hollowpoint-board',
+        ...(ghToken ? { Authorization: `Bearer ${ghToken}` } : {}),
+        ...(prior ? { 'If-None-Match': prior.etag } : {}),
+      },
+    }, (res) => {
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => { body += c; });
+      res.on('end', () => {
+        if (res.statusCode === 304 && prior) return resolve(prior.body);
+        if (res.statusCode !== 200) {
+          const e = new Error(`GitHub API ${res.statusCode}`);
+          e.statusCode = res.statusCode;
+          // Exhausted rate limit: remaining is 0 and reset is a unix time.
+          if (res.headers['x-ratelimit-remaining'] === '0') e.rateLimitReset = Number(res.headers['x-ratelimit-reset']) * 1000;
+          return reject(e);
+        }
+        let parsed;
+        try { parsed = JSON.parse(body); } catch (err) { return reject(err); }
+        if (res.headers.etag) etags.set(pathAndQuery, { etag: res.headers.etag, body: parsed });
+        resolve(parsed);
+      });
+    });
+    // The board must never hang on a slow network: this endpoint is polled.
+    req.setTimeout(8000, () => req.destroy(new Error('GitHub API timed out')));
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+// GitHub splits this across two fields and the whole bug is collapsing them:
+// `status` is queued|in_progress|completed, `conclusion` is null until the run
+// completes and only then says success|failure|cancelled|skipped|timed_out|...
+// Treating "conclusion !== 'success'" as failure buckets both a cancelled run
+// and a running one (null) as red.
+function runState(run) {
+  if (!run) return 'none';
+  if (run.status !== 'completed') {
+    // queued, waiting, requested and pending all mean "not started yet".
+    return run.status === 'in_progress' ? 'in_progress' : 'queued';
+  }
+  switch (run.conclusion) {
+    case 'success': return 'success';
+    case 'failure': case 'timed_out': case 'startup_failure': return 'failure';
+    case 'cancelled': return 'cancelled';
+    case 'skipped': return 'skipped';
+    case 'action_required': return 'action_required';
+    case 'neutral': return 'neutral';
+    default: return 'unknown';
+  }
+}
+
+// Which conclusions are a statement *about the code*. A cancelled run was
+// killed before it could say anything, and a skipped one never ran -- neither
+// is evidence of pass or fail, which is precisely why they must not be allowed
+// to overwrite the last run that did reach a verdict.
+const VERDICT_STATES = new Set(['success', 'failure', 'action_required']);
+
+function summarizeRuns(wf, runs) {
+  const latest = runs[0] || null;
+  // "In flight" is the newest run that has not completed. There can be more
+  // than one queued at once; the newest is the one the header is about.
+  const running = runs.find((r) => r.status !== 'completed') || null;
+  // The pass/fail signal comes from the newest run that actually reached a
+  // verdict, skipping past any cancellations. With cancel-in-progress this is
+  // frequently not the newest run, and using the newest is the bug.
+  const verdictRun = runs.find((r) => r.status === 'completed' && VERDICT_STATES.has(runState(r))) || null;
+
+  const brief = (r) => r && {
+    id: r.id, url: r.html_url, number: r.run_number, state: runState(r),
+    status: r.status, conclusion: r.conclusion, branch: r.head_branch,
+    sha: (r.head_sha || '').slice(0, 7), title: r.display_title || r.name,
+    startedAt: r.run_started_at || r.created_at, updatedAt: r.updated_at,
+  };
+
+  // The state the header paints. A run in flight wins, because it is the thing
+  // happening now; otherwise it is the last verdict. Only when there has never
+  // been a verdict does a cancelled/skipped run get to be the state itself --
+  // at that point there is genuinely nothing else to report.
+  const state = running ? runState(running) : (verdictRun ? runState(verdictRun) : runState(latest));
+
+  return {
+    ...wf,
+    state,
+    // True when the verdict being shown is not from the newest run -- i.e. the
+    // newest run was cancelled, or one is still going. The UI says so rather
+    // than presenting a stale green as if it covered the latest push.
+    verdictIsStale: !!(verdictRun && latest && verdictRun.id !== latest.id),
+    latest: brief(latest),
+    running: brief(running),
+    verdict: brief(verdictRun),
+    runsUrl: `https://github.com/${GH_REPO}/actions/workflows/${wf.file}`,
+  };
+}
+
+let ciCache = { at: 0, payload: null };
+
+// Freshness only matters while something is running -- that is the one state
+// that changes on its own, and a "building" badge that lags a minute behind the
+// run finishing defeats the point of showing it. Shortened only when there is a
+// token: two workflows every 20s would burn an anonymous quota in ten minutes
+// and leave the header saying "unavailable", which is a worse failure than
+// being a minute stale.
+function effectiveTTL(payload) {
+  const base = Number(process.env.HP_BOARD_CI_TTL_MS) || CI_TTL_DEFAULT();
+  const running = payload && (payload.workflows || []).some((w) => w.running);
+  return (running && ghToken) ? Math.min(base, 20000) : base;
+}
+
+async function readCI() {
+  const now = Date.now();
+  if (ciCache.payload && now - ciCache.at < effectiveTTL(ciCache.payload)) {
+    return { ...ciCache.payload, cached: true };
+  }
+
+  // 20 runs, not 5: with cancel-in-progress a burst of pushes can cancel
+  // several in a row, and the last real verdict has to still be in the window.
+  const q = `branch=${encodeURIComponent(GH_BRANCH)}&per_page=20&exclude_pull_requests=true`;
+  const results = await Promise.all(CI_WORKFLOWS.map(async (wf) => {
+    try {
+      const data = await githubJSON(`/repos/${GH_REPO}/actions/workflows/${wf.file}/runs?${q}`);
+      return summarizeRuns(wf, data.workflow_runs || []);
+    } catch (err) {
+      // One workflow failing must not blank the other, and a GitHub outage
+      // must not 500 the board -- report it in the payload instead.
+      return { ...wf, state: 'unavailable', error: String(err.message || err),
+               retryAfter: err.rateLimitReset || null,
+               runsUrl: `https://github.com/${GH_REPO}/actions/workflows/${wf.file}` };
+    }
+  }));
+
+  const payload = {
+    generated: new Date().toISOString(),
+    repo: GH_REPO, branch: GH_BRANCH, authenticated: !!ghToken,
+    workflows: results,
+  };
+  // The client polls on this, so it has to describe the cache it will actually
+  // hit next -- computed after the fact, from what came back.
+  payload.ttlMs = effectiveTTL(payload);
+  // A rate-limit rejection is held until the limit resets -- dated forward so
+  // the ordinary TTL check expires it exactly then -- so a board left open does
+  // not keep hammering an endpoint that is already refusing it.
+  const soonestReset = results.map((r) => r.retryAfter).filter(Boolean).sort()[0];
+  ciCache = { at: soonestReset ? soonestReset - payload.ttlMs : now, payload };
+  return payload;
+}
+
 // --- http --------------------------------------------------------------------
 
 const server = http.createServer((req, res) => {
@@ -252,6 +492,21 @@ const server = http.createServer((req, res) => {
     if (url === '/api/architecture') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end(JSON.stringify(readArchitecture()));
+    }
+
+    // The only endpoint here that talks to the network, so the only one that
+    // is async. It resolves even when GitHub does not -- readCI() puts the
+    // failure in the payload rather than throwing -- but a bug in it must not
+    // take the board down either, hence the catch.
+    if (url === '/api/ci') {
+      readCI().then((payload) => {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(payload));
+      }).catch((err) => {
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ generated: new Date().toISOString(), workflows: [], error: String((err && err.message) || err) }));
+      });
+      return;
     }
 
     if (url === '/api/decisions') {
@@ -295,10 +550,20 @@ const server = http.createServer((req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  const b = readBoard();
-  const counts = b.columns.map((c) => `${c.title} ${c.tasks.length}`).join(' | ');
-  console.log(`backlog board -> http://localhost:${PORT}`);
-  console.log(`watching       ${path.resolve(BACKLOG_DIR)}`);
-  console.log(`current        ${counts}`);
-});
+// Requiring this file instead of running it exposes the pure helpers without
+// binding a port or touching the network, which is how the CI-state derivation
+// gets checked against recorded API responses -- the cancelled-then-succeeded
+// sequence that motivated it cannot be reproduced on demand against the live
+// API, so it is replayed from captured JSON instead.
+if (require.main === module) {
+  server.listen(PORT, () => {
+    const b = readBoard();
+    const counts = b.columns.map((c) => `${c.title} ${c.tasks.length}`).join(' | ');
+    console.log(`backlog board -> http://localhost:${PORT}`);
+    console.log(`watching       ${path.resolve(BACKLOG_DIR)}`);
+    console.log(`current        ${counts}`);
+    console.log(`ci status      ${GH_REPO}@${GH_BRANCH} (${ghToken ? 'authenticated' : 'anonymous'})`);
+  });
+} else {
+  module.exports = { runState, summarizeRuns, readBoard, readArchitecture };
+}

@@ -54,34 +54,58 @@
   .search-clear:hover { color:var(--fg); }
   .search-wrap.has-value .search-clear { display:block; }
 
-  /* GitHub Actions status badges + repo link. The badge <img> comes from
-     github.com, so it is the one thing in this header that depends on the
-     network -- everything else is served locally. .gh-badge-img is a fixed
-     box (not just an img size) so the header's width never jumps between
-     "loading", "loaded" and "failed to load": the box is reserved up front
-     and the SVG (or, if the request fails, the text fallback below) is fit
-     inside it. */
+  /* GitHub Actions status + repo link. These were <img src=".../badge.svg">
+     tags; they are now painted from /api/ci, because the badge image cannot
+     express either of the two states this repository needs -- it calls a
+     cancelled run "failing" and has no in-flight state at all. The long note
+     in server.js has the measurement. Everything below is the rendering of
+     the distinction, not the deriving of it, which happens server-side.
+
+     .ci-state carries a min-width for the same reason the old badge box had a
+     fixed width: this is a sticky header, and it must not shuffle sideways
+     every time a run starts, finishes or gets cancelled. */
   .gh-links { display:flex; align-items:center; gap:10px; }
-  .gh-badge {
-    display:flex; align-items:center; gap:6px; text-decoration:none;
+  .ci-badge {
+    display:flex; align-items:center; gap:7px; text-decoration:none;
     color:var(--dim); font-size:11px; white-space:nowrap;
+    border:1px solid var(--line); border-radius:6px; padding:3px 9px;
+    background:var(--panel2);
   }
-  .gh-badge:hover { color:var(--fg); }
-  .gh-badge-img {
-    display:inline-flex; align-items:center; justify-content:center;
-    width:92px; height:20px; border-radius:3px; background:var(--panel2);
-    flex:none; overflow:hidden;
-  }
-  .gh-badge-img img { width:100%; height:100%; object-fit:contain; display:block; }
-  .gh-badge-fallback { display:none; font:10px ui-monospace,Menlo,monospace; color:var(--dim); }
-  /* Set by the error handler in the script below when the badge image fails
-     to load -- no network, github.com unreachable, or no access to the repo
-     (an unauthenticated request to a private repo also fails to load the
-     image) -- swap the broken-image icon for plain text rather than let the
-     browser show it. The class is named "offline" for the common case, but
-     the fallback covers any load failure, not just that one. */
-  .gh-badge-img.offline img { display:none; }
-  .gh-badge-img.offline .gh-badge-fallback { display:block; }
+  .ci-badge:hover { border-color:var(--accent); }
+  .ci-name { font-weight:600; color:var(--fg); }
+  .ci-state { display:inline-flex; align-items:center; gap:5px; min-width:66px; }
+  .ci-dot { width:8px; height:8px; border-radius:50%; background:var(--dim); flex:none; }
+  .ci-label { color:var(--dim); }
+  /* The second line of the story, and the reason bug #1 was misleading rather
+     than merely wrong: a green that comes from an older run than the newest
+     push has to say so, or it reads as a verdict on code nothing has tested.
+     Always in the DOM and always reserved, empty or not -- otherwise the header
+     gains a whole row the moment a build starts, which is exactly the kind of
+     reflow the fixed-size badge box was there to prevent. */
+  .ci-note { color:var(--dim); opacity:.7; font-size:10px; min-width:86px; }
+
+  .ci-badge[data-state="success"] .ci-dot { background:var(--done); }
+  .ci-badge[data-state="success"] .ci-label { color:var(--done); }
+  .ci-badge[data-state="failure"] .ci-dot,
+  .ci-badge[data-state="action_required"] .ci-dot { background:var(--blocked); }
+  .ci-badge[data-state="failure"] .ci-label,
+  .ci-badge[data-state="action_required"] .ci-label { color:var(--blocked); }
+  /* Building borrows the In Progress column's amber, so the header and the
+     board mean the same thing by the same colour. The pulse is what separates
+     "running right now" from a settled state at a glance. */
+  .ci-badge[data-state="in_progress"] .ci-dot { background:var(--prog); animation:ci-pulse 1.4s ease-in-out infinite; }
+  .ci-badge[data-state="in_progress"] .ci-label { color:var(--prog); }
+  /* Queued is the same amber, hollow: accepted but not executing. A solid
+     pulsing dot would claim a runner has picked it up when none has. */
+  .ci-badge[data-state="queued"] .ci-dot { background:transparent; box-shadow:inset 0 0 0 2px var(--prog); }
+  .ci-badge[data-state="queued"] .ci-label { color:var(--prog); }
+  /* cancelled, skipped, no runs and unavailable all stay grey and stay
+     lowercase: each is the *absence* of a verdict, not a bad one. Painting
+     them red is precisely the mistake this replaced. */
+  .ci-badge[data-state="cancelled"] .ci-dot,
+  .ci-badge[data-state="skipped"] .ci-dot { background:var(--dim); box-shadow:inset 0 0 0 2px var(--panel2); }
+  @keyframes ci-pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } }
+  @media (prefers-reduced-motion: reduce) { .ci-badge .ci-dot { animation:none !important; } }
 
   /* search hides cards/groups by class rather than by leaving them out of the
      render, so phase aggregates (computed from the full task list) never see
@@ -220,25 +244,13 @@
     <button class="ctl" id="collapse-all">Collapse all</button>
     <button class="ctl" id="expand-all">Expand all</button>
   </div>
-  <div class="gh-links">
-    <a class="gh-badge" href="https://github.com/ywadi/hollow_point/actions/workflows/ci.yml"
-       target="_blank" rel="noopener" title="CI workflow — view runs on GitHub">
-      <span>CI</span>
-      <span class="gh-badge-img">
-        <img src="https://github.com/ywadi/hollow_point/actions/workflows/ci.yml/badge.svg"
-             alt="CI workflow status" width="92" height="20">
-        <span class="gh-badge-fallback">status unavailable</span>
-      </span>
-    </a>
-    <a class="gh-badge" href="https://github.com/ywadi/hollow_point/actions/workflows/full-build.yml"
-       target="_blank" rel="noopener" title="Full build workflow — view runs on GitHub">
-      <span>Full build</span>
-      <span class="gh-badge-img">
-        <img src="https://github.com/ywadi/hollow_point/actions/workflows/full-build.yml/badge.svg"
-             alt="Full build workflow status" width="92" height="20">
-        <span class="gh-badge-fallback">status unavailable</span>
-      </span>
-    </a>
+  <!-- Filled in by drawCI() from /api/ci. The two placeholders below are what
+       shows for the one poll before the first response lands -- they exist so
+       the header is the right size from the first paint, not so they are ever
+       a status anyone reads. -->
+  <div class="gh-links" id="gh-links">
+    <span class="ci-badge" data-state="unknown"><span class="ci-name">CI</span><span class="ci-state"><span class="ci-dot"></span><span class="ci-label">checking…</span></span><span class="ci-note"></span></span>
+    <span class="ci-badge" data-state="unknown"><span class="ci-name">Full build</span><span class="ci-state"><span class="ci-dot"></span><span class="ci-label">checking…</span></span><span class="ci-note"></span></span>
     <a class="nav" href="https://github.com/ywadi/hollow_point" target="_blank" rel="noopener">GitHub ↗</a>
   </div>
   <div class="spacer"></div>
@@ -645,18 +657,115 @@ document.getElementById('search-clear').addEventListener('click', () => {
   searchInput.focus();
 });
 
-// The GitHub Actions badge images live on github.com, unlike everything else
-// in this file -- so unlike everything else, they can fail to load: no
-// network (see T0010: offline configure is a verified property of this
-// project), github.com unreachable, or -- just as likely, and not a network
-// problem at all -- an unauthenticated request with no access to the repo,
-// if it is ever private. A bare <img> can't tell those apart and shouldn't
-// try to; either way it would leave a broken-image icon sitting in the
-// header, which reads as a bug. Swap it for a text fallback instead, inside
-// the same reserved box, so nothing shifts.
-document.querySelectorAll('.gh-badge-img img').forEach((img) => {
-  img.addEventListener('error', () => img.closest('.gh-badge-img').classList.add('offline'), { once: true });
-});
+// --- CI status ---------------------------------------------------------------
+//
+// The server does the deriving (see the note above readCI() in server.js for
+// why GitHub's badge.svg could not be kept); this only paints what it is told,
+// and the one judgement it makes is how to word it.
+//
+// Every state gets its own label, because the failure mode being fixed here is
+// exactly the one where several distinct situations were collapsed into "red".
+const CI_LABEL = {
+  success: 'passing', failure: 'failing',
+  in_progress: 'building', queued: 'queued',
+  cancelled: 'cancelled', skipped: 'skipped',
+  action_required: 'action required', neutral: 'neutral',
+  none: 'no runs', unavailable: 'unavailable', unknown: 'unknown',
+};
+
+function ciAgo(iso) {
+  if (!iso) return '';
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return 'just now';
+  if (s < 3600) return `${Math.round(s / 60)}m ago`;
+  if (s < 86400) return `${Math.round(s / 3600)}h ago`;
+  return `${Math.round(s / 86400)}d ago`;
+}
+
+// The suffix after the state. Two cases, and both exist because the state on
+// its own would otherwise overstate what is known:
+//   building/queued -- the verdict shown is from a previous run, not this one
+//   settled but stale -- the newest run was cancelled, so the green or red
+//                        being shown is about an older commit
+function ciNote(wf) {
+  if (wf.state === 'in_progress' || wf.state === 'queued') {
+    return wf.verdict ? `· last ${CI_LABEL[wf.verdict.state] || wf.verdict.state}` : '';
+  }
+  if (wf.verdictIsStale && wf.latest) {
+    return `· latest ${CI_LABEL[wf.latest.state] || wf.latest.state}`;
+  }
+  return '';
+}
+
+function ciTitle(wf) {
+  if (wf.state === 'unavailable') return `${wf.label}: status unavailable — ${wf.error || 'GitHub unreachable'}`;
+  const lines = [];
+  const run = (r, what) => r
+    ? `${what}: #${r.number} ${CI_LABEL[r.state] || r.state} — ${r.title || ''} (${r.sha}) ${ciAgo(r.updatedAt)}`
+    : null;
+  if (wf.running) lines.push(run(wf.running, 'In flight'));
+  if (wf.verdict) lines.push(run(wf.verdict, 'Last verdict'));
+  if (wf.latest && (!wf.verdict || wf.latest.id !== wf.verdict.id) && (!wf.running || wf.latest.id !== wf.running.id)) {
+    lines.push(run(wf.latest, 'Newest run'));
+  }
+  if (!lines.length) lines.push(`No runs on ${wf.branch || 'this branch'}`);
+  if (wf.verdictIsStale) {
+    lines.push('');
+    lines.push('The verdict shown is not from the newest run — a cancelled run');
+    lines.push('says nothing about the code, so it does not overwrite one that does.');
+  }
+  lines.push('');
+  lines.push('Click to open on GitHub.');
+  return `${wf.label} (${wf.branch})\n` + lines.filter((l) => l !== null).join('\n');
+}
+
+function drawCI(data) {
+  const links = document.getElementById('gh-links');
+  const repoLink = links.querySelector('a.nav');
+  const badges = (data.workflows || []).map((wf) => {
+    // Deep-link at the run the state is actually about: the one executing when
+    // it is building, the one that reached the verdict otherwise. Falling back
+    // to the workflow's run list, which is where the old badge always pointed.
+    const href = (wf.state === 'in_progress' || wf.state === 'queued')
+      ? (wf.running && wf.running.url) || wf.runsUrl
+      : (wf.verdict && wf.verdict.url) || (wf.latest && wf.latest.url) || wf.runsUrl;
+    const note = ciNote(wf);
+    return `<a class="ci-badge" data-state="${esc(wf.state)}" href="${esc(href)}"
+       target="_blank" rel="noopener" title="${esc(ciTitle(wf))}">
+      <span class="ci-name">${esc(wf.label)}</span>
+      <span class="ci-state"><span class="ci-dot"></span><span class="ci-label">${esc(CI_LABEL[wf.state] || wf.state)}</span></span>
+      <span class="ci-note">${esc(note)}</span>
+    </a>`;
+  }).join('');
+  links.innerHTML = badges + (repoLink ? repoLink.outerHTML : '');
+}
+
+// Independent of the 10s backlog poll: this one leaves the machine, and the
+// server caches it anyway. Follow the server's advertised TTL rather than
+// guessing -- it shortens the cache while a run is in flight (and only when
+// authenticated, where the rate limit affords it), so the board tracks a
+// build without ever polling faster than the data can change.
+let ciTimer = null;
+async function pollCI() {
+  let nextMs = 60000;
+  try {
+    const r = await fetch('/api/ci', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    drawCI(data);
+    nextMs = Math.max(10000, Number(data.ttlMs) || 60000);
+  } catch (err) {
+    // The board's own server is unreachable; the dot in the corner already
+    // says so, so just mark the CI state unknown rather than claim a failure.
+    drawCI({ workflows: [
+      { id: 'ci', label: 'CI', state: 'unavailable', error: String(err.message || err), runsUrl: 'https://github.com/ywadi/hollow_point/actions/workflows/ci.yml' },
+      { id: 'full', label: 'Full build', state: 'unavailable', error: String(err.message || err), runsUrl: 'https://github.com/ywadi/hollow_point/actions/workflows/full-build.yml' },
+    ] });
+  }
+  clearTimeout(ciTimer);
+  ciTimer = setTimeout(pollCI, nextMs);
+}
+pollCI();
 
 async function poll() {
   const dot = document.getElementById('dot'), status = document.getElementById('status');

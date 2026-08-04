@@ -122,51 +122,123 @@ The search term is not persisted. Every reload starts with an empty box,
 because a stale filter left over from last time you looked would just be
 confusing — unlike sort and collapse state, which are meant to stick.
 
-## GitHub status badges
+## GitHub CI status
 
-The header also carries two GitHub Actions badges, next to Sort and search,
-plus a plain link to the repository. Each badge is a link straight to that
-workflow's run history (`/actions/workflows/<file>`); the repo link goes to
-`github.com/ywadi/hollow_point` itself. All three open in a new tab
-(`target="_blank" rel="noopener"`) — this is a working dashboard, and a click
-that navigates it away from where you left it is just annoying.
+The header carries the state of two GitHub Actions workflows, next to Sort and
+search, plus a plain link to the repository. Each one links to the run it is
+describing; the repo link goes to `github.com/ywadi/hollow_point` itself. All
+three open in a new tab (`target="_blank" rel="noopener"`) — this is a working
+dashboard, and a click that navigates it away from where you left it is just
+annoying.
 
-Both workflows get a badge, not just one, because both matter for different
+Both workflows are shown, not just one, because both matter for different
 reasons: `ci.yml` ("CI") is the fast suite that runs on every push and is the
 thing that should basically always be green, while `full-build.yml` ("Full
 build") is the ~1100-target nightly build that catches breakage nothing else
-compiles against. A single badge would hide whichever workflow it left out —
-if only CI were shown, a broken nightly build could go unnoticed for a long
-time, and that is exactly the kind of drift this board exists to surface.
+compiles against. Showing one would hide whichever it left out — if only CI
+were shown, a broken nightly build could go unnoticed for a long time, and that
+is exactly the kind of drift this board exists to surface.
 
-The badge `<img>` is the one thing in this file that depends on the network —
-everything else is served from disk or computed client-side. That matters
-here specifically because offline configure is a verified property of this
-project (T0010), so a header that shows a broken-image icon reads as a bug in
-the board, not as "you're offline." But a failed image load isn't only an
-offline signal: the same failure happens if github.com is unreachable for any
-other reason, or — not a network problem at all — if the repository is private,
-because GitHub serves `badge.svg` anonymously only for public repositories and
-an `<img>` request is always anonymous (it is a cross-site subresource, and
-GitHub's session cookie is `SameSite=Lax`, so even a logged-in viewer sends
-none). This was not hypothetical: the badges were written while the repo was
-still private and rendered as the fallback for exactly that reason. The repo is
-public now and both badges serve `image/svg+xml` and read `passing`. The
-fallback therefore doesn't claim a specific cause — it survives the repo going
-private again, which is the point. Two things handle it:
+### Why this is not GitHub's badge.svg
 
-- `.gh-badge-img` is a fixed-size box, not just an `<img>` with intrinsic
-  dimensions. The box is reserved before the image ever starts loading, so
-  there is no layout shift between "loading," "loaded" and "failed to load."
-- an `error` listener on each `<img>` (in the script, not an inline
-  `onerror`, to match how every other handler in this file is wired up)
-  swaps the image for a small "status unavailable" text fallback inside that
-  same box, instead of letting the browser render its own broken-image icon.
+It was, and the badge is wrong for this repository in a way that matters.
 
-The badges are unauthenticated `badge.svg` requests, so they also render
-correctly for anyone with a network path to github.com and read access to the
-workflow — the fallback exists for "the request didn't succeed," not for a
-specific reason why.
+`ci.yml` sets `cancel-in-progress: true`, so pushing again while a run is in
+flight cancels the previous one. That is routine here — the intended
+behaviour, not an incident. GitHub's badge renders the newest **completed** run
+on the default branch and paints anything that is not `success` red, so a
+cancelled run makes the badge say `CI - failing` at the exact moment nothing
+whatsoever is known about the code. Measured on 2026-08-04: run 30943449243
+was cancelled by the next push, and `badge.svg` served
+`<title>CI - failing</title>` with the red gradient while run 30941522246, the
+last one that actually finished on its merits, had succeeded. `CLAUDE.md`
+already warns that **`cancelled` is not `failed`**, because reading it that way
+has produced a confident and wrong conclusion here before — and the board was
+repeating the mistake in its own header.
+
+The badge has no in-flight state either: while a run executes it keeps showing
+the previous verdict, so "building" and "finished" look identical.
+
+Neither is fixable in an `<img>`, so the status is computed in `server.js` from
+the Actions API, where the two things the badge conflates are separate fields:
+`status` is `queued | in_progress | completed`, and `conclusion` is `null`
+until a run completes and only then says `success | failure | cancelled |
+skipped | timed_out | …`. Treating "`conclusion !== 'success'`" as failure
+buckets both a cancelled run and a running one into red, which is the bug.
+
+### What it shows
+
+| State | Dot | Reads |
+|---|---|---|
+| `success` | solid green | `passing` |
+| `failure`, `timed_out`, `startup_failure` | solid red | `failing` |
+| `in_progress` | pulsing amber | `building` |
+| `queued` | hollow amber | `queued` |
+| `cancelled` | grey ring | `cancelled` |
+| `action_required` | solid red | `action required` |
+| no runs / API unreachable | grey | `no runs` / `unavailable` |
+
+Amber is the same amber the In Progress column uses, so the header and the
+board mean the same thing by the same colour. Cancelled, skipped and
+unavailable stay **grey**: each is the *absence* of a verdict, not a bad one.
+
+### Which run the pass/fail comes from
+
+The state is **not** simply the newest run. Three things are read separately:
+
+- **In flight** — the newest run that has not completed. If there is one, that
+  is the state, because it is what is happening now.
+- **Verdict** — the newest completed run whose conclusion is a statement about
+  the code (`success`, `failure`, `timed_out`, `startup_failure`,
+  `action_required`). Cancelled and skipped runs are **skipped over**: a run
+  killed before it finished says nothing, and must not overwrite one that does.
+- **Newest** — used only when there has never been a verdict at all, at which
+  point `cancelled` genuinely is the whole story and is shown as such.
+
+Whenever the verdict is not from the newest run, the badge says so in small
+grey text rather than presenting a stale green as if it covered the latest
+push:
+
+- `building · last passing` — a run is going; the green is from the one before it
+- `passing · latest cancelled` — the newest run was cancelled, so this verdict
+  is about an earlier commit
+
+The note slot is always reserved, empty or not, so the header does not gain a
+whole row the moment a build starts. Hovering gives the full picture: run
+numbers, commit subjects, shas and ages for the in-flight, verdict and newest
+runs.
+
+### Rate limits, caching and offline
+
+`/api/ci` is the only endpoint that leaves the machine, so it is the only one
+that can fail, and a failure must not read as a CI failure — it reads
+`unavailable`, grey. This matters here specifically because offline configure
+is a verified property of this project (T0010): a board that goes red when
+you unplug the network would be lying.
+
+- The response is cached server-side and the client polls on the TTL the
+  server advertises. The TTL shortens to 20s while a run is in flight (and
+  only when authenticated), because that is the one state that changes on its
+  own.
+- Requests are **conditional** — the ETag of the last response is replayed as
+  `If-None-Match`. A `304` does not count against GitHub's rate limit, so a
+  board left open on a quiet afternoon costs nothing. Measured: twelve
+  uncached workflow requests spent two units of rate limit; the other ten were
+  `304`s.
+- A token is optional. The repo is public and this works anonymously, but
+  anonymous is 60 requests/hour per IP, so the uncached TTL doubles without
+  one. `GH_TOKEN`/`GITHUB_TOKEN` are read first, then `gh auth token`, then
+  `gh auth status --show-token` for gh older than 2.9 — which is what is
+  installed here, and it prints the token on **stderr**, so both streams are
+  searched. The startup banner says which one it got.
+- One workflow failing does not blank the other, and a GitHub outage returns a
+  200 with the failure in the payload rather than a 500 that would take the
+  whole board down.
+
+`HP_BOARD_REPO`, `HP_BOARD_BRANCH`, `HP_BOARD_CI_TTL_MS` and `HP_BOARD_GH_BIN`
+override the defaults. The branch is scoped to `main` for the same reason
+GitHub's badge is: the header answers "is the project green", and a run on a
+scratch branch is not that.
 
 ## Superseded and dropped tickets
 
