@@ -6,7 +6,7 @@
 #include <hp/Render.hpp>
 ```
 
-17 public declaration(s), 17 documented.
+19 public declaration(s), 19 documented.
 
 ## `RenderBackend`
 
@@ -157,6 +157,27 @@ void resize(int width, int height)
  is unchanged or the layer is inert.
  @param width new width in pixels.
  @param height new height in pixels.
+
+## `RenderLayer::swapChainWidth`
+
+```cpp
+int swapChainWidth() const
+```
+
+ @returns the swap chain's current width in pixels, or 0 when inert.
+
+ The *swap chain's* size, not the window's. They are supposed to track
+ each other and the interesting failures are exactly when they do not —
+ a window that resized while the chain did not renders undefined
+ contents, which looks like a stale image rather than an error.
+
+## `RenderLayer::swapChainHeight`
+
+```cpp
+int swapChainHeight() const
+```
+
+ @returns the swap chain's current height in pixels, or 0 when inert.
 
 ## `RenderLayer::vsync`
 

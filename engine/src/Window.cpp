@@ -353,6 +353,9 @@ bool Window::setDisplayMode(DisplayMode mode) {
     // threading caveat warns about: this runs on the thread that owns the
     // window and can take longer than a frame.
     SDL_SyncWindow(impl_->window);
+    // The resize this transition causes still reaches the pump normally --
+    // SDL_SyncWindow does not consume it. Checked rather than assumed, after a
+    // wrong guess in the other direction; see T0129's notes.
     // The swap chain is not touched here. SDL emits a resize, the application
     // pump turns it into a WindowResizeEvent, and the render layer resizes
     // through the path 25.3 already built -- so a mode switch and a dragged

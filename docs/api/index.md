@@ -44,11 +44,11 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Paths.hpp>`](Paths.md) | 1 | 1 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
-| [`<hp/Render.hpp>`](Render.md) | 17 | 17 |
+| [`<hp/Render.hpp>`](Render.md) | 19 | 19 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 
-**283 public declarations across 17 headers, 166 documented.**
+**285 public declarations across 17 headers, 168 documented.**
 
 ## Every symbol
 
@@ -294,6 +294,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `RenderLayer::backend` | [`Render.hpp`](Render.md) |
 | `RenderLayer::adapterDescription` | [`Render.hpp`](Render.md) |
 | `RenderLayer::resize` | [`Render.hpp`](Render.md) |
+| `RenderLayer::swapChainWidth` | [`Render.hpp`](Render.md) |
+| `RenderLayer::swapChainHeight` | [`Render.hpp`](Render.md) |
 | `RenderLayer::vsync` | [`Render.hpp`](Render.md) |
 | `RenderLayer::setVsync` | [`Render.hpp`](Render.md) |
 | `RenderLayer::setClearColour` | [`Render.hpp`](Render.md) |

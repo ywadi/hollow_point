@@ -147,6 +147,17 @@ public:
     /// @param height new height in pixels.
     void resize(int width, int height);
 
+    /// @returns the swap chain's current width in pixels, or 0 when inert.
+    ///
+    /// The *swap chain's* size, not the window's. They are supposed to track
+    /// each other and the interesting failures are exactly when they do not —
+    /// a window that resized while the chain did not renders undefined
+    /// contents, which looks like a stale image rather than an error.
+    [[nodiscard]] int swapChainWidth() const;
+
+    /// @returns the swap chain's current height in pixels, or 0 when inert.
+    [[nodiscard]] int swapChainHeight() const;
+
     /// @returns whether presents currently wait for vertical blank.
     [[nodiscard]] bool vsync() const;
 

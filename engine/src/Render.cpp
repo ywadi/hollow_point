@@ -443,6 +443,14 @@ void RenderLayer::resize(int width, int height) {
     HP_LOG_DEBUG(kLog, "swap chain resized to {}x{}", width, height);
 }
 
+int RenderLayer::swapChainWidth() const {
+    return impl_->swapChain ? static_cast<int>(impl_->swapChain->GetDesc().Width) : 0;
+}
+
+int RenderLayer::swapChainHeight() const {
+    return impl_->swapChain ? static_cast<int>(impl_->swapChain->GetDesc().Height) : 0;
+}
+
 bool RenderLayer::vsync() const {
     return impl_->config.vsync;
 }
