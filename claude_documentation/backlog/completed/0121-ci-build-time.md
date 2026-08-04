@@ -316,7 +316,7 @@ avoidance, because the checkout's mtimes are always newer than the restored
 outputs and ninja rebuilds the whole graph regardless. That, the every-run
 CMake re-run, and this ticket's ccache numbers all turned out to be one
 mechanism — diagnosed, fixed and measured in
-[T0131](../inprogress/0131-ci-warm-cache-rebuilds-everything.md).
+[T0131](0131-ci-warm-cache-rebuilds-everything.md).
 
 Corrections to what this file says, so nobody inherits it as written:
 

@@ -143,7 +143,7 @@ This is the work. For what is already proven to work — and what only appears t
 | — | [T0084](completed/0084-continuous-integration.md) | Continuous integration | 1 — Harden the build | ✅ DONE | Medium | Moderate |
 | — | [T0102](completed/0102-bootstrap-host-collision.md) | `bootstrap.sh` and `bootstrap.ps1` destroy each other's toolchain | 1 — Harden the build | ✅ DONE | Medium | Simple |
 | — | [T0121](completed/0121-ci-build-time.md) | CI build time | 1 — Harden the build | ✅ DONE | Medium | Moderate |
-| ▶ | [T0131](inprogress/0131-ci-warm-cache-rebuilds-everything.md) | CI: the restored build tree never prevents a compile | 1 — Harden the build | 🚧 IN PROGRESS | High | Moderate |
+| — | [T0131](completed/0131-ci-warm-cache-rebuilds-everything.md) | CI: the restored build tree never prevents a compile | 1 — Harden the build | ✅ DONE | High | Moderate |
 | — | [T0100](completed/0100-frame-lifecycle-and-update-order.md) | Frame lifecycle and system update order | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | — | [T0122](completed/0122-zig-cache-and-build-tree-host-collision.md) | Zig cannot build from a working tree on `/mnt/c` under WSL | 1 — Harden the build | ✅ DONE | High | Simple |
 | — | [T0123](completed/0123-api-docs-should-not-be-hand-cranked.md) | The API reference is hand-cranked and always re-runs | 1 — Harden the build | ✅ DONE | Medium | Simple |

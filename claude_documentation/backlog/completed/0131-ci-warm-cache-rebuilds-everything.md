@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 1 — Harden the build |
@@ -59,12 +59,15 @@ stale binary.
 
 ## Done when
 
-- [ ] A warm CI run's build step does no compilation — the log shows
+- [x] A warm CI run's build step does no compilation — the log shows
       `ninja: no work to do` (or only edges a real change dirtied), not a
-      748/779-edge rebuild
-- [ ] Both test jobs are materially faster warm, with before/after wall-clock
-      numbers from real runs pasted below
-- [ ] The wrong figures this ticket found are corrected where they live
+      748/779-edge rebuild. **Met**: run 30955631724's build step compiled
+      0 objects on both jobs, `ninja: no work to do` on every invocation,
+      and no CMake re-run
+- [x] Both test jobs are materially faster warm, with before/after wall-clock
+      numbers from real runs pasted below — **22m08s → 3m26s (Linux),
+      14m17s → 6m44s (Windows)**
+- [x] The wrong figures this ticket found are corrected where they live
       (`ci.yml` comments, T0121)
 
 ## Subtasks
@@ -81,8 +84,8 @@ stale binary.
       `ninja: no work to do` in 0.06 s, and a touched source still rebuilds
       (1 compile + 9 relinks)
 - [x] 131.4 Wire it into both test jobs in `ci.yml`
-- [ ] 131.5 Measure in real CI: dispatch on a scratch branch, warm run,
-      paste the numbers
+- [x] 131.5 Measure in real CI: dispatch on a scratch branch, warm run,
+      paste the numbers — done, see Measured below
 - [x] 131.6 Correct the stale figures in `ci.yml` (trees ARE cached; 376 MB +
       156 MB per run measured off 30946039676) and annotate T0121
 - [x] 131.7 Survive first contact: run 30951493282 exposed two more mtime
@@ -173,9 +176,45 @@ command of `tests/libhp_abi_module.so` (ninja: "command line changed"), so any
 *legitimate* future re-run relinks that one library. One link edge, seconds,
 not chased further.
 
-### Measured — to be filled from the scratch-branch runs
+### Measured — scratch branch `ci/restore-mtimes`, three dispatched runs
 
-(pending)
+| Run | What it was | Linux job | Windows job |
+|---|---|---|---|
+| 30946039676 (main) | baseline: restored tree, everything recompiles | 22m08s | 14m17s |
+| 30951493282 | mtime step only — ninja scheduled ~50 edges, then PCH validation failed | failed (usefully) | failed |
+| 30954167174 | + gitdir-HEAD stamp, + `-fno-pch-timestamp`: the one-time self-healing full rebuild | 20m12s | 17m33s |
+| 30955631724 | **steady state** | **3m26s** | **6m44s** |
+
+Steady-state evidence, from the logs of 30955631724:
+
+- **0 `Building ...` lines in either job.** Every ninja invocation printed
+  `ninja: no work to do.`; no `Re-running CMake` anywhere.
+- `zig build test -Dtest=all` (Linux, both targets): **20m28s → 17s**, and the
+  tests demonstrably ran — 49+55 doctest cases per target, 213,187+290
+  assertions, the Windows suite under wine, all SUCCESS.
+- Tier-1 exact restore both jobs (`buildtree-Linux-0847fdc8…-30954167174`),
+  and the save re-uploads ~376 MB / ~149 MB under the new run's key.
+- `ci_restore_mtimes.py` costs **~44 s (Linux) / ~47 s (Windows)** in CI —
+  the blobless unshallow fetch plus 61,315 utimes on a cold runner
+  filesystem; 1.2 s on a warm local disk. Buying back ~17 minutes, it can
+  stay unoptimised.
+
+Quota profile, unchanged in shape from the previous scheme: ~525 MB saved per
+run (376 Linux + 149 Windows), LRU-evicted, ~2.3 GB of the 10 GB in use at
+close (which includes two ~250 MB toolchain entries per OS and ~77 MB of dead
+`ccache-*` entries aging out). What changed is that the 525 MB now buys ~17
+minutes per run instead of nothing.
+
+### Not verified
+
+- A **pin bump** under honest mtimes: expectation is the tier-2 restore plus
+  the bumped submodule's (and only its) rebuild, because its files stamp to
+  the new pin's commit time. Expected, not yet observed.
+- The Windows-host job's script behaviour was verified only by the CI runs
+  above (0 unattributed files, 0 compiles), not exercised locally.
+- `zig build test` still recompiles the Zig harness suites each run
+  (~/.cache/zig is not persisted); at the measured 17 s build step this is
+  noise, recorded only so nobody rediscovers it as a mystery.
 
 ### Not verified
 
