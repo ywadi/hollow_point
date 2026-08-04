@@ -2,13 +2,13 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ⏸ BLOCKED |
 | **Priority** | Medium |
 | **Complexity** | Simple |
 | **Phase** | 4 — Render layer |
 | **Order** | 420 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0111, T0120 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0111, T0120, [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), **blocked on** [../open/0028-scene-draw-submission.md](../open/0028-scene-draw-submission.md) and [../open/0061-debug-draw.md](../open/0061-debug-draw.md), [../open/0045-culling-and-render-queues.md](../open/0045-culling-and-render-queues.md), [../open/0085-layers-and-masks.md](../open/0085-layers-and-masks.md) |
 
 ## Why
 
@@ -46,6 +46,24 @@ switches between them, or how the render stack's layers get their own cameras
       rect (see the 2026-08-03 amendment)
 
 ## Notes / findings
+
+## Blocked on — 2026-08-05
+
+Eight of ten subtasks are done and the remaining work is **not this ticket's to
+do**. Both blockers are tickets that do not exist yet:
+
+| Blocker | What it unblocks here |
+|---|---|
+| [T0028](../open/0028-scene-draw-submission.md) — scene draw submission | 81.2's "resolved each frame". `resolveCamera` and `buildView` are built and tested; nothing calls them in a frame because nothing draws. `RenderStack` deliberately does not depend on `Scene`, so the resolve belongs where draws are submitted. |
+| [T0061](../open/0061-debug-draw.md) — debug draw service | 81.8 entirely. `extractFrustum` already returns the six planes; only the ability to draw lines is missing. |
+
+Two further items are stored-but-unconsumed by design, and are *not* blockers on
+this ticket — they are obligations on the tickets that consume them:
+
+- `Camera::cullingMask` is read by nothing until [T0045](../open/0045-culling-and-render-queues.md), against object layers from [T0085](../open/0085-layers-and-masks.md).
+- Exposure is applied by nothing until T0096.
+
+Both obligations are recorded on those tickets, not only here.
 
 ## Progress — 2026-08-05
 
