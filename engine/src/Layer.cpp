@@ -72,11 +72,27 @@ void LayerStack::clear() {
     overlayCount_ = 0;
 }
 
+void LayerStack::fixedUpdate(double fixedStepSeconds) {
+    HP_PROFILE_ZONE();
+    for (const auto& layer : layers_) {
+        HP_PROFILE_ZONE_NAMED("layer fixedUpdate");
+        layer->onFixedUpdate(fixedStepSeconds);
+    }
+}
+
 void LayerStack::update(double deltaSeconds) {
     HP_PROFILE_ZONE();
     for (const auto& layer : layers_) {
         HP_PROFILE_ZONE_NAMED("layer update");
         layer->onUpdate(deltaSeconds);
+    }
+}
+
+void LayerStack::lateUpdate(double deltaSeconds) {
+    HP_PROFILE_ZONE();
+    for (const auto& layer : layers_) {
+        HP_PROFILE_ZONE_NAMED("layer lateUpdate");
+        layer->onLateUpdate(deltaSeconds);
     }
 }
 

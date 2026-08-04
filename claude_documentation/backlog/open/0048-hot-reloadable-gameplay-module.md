@@ -8,6 +8,7 @@
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 150 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
 
 ## Why
 
@@ -44,6 +45,18 @@ This is the decision *instead of* embedding a scripting language.
 - [ ] 48.7 Ensure the exported *runtime* can link it statically instead
 
 ## Notes / findings
+
+
+### Frame anatomy — phase 12 — the end-of-frame safe point (T0100, D17)
+
+"Between frames" is **phase 12**, the end-of-frame safe point, shared with T0058
+and T0077. The reload must assert the phase-6 queues are drained before acting:
+a reload while a queue still holds a module-typed payload is a use-after-free in
+a type that no longer exists.
+
+The full order is in [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md); the decision and what it rejected is **D17** in the
+decision log. If this ticket needs a phase that does not exist, that is a change
+to T0100's document and to D17 — not a new call bolted into `Application::run`.
 
 **The rule that makes this work: all persistent state lives in the ECS, owned by
 the engine — never in the gameplay module.** The module contains behaviour, not

@@ -8,6 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 420 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
 
 ## Why
 
@@ -44,6 +45,18 @@ switches between them, or how the render stack's layers get their own cameras
       2026-08-03 amendment)
 
 ## Notes / findings
+
+
+### Frame anatomy — phase 8 — late update (T0100, D17)
+
+Camera follow runs in `onLateUpdate` (**phase 8**), never `onUpdate`. In
+`onUpdate` it reads this frame's or last frame's target position depending on
+which layer was registered first — intermittent jitter that profiles as nothing.
+This is a rule, not a convention.
+
+The full order is in [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md); the decision and what it rejected is **D17** in the
+decision log. If this ticket needs a phase that does not exist, that is a change
+to T0100's document and to D17 — not a new call bolted into `Application::run`.
 
 **Frustum extraction belongs here and is consumed by culling** (T0045) and by LOD
 selection (T0040). Computing it in three places is how they drift and produce

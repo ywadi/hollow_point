@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 340 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
 
 ## Why
 
@@ -43,6 +44,18 @@ scene over a world scene).
 - [ ] 77.9 Tests: load, additive load, unload, and transition with shared assets
 
 ## Notes / findings
+
+
+### Frame anatomy — phase 12 — the end-of-frame safe point (T0100, D17)
+
+A scene transition requested from gameplay applies at **phase 12**, never
+immediately — it must not destroy the scene currently being iterated. Additive
+scenes must also decide whether phases 4–9 run per-scene or once across all of
+them; the frame anatomy explicitly leaves that to this ticket.
+
+The full order is in [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md); the decision and what it rejected is **D17** in the
+decision log. If this ticket needs a phase that does not exist, that is a change
+to T0100's document and to D17 — not a new call bolted into `Application::run`.
 
 **Asset retention is what makes transitions fast, and it depends on T0058.**
 Without reference counting, unloading a scene either drops assets the next scene

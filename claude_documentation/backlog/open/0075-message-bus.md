@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 330 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
 
 ## Why
 
@@ -47,6 +48,18 @@ layering note below, and D10 in the decision log.
 - [ ] 75.10 A debug view listing recent messages and their subscribers
 
 ## Notes / findings
+
+
+### Frame anatomy — phase 6 — deferred drain (T0100, D17)
+
+The message bus drains at **phase 6**, drain-until-empty with the iteration cap
+this ticket already describes. This is what makes the phase-12 assertion
+possible, and it is the fix for the in-flight-payload hazard in this ticket's
+review note.
+
+The full order is in [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md); the decision and what it rejected is **D17** in the
+decision log. If this ticket needs a phase that does not exist, that is a change
+to T0100's document and to D17 — not a new call bolted into `Application::run`.
 
 **Keep messages typed.** Untyped payloads (`std::any`, variants) are the usual way
 a bus is built and they discard compile-time checking, which is a poor trade in a

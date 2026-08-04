@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 270 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
 
 ## Why
 
@@ -54,6 +55,17 @@ arrays. Naively mixing them gives scattered allocations *and* awkward systems.
 - [ ] 62.11 Editor: "Add Behaviour" dropdown listing registered types
 
 ## Notes / findings
+
+
+### Frame anatomy — phases 3b and 4 — behaviour dispatch (T0100, D17)
+
+Behaviour dispatch is **phase 4 (variable update)**. A behaviour that must be
+reproducible belongs in `onFixedUpdate` (**phase 3b**) instead, and must
+tolerate running zero or several times in one frame.
+
+The full order is in [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md); the decision and what it rejected is **D17** in the
+decision log. If this ticket needs a phase that does not exist, that is a change
+to T0100's document and to D17 — not a new call bolted into `Application::run`.
 
 **Many behaviours per entity, not one.** Two models exist: Godot allows one
 script per node and composes via child nodes; Unity allows many components per

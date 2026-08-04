@@ -97,8 +97,21 @@ protected:
     /// Called once, after the engine is up and before the first frame.
     virtual void onStartup() {}
 
+    /// Called 0..n times per frame with a constant step, before `onUpdate`.
+    /// See `ILayer::onFixedUpdate` -- this is the same phase, for an app that
+    /// wants it without adding a layer.
+    ///
+    /// @param fixedStepSeconds the constant step, `Clock::fixedStep()`.
+    virtual void onFixedUpdate(double fixedStepSeconds) { (void)fixedStepSeconds; }
+
     /// Called once per frame with the scaled delta in seconds.
     virtual void onUpdate(double deltaSeconds) { (void)deltaSeconds; }
+
+    /// Called once per frame after `onUpdate` and after transforms propagate.
+    /// See `ILayer::onLateUpdate` -- cameras and followers belong here.
+    ///
+    /// @param deltaSeconds scaled frame delta, the same value `onUpdate` saw.
+    virtual void onLateUpdate(double deltaSeconds) { (void)deltaSeconds; }
 
     /// Called once per frame, after update.
     virtual void onRender() {}

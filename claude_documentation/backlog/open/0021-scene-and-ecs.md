@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 200 |
 | **Created** | 2026-08-02 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
 
 ## Why
 
@@ -39,6 +40,18 @@ the component set, the entity handle, and the scene's ownership semantics.
 - [ ] 21.7 GUID → entity lookup, since serialization and selection both need it
 
 ## Notes / findings
+
+
+### Frame anatomy — phase 5 — structural apply (T0100, D17)
+
+Entity creation and destruction queued during update apply at **phase 5
+(structural apply)**, not at the end-of-frame safe point. Deferring them to end-
+of-frame would let a destroyed entity be transformed at 7, read by a follower at
+8 and drawn at 10 — one last frame of a thing that no longer exists.
+
+The full order is in [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md); the decision and what it rejected is **D17** in the
+decision log. If this ticket needs a phase that does not exist, that is a change
+to T0100's document and to D17 — not a new call bolted into `Application::run`.
 
 **Components reference assets by GUID, never by pointer.** Pointers do not
 serialize and do not survive an asset reload. This is the single most important

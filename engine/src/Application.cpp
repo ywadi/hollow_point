@@ -84,6 +84,30 @@ int Application::run() {
             }
         }
 
+        // Phase 3 -- fixed update. Runs 0..n times; the accumulator and its
+        // per-frame cap live in Clock (T0057). Anything that must be
+        // reproducible goes here, because a variable delta gives a different
+        // answer on a faster machine.
+        {
+            HP_PROFILE_ZONE_NAMED("fixed update");
+            const double step = clock_.fixedStep();
+            while (clock_.consumeFixedStep()) {
+                HP_PROFILE_ZONE_NAMED("fixed step");
+
+                // 3a. Input snapshot (T0068). Each step must see one unchanging
+                // view of input; sampling live mid-block would make two steps in
+                // the same frame disagree.
+
+                // 3b. Simulation.
+                layers_.fixedUpdate(step);
+                onFixedUpdate(step);
+
+                // 3c. Physics step, and 3d. post-physics resolution (T0051).
+                // Both sit inside this loop on purpose: physics must advance
+                // once per fixed step, not once per frame.
+            }
+        }
+
         {
             HP_PROFILE_ZONE_NAMED("update");
             // Bottom-up: the world simulates before the interface over it.
@@ -92,16 +116,77 @@ int Application::run() {
         }
 
         {
+            // Phase 5 -- structural apply (T0021). Entity creation and
+            // destruction queued during update takes effect here, before
+            // transforms and before rendering. Deliberately *not* deferred to
+            // the end-of-frame safe point below: a destroyed entity must not
+            // survive to be drawn one last time.
+            HP_PROFILE_ZONE_NAMED("structural apply");
+        }
+
+        {
+            // Phase 6 -- deferred queues drain (T0072 signals, T0075 message
+            // bus). Drain-until-empty with the iteration cap T0075 describes,
+            // since a handler may post more work. Draining here rather than
+            // ad hoc is what lets the safe point below assert the queues are
+            // empty before a module reload swaps the types their payloads use.
+            HP_PROFILE_ZONE_NAMED("deferred drain");
+        }
+
+        {
+            // Phase 7 -- transform propagation (T0101), first of two. Everything
+            // that moved during update gets its world transform before anything
+            // reads one.
+            HP_PROFILE_ZONE_NAMED("transform propagate");
+        }
+
+        // Phase 8 -- late update. Followers read *final* transforms here. This
+        // phase exists because the alternative -- cameras updating in onUpdate
+        // alongside what they follow -- reads this frame's or last frame's
+        // position depending on registration order, which is jitter that
+        // profiles as nothing.
+        {
+            HP_PROFILE_ZONE_NAMED("late update");
+            layers_.lateUpdate(delta);
+            onLateUpdate(delta);
+        }
+
+        {
+            // Phase 9 -- transform propagation again (T0101), for what late
+            // update moved. A camera that re-parents or moves itself here would
+            // otherwise render one frame stale, which is the same bug phase 8
+            // exists to prevent, moved one step later.
+            HP_PROFILE_ZONE_NAMED("transform propagate (late)");
+        }
+
+        {
             HP_PROFILE_ZONE_NAMED("render");
+            // Reads Clock::interpolationAlpha() once T0025 lands: rendering at a
+            // different rate from the fixed step stutters visibly without it.
             layers_.render();
             onRender();
         }
 
         {
-            // T0025 presents here, and T0110 decides how -- present mode and
-            // pacing are an unowned default today (Diligent picks IMMEDIATE),
-            // which is exactly what that ticket exists to fix.
+            // Phase 11 -- present. T0025 submits, T0110 decides how; present
+            // mode and pacing are an unowned default today (Diligent picks
+            // IMMEDIATE), which is exactly what that ticket exists to fix.
             HP_PROFILE_ZONE_NAMED("present");
+        }
+
+        {
+            // Phase 12 -- the end-of-frame safe point. Nothing is iterating and
+            // nothing is mid-draw, which is the one moment structural change to
+            // the *world itself* is safe: gameplay module reload (T0048), asset
+            // reload swap (T0058) and scene transitions (T0077) all apply here
+            // and nowhere else.
+            //
+            // Three tickets independently need this same point, which is why it
+            // is one point rather than three. When they land it must assert the
+            // phase-6 queues are drained and no jobs are in flight (T0026)
+            // before doing anything -- a reload with a module-typed payload
+            // still queued is the hazard T0075's review note describes.
+            HP_PROFILE_ZONE_NAMED("frame safe point");
         }
 
         HP_PROFILE_FRAME();

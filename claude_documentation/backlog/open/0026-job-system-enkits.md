@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 230 |
 | **Created** | 2026-08-02 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
 
 ## Why
 
@@ -35,6 +36,17 @@ schedule is speculative. By here there is real work.
 - [ ] 26.5 Tests, including that nesting a job inside a job does not deadlock
 
 ## Notes / findings
+
+
+### Frame anatomy — phase 12 — the safe point asserts against you (T0100, D17)
+
+The end-of-frame safe point (**phase 12**) must be able to assert that **no jobs
+are in flight** before a module reload or asset swap runs. This ticket has to
+expose a way to ask that question cheaply.
+
+The full order is in [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md); the decision and what it rejected is **D17** in the
+decision log. If this ticket needs a phase that does not exist, that is a change
+to T0100's document and to D17 — not a new call bolted into `Application::run`.
 
 **GUID generation must already be thread-safe** (T0016) before anything creates
 objects from workers — that dependency is real and easy to miss.

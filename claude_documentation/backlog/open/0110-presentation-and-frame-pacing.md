@@ -9,7 +9,7 @@
 | **Order** | 375 |
 | **Created** | 2026-08-03 |
 | **Blocks** | T0025 |
-| **Refs** | T0014, T0015, T0031, T0052, T0057, T0078, T0100, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D16, [../../documentation/07-design-gaps.md](../../documentation/07-design-gaps.md) item 1 |
+| **Refs** | T0014, T0015, T0031, T0052, T0057, T0078, T0100, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D16, [../../documentation/07-design-gaps.md](../../documentation/07-design-gaps.md) item 1, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
 
 ## Why
 
@@ -88,6 +88,17 @@ is cheap.
       measured, focus-loss behaviour observed, and the results pasted here
 
 ## Notes / findings
+
+
+### Frame anatomy — phase 11 — present (T0100, D17)
+
+Present is **phase 11**. This ticket owns the *policy* (present mode, vsync,
+cap, focus loss); the frame anatomy owns the *position*. Neither document should
+duplicate the other's half.
+
+The full order is in [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md); the decision and what it rejected is **D17** in the
+decision log. If this ticket needs a phase that does not exist, that is a change
+to T0100's document and to D17 — not a new call bolted into `Application::run`.
 
 - **The mode names are the policy vocabulary.** FIFO is classic vsync (no
   tearing, latency up to a frame); MAILBOX is no tearing with lowest latency

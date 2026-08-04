@@ -8,6 +8,7 @@
 | **Phase** | 10 — Audio |
 | **Order** | 820 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
 
 > **Placeholder epic**, and the library is **not yet chosen**. Recorded to keep
 > the integration points in mind. Break into real tickets when Phase 10 is
@@ -49,6 +50,16 @@ authoring tools? And does the licence suit how this ships?
       caption text/timing hooks (see the 2026-08-03 accessibility note)
 
 ## Notes / findings
+
+
+### Frame anatomy — phase 8 — late update (T0100, D17)
+
+Audio listener sync belongs in **phase 8 (late update)**, alongside cameras, so
+it reads final transforms rather than whatever update order happened to produce.
+
+The full order is in [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md); the decision and what it rejected is **D17** in the
+decision log. If this ticket needs a phase that does not exist, that is a change
+to T0100's document and to D17 — not a new call bolted into `Application::run`.
 
 **Cross-compilation is the first thing to check, not the last.** Audio libraries
 bind to platform backends (WASAPI/DirectSound on Windows, ALSA/PulseAudio on

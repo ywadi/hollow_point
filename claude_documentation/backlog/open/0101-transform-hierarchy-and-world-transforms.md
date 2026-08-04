@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 210 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0021, T0028, T0035, T0045, T0049, T0051, T0057, T0100 |
+| **Refs** | T0021, T0028, T0035, T0045, T0049, T0051, T0057, T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
 
 ## Why
 
@@ -58,6 +58,18 @@ missing engine code between T0021's component and T0028's renderer.
 - [ ] 101.7 Tests
 
 ## Notes / findings
+
+
+### Frame anatomy — phases 7 and 9 — transform propagation (T0100, D17)
+
+Propagation has **two** points, phases 7 and 9. Phase 7 serves followers at
+phase 8; phase 9 catches what phase 8 itself moved. This ticket may make the
+second pass incremental — most frames it will have almost nothing to do — but
+may not remove it.
+
+The full order is in [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md); the decision and what it rejected is **D17** in the
+decision log. If this ticket needs a phase that does not exist, that is a change
+to T0100's document and to D17 — not a new call bolted into `Application::run`.
 
 **Diligent already provides the math.** `DiligentCore/Common/interface/
 AdvancedMath.hpp` has `ViewFrustum`/`ViewFrustumExt`,

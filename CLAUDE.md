@@ -21,8 +21,9 @@ you in the first ten minutes.
 | How does the build work? | [`claude_documentation/documentation/03-build-harness.md`](claude_documentation/documentation/03-build-harness.md) |
 | Why did the cross-compile break? | [`claude_documentation/documentation/04-cross-compile-gotchas.md`](claude_documentation/documentation/04-cross-compile-gotchas.md) |
 | What is the design missing? | [`claude_documentation/documentation/07-design-gaps.md`](claude_documentation/documentation/07-design-gaps.md) |
+| What runs when, in a frame? | [`claude_documentation/documentation/08-frame-anatomy.md`](claude_documentation/documentation/08-frame-anatomy.md) |
 
-**The decision log is binding.** Entries D1–D16 record what was rejected and
+**The decision log is binding.** Entries D1–D17 record what was rejected and
 why, usually against a specific failure. If you are about to do something one of
 them forbids, read the entry first and change the decision deliberately — do not
 quietly diverge.
@@ -50,6 +51,21 @@ The backlog README states it, and it gets forgotten anyway:
 4. **Only move to `completed/` when verified, with the evidence pasted in.** A
    ticket that overstates what was achieved is worse than one left open. If a
    "Done when" was not met, say so plainly instead of ticking it.
+5. **Make dependencies point both ways.** If your ticket constrains another one
+   — you defined a contract it must obey, named a phase it must fill, or decided
+   something it will have to live with — add the reference to *that* ticket's
+   `Refs` and say in one line what it must do. Do not rely on your own ticket
+   listing it.
+
+   This matters most for tickets that will not be started for months, which is
+   exactly when the linkage is worth the most and least likely to be
+   remembered. The failure it prevents is concrete: a contract gets written,
+   the ticket that had to honour it is picked up much later by someone who
+   never sees the contract, and they invent their own — which is the retrofit
+   the contract existed to avoid.
+
+   A one-way reference is not enough. Nobody reads the ticket they have already
+   closed.
 
 Run `python3 tools/check_backlog.py` before you commit backlog changes. It
 verifies the folder, the `Status` field and the board row agree, and that every

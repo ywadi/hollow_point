@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 320 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
 
 ## Why
 
@@ -41,6 +42,17 @@ not address entity-level communication at all.
 - [ ] 72.8 Optional: editor UI to wire signals without code
 
 ## Notes / findings
+
+
+### Frame anatomy — phase 6 — deferred drain (T0100, D17)
+
+Signals drain at **phase 6**, drain-until-empty with an iteration cap because a
+handler may post more work. Draining at one fixed point is what lets phase 12
+assert the queue is empty before a module reload.
+
+The full order is in [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md); the decision and what it rejected is **D17** in the
+decision log. If this ticket needs a phase that does not exist, that is a change
+to T0100's document and to D17 — not a new call bolted into `Application::run`.
 
 **Immediate versus deferred dispatch is the real decision.** Immediate is simpler
 and easier to debug, but a handler that destroys entities or emits further signals

@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 240 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
 
 ## Why
 
@@ -40,6 +41,17 @@ hot-reloadable gameplay module (T0048) to make iteration genuinely fast.
 - [ ] 58.7 Tests: reload while referenced, release while referenced, failed reload
 
 ## Notes / findings
+
+
+### Frame anatomy — phase 12 — the end-of-frame safe point (T0100, D17)
+
+The asset reload swap applies at **phase 12**, the end-of-frame safe point,
+shared with T0048 and T0077. GPU uploads marshalled to the main thread land
+there too.
+
+The full order is in [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md); the decision and what it rejected is **D17** in the
+decision log. If this ticket needs a phase that does not exist, that is a change
+to T0100's document and to D17 — not a new call bolted into `Application::run`.
 
 **The GUID indirection T0023 already establishes is what makes this possible.**
 Components reference assets by GUID and resolve through the pool, so reloading

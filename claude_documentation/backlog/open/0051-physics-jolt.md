@@ -8,6 +8,7 @@
 | **Phase** | 9 — Physics |
 | **Order** | 800 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
 
 > **Placeholder epic.** Recorded now so the architecture accounts for it, not
 > because it is ready to start. Break into real tickets when Phase 9 is reached —
@@ -42,6 +43,17 @@ than to retrofit.
 - [ ] **Ragdoll: decide yes/no, and powered or pure** (see the 2026-08-03 note)
 
 ## Notes / findings
+
+
+### Frame anatomy — phases 3c and 3d — inside the fixed-step loop (T0100, D17)
+
+The physics step and post-physics resolution are **phases 3c and 3d**, *inside*
+the fixed-step loop. Once per fixed step, not once per frame — the loop may run
+zero times or several in a single frame.
+
+The full order is in [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md); the decision and what it rejected is **D17** in the
+decision log. If this ticket needs a phase that does not exist, that is a change
+to T0100's document and to D17 — not a new call bolted into `Application::run`.
 
 **Jolt has its own `JobSystem` interface, and it is an interface for exactly this
 reason** — it can be backed by an existing scheduler. Backing it with enkiTS

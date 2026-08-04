@@ -491,3 +491,49 @@ decision is about capability, not performance.
   knowing exactly what is resolved and from where
 
 SDL3 has been stable since January 2025 and is actively maintained.
+
+---
+
+## D17 — The frame has one owned anatomy, and unbuilt phases are named in advance
+
+**Decision:** `Application::run` implements a single documented phase order —
+[`08-frame-anatomy.md`](08-frame-anatomy.md), owned by T0100. Phases whose
+systems do not exist yet are present in the loop *now*, as named profiler zones
+with a comment naming their owning ticket, doing nothing.
+
+The order, abbreviated: tick → poll → **fixed-step block** (0..n) → update →
+structural apply → deferred drain → transform propagate → **late update** →
+transform propagate → render → present → **end-of-frame safe point** → frame end.
+
+**Rejected — let each system pick its own point when it lands.** This is the
+default, and it is how the classic failures happen: one-frame-lag chains, a
+camera reading a transform before the thing it follows has moved, a scene
+transition applied mid-iteration, a module reload while a queue still holds
+module-typed payloads. Each is invisible in review and expensive in a debugger.
+
+**Rejected — define the anatomy later, when there is more to order.** Retrofitting
+an order onto systems that each assumed their own is strictly more work than
+writing it down first, and by then the assumptions are load-bearing. T0100 is
+deliberately Phase 2 for this reason.
+
+**Rejected — a phase-registration API** (systems register callbacks against named
+phases at runtime). More flexible, and the flexibility is not wanted: the value
+here is that the order is *fixed and readable in one function*. A registry moves
+the order into runtime configuration, where it can no longer be read off the
+page or asserted as a whole.
+
+**Consequences:**
+
+- `ILayer` and `Application` gain `onFixedUpdate` and `onLateUpdate`. Follow
+  logic in `onUpdate` is now a bug even when it appears to work.
+- Three separate tickets (T0048 reload, T0058 asset swap, T0077 scene
+  transition) share **one** safe point rather than three, and that point must
+  assert the deferred queues are drained and no jobs are in flight (T0026)
+  before acting.
+- Entity structural change applies mid-frame (phase 5), *not* at the safe point,
+  so a destroyed entity cannot be drawn one last time.
+- Transform propagation has two points, not one. T0101 may make the second
+  incremental but may not remove it.
+- Anyone adding a system to the frame adds it to a phase that already exists.
+  If no phase fits, that is a change to this decision and to T0100's document —
+  not a new call bolted into `run()`.

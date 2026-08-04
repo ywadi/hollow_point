@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 2 — Engine skeleton |
@@ -85,6 +85,67 @@ iterated). One point, one assertion, three bugs prevented.
 This ticket produces mostly a document plus wiring — the systems it orders are
 built in their own tickets. Keep it that way; the value is the contract, not
 code volume.
+
+### 2026-08-04 — scope: the contract is complete, the enforcement is not
+
+Half of this ticket's Done-when names systems that do not exist yet — T0072/T0075
+queues, T0048 reload, T0058 asset swap, T0077 transitions, T0101 transforms, and
+the ECS itself (T0021, Phase 3). Those conditions are met **at the contract
+level** — the phase exists, in the right position, in `Application::run`, with an
+owner named — and explicitly *not* at the enforcement level, which lands with the
+system that fills the phase.
+
+That split is recorded here rather than papered over, and each of the 15
+consuming tickets now carries a back-reference saying what it must honour, so the
+contract is discoverable from the side that has to obey it. A one-way reference
+would not have been enough: nobody reads the ticket they have already closed.
+
+**Deliverables:**
+
+- `claude_documentation/documentation/08-frame-anatomy.md` — the ordered list
+- **D17** in the decision log, recording what was rejected (per-system ad hoc
+  placement; defining the anatomy later; a runtime phase-registration API)
+- `Application::run` restructured to 13 named phases; unbuilt ones are profiler
+  zones with an owning-ticket comment, following the precedent the `present`
+  phase already set
+- `ILayer`/`Application` gain `onFixedUpdate` and `onLateUpdate`
+- `tests/integration/frame_order_test.cpp`
+- A rule added to `CLAUDE.md`: tickets that constrain each other must point
+  **both** ways
+
+### Could not verify locally — see T0122
+
+`zig build test -Dtest=integration -Dtarget=linux` fails on this WSL tree before
+compiling anything:
+
+```
+error: failed to rename compilation results ('.zig-cache/tmp/17b026b44f6c6824')
+       into local cache ('.zig-cache/o/213c45259d0009b8481e686cd149efc4'):
+       AccessDenied
+```
+
+`.zig-cache/` and `build/` have no host discriminator, and this tree was last
+built from Windows (`CMAKE_C_COMPILER=C:/Development/.../zig-cc.cmd`). It is the
+same collision T0102 fixed for `.harness/` and did not extend to the caches.
+Filed as **T0122**.
+
+Building anyway would have forced a reconfigure that destroyed the Windows-host
+build tree, so it was not done. **Verification for this ticket is the CI run**,
+recorded below. That is a real gap in the loop, not a preference: a WSL-side
+developer currently has no local test loop.
+
+### Finding: the fixed-step accumulator was dead code
+
+`Clock::consumeFixedStep()` and `Clock::interpolationAlpha()` have existed since
+T0057 and **nothing has ever called them**. `Clock::advance()` adds to
+`accumulator_` every frame and nothing drained it, so the accumulator grew
+without bound for the lifetime of the process; `interpolationAlpha()` would have
+returned a steadily increasing number rather than a value in [0, 1).
+
+Invisible until now only because the one function that would expose it was also
+uncalled. Wiring phase 3 drains it properly. Worth recording as the general
+shape of the problem this ticket exists to prevent: a correct mechanism, built
+early, that nothing was contractually obliged to use.
 
 ### Note (2026-08-03) -- the anatomy must name the present/pacing step
 

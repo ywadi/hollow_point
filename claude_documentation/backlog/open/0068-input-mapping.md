@@ -8,6 +8,7 @@
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 170 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
 
 ## Why
 
@@ -37,6 +38,17 @@ through gameplay code and rebinding becomes impossible without touching all of i
 - [ ] 68.8 Dead zones and sensitivity for analog input
 
 ## Notes / findings
+
+
+### Frame anatomy — phase 3a — input snapshot (T0100, D17)
+
+The input snapshot is **phase 3a**, inside the fixed-step loop. Each fixed step
+must see one unchanging view of input; sampling live mid-block makes two steps
+in the same frame disagree about what the player did.
+
+The full order is in [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md); the decision and what it rejected is **D17** in the
+decision log. If this ticket needs a phase that does not exist, that is a change
+to T0100's document and to D17 — not a new call bolted into `Application::run`.
 
 **Input contexts are the part people leave out and regret.** While the editor has
 focus, the game must not receive input; while a menu is open, gameplay bindings

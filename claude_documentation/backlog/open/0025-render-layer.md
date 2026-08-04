@@ -8,6 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 380 |
 | **Created** | 2026-08-02 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
 
 ## Why
 
@@ -35,6 +36,18 @@ relative to everything that allocates GPU resources.
 - [ ] 25.6 Enable Vulkan validation layers in debug builds
 
 ## Notes / findings
+
+
+### Frame anatomy — phases 10 and 11 — render, present (T0100, D17)
+
+Render is **phase 10**, present is **phase 11**. Render reads
+`Clock::interpolationAlpha()`; without it, rendering at a rate different from
+the fixed step stutters visibly even at high frame rates. The *policy* behind
+present belongs to T0110, not here.
+
+The full order is in [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md); the decision and what it rejected is **D17** in the
+decision log. If this ticket needs a phase that does not exist, that is a change
+to T0100's document and to D17 — not a new call bolted into `Application::run`.
 
 Both engines are **shared libraries** (`GraphicsEngineVk_64r.dll`,
 `GraphicsEngineOpenGL_64r.dll`) and must sit beside the executable on Windows —
