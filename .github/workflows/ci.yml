@@ -95,37 +95,6 @@ jobs:
           zig_version=$(grep -m1 '^ZIG_VERSION=' bootstrap.sh | cut -d= -f2)
           echo "$PWD/.harness/zig/linux-$(uname -m)/$zig_version" >> "$GITHUB_PATH"
 
-      # ccache, and the reason this is the right lever rather than caching build
-      # trees. A build tree is ~1.7 GB Linux and ~1.3 GB Windows, which would eat
-      # most of the repository's 10 GB quota; ccache stores *objects* keyed by
-      # content hash, so it is a fraction of the size and survives changes that
-      # invalidate a whole tree. build.zig already adopts a ccache it finds on
-      # PATH -- CI simply never installed one.
-      #
-      # This job is the expensive one: it builds BOTH targets. Adding SDL took it
-      # from roughly 4 minutes to 14, and Tracy, Jolt and the reflection work are
-      # still to come. A CI run slow enough to be ignored provides no signal,
-      # which is the same reasoning that split these jobs from full-build.yml.
-      - name: Install ccache
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ccache
-
-      - name: Cache ccache objects
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ccache
-          # Save a fresh entry every run and restore the most recent one --
-          # actions/cache never updates an existing key, so a fixed key would
-          # freeze the cache at whatever the first run produced and slowly
-          # decay as the tree moved away from it.
-          key: ccache-linux-${{ github.sha }}
-          restore-keys: |
-            ccache-linux-
-
-      - name: Configure ccache
-        run: |
-          ccache --max-size=2G
-          ccache --zero-stats
-
       - name: Install wine
         # Needed to run the *Windows* suite on a Linux host. Without it the
         # harness builds that suite and declines to run it with a warning
@@ -139,12 +108,11 @@ jobs:
       - name: Run every test bucket, both targets
         run: zig build test -Dtest=all
 
-      # Reported so the effect is visible rather than assumed. A hit rate near
-      # zero means the key is wrong and the cache is costing time without saving
-      # any -- worth knowing, and invisible otherwise.
-      - name: ccache statistics
+      # Reported so the effect is visible rather than assumed -- a cache that
+      # silently misses looks exactly like one that works.
+      - name: Build tree size
         if: always()
-        run: ccache --show-stats
+        run: du -sh build 2>/dev/null || true
 
   tests-windows-host:
     name: Tests (Windows host, native)
@@ -194,6 +162,38 @@ jobs:
         run: |
           $v = (Select-String -Path bootstrap.ps1 -Pattern "ZigVersion\s*=\s*'([\d.]+)'" | Select-Object -First 1).Matches[0].Groups[1].Value
           "$PWD\.harness\zig\windows-x86_64\$v" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+
+      # Cache the build tree, keyed on what actually determines its third-party
+      # contents: the submodule SHAs plus the CMake and toolchain files. Our own
+      # sources are deliberately NOT in the key -- they change every commit, so
+      # including them would mean never hitting the cache. Ninja then rebuilds
+      # only the handful of engine files that changed and leaves SDL, Diligent,
+      # enkiTS, ozz and meshoptimizer alone.
+      #
+      # This is the principle the previous attempt missed: pinned code that has
+      # not moved must not recompile. ccache was tried first and did not deliver
+      # it -- it saw 82 of roughly 4,248 compilations, for reasons recorded in
+      # T0121 -- so this caches the *output* rather than hoping to cache the
+      # compilations.
+      #
+      # Build trees are large (~1.7 GB Linux, ~1.3 GB Windows) against a 10 GB
+      # quota, which is why ci.yml originally declined to cache them. That
+      # judgement was made when a full build was ~4 minutes; at 22 it no longer
+      # holds, and GitHub evicts least-recently-used entries rather than failing.
+      - name: Key the build cache on the pinned dependencies
+        shell: bash
+        run: |
+          git submodule status --recursive | awk '{print $1, $2}' > .ci-dep-key
+          sha256sum CMakeLists.txt cmake/toolchains/*.cmake >> .ci-dep-key
+          echo "--- key inputs ---" && cat .ci-dep-key | head -5
+
+      - name: Cache the build tree
+        uses: actions/cache@v6
+        with:
+          path: build
+          key: buildtree-${{ runner.os }}-${{ hashFiles('.ci-dep-key') }}
+          restore-keys: |
+            buildtree-${{ runner.os }}-
 
       - name: Run every test bucket, Windows target
         # -Dtarget=windows on purpose. Without it the harness would also
