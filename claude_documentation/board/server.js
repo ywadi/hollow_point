@@ -133,7 +133,6 @@ const ARCHITECTURE = [
     { name: 'Behaviours',         tickets: ['T0062'] },
     { name: 'Autoloads',          tickets: ['T0076'] },
     { name: 'Utilities',          tickets: ['T0073'] },
-    { name: 'Game definition',    tickets: ['T0044','T0006'] },
   ]},
   { layer: 'Rendering', blurb: 'Device, passes, materials and light', groups: [
     { name: 'Device & stack',     tickets: ['T0025','T0027','T0046','T0047'] },

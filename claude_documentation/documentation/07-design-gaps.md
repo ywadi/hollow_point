@@ -52,7 +52,7 @@ that can be added whenever.
 | 13 | Editor content ops: asset rename/delete/fixup, find-usages, hierarchy search, scene autosave | absent | T0036 / T0035 / T0023 | in proportion to content volume |
 | 14 | Ragdoll; morph targets | absent | T0049 / T0051; T0038 / T0041 | Phase 7/9 if wanted at all |
 | 15 | Aspect-ratio / ultrawide policy | absent | T0081 / T0069 | cheap any time before HUD art |
-| 16 | Memory budgets (GPU / asset) | absent (frame-time budgets are owned) | T0031 / T0023 / T0044 | only if content outgrows RAM quietly |
+| 16 | Memory budgets (GPU / asset) | absent (frame-time budgets are owned) | T0031 / T0023 / T0058 | only if content outgrows RAM quietly |
 
 ---
 
@@ -211,9 +211,10 @@ scene". Ambient leakage is the same class: lights get tuned to compensate,
 then un-compensated when a real mechanism lands. A cheap first answer (an
 ambient/IBL-intensity *volume* or per-room scalar, applied where T0087's
 inputs feed `PBR_Renderer`) should at least be dispositioned before scenes
-are lit. If the game turns out to be all-outdoor or all-interior (T0044),
-this collapses -- which is a reason to note it on T0044's question list, not
-a reason to leave it unwritten.
+are lit. A single all-outdoor or all-interior game would need only half of
+this; the engine does not get to assume that, because the next game is the one
+that needs the other half. T0087 owns both, and the live question is which is
+built first -- not what any one game turns out to be.
 
 ## 7. Camera motion: shake, blends, cinematics -- [absent]
 
@@ -232,8 +233,10 @@ Two different sizes hide in this:
   view offset" seam in 81.3 costs a line now and makes shake, recoil and
   blending gameplay problems, where D14/T0094 philosophy says they belong.
 - **A sequencer/timeline is a subsystem** and should not be built
-  speculatively -- but whether this game has scripted scenes at all is
-  exactly a T0044 question, and T0044's notes list does not currently ask it.
+  speculatively. Whether the engine ships one is an engine capability decision
+  needing its own ticket, raised when someone is ready to argue the cost -- not
+  a property of any particular game. T0081 records the seam (81.9) that would
+  receive it.
 
 ## 8. VFX shapes beyond quads, and the distortion pass -- [absent / mentioned once]
 
@@ -273,9 +276,10 @@ so it stops being assumed.
 
 `achievement`, `cloud save`, `rich presence`, `overlay`, `Steamworks` --
 **zero hits**. Steam appears twice: "Steam Audio" as an audio-library option
-(T0052) and D14 rejecting "Steam-Workshop-style" UGC. Whether the game ships
-on Steam at all is unasked -- reasonable to defer, except two constraints are
-cheap now and annoying later:
+(T0052) and D14 rejecting "Steam-Workshop-style" UGC. Whether any game built on
+this engine ships on Steam is not this repository's question to answer, and
+deferring it is reasonable -- except that two constraints are cheap now and
+annoying later:
 
 - **Cloud saves constrain the write directory.** T0103.4 already creates a
   per-platform write directory for saves; cloud sync wants that directory
@@ -287,9 +291,11 @@ cheap now and annoying later:
   keep gameplay ignorant of it" preserves the option for free.
 
 Everything else (overlay quirks, store builds, DRM-free packaging) is
-genuinely fine to leave until a platform decision exists -- but that decision
-should appear on T0044's list, which currently asks about platforms only as
-"Windows + Linux confirmed".
+genuinely fine to leave until a platform decision exists. Which platforms the
+studio targets *is* a real owner decision -- unlike "what the game is" -- but
+it gates none of the above, because T0075's rule (platform integration
+subscribes to gameplay events; gameplay stays ignorant of the platform) keeps
+the option open for free.
 
 ## 11. Accessibility -- [absent, with one covered exception]
 
@@ -357,9 +363,11 @@ covered list), which makes the two silences notable:
   shape`, `blendshape`, `facial`). T0038's FBX→glTF subtasks convert meshes,
   skinning and animations -- morphs are not listed, ozz does not do them, and
   the skinned vertex layout being assigned in T0041's review note does not
-  mention them. If the game needs facial animation or shape-key props this
-  touches importer, vertex format and animation runtime at once; if not,
-  one rejection line closes it. Either way it is a T0044-shaped question.
+  mention them. Morph targets touch importer, vertex format and animation
+  runtime at once -- a three-place retrofit if added late. T0038 and T0049 own
+  the decision and own it on that cost: the engine either offers shape keys or
+  it does not, and no game can add them from gameplay code if the vertex
+  format has no room.
 
 (Blend-space *authoring* is deliberately excluded -- T0049: "deliberately a
 C++ helper, not an authored graph" -- so it is not listed as a gap.)
@@ -381,10 +389,12 @@ Frame-*time* budgets are owned (T0031, read in full). Memory budgets are not:
 per-system: D15's fixed particle buffer, T0107.5's effect cap, T0046's
 "report allocated target memory". There is no total, no per-category split,
 and no eviction story beyond T0058.2's release policy. For a confined-scene
-game on desktop this may never matter, which is why it is last -- but that
-"may" is T0044's call, and T0044's feature list does not currently include
-"content scale: does anything ever stream?". If the answer is ever yes,
-streaming is a Phase-4-shaped retrofit; get the question asked once, now.
+game on desktop this may never matter, which is why it is last. What makes it
+worth writing down anyway is that streaming is a Phase-4-shaped retrofit if it
+is ever wanted, and nothing today would tell you it had become necessary.
+T0031's budget is the cheap instrument that turns "we outgrew RAM" into a
+measured event; whether the asset system ever streams is then an engineering
+call for T0023/T0058, made against a number instead of a guess.
 
 ---
 
@@ -425,8 +435,9 @@ sweep does not repeat this one.
   D13. **Networking and determinism constraints** -- T0070 records the
   constraints honestly as a placeholder; D15/T0075 record what already
   forecloses replay-grade determinism.
-- **Terrain, water, vegetation** -- named as missing *in T0044 itself* and
-  gated on the game decision; the absence has an owner.
+- **Terrain, water, vegetation** -- absent, and now **unowned**: T0044 named
+  them and was dropped, so no ticket carries them. Each is a large subsystem
+  and wants its own ticket before anything is allowed to depend on it.
 - **Character controller, root motion vs physics, Jolt/enkiTS job sharing**
   -- T0051 epic. **Steering/crowds** -- T0098 (DetourCrowd); perception
   deliberately gameplay-side. **Behaviour trees** -- deliberately unowned:

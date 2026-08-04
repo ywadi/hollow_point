@@ -86,8 +86,11 @@ bullet above makes the absence a decision to take when this epic breaks into
 tickets: **no ragdoll** (death animations only -- legitimate and much cheaper),
 **pure ragdoll** on death (Jolt's ragdoll support driving the ozz skeleton's
 joints), or **powered/blended** (animation-driven targets with physics take-
-over, the expensive one). The game decision is T0044's; the mechanism, if
-wanted, lands here.
+over, the expensive one). **This ticket owns the choice**, on engineering
+grounds: does the engine offer ragdoll at all, and if so which of the three.
+What decides it is cost and coupling, not whether some game wants dramatic
+deaths -- a game that wants ragdoll cannot add it from gameplay code if the
+engine has no joint-driven path between Jolt and the ozz skeleton.
 
 ### Cross-ticket obligations (2026-08-04, T0124 backfill)
 

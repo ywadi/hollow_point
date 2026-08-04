@@ -106,9 +106,11 @@ the same problem, both consequences of messages being typed:
 
 ### Note (2026-08-03) -- platform integration would subscribe here
 
-If the game ever ships on a store platform (undecided -- now on T0044's
-question list), achievements and rich presence want a gameplay event source,
-and this bus is exactly that. The rule that preserves the option for free:
+Store-platform integration -- achievements, rich presence -- wants a gameplay
+event source, and this bus is exactly that. Nothing has to be decided for that
+to stay true: no ticket owns platform integration, and none needs to, because
+the rule below preserves the option **for free**. If such integration is ever
+built it is an engine capability with its own ticket. The rule:
 **platform integration subscribes to gameplay events; gameplay stays ignorant
 of the platform.** No gameplay code ever calls a Steamworks-shaped API -- a
 platform layer, if one ever exists, listens to the same typed messages

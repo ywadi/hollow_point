@@ -63,7 +63,7 @@ This ticket owns **font loading, rasterisation, atlas packing, and world-space/d
 - [ ] 117.3 Basic shaping sufficient for the scripts this ticket decides to support (117.6) — codepoint-to-glyph mapping and cluster positioning, explicitly not a full shaping engine
 - [ ] 117.4 Basic layout: wrapping, alignment, line breaking — the subset needed by debug text and simple labels, not a UI layout system
 - [ ] 117.5 Rendering paths: screen-space (feeding T0061's `DebugDraw::Text` and T0031's overlays) and world-space (billboarded or oriented, feeding in-world labels/damage numbers/signage), both through the RenderStack (T0027)
-- [ ] 117.6 Decide and record glyph coverage scope, informed by whatever T0044/T0112 have settled on localisation targets at the time
+- [ ] 117.6 Decide and record glyph coverage scope, informed by whatever T0112 has settled on string identity — coverage is a font/atlas cost decision for the engine (Latin-1 and CJK differ by orders of magnitude in atlas size and shaping need), not a per-game one
 - [ ] 117.7 Missing-glyph behaviour: a visible placeholder (tofu box or similar), never a silent blank — matching T0112's convention for missing string keys
 - [ ] 117.8 Confirm cross-compilation to `x86_64-windows-gnu` for whatever library is chosen (G2/G3/G4 history — this has broken other dependencies before)
 

@@ -57,9 +57,12 @@ budget`, `texture streaming`, `residency` -- zero hits. What exists is
 per-system (D15's fixed particle buffer, T0107.5's effect cap, T0046.6's
 render-target memory reporting) with no total and no per-category split. 31.7
 adds memory to the same budget-setting exercise: a GPU total and an asset-RAM
-total with a rough category split, sized against T0044's content-scale answer
-("does anything ever stream?" is now on its question list). For a
-confined-scene desktop game the numbers may be generous and never binding --
+total with a rough category split, sized against a **resident working set**.
+The engine streams nothing today, and streaming is an asset-system capability
+(T0023, T0058) that no ticket currently owns -- not something a game decides.
+If it is ever wanted it needs its own ticket, and this budget is what would
+make the case for one. For a confined-scene desktop game the numbers may be
+generous and never binding --
 that is fine; the point is that outgrowing RAM becomes a measured event
 rather than a quiet one. No eviction machinery is proposed beyond T0058.2's
 release policy unless a budget is actually exceeded.

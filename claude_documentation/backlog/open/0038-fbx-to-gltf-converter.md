@@ -66,8 +66,11 @@ The subtasks convert meshes, materials, skinning and (via T0041) animations.
 absence, not a rejection** (design-gap survey item 14): this converter does
 not carry them, ozz does not handle them (they are vertex animation, not
 joint animation), and the skinned vertex layout being assigned in T0041's
-review note does not include morph deltas. If the game needs facial animation
-or shape-key props, the feature touches this importer, the vertex format and
-the animation runtime (T0049) *at once* -- which is why the yes/no question is
-now on T0044's list. If the answer is no, one rejection line there closes
-this; if yes, scope it as its own ticket rather than growing it here quietly.
+review note does not include morph deltas. Morph-target support touches this
+importer, the vertex format and the animation runtime (T0049) *at once*, which
+is exactly what makes it worth deciding deliberately: a three-place retrofit if
+added late, a small addition if planned. **This ticket and T0049 own that
+decision**, and they own it on that cost -- an engine either offers shape keys
+or it does not, and a game cannot add them from gameplay code if the vertex
+format has no room. Decide it at the start of this ticket and record the answer;
+if it is yes, scope it as its own ticket rather than growing it here quietly.

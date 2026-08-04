@@ -59,8 +59,11 @@ but nothing currently says so.
 
 ## Subtasks
 
-- [ ] 112.1 Decide keys-vs-literals with the project owner and record it (this
-      is small but is a product-adjacent decision, like T0044)
+- [ ] 112.1 Decide keys-vs-literals and record it. Small, and an **engineering**
+      decision despite looking like a product one: literals become a mechanical
+      migration across every call site that exists by then, keys cost one table
+      from the start. That asymmetry decides it, not which languages any game
+      ships in
 - [ ] 112.2 If keys: write the convention -- namespaced dotted keys
       (`item.rusty_key.name`-shaped), one authoritative English table, visible
       missing-key fallback

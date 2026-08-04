@@ -8,7 +8,7 @@
 | **Phase** | 9 — Physics |
 | **Order** | 810 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0044, T0049, T0051, T0061, T0093 |
+| **Refs** | T0049, T0051, T0061, T0093, T0126 |
 
 > **Placeholder epic.** Recorded so the architecture accounts for it, not
 > because it is ready to start. Break into real tickets when reached — the
@@ -40,8 +40,12 @@ project has learned to verify first (G2/G3/G4).
 
 ## Rough scope
 
-- [ ] Confirm with T0044 that the game has navigating NPCs at all — if it
-      somehow does not, close this with that finding
+- [ ] Decide whether the engine offers navigation at all, on engineering
+      grounds: the cost of vendoring and maintaining recastnavigation, against
+      whether anything else (T0051's character control, T0062's behaviours) is
+      cheaper to build assuming a navmesh exists. **Not** "does our game have
+      NPCs" — an engine either provides pathfinding or every game built on it
+      writes its own, and the second outcome is the expensive one
 - [ ] Vendor recastnavigation; confirm it cross-compiles to
       `x86_64-windows-gnu`
 - [ ] Navmesh baked per scene in the editor, cached like other cooked data

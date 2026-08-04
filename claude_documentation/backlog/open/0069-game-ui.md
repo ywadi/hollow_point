@@ -37,8 +37,14 @@ This is easy to overlook precisely because the editor is full of working UI.
 | **Noesis (XAML)** | Very capable with strong designer tooling. Commercial licence. |
 | **ImGui anyway, restyled** | Tempting because it is already integrated. Immediate mode fights retained UI needs (animation, transitions, layout), and it is not built for shipping player-facing UI. |
 
-Deciding needs to know how UI-heavy the game is — a HUD with three elements and a
-menu is a very different problem from an inventory-driven RPG.
+Deciding does **not** wait on knowing how UI-heavy any one game is — a HUD with
+three elements and an inventory-driven RPG are both games this engine has to
+serve. What the choice actually turns on is where the ceiling sits: whether the
+engine ships a retained UI system at all, or exposes the RenderStack's UI layer
+(T0027) and the input context stack (T0068) and lets a game build its own on
+top. The first is a large subsystem the studio then maintains forever; the
+second is cheap here and expensive once per game. That is the trade to decide,
+and it is decidable now.
 
 ## Rough scope
 
@@ -82,10 +88,11 @@ Three adjustments, from `documentation/07-design-gaps.md` items 3, 11 and 15:
   cheaper as requirements on an unbuilt system than as patches to a built
   one. (Input rebinding, the highest-value accessibility feature, is already
   fully owned by T0068 and is not re-raised.)
-- **HUD anchoring inherits the aspect-ratio policy** T0044 decides (T0081's
-  amendment has the projection half): whatever the answer -- free aspect,
-  letterbox, clamped FOV -- HUD elements anchor to screen edges/corners under
-  it, and a safe-area inset is the cheap generalisation to carry.
+- **HUD anchoring inherits the aspect-ratio policy T0081 owns** (81.10 has the
+  projection half): whatever the engine offers -- free aspect, letterbox,
+  clamped FOV -- HUD elements anchor to screen edges/corners under it, and a
+  safe-area inset is the cheap generalisation that holds under all three. Carry
+  it regardless of which policy a game selects; that is what makes it cheap.
 
 ### Amendment (2026-08-03) -- text rendering split into T0117
 

@@ -80,6 +80,8 @@ inputs into `PBR_Renderer` -- deliberately not probes, not lightmaps, not GI,
 none of which should be built speculatively. "Rejected, scenes will be lit to
 tolerate it" is also an acceptable disposition; silence is not.
 
-If the game turns out to be all-outdoor or all-interior this collapses -- which
-is why the indoor/outdoor question is now on T0044's list rather than a reason
-to leave this unwritten.
+A single all-outdoor or all-interior game would need only half of this. The
+engine does not get to assume that, because the next game is the one that needs
+the other half. **This ticket owns both**, and the live question is scheduling:
+which half is built first, and whether the transition between them is designed
+in now -- cheap -- or retrofitted later, which is not.

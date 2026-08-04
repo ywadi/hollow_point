@@ -87,6 +87,6 @@ particles need normals per-particle and a shading path in the transparent queue.
 Unlit-only is a defensible first answer; write down which one so smoke does not
 get authored against an assumption that later changes.
 
-**Do not build a general 2D sprite renderer.** The game is 3D (D15). Everything
-here is a camera-facing quad in a 3D scene. If HUD sprites are ever wanted, that
+**Do not build a general 2D sprite renderer.** The engine is 3D (D15).
+Everything here is a camera-facing quad in a 3D scene. If HUD sprites are ever wanted, that
 is T0069's problem and a different renderer.

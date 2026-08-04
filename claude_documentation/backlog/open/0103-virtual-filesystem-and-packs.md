@@ -87,8 +87,9 @@ justifies it.
 ### Note (2026-08-03) -- 103.4's layout should assume a cloud-sync root may wrap it
 
 From the design-gap survey (`documentation/07-design-gaps.md`, item 10):
-whether the game ships on Steam is undecided (now a T0044 question), but cloud
-saves constrain the write directory and the constraint is free to honour now.
+no store platform is committed to, and none needs to be for this to matter:
+cloud saves constrain the write directory, and the constraint is free to honour
+now whether or not one is ever added.
 Cloud sync wants the synced directory **stable, small, and free of non-save
 junk**. Crash dumps land "beside save data" per T0099.3 -- fine, but choose
 103.4's layout knowing a sync root may one day wrap part of it: separate

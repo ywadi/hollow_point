@@ -158,8 +158,10 @@ it after T0060 (450), T0079 (470), T0086 (480), T0094 (510) and T0120 (515) —
 everything it validates. Running it earlier would produce gaps against tickets
 nobody has started.
 
-**T0098's dependency needs rechecking.** It refs this ticket as evidence the
-engine needs navigation ("vision cones and alert states exist"). That was
-T0044-shaped reasoning — inferring engine scope from a hypothesised game — and
-T0126 covers correcting it. Navigation is an engine capability that stands or
-falls on its own merits.
+**T0098's dependency was rechecked and corrected (2026-08-04, T0126).** It
+refd this ticket as evidence the engine needs navigation ("vision cones and
+alert states exist") — T0044-shaped reasoning, inferring engine scope from a
+hypothesised game. T0098's first scope item now decides navigation on its own
+engineering grounds (cost of recastnavigation against what else assumes a
+navmesh), and T0044 is off its Refs. Nothing here is cited as evidence for
+another ticket's existence any more.

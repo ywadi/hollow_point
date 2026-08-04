@@ -41,8 +41,9 @@ switches between them, or how the render stack's layers get their own cameras
 - [ ] 81.8 Debug draw of camera frustums (T0061)
 - [ ] 81.9 Post-resolve view offset seam -- shake, recoil, blends hook here
       (see the 2026-08-03 amendment)
-- [ ] 81.10 Implement whichever aspect-ratio policy T0044 decides (see the
-      2026-08-03 amendment)
+- [ ] 81.10 Decide the aspect-ratio policy and implement it -- **this ticket
+      owns it**, because this is where projection is computed from the viewport
+      rect (see the 2026-08-03 amendment)
 
 ## Notes / findings
 
@@ -94,19 +95,24 @@ camera blends become *gameplay* problems, which is where D14/T0094 philosophy
 says they belong. The engine ships the hook, not the shake.
 
 A sequencer/timeline for scripted scenes is deliberately **not** scoped here
-or anywhere -- it is a subsystem, and whether this game has scripted scenes at
-all is now a question on T0044's list.
+or anywhere -- it is a subsystem in its own right. Whether the engine ships one
+needs its own ticket, raised when someone is ready to argue the cost; it is not
+a property of any particular game, and it does not belong to this ticket beyond
+the seam at 81.9.
 
 **2. Aspect ratio needs a stated policy, and it is a design question first**
 (survey item 15). `aspect ratio`, `letterbox`, `ultrawide`, `safe area` -- zero
 hits in any runtime context; T0033's three fit modes are *editor viewport*
 machinery. The game window has no stated policy: free aspect means 21:9 sees
-more world -- a real gameplay advantage in a vision-cone stealth game (T0093) --
+more world -- which is a real advantage in any game where what you can see is a
+mechanic, so it is a fairness question the engine has to have an answer for --
 letterboxing trades that for fairness at the cost of bars, clamping horizontal
-FOV is the compromise. T0044 decides; 81.10 implements it where projection is
-computed from the viewport rect, and T0069's HUD anchoring picks up the UI
-half. Until decided, do not bake "projection always fills the window" into
-anything.
+FOV is the compromise. **81.10 decides and implements it**, where projection is
+computed from the viewport rect, and T0069's HUD anchoring picks up the UI half.
+The engine-shaped answer is most likely to *offer* the policy as a setting
+rather than to pick one: the three differ by a few lines here and by a great
+deal to a game that wanted a different one. Until decided, do not bake
+"projection always fills the window" into anything.
 
 ### Cross-ticket obligations (2026-08-04, T0124 backfill)
 
