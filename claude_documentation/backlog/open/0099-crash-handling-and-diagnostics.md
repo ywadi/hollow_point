@@ -8,7 +8,7 @@
 | **Phase** | 8 — Runtime & export |
 | **Order** | 790 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0054, T0055, T0083, T0084 |
+| **Refs** | T0054, T0055, T0083, T0084, T0103, T0113, T0115 |
 
 ## Why
 
@@ -62,3 +62,14 @@ machine, but the log-flush-on-fatal hook is worth wiring when T0054 is built.
 - Editor crashes are worth the same treatment eventually — losing an unsaved
   scene to a silent crash is the editor equivalent of losing a save — but the
   editor has a terminal and a developer attached, so the runtime ships first.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0113** routes device loss through the fatal path this ticket formalises,
+  with a *distinguishable* message naming the GPU/driver — the handler must
+  accommodate a fatal that is not a crash signal, or "device lost" gets
+  triaged as memory corruption (T0113's stated failure).
+- **T0103.4** owns the write-directory layout the crash report lands in:
+  `crash/` separate from `saves/`, so a cloud-sync root can wrap saves alone.
+- **T0115.6** owns editor scene autosave/recovery — the answer to this
+  ticket's own note about losing an unsaved scene. Do not re-scope it here.

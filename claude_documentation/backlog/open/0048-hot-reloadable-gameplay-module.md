@@ -8,7 +8,7 @@
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 150 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0104 (Blocks this), T0105 |
 
 ## Why
 
@@ -105,3 +105,12 @@ The entt hazard this ticket inherited from T0095 turned out to be misdescribed �
 see that ticket's prototype results. Component identity is name-hash based and
 survives the boundary; the sequential `type_index` does not and must never be
 persisted or compared across modules.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0105** holds the linkage loose ends this loader inherits: 105.1 is the
+  dlclose-segfault finding that forces `RTLD_NODELETE` (with T0029's retained
+  Tracy string pointers riding on the same unload question), and 105.3
+  re-verifies this ticket's mechanics against the shared-engine model. Read
+  T0095's prototype results and T0105 before designing 48.2 — a loader
+  designed around true unload will fight the toolchain.

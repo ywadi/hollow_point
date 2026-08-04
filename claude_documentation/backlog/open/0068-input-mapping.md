@@ -8,7 +8,7 @@
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 170 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0110, T0112 |
 
 ## Why
 
@@ -152,3 +152,10 @@ as the rest of this ticket, applied to an output.
 and back is a case that reliably breaks: the cursor must be released on focus
 loss and re-captured on focus gain, or the pointer is trapped in a window the
 user is not looking at. This interacts with the focus-loss policy T0110 owns.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0112.3** names this ticket's key display names (rebinding UI) as an early
+  consumer of the keys-vs-literals decision — check it before authoring any
+  user-facing literal here, or those strings become part of the migration
+  T0112 exists to prevent.

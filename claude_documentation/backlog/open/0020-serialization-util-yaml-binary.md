@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 190 |
 | **Created** | 2026-08-02 |
+| **Refs** | T0016, T0082 |
 
 ## Why
 
@@ -67,3 +68,12 @@ property enumeration automatically**; hand-written traits are only for the
 leaf/primitive types reflection bottoms out in (GUID, math types, strings,
 containers). 20.3 should be read as "define the leaf-type layer reflection
 sits on", not as a parallel per-component mechanism.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0016** deliberately left the GUID binary round-trip untested — "there is
+  no serializer yet (T0020)". The every-type round-trip in 20.6 is what closes
+  that gap; treat GUID as a first-class case there, not an incidental uint64.
+- **T0082.5** ties the binary cache to the schema version: the version header
+  in 20.4 must participate in staleness alongside the content hash, or a
+  schema change silently loads a stale cook that still parses.

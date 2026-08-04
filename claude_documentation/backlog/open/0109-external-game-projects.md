@@ -8,7 +8,7 @@
 | **Phase** | 8 — Runtime & export |
 | **Order** | 745 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0013, T0024, T0043, T0048, T0104, D12 |
+| **Refs** | T0013, T0024, T0043, T0048, T0104, T0118, D12 |
 
 ## Why
 
@@ -80,3 +80,12 @@ fixed. Right now that number is zero.
 constrains what T0043's export produces and what T0013's artifacts must be
 installable as, so a sketch of the answer is worth having well before Phase 8
 arrives.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0118**: the generated API reference is part of what an installed engine
+  ships — 109.1's SDK layout must carry `docs/api` (regenerated per release)
+  alongside headers and libraries. T0118's notes state the expectation
+  ("109.1's SDK-layout decision should account for it once both tickets are
+  further along"); an agent or developer writing gameplay against a released
+  engine needs the reference without building the engine first.

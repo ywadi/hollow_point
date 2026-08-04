@@ -8,7 +8,7 @@
 | **Phase** | 9 — Physics |
 | **Order** | 800 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0116 |
 
 > **Placeholder epic.** Recorded now so the architecture accounts for it, not
 > because it is ready to start. Break into real tickets when Phase 9 is reached —
@@ -88,3 +88,11 @@ tickets: **no ragdoll** (death animations only -- legitimate and much cheaper),
 joints), or **powered/blended** (animation-driven targets with physics take-
 over, the expensive one). The game decision is T0044's; the mechanism, if
 wanted, lands here.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0116.6** authors collision shapes in the editor — a resizable primitive
+  with no render mesh. This epic's collision components must be able to
+  reference an *authored* shape, not only ones generated at import; the scope
+  bullet "collision shape generation at import" is half the story, and T0116
+  was filed because the authoring half had no owner.

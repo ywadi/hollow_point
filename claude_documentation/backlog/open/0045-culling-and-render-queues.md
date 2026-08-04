@@ -8,6 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 440 |
 | **Created** | 2026-08-02 |
+| **Refs** | T0085, T0086, T0089, T0120 |
 
 ## Why
 
@@ -86,3 +87,17 @@ Also: the frustum/AABB math in 45.3 already exists — `AdvancedMath.hpp`
 (`ViewFrustum`, `ExtractViewFrustumPlanesFromMatrix` with its OpenGL flag,
 `GetBoxVisibility`, bound-box transform). Consume it (T0056), do not re-derive
 it. World-space bounds come from T0101's world transforms.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0085.3**: the camera culling mask is applied in *this* culling pass — one
+  AND per object, never per-pixel. T0079/T0086 assume masked-out work is never
+  submitted at all.
+- **Culling must be callable with an arbitrary frustum**, not only the primary
+  viewer's: T0086.8 culls shadow casters per light and T0120.3 culls per
+  render-texture camera, and both consume this pass. An API hard-wired to
+  "the" camera forces both to fork it.
+- **T0089.5** applies fog to transparents, and its note says to decide the
+  approach "when the transparent queue is built (T0045), not afterwards" —
+  when 45.4 defines the queue interfaces, record how a per-pixel fog term will
+  reach the transparent path.

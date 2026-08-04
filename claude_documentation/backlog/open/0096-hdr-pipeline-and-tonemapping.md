@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 460 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0027, T0046, T0060, T0087, T0089 |
+| **Refs** | T0027, T0046, T0060, T0087, T0089, T0111 |
 
 ## Why
 
@@ -77,3 +77,10 @@ work here is wiring and policy, not writing a tonemapper.
   reduction/histogram work and interacts with every lighting decision. A fixed
   exposure value per scene is the right starting point and is what most
   stylised games ship with anyway.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0111** owns the AA/render-scale decision and either confirms or drops the
+  TAA-shaped hook 96.7 leaves open — its 111.2 names the full dependency list
+  (motion vectors, jitter, history buffers, ordering against this tonemap).
+  Check T0111's recorded decision before wiring anything into the hook.

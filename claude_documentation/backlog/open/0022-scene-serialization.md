@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 250 |
 | **Created** | 2026-08-02 |
+| **Refs** | T0053 (Blocks this), T0101 |
 
 ## Why
 
@@ -72,3 +73,11 @@ round-trip it through save, and re-materialise it when the type reappears.
 Warn loudly meanwhile. Worth building from the start, because it also covers
 files from newer schema versions more gracefully than refusal alone (T0082
 still refuses newer *file* versions; this handles a missing *type*).
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0101.1** owns how transform parent/child links are represented on disk
+  (GUIDs, fixed up on load) versus at runtime — and T0101's hierarchy
+  round-trip test lands through this serializer. Consume its representation
+  decision rather than inventing a link format here, or the two fix-up paths
+  drift and hierarchies break only on load.

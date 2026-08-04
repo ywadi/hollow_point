@@ -8,6 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 470 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0085, T0093 |
 
 ## Why
 
@@ -56,3 +57,11 @@ is exactly what causes visible popping.
 
 The old `terrain_lab` app used `EpipolarLightScattering`, so atmospheric
 scattering is available in DiligentFX if outdoor scenes matter.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0093**: vision sources are cone/radial projectors that reuse light-shaped
+  machinery but are *not* lights — a vision cone must not illuminate, and
+  visibility is applied as its own material term, never folded into the
+  lighting accumulation. Keep light gathering/selection (79.2/79.3) reusable
+  for a projector component that does not shade, or T0093 ends up forking it.

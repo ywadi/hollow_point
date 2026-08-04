@@ -8,6 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 410 |
 | **Created** | 2026-08-02 |
+| **Refs** | T0120 |
 
 ## Why
 
@@ -56,3 +57,12 @@ no on-screen output. Add a trivial dev-only present path (blit the offscreen
 target to the swap chain in the editor app's stub layer) so Phase 4 work is
 visually verifiable as it lands. It is ~20 lines, it exercises the same event,
 and T0033 simply replaces it.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0120.2** makes this submission callable per-camera against an arbitrary
+  target (portals, security monitors, thumbnails). Keep the parse/submit path
+  free of one-implicit-camera, one-viewport-target assumptions — the explicit
+  parse-output list in the notes is half of that; camera and target as
+  parameters are the other half. Retrofitting them means restructuring
+  submission, which is what T0120 was filed to avoid.

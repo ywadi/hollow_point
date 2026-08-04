@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 220 |
 | **Created** | 2026-08-02 |
+| **Refs** | T0103 (Blocks this — D13), T0039, T0096, T0116 |
 
 ## Why
 
@@ -104,3 +105,18 @@ owns *where bytes come from*, this ticket owns *what the bytes mean* — GUIDs,
 metafiles, reference counting, and the lifetime rules in T0058. Resist letting
 asset identity leak into path handling; a GUID must not be a path, and a mount
 point must not be an asset concept.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0039.5** decides the cooked-mesh container at the start of Phase 7, and
+  its note says that decision "shapes T0023's pool". Keep 23.1's per-type
+  storage extensible for a cooked container arriving later — do not bake in
+  "an asset is a parsed glTF".
+- **T0096.3**'s sRGB policy flows through texture loading: the loader calls in
+  23.2/23.3 must carry the per-asset sRGB flag through to the view format
+  rather than guessing per call site — a wrong flag silently breaks PBR
+  shading in exactly the way T0096 exists to prevent.
+- **T0116** builds on this ticket's reserved-GUID builtin primitives (one
+  mechanism, not two), and its 116.5 decision — CSG output as source, cooked,
+  or load-time-evaluated — may land a change on this import model. Neither
+  ticket should discover the other mid-build.

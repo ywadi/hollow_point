@@ -8,7 +8,7 @@
 | **Phase** | 10 — Audio |
 | **Order** | 820 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0107, T0112 |
 
 > **Placeholder epic**, and the library is **not yet chosen**. Recorded to keep
 > the integration points in mind. Break into real tickets when Phase 10 is
@@ -106,3 +106,11 @@ that never considered it is the expensive version.** Nothing needs building
 until this epic breaks into tickets; the scope bullet above is the whole fix
 today. Caption *display* is T0069's side; caption text identity follows
 T0112's string-key convention.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0107** authors composed effects carrying a sound reference *before* this
+  epic exists — its note: "design the asset so a sound reference can exist
+  without blocking on the audio engine". When the engine lands, honour that
+  authored reference shape rather than redesigning it and migrating every
+  effect asset.

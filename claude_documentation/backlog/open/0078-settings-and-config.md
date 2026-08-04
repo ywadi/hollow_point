@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 360 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0082, T0085, T0110, T0114 |
 
 ## Why
 
@@ -90,3 +91,12 @@ closes it, and its scope is:
 
 The shape to avoid: quality enums defined in T0086/T0089/T0091/T0096 and
 merely *stored* here. The schema is this ticket's; the consumers read it.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0085.1**: layer *names* live in project settings — the same shape as the
+  quality-tier rule above: the schema is this ticket's, T0085's mask-editor
+  widget reads it, and `layer 7` never appears in code.
+- **T0114**: cvars may *shadow* a setting for the session, but persistence
+  stays here — one store. The rule is recorded on T0114's side; this side must
+  not grow a second persistence path when the console arrives.

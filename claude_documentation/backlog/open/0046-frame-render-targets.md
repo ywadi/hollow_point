@@ -8,6 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 390 |
 | **Created** | 2026-08-02 |
+| **Refs** | T0111 (Blocks this), T0094, T0106, T0107, T0120 |
 
 ## Why
 

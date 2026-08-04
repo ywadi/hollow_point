@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 380 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
+| **Refs** | T0100, T0110 (Blocks this), T0113, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D15 |
 
 ## Why
 
@@ -108,3 +108,11 @@ because the type is reachable.
 where it first applies — link Diligent targets PRIVATE unless a *public engine
 header* names their types. Getting it wrong is not a build error; it silently
 widens every consumer's dependency surface.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **D15** sets an OpenGL 4.3 floor: particles are GPU-compute-only, so 25.2's
+  backend selection must verify the GL fallback actually provides >= 4.3 with
+  compute — D15 says this ticket's fallback assumptions "should be checked
+  against that", and the check lives here. A GL device below the floor should
+  fail loudly at selection, not when the first emitter dispatches nothing.

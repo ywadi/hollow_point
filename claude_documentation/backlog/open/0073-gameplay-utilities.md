@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 280 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0062, T0075, T0077 |
 
 ## Why
 
@@ -86,3 +87,12 @@ neither is a dependency — T0045 is cited only as an analogy for the
 linear-scan-first trade-off, and T0049 only to *distinguish* its animation
 state machine from this gameplay one. The real cross-phase dependencies are
 T0021 and T0062, both Phase 3, which is where this now sits.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0075.4** dispatches radius-addressed messages through 73.6's spatial
+  query — a consumer with dispatch-ordering semantics riding on it, not just a
+  convenience helper.
+- **T0077.1** decides which resident scenes a query sees (its second-pass note
+  names 73.6 directly). Do not answer the scope question locally — per-system
+  answers are exactly what that decision exists to prevent.

@@ -8,6 +8,7 @@
 | **Phase** | 8 — Runtime & export |
 | **Order** | 770 |
 | **Created** | 2026-08-02 |
+| **Refs** | T0103 (Blocks this — D13), T0098, T0115, T0116, T0119 |
 
 ## Why
 
@@ -97,3 +98,19 @@ binary. Assets-only DLC needs no build.
 
 The RUNPATH problem recorded above is unaffected and still needs fixing — it is
 about the executable's library search path, not about content.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0098**: the navmesh is a per-scene cooked asset export must ship — its
+  own note says "worth remembering in T0043's asset walk". Missing it produces
+  an exported game whose NPCs cannot path.
+- **T0115.1** needs the same asset-dependency walk this ticket does at export,
+  for delete-check and find-usages. Build it once as a reusable query over the
+  asset database, "or accept writing it twice and reconciling forever" —
+  T0115's words; make the choice deliberately here.
+- **T0116.5**: the CSG asset-pipeline decision (source vs cooked vs evaluated
+  at load) is taken in T0116 and lands its change here or in T0023 — do not
+  let export discover CSG geometry as an unclassified asset type.
+- **T0119** owns the step after export on Linux (desktop entry, icon,
+  packaging format). Keep the exported layout wrappable by AppImage/Flatpak
+  rather than treating a bare folder as the end state.

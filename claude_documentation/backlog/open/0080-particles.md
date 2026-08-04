@@ -8,6 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 550 |
 | **Created** | 2026-08-03 |
+| **Refs** | [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D15, T0106 (Blocks this), T0107 |
 
 ## Why
 
@@ -134,3 +135,11 @@ cheap, and that claim should be tested against the actual layout, not assumed.
 
 Screen distortion -- the other VFX shape the survey flagged -- is a frame-layout
 constraint, not a particle-buffer one; it is recorded on T0046.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0107.5**: the concurrent-*effect* cap and 80.8's particle budget saturate
+  together under fire, and T0107 warns that effects spawning against an
+  exhausted particle buffer produce silent, invisible explosions. Design
+  80.8's degradation with the effect-level cap in view — the two policies must
+  know each other.

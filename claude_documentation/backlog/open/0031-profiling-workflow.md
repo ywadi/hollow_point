@@ -8,6 +8,7 @@
 | **Phase** | 5 — Profiling |
 | **Order** | 580 |
 | **Created** | 2026-08-02 |
+| **Refs** | T0110, T0117 |
 
 ## Why
 
@@ -62,3 +63,13 @@ confined-scene desktop game the numbers may be generous and never binding --
 that is fine; the point is that outgrowing RAM becomes a measured event
 rather than a quiet one. No eviction machinery is proposed beyond T0058.2's
 release policy unless a budget is actually exceeded.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0110**: frame budgets (31.3) assume something is holding frames near
+  target — T0110's notes say a 16.6 ms budget is meaningless against an
+  unpaced frame. Set budgets against a paced build, or they measure the cap,
+  not the work.
+- **T0117**: any on-screen profiling overlay renders its text through T0117's
+  stack (117.5) — do not grow an ad-hoc glyph path here; avoiding that
+  retrofit is the reason T0117 was split out of T0069.

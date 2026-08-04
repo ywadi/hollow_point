@@ -8,6 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 500 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0117 |
 
 ## Why
 
@@ -52,3 +53,9 @@ at frame end avoids locking on a hot path.
 Jolt provides `DebugRenderer` as an abstract interface for precisely this — the
 physics integration implements it against this service rather than the other way
 round, keeping the dependency pointing one way.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0117** owns the text stack `DebugDraw::Text` renders through (117.5) —
+  it sits at Order 495, directly before this ticket, precisely so no ad-hoc
+  glyph renderer grows here and then has to be reconciled away.

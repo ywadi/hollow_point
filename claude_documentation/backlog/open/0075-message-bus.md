@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 330 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0074, T0077 |
 
 ## Why
 
@@ -114,3 +114,9 @@ of the platform.** No gameplay code ever calls a Steamworks-shaped API -- a
 platform layer, if one ever exists, listens to the same typed messages
 everything else publishes. Recorded so nobody wires an achievement call into a
 behaviour "just for now". (Design-gap survey item 10.)
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0077.1** decides whether radius/tag dispatch sees all resident scenes or
+  only the active one (its second-pass note names this bus directly). Consume
+  that decision; a per-mechanism answer here is what it exists to prevent.

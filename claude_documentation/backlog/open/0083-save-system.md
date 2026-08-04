@@ -8,6 +8,7 @@
 | **Phase** | 8 — Runtime & export |
 | **Order** | 780 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0103 (Blocks this — D13), T0059, T0077, T0082, T0094, T0112 |
 
 ## Why
 
@@ -82,3 +83,14 @@ gets patched, and "your saves are gone" is unacceptable.
 the presented frame and encoding it; this ticket consumes the result for slot
 thumbnails. The dependency runs that way round -- do not grow a second capture
 path here.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0103** blocks this ticket and owns where saves go: writes are confined to
+  the VFS write directory (103.4), whose layout separates `saves/` from
+  `logs/` and `crash/` so a cloud-sync root can one day wrap saves alone. Do
+  not invent a save path with `std::filesystem` — that is the
+  rewrite-per-read-site failure D13 exists to prevent.
+- **T0112.3** names 83.3's slot display strings as an early consumer of the
+  keys-vs-literals decision — check it before authoring literals into save
+  metadata.

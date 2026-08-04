@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 300 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0053, T0107 |
 
 ## Why
 
@@ -85,3 +86,11 @@ composition is this same answer.
 Tests to add under 59.8/59.9: save → load → save produces identical GUIDs; an
 external EntityRef into an instance survives a reload; two instances of the
 same prefab never share a GUID.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0107.1** may resolve "what is a VFX asset" as *a prefab with a Lifetime
+  component*. When deciding 59.7 (nesting) and the instantiate API, know that
+  multi-entity spawn-as-a-unit with per-component timing and self-retirement
+  is a candidate consumer — two spawnable-tree concepts in one engine is the
+  lasting tax T0107 is trying to avoid.

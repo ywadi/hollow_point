@@ -9,6 +9,7 @@
 | **Order** | 160 |
 | **Created** | 2026-08-02 |
 | **Supersedes** | part of T0006 |
+| **Refs** | T0070, T0112 |
 
 ## Why
 
@@ -87,3 +88,15 @@ ask when the game is defined; the referenced tickets hold the consequences.
   (T0031's note) get sized accordingly. If the answer is ever yes, streaming
   is a Phase-4-shaped retrofit -- which is exactly why the question is asked
   once, here, now.
+
+### Two more owner decisions parked in other tickets (2026-08-04, T0124)
+
+Answer these in the same sitting as the list above — each is explicitly an
+owner call recorded elsewhere:
+
+- **T0112.1** — user-facing strings as keys or literals. Needed at the head of
+  Phase 3, *earlier* than everything else on this list, because every literal
+  authored before the decision is a migration.
+- **T0070** — is multiplayer ever plausible? Ruling it out is free and
+  releases the determinism constraints it would impose on T0021/T0051/T0057;
+  leaving it ambiguous means over-engineering or being unable to add it.

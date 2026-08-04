@@ -8,6 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 640 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0116 |
 
 ## Why
 
@@ -53,3 +54,10 @@ start, update it during, commit on release.
 Parented transforms are the other trap: the gizmo works in world space, but the
 transform stored is usually local to the parent. The conversion has to happen on
 the way in and out or children move incorrectly.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0116.3** needs a dimension-resize manipulator (a box's `size` handle),
+  which is a different interaction from the general-purpose scale gizmo. Keep
+  the viewport-manipulator integration open to a second manipulator type
+  rather than hard-wiring translate/rotate/scale as the only three.

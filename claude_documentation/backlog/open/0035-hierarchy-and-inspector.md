@@ -8,6 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 630 |
 | **Created** | 2026-08-02 |
+| **Refs** | T0053 (Blocks this), T0032, T0071 |
 
 ## Why
 

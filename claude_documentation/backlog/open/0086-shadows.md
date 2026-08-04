@@ -8,6 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 480 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0078, T0085, T0091, T0092, T0093 |
 
 ## Why
 
@@ -66,3 +67,16 @@ drawn again per light. A distant point light deserves a small map or none.
 **Shadow casters need their own culling** — the set visible to the *light* is not
 the set visible to the camera. Reusing camera culling produces shadows that pop in
 as their caster enters view, which is very noticeable.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+The notes above record T0093 reusing this machinery for visibility. Two more
+non-lighting consumers have since been filed, which hardens that note into a
+design rule:
+
+- **T0091.2** samples shadow maps per froxel for volumetric light injection.
+- **T0092.5**'s rain-occlusion map is "a shadow map with the sky as the
+  light", rendered and sampled with no shading at all.
+
+Keep shadow-map rendering and sampling callable without the lighting pass, or
+each of the three consumers rebuilds the machinery with its own bugs.

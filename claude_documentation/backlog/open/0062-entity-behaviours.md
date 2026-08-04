@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 270 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0053 (Blocks this), T0095 |
 
 ## Why
 

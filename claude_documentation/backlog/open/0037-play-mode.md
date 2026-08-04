@@ -8,6 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 680 |
 | **Created** | 2026-08-02 |
+| **Refs** | T0057, T0100, T0115 |
 
 ## Why
 
@@ -72,3 +73,12 @@ Physics (T0051, later) follows the same shape: the simulation world is built
 for the clone on entry and torn down on stop. Nothing to build now — but 37.1
 should be designed as "enter/exit a simulation *session*", not just "swap the
 scene pointer", so these attach cleanly instead of by patch.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0057** built pause as a state distinct from a zero time scale *for this
+  ticket*: use `Clock`'s pause so unpausing restores whatever slow-motion
+  scale was set, and use the separate editor/game clock instances so pausing
+  the simulation does not freeze the editor's own UI.
+- **T0115.6** autosaves on play-entry — the insurance that catches "crashed
+  while testing". Keep a pre-play hook available where it can attach.

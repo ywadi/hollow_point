@@ -8,6 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 620 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0120 |
 
 ## Why
 
@@ -64,3 +65,11 @@ the async-readback pattern the ID buffer needs, and DiligentFX's
 `CoordinateGridRenderer` is a ready-made editor viewport grid — a standard
 editor feature no ticket currently mentions, and it comes for free with the
 DiligentFX dependency (its ImGui settings panel included, per D6).
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0120** provides the shared render-a-camera-to-texture mechanism and names
+  this ticket's ID-buffer render as a migration candidate (120.10). Check what
+  T0120 has built before implementing 63.5 as another bespoke offscreen render
+  — three independent one-off renders is the divergence T0120 was filed to
+  stop.

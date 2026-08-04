@@ -8,6 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 670 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0054, T0114 |
 
 ## Why
 
@@ -88,3 +89,10 @@ there is nothing for a game developer to register.
 Not to be confused with [T0114](0114-developer-console-and-cvars.md),
 which is a *command* console for typing at the running game. This one is the log
 viewer.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0114.3** attaches a command line — history, completion over registered
+  names — in or beside this panel. Design the panel so an input row can
+  attach; a pure viewer that cannot host one forces T0114 to build a second
+  console window.

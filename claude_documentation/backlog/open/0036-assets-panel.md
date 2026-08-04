@@ -8,6 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 660 |
 | **Created** | 2026-08-02 |
+| **Refs** | T0115, T0120 |
 
 ## Why
 
@@ -47,3 +48,10 @@ without a ticket to revisit into.
 This panel is where the FBX→glTF converter (T0038) will eventually surface, so
 leave room in the import flow for a conversion step rather than assuming import
 is always a direct load.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0115.3/115.4** surface delete-with-usage-check and find-usages in this
+  panel, driven by its dependency index. Leave the details pane and the
+  panel's context actions extensible for them — a panel closed around
+  import-and-assign forces T0115 to rebuild it.

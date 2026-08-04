@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 310 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0075, T0077, T0095 |
 
 ## Why
 
@@ -68,3 +69,13 @@ editor something to populate a picker from.
 
 Keep the hierarchy shallow. Deep chains are hard to reason about and the extra
 levels rarely earn their cost.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0095** measured that per-module counters (the `entt::type_index` shape)
+  are not identities across the module boundary or a reload, and named this
+  ticket as one that "will be tempted by a dense integer id". Tag ids from
+  74.1's intern table are process-local: anything persisted, compared across
+  the boundary, or outliving a session is the string (74.5), never the number.
+- **T0077.1** decides which resident scenes 74.7's query sees — decided once
+  there, not here.

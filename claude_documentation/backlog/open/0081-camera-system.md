@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 420 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0111, T0120 |
 
 ## Why
 
@@ -107,3 +107,13 @@ FOV is the compromise. T0044 decides; 81.10 implements it where projection is
 computed from the viewport rect, and T0069's HUD anchoring picks up the UI
 half. Until decided, do not bake "projection always fills the window" into
 anything.
+
+### Cross-ticket obligations (2026-08-04, T0124 backfill)
+
+- **T0111.2**: the TAA-shaped hook injects sub-pixel jitter at the projection
+  this ticket computes (81.3). Leave the seam where projection is assembled —
+  the same shape as 81.9's post-resolve view offset — so jitter does not need
+  a retrofit through every projection consumer.
+- **T0120.1** gives this camera component an optional texture target. Leave
+  room in 81.1 rather than assuming every camera contributes to the composited
+  swap-chain frame.
