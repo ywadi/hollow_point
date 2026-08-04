@@ -1,0 +1,233 @@
+// Frame targets and the render stack, against a real device (T0046, T0027).
+//
+// Bucket: gpu. Every case here needs a graphics device, and **every case skips
+// cleanly when there is not one** — `zig build test -Dtest=all` includes this
+// bucket, and CI runners have no GPU and no display. A case that failed instead
+// of skipping would turn four green jobs red for a reason unrelated to whatever
+// change was being tested, which is worse than not running at all.
+//
+// The skip is deliberate about *where* it gives up: no window (headless), or a
+// window but no device (no driver, software-only, wine without a GL/Vulkan ICD).
+// Both are environment facts rather than defects, so both report and return.
+
+#include <doctest/doctest.h>
+
+#include <hp/FrameTargets.hpp>
+#include <hp/Render.hpp>
+#include <hp/RenderStack.hpp>
+#include <hp/Window.hpp>
+
+#include <memory>
+#include <string>
+
+namespace {
+
+/// A window and a device, or nothing.
+struct Device {
+    std::unique_ptr<hp::Window> window;
+    std::unique_ptr<hp::RenderLayer> render;
+
+    [[nodiscard]] bool ok() const { return render && render->ready(); }
+};
+
+/// Brings up a window and a device on the requested backend.
+///
+/// The window is small and short-lived on purpose: these run on a developer's
+/// actual desktop, and a test that leaves a window up is a test people stop
+/// running.
+Device bringUp(hp::RenderBackend backend) {
+    Device device;
+
+    hp::WindowConfig windowConfig;
+    windowConfig.title = "hp gpu test";
+    windowConfig.width = 320;
+    windowConfig.height = 240;
+    windowConfig.resizable = true;
+    // The GL backend needs a context created with the window; Vulkan must not
+    // have one. Getting this wrong produces a device that fails to come up
+    // rather than anything diagnosable.
+    windowConfig.openGLContext = backend == hp::RenderBackend::OpenGL;
+
+    device.window = hp::Window::create(windowConfig);
+    if (!device.window) {
+        return device;
+    }
+
+    hp::RenderConfig renderConfig;
+    renderConfig.backend = backend;
+    renderConfig.vsync = false;
+    device.render = std::make_unique<hp::RenderLayer>(*device.window, renderConfig);
+    device.render->onAttach();
+    return device;
+}
+
+/// Tears down in the order the device requires: layer first, then window.
+void tearDown(Device& device) {
+    if (device.render) {
+        device.render->onDetach();
+        device.render.reset();
+    }
+    device.window.reset();
+}
+
+/// The shared body, run once per backend.
+void exerciseTargetsAndStack(hp::RenderBackend backend, const char* backendName) {
+    Device device = bringUp(backend);
+    if (!device.ok()) {
+        MESSAGE("no " << std::string(backendName)
+                      << " device available -- skipping (this is expected on CI)");
+        tearDown(device);
+        return;
+    }
+
+    // `std::string(backendName)`, not `backendName`. doctest's MessageBuilder
+    // takes a literal fine but decays a `const char*` *variable* to bool, so the
+    // first version of this line printed "device up on 1" -- a log that looked
+    // like it named the backend and did not.
+    MESSAGE("device up on " << std::string(backendName) << ": "
+                            << device.render->adapterDescription());
+
+    SUBCASE("targets create for every role") {
+        hp::FrameTargets targets;
+        targets.declare({"scene", hp::TargetFormat::ColourHDR, 1.0F});
+        targets.declare({"depth", hp::TargetFormat::Depth, 1.0F});
+        targets.declare({"half", hp::TargetFormat::Colour, 0.5F});
+
+        // The three roles are exactly the places a backend can legitimately
+        // refuse: RGBA16_FLOAT as a render target, D32_FLOAT carrying
+        // BIND_SHADER_RESOURCE, and an sRGB colour target.
+        REQUIRE(targets.create(device.render->device(), 320, 240));
+        CHECK(targets.ready());
+
+        CHECK(targets.renderTarget("scene") != nullptr);
+        CHECK(targets.depthStencil("depth") != nullptr);
+        CHECK(targets.renderTarget("half") != nullptr);
+
+        // Depth must be readable, or the transparent pass cannot fade soft
+        // particles against scene depth (T0106.5).
+        CHECK(targets.shaderResource("depth") != nullptr);
+        CHECK(targets.shaderResource("scene") != nullptr);
+
+        // Roles are enforced, not merely documented.
+        CHECK(targets.depthStencil("scene") == nullptr);
+        CHECK(targets.renderTarget("depth") == nullptr);
+
+        // 320*240*8 (HDR) + 320*240*4 (depth) + 160*120*4 (half).
+        CHECK(targets.memoryBytes() == 320ULL * 240 * 8 + 320ULL * 240 * 4 + 160ULL * 120 * 4);
+    }
+
+    SUBCASE("resize rebuilds at the new size and is debounced") {
+        hp::FrameTargets targets;
+        targets.declare({"scene", hp::TargetFormat::ColourHDR, 1.0F});
+        REQUIRE(targets.create(device.render->device(), 320, 240));
+
+        auto* before = targets.renderTarget("scene");
+        REQUIRE(before != nullptr);
+
+        // Unchanged size must not recreate. If it did, every frame would throw
+        // away and rebuild every target -- which works, looks fine, and quietly
+        // costs a full reallocation per frame.
+        REQUIRE(targets.resize(320, 240));
+        CHECK(targets.renderTarget("scene") == before);
+
+        REQUIRE(targets.resize(640, 480));
+        CHECK(targets.width() == 640);
+        CHECK(targets.memoryBytes() == 640ULL * 480 * 8);
+
+        // Repeated resizes must not accumulate. This does not prove the absence
+        // of a leak -- nothing here can -- but a target set that grew per
+        // resize would show it immediately.
+        for (int i = 0; i < 16; ++i) {
+            REQUIRE(targets.resize(320 + i, 240 + i));
+        }
+        CHECK(targets.memoryBytes() == (320ULL + 15) * (240 + 15) * 8);
+    }
+
+    SUBCASE("the stack renders enabled layers only, in order") {
+        hp::FrameTargets targets;
+        targets.declare({"scene", hp::TargetFormat::Colour, 1.0F});
+        targets.declare({"depth", hp::TargetFormat::Depth, 1.0F});
+        REQUIRE(targets.create(device.render->device(), 320, 240));
+
+        /// Records that it ran and what it was handed.
+        class Recording final : public hp::IRenderLayer {
+        public:
+            explicit Recording(const char* name, std::string* log) : name_(name), log_(log) {}
+
+            void onRenderLayer(const hp::RenderPassContext& pass) override {
+                sawDepth = pass.depth != nullptr;
+                sawColour = pass.colour != nullptr;
+                sawDevice = pass.device != nullptr;
+                *log_ += name_;
+            }
+
+            [[nodiscard]] const char* name() const override { return name_; }
+
+            bool sawDepth = false;
+            bool sawColour = false;
+            bool sawDevice = false;
+
+        private:
+            const char* name_;
+            std::string* log_;
+        };
+
+        std::string order;
+        Recording world("world", &order);
+        Recording hud("hud", &order);
+        Recording disabled("disabled", &order);
+
+        world.order = 0;
+        world.clear = hp::LayerClear::ColourAndDepth;
+        world.useDepth = true;
+
+        hud.order = 100;
+        // The case the whole per-layer depth policy exists for.
+        hud.useDepth = false;
+
+        disabled.order = 50;
+        disabled.enabled = false;
+
+        hp::RenderStack stack;
+        stack.add(&hud);
+        stack.add(&disabled);
+        stack.add(&world);
+
+        const std::size_t rendered =
+            stack.render(device.render->device(), device.render->context(),
+                         targets.renderTarget("scene"), targets.depthStencil("depth"), &targets,
+                         320, 240);
+
+        CHECK(rendered == 2);
+        CHECK(order == "worldhud");
+        CHECK(world.sawDepth);
+        CHECK(world.sawColour);
+        CHECK(world.sawDevice);
+        // A HUD must never receive the depth target, or it depth-tests against
+        // world geometry and disappears behind whatever is near the camera.
+        CHECK_FALSE(hud.sawDepth);
+        CHECK(hud.sawColour);
+
+        // The clear and the draws must actually reach the driver. If any call in
+        // RenderStack::render were malformed, the validation layers report it
+        // and the device is lost or the flush fails -- so surviving this is the
+        // evidence that the RHI calls are well-formed.
+        device.render->onRender();
+        CHECK(device.render->ready());
+    }
+
+    tearDown(device);
+}
+
+} // namespace
+
+TEST_CASE("frame targets and the render stack work on the default backend"
+          * doctest::test_suite("gpu")) {
+    exerciseTargetsAndStack(hp::RenderBackend::Default, "default");
+}
+
+TEST_CASE("frame targets and the render stack work on OpenGL" * doctest::test_suite("gpu")) {
+    // Separate window, because the GL backend needs a context created with it
+    // and Vulkan needs one created without.
+    exerciseTargetsAndStack(hp::RenderBackend::OpenGL, "OpenGL");
+}

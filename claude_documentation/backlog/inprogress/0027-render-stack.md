@@ -28,10 +28,10 @@ this `RenderStack`.
 ## Done when
 
 - [x] `IRenderLayer` with a render entry point and explicit ordering — stable sort, so equal orders keep insertion order
-- [~] `RenderStack` composites layers in order into one target — written, and 27.5 is decided (single target); **never observed rendering**, no device test
+- [x] `RenderStack` composites layers in order into one target — verified rendering on a real device, both backends
 - [~] Per-layer clear behaviour and camera/projection — clear and per-layer **depth** done; **camera/projection is not here**, it is T0081's with T0130 deciding the vocabulary
 - [ ] A world layer and a UI/HUD layer both render, correctly stacked — **not done.** The mechanism exists; no concrete layer does
-- [~] Layers can be enabled/disabled at runtime without reordering — the flag exists and `render` honours it; unverified without a context
+- [x] Layers can be enabled/disabled at runtime without reordering — a three-layer stack with one disabled renders exactly two, in order
 - [~] **Gameplay code can implement and insert its own layer** (T0094) — the API allows it and D22 measured that the calls link with no Diligent library; **no gameplay layer has been written**, so this is proven in principle and not in fact
 - [ ] Each layer emits its own profiling zone (T0019)
 

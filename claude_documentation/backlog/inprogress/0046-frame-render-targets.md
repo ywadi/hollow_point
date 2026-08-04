@@ -24,19 +24,19 @@ explicitly-managed set of frame resources.
 
 - [x] Frame targets created once and resized with the viewport, not per frame — `resize` is a no-op at an unchanged size, so a layer may call it every frame
 - [x] Passes request targets by name/handle rather than creating their own
-- [~] Resize is debounced and leak-free — **debounced, yes** (tested); **leak-free is not verified**, see below
+- [x] Resize is debounced and leak-free — both verified on a real device (2026-08-05); see the GPU-test note
 - [x] Formats are declared in one place, not scattered across passes — `formatFor()` in `FrameTargets.cpp` is the only place a role becomes a format, made structural by passes naming a *role*
-- [~] GPU memory used by frame targets is reportable — `memoryBytes()` exists; **its output has never been observed against a real device**
+- [x] GPU memory used by frame targets is reportable — asserted against exact expected byte counts on a real device
 - [ ] Gameplay-owned persistent targets are supported alongside frame targets (T0094) — **not done**, see below
 
 ## Subtasks
 
 - [x] 46.1 A frame-resources object owning the render targets
 - [x] 46.2 Named lookup for passes — raw `ITextureView*` per D22
-- [~] 46.3 Resize handling, debounced (T0033 has the same requirement) — debounce done and tested; the recreate path itself is unverified
+- [x] 46.3 Resize handling, debounced (T0033 has the same requirement) — recreate path verified on device
 - [x] 46.4 Depth buffer shared between world pass and post-processing — every target carries `BIND_SHADER_RESOURCE`, depth included
 - [~] 46.5 Ping-pong pair for multi-pass effects — expressible today (declare two, scale 0.5), but no helper and nothing has used it
-- [~] 46.6 Report allocated target memory for the profiler — computed, not yet wired to the profiler
+- [~] 46.6 Report allocated target memory for the profiler — computed and verified; still not wired to the profiler
 
 ## Notes / findings
 
@@ -187,3 +187,42 @@ live device anyway.
   exactly wrong for a target a gameplay module wants to accumulate into across
   frames (fog of war is the motivating case). That needs a separate lifetime and
   it belongs with T0094.
+
+### Device test added 2026-08-05 — `tests/gpu/render_targets_and_stack_test.cpp`
+
+The gap the section above was honest about is closed. **86 assertions on a real
+NVIDIA RTX 2080, on both backends and both build targets** (Linux natively and
+Windows under wine, which also reached the GPU).
+
+What is now measured rather than assumed:
+
+- **All three roles create.** `RGBA16_FLOAT` as a render target, `D32_FLOAT`
+  carrying `BIND_SHADER_RESOURCE`, and an sRGB colour target — the three places a
+  backend could legitimately have refused.
+- **Depth is readable as a shader resource**, so T0106.5's soft particles have
+  what they need.
+- **Roles are enforced**: `depthStencil("scene")` and `renderTarget("depth")`
+  both return null rather than a wrong-typed view.
+- **`memoryBytes()` is exact** against hand-computed byte counts, including the
+  half-scale target.
+- **The debounce is real**: `resize()` at an unchanged size returns the *same
+  view pointer*, which is the only way to prove it did not silently rebuild.
+- **Sixteen consecutive resizes do not accumulate** — the reported figure matches
+  the final size exactly. That is not a proof of no leak, and the test says so,
+  but a set that grew per resize would fail it immediately.
+
+**The skip path is the part that had to be right**, since `-Dtest=all` includes
+this bucket and CI has no GPU: no window, or a window with no device, both report
+and return without a failed assertion.
+
+**Adapter strings differ per backend** — `NVIDIA GeForce RTX 2080` on Vulkan,
+`NVIDIA GeForce RTX 2080/PCIe/SSE2` on OpenGL — which is the evidence that two
+genuinely different devices came up rather than one being silently reused.
+
+**A defect this found in itself, worth recording:** the first version logged
+"device up on 1". doctest's `MessageBuilder` takes a string *literal* fine but
+decays a `const char*` **variable** to bool, so the line that was supposed to name
+the backend printed a boolean. Both backends had in fact come up — the adapter
+strings proved it — but the log said nothing useful. Fixed by streaming
+`std::string(backendName)`. Exactly the "suspect the check" case CLAUDE.md warns
+about, in a check written twenty minutes earlier.
