@@ -8,7 +8,7 @@
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 155 |
 | **Created** | 2026-08-03 |
-| **Refs** | [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D12, [../completed/0095-gameplay-module-abi-and-linkage.md](../completed/0095-gameplay-module-abi-and-linkage.md), T0013, T0048, T0104, [../open/0127-exceptions-across-the-module-boundary.md](../open/0127-exceptions-across-the-module-boundary.md) |
+| **Refs** | [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D12, [../completed/0095-gameplay-module-abi-and-linkage.md](../completed/0095-gameplay-module-abi-and-linkage.md), T0013, T0048, T0104, [../completed/0127-exceptions-across-the-module-boundary.md](../completed/0127-exceptions-across-the-module-boundary.md) |
 
 ## Why
 

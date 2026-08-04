@@ -54,10 +54,9 @@ Three forces decide this:
 
 - **Diligent throws internally** (`LOG_ERROR_AND_THROW`), so exceptions cannot
   be disabled build-wide. `-fno-exceptions` is not an option available to us.
-- **Throwing across the gameplay module boundary is not safe to rely on.** Each
-  shared library carries its own statically linked libc++ (measured — see the
-  module boundary section), and unwinding across that is exactly the kind of
-  thing that works until it does not.
+- **A typed exception does not survive the gameplay module boundary on Linux.**
+  Not "is fragile" — measured, and it fails silently. See the section below;
+  this used to be a hedge and is now a fact with a test behind it.
 - Predictable cost matters more than convenience in a frame loop.
 
 So:
@@ -69,6 +68,56 @@ So:
 3. `catch (...)` at the outermost frame of any callback the engine hands to a
    third-party library, and at every module entry point. An exception escaping
    into foreign code is undefined behaviour, not a stack trace.
+
+---
+
+## Exceptions and the module boundary
+
+**Rule: an exception must not cross the gameplay module boundary.** Every module
+entry point ends in `catch (...)`. Nothing outside a module may rely on
+catching, by type, something a module threw.
+
+That is a stronger statement than "it is fragile", and it is worth knowing
+exactly what was measured, because the naive reading of the rule is wrong in
+both directions (T0127).
+
+| Thrown in a module, caught in the host | linux/ELF | windows/COFF |
+|---|---|---|
+| `std::runtime_error`, caught as `std::runtime_error` | **no** — `catch (...)` only | yes |
+| engine-owned type, caught as that exact type | **yes** | yes |
+| engine-owned type, caught via a `std::` base | **no** | yes |
+| anything, thrown and caught inside one artifact | yes | yes |
+
+**The cause.** Zig links libc++/libc++abi statically, with hidden visibility,
+into every artifact — so each `.so`/`.dll` owns a private copy of every `std::`
+typeinfo object. libc++ picks its typeinfo comparison at build time: COFF
+compares the type *name*, ELF compares the typeinfo *pointer*, assuming the
+linker merged RTTI into one definition. Nothing merges here. Verified at symbol
+level: `_ZTISt13runtime_error` is locally **defined** in every artifact, while an
+engine-owned exception type's typeinfo is **defined once** in the engine library
+and **undefined** everywhere else.
+
+**Why the working case is not the recommendation.** A typed catch does survive
+for an engine-owned type with default visibility and an out-of-line key
+function. It is real, and it is a trap: the first thing anyone does with an
+exception type is derive it from `std::exception`, and `catch (const
+std::exception&)` — what people actually write — cannot see it on ELF, because
+the derived-to-base walk compares the *base* typeinfo, which is private per
+artifact again. So the shape that works is the one nobody reaches for, and the
+shape everyone reaches for fails on one target only.
+
+**Why this is not something CI catches for you.** Windows matches by name and
+works in every row above. A design that assumes typed catch is green on the
+Windows job and silently routes into the wrong handler on Linux. That asymmetry
+is the whole reason the rule is a rule rather than a preference.
+
+**What is enforced, and what is not.** The behaviour is pinned by
+`tests/integration/module_boundary_test.cpp`, which asserts each row on both
+targets and fails if it changes *in either direction* — if ELF ever starts
+matching, that is reported rather than silently making this page stale. The
+`catch (...)` discipline at module entry points is **not** mechanically enforced;
+it is a convention, and enforcing it belongs with whoever defines the module
+lifecycle (T0048).
 
 ---
 

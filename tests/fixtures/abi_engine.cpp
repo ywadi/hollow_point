@@ -78,4 +78,12 @@ int hp_abi_engine_dynamic_cast_works(void* b) {
 const char* hp_abi_engine_typeid_name(void* b) {
     return typeid(*static_cast<hp_abi::Base*>(b)).name();
 }
-}
+
+} // extern "C"
+
+// The key function for the engine-owned exception type (T0127).
+//
+// Its out-of-line definition here is what pins the vtable and typeinfo to this
+// library. Inline it and each artifact emits its own, at which point a typed
+// catch across the boundary stops working on ELF -- silently, and only there.
+HpAbiEngineError::~HpAbiEngineError() = default;

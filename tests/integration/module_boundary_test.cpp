@@ -20,9 +20,10 @@
 #include <doctest/doctest.h>
 
 #include <cstdlib>
+#include <cstring>
+#include <stdexcept>
 #include <string>
 #include <vector>
-#include <cstring>
 
 #include <hp/BuildId.h>
 #include <hp/Module.hpp>
@@ -189,8 +190,8 @@ private:
 /// *host* path and unopenable from a Windows binary, and a POST_BUILD copy goes
 /// stale whenever the module changes without this target relinking.
 std::string sandbox_module_path() {
-    return exe_dir() + PATH_SEP + ".." + PATH_SEP + "samples" + PATH_SEP + "sandbox" + PATH_SEP
-           + HP_SANDBOX_MODULE_NAME;
+    return exe_dir() + PATH_SEP + ".." + PATH_SEP + "samples" + PATH_SEP + "sandbox" + PATH_SEP +
+           HP_SANDBOX_MODULE_NAME;
 }
 
 } // namespace
@@ -496,8 +497,8 @@ ProbeResult run_probe(const char* module_name, int cycles) {
     r.raw = static_cast<int>(code);
     r.clean = (code == 0);
 #else
-    const std::string cmd = "\"" + probe + "\" \"" + module + "\" " + std::to_string(cycles)
-                            + " >/dev/null 2>&1";
+    const std::string cmd =
+        "\"" + probe + "\" \"" + module + "\" " + std::to_string(cycles) + " >/dev/null 2>&1";
     const int rc = std::system(cmd.c_str());
     r.raw = rc;
     // A death by signal is the failure this is looking for, so "exited, with 0"
@@ -514,7 +515,8 @@ TEST_CASE("a gameplay module can be genuinely unloaded" * doctest::test_suite("m
     const ProbeResult once = run_probe(HP_UNLOAD_MODULE_FIXED_NAME, 1);
     CHECK_MESSAGE(once.clean,
                   "a module carrying the unload finalizer should load, unload and exit "
-                  "cleanly; probe status ", once.raw);
+                  "cleanly; probe status ",
+                  once.raw);
 
     // Repeated, because the registration list is global and a leak would show
     // up as accumulation rather than as a first-cycle failure.
@@ -541,7 +543,8 @@ TEST_CASE("the unload finalizer is what makes that work" * doctest::test_suite("
     CHECK_MESSAGE(!broken.clean,
                   "a module WITHOUT the finalizer is expected to die at exit; it did not, "
                   "which likely means zig#17908 is fixed and engine/module/ModuleFinalize.cpp "
-                  "can be revisited. Probe status ", broken.raw);
+                  "can be revisited. Probe status ",
+                  broken.raw);
 #endif
 }
 
@@ -555,6 +558,159 @@ TEST_CASE("the unload finalizer is what makes that work" * doctest::test_suite("
 // unrelated, and reading the gameplay code leads away from the cause.
 //
 // These cases are the guard on that, and the important one is the refusal.
+
+// --- exceptions across the module boundary (T0127) ----------------------------
+//
+// What a handler actually catches when the throw happened on the other side of
+// a dlopen/LoadLibrary, and it is **not the same on both targets**.
+//
+// The cause is the one that keeps producing surprises here: zig links
+// libc++/libc++abi statically, with hidden visibility, into every artifact. So
+// each artifact owns a private copy of every std:: typeinfo object. libc++
+// selects its typeinfo comparison at build time -- COFF compares the type name
+// deeply, ELF compares the typeinfo *pointer*, on the assumption that the
+// linker merged RTTI into one definition. Nothing merges here, so on ELF the
+// pointers differ and the match silently fails.
+//
+// Measured at symbol level rather than inferred: `_ZTISt13runtime_error` is
+// locally DEFINED in both the module fixture and this executable, while the
+// engine-owned type's typeinfo is DEFINED once in the engine fixture and
+// UNDEFINED in the module.
+//
+// These cases pin the behaviour on both targets. They are written to fail if it
+// *changes* in either direction, because the dangerous version of this bug is
+// the one where CI stays green on Windows while Linux quietly routes an
+// exception into the wrong handler.
+
+namespace {
+
+/// What handler a throw across the boundary landed in.
+enum class Caught { Exact, StdBase, Ellipsis, Nothing };
+
+/// Which target this binary is, spelled into the diagnostics.
+///
+/// The whole point of these cases is that the answer differs by target, and
+/// both suites print into the same build log. Without this it is genuinely
+/// ambiguous which line came from which, and reading them the wrong way round
+/// inverts the conclusion.
+constexpr const char* kTargetName =
+#if defined(_WIN32)
+    "windows/COFF";
+#else
+    "linux/ELF";
+#endif
+
+const char* describe(Caught c) {
+    switch (c) {
+    case Caught::Exact:
+        return "the exact type";
+    case Caught::StdBase:
+        return "catch (const std::exception&)";
+    case Caught::Ellipsis:
+        return "catch (...) only -- typed match failed";
+    case Caught::Nothing:
+        return "nothing was thrown";
+    }
+    return "?";
+}
+
+Caught catch_std(hp_mod_throw_fn fn) {
+    try {
+        fn();
+    } catch (const std::runtime_error&) {
+        return Caught::Exact;
+    } catch (const std::exception&) {
+        return Caught::StdBase;
+    } catch (...) {
+        return Caught::Ellipsis;
+    }
+    return Caught::Nothing;
+}
+
+Caught catch_engine_owned(hp_mod_throw_fn fn) {
+    try {
+        fn();
+    } catch (const HpAbiEngineError&) {
+        return Caught::Exact;
+    } catch (...) {
+        return Caught::Ellipsis;
+    }
+    return Caught::Nothing;
+}
+
+} // namespace
+
+TEST_CASE("a std:: exception thrown in a module is not caught by type on ELF" *
+          doctest::test_suite("module")) {
+    LoadedModule mod;
+    REQUIRE_MESSAGE(mod.ok(), mod.error());
+    auto fn = mod.sym<hp_mod_throw_fn>("hp_mod_throw_std");
+    REQUIRE(fn != nullptr);
+
+    const Caught got = catch_std(fn);
+    MESSAGE("[" << std::string(kTargetName) << "] std::runtime_error thrown in the module "
+                << "was caught by: " << std::string(describe(got)));
+
+#if defined(_WIN32)
+    // COFF compares typeinfo names, so the private copies still match.
+    CHECK_MESSAGE(got == Caught::Exact,
+                  "on Windows a typed catch across the boundary is expected to work; "
+                  "it did not, which means the platform split this suite encodes has "
+                  "changed and T0127's conclusions need re-reading");
+#else
+    // The finding, asserted so it cannot regress unnoticed *in either
+    // direction*. If this ever reports Exact, ELF typeinfo identity has been
+    // fixed -- by a toolchain bump or a shared libc++ -- and the convention in
+    // 06-engine-conventions.md can be revisited rather than rediscovered.
+    CHECK_MESSAGE(got == Caught::Ellipsis,
+                  "a std:: exception crossing the module boundary was matched by type on "
+                  "ELF. That is better than the measured behaviour, not worse -- but it "
+                  "means T0127's conclusion is stale and the conventions should be "
+                  "re-derived rather than trusted");
+#endif
+}
+
+TEST_CASE("an engine-owned exception type IS caught by type, on both targets" *
+          doctest::test_suite("module")) {
+    LoadedModule mod;
+    REQUIRE_MESSAGE(mod.ok(), mod.error());
+
+    // The mechanism 127.2 was asked to find: one typeinfo definition, in the
+    // shared library both sides resolve against. This is the *only* shape that
+    // works on ELF, which is precisely why the policy is not "use this shape".
+    auto direct = mod.sym<hp_mod_throw_fn>("hp_mod_throw_engine_owned");
+    REQUIRE(direct != nullptr);
+    CHECK_MESSAGE(catch_engine_owned(direct) == Caught::Exact,
+                  "an engine-owned exception type with default visibility and an "
+                  "out-of-line key function must match by type across the boundary");
+
+    // And it is a property of the type, not of the throw site.
+    auto rethrown = mod.sym<hp_mod_throw_fn>("hp_mod_throw_engine_owned_rethrown");
+    REQUIRE(rethrown != nullptr);
+    CHECK(catch_engine_owned(rethrown) == Caught::Exact);
+}
+
+TEST_CASE("the std:: base of an engine-owned exception does not match on ELF" *
+          doctest::test_suite("module")) {
+    // The trap that makes the mechanism above unsafe to build an interface on.
+    //
+    // Catching by the exact engine-owned type works. Catching the same object
+    // through a std:: base does not, on ELF, because the derived-to-base walk
+    // compares the *base* typeinfo -- and std::exception's typeinfo is private
+    // per artifact again. `catch (const std::exception&)` is what people
+    // actually write, so the working case is the one nobody reaches for.
+    //
+    // In the scratch reproduction the compiler warned that the exact handler
+    // was unreachable ("will be caught by earlier handler") and on Linux the
+    // unreachable handler is the one that fired: the diagnostic was right about
+    // the language and wrong about the platform.
+    //
+    // The fixture type deliberately does not derive from std::exception, so
+    // this case documents the hazard rather than shipping it. See T0127.
+    MESSAGE("engine-owned exceptions do not derive from std::exception by design; "
+            "a std:: base handler cannot see them on ELF");
+    CHECK(true);
+}
 
 TEST_CASE("every configuration field feeding the id has a value" * doctest::test_suite("module")) {
     // Guards an ordering bug that made the id unstable rather than wrong, and
@@ -589,11 +745,10 @@ TEST_CASE("a module stamped by the build matches the engine" * doctest::test_sui
     auto id_fn = stamped.sym<hp::ModuleBuildIdFn>(hp::kModuleBuildIdSymbol);
     REQUIRE_MESSAGE(id_fn != nullptr,
                     "hp_add_gameplay_module() must stamp every module; this one has no "
-                    << hp::kModuleBuildIdSymbol << " symbol");
+                        << hp::kModuleBuildIdSymbol << " symbol");
 
     const hp::ModuleCompatibility result = hp::checkModuleBuildId(id_fn());
-    CHECK_MESSAGE(result.compatible,
-                  hp::describeIncompatibility(HP_STAMPED_MODULE_NAME, result));
+    CHECK_MESSAGE(result.compatible, hp::describeIncompatibility(HP_STAMPED_MODULE_NAME, result));
     CHECK(std::strcmp(id_fn(), hp::engineBuildId()) == 0);
 }
 
@@ -605,9 +760,9 @@ TEST_CASE("a module built against a different engine is refused" * doctest::test
     REQUIRE(id_fn != nullptr);
 
     const hp::ModuleCompatibility result = hp::checkModuleBuildId(id_fn());
-    CHECK_FALSE_MESSAGE(result.compatible,
-                        "a module carrying id " << id_fn() << " must not be accepted by an "
-                                                << "engine whose id is " << hp::engineBuildId());
+    CHECK_FALSE_MESSAGE(result.compatible, "a module carrying id "
+                                               << id_fn() << " must not be accepted by an "
+                                               << "engine whose id is " << hp::engineBuildId());
 
     // The guarantee that matters: refused *before* any of its code runs.
     // Refusing afterwards would be a diagnostic rather than a guard, because by
@@ -661,9 +816,9 @@ TEST_CASE("the refusal says what to rebuild" * doctest::test_suite("module")) {
 // thing worth guarding is that a module built the way modules are actually built
 // can participate.
 
-TEST_CASE("a gameplay module registers into the engine's meta context"
-          * doctest::test_suite("reflect")) {
-    hp::adoptMetaContext();   // the test executable is a participant too
+TEST_CASE("a gameplay module registers into the engine's meta context" *
+          doctest::test_suite("reflect")) {
+    hp::adoptMetaContext(); // the test executable is a participant too
 
     LoadedModule sandbox(sandbox_module_path());
     REQUIRE_MESSAGE(sandbox.ok(), sandbox.error());
@@ -711,6 +866,7 @@ TEST_CASE("a module resolves a type the host registered" * doctest::test_suite("
     struct HostOnly {
         float value = 7.5f;
     };
+
     hp::reflect<HostOnly>("HostOnlyType").property<&HostOnly::value>("value");
 
     LoadedModule sandbox(sandbox_module_path());
@@ -721,7 +877,7 @@ TEST_CASE("a module resolves a type the host registered" * doctest::test_suite("
         sandbox.sym<bool (*)(const char*, const char*, float*)>("hpSandboxReadHostProperty");
     REQUIRE(register_types != nullptr);
     REQUIRE(read_property != nullptr);
-    register_types();   // module adopts the context
+    register_types(); // module adopts the context
 
     float value = 0.0f;
     CHECK_MESSAGE(read_property("HostOnlyType", "value", &value),

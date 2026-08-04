@@ -36,7 +36,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 100 | [T0018](completed/0018-event-system.md) | Event system | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | 110 | [T0017](completed/0017-layer-stack.md) | LayerStack (system layers) | 2 — Engine skeleton | ✅ DONE | High | Simple |
 | — | [T0126](completed/0126-remove-single-game-framing.md) | Remove the single-game framing from the backlog | 1 — Harden the build | ✅ DONE | High | Moderate |
-| 6 | [T0127](open/0127-exceptions-across-the-module-boundary.md) | A typed exception cannot cross the module boundary on Linux | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
+| — | [T0127](completed/0127-exceptions-across-the-module-boundary.md) | A typed exception cannot cross the module boundary on Linux | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | 150 | [T0048](open/0048-hot-reloadable-gameplay-module.md) | Hot-reloadable gameplay module | 2 — Engine skeleton | 🔜 TODO | High | Very Complex |
 | ▶ | [T0105](inprogress/0105-module-linkage-loose-ends.md) | Module linkage: the parts that need something built first | 2 — Engine skeleton | 🚧 IN PROGRESS | High | Moderate |
 | 170 | [T0068](open/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |

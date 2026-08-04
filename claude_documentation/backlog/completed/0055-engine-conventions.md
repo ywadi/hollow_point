@@ -8,7 +8,7 @@
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 10 |
 | **Created** | 2026-08-03 |
-| **Refs** | [../open/0127-exceptions-across-the-module-boundary.md](../open/0127-exceptions-across-the-module-boundary.md) (amends this) |
+| **Refs** | [../completed/0127-exceptions-across-the-module-boundary.md](../completed/0127-exceptions-across-the-module-boundary.md) (amends this) |
 
 ## Why
 
@@ -148,7 +148,7 @@ That last one is the check that matters — it proves the dry-run gate can fail,
 so it is worth adding to CI later. Applied to all six files under `tests/`, and
 the full suite passes afterwards.
 
-## Amendment pending — T0127 (added 2026-08-04)
+## Amendment landed — T0127 (2026-08-04)
 
 **55.1's exception policy is now measured, and it has a platform split.** This
 ticket argued that "each library carries its own statically linked libc++ and
@@ -165,12 +165,22 @@ for typeinfo, not the deep string comparison it uses on COFF, so the assertion
 that passed was never the one that governs `catch` matching. The rule this
 ticket wrote is right; the reason recorded for it was weaker than the truth.
 
-**What this ticket must honour when T0127.4 lands:** rule 3 of
-`06-engine-conventions.md` — `catch (...)` at every module entry point — is the
-only thing standing between this and undefined behaviour on Linux, and it is
-advisory prose today with nothing testing or enforcing it. The amendment should
-state the platform asymmetry as a fact rather than as the hedge "not safe to
-rely on", because a hedge reads as caution and this is a measurement.
+**Amended 2026-08-04 (T0127.4).** `06-engine-conventions.md` no longer hedges:
+the "not safe to rely on" bullet now states the platform split as a fact, and a
+new *Exceptions and the module boundary* section carries the measured table, the
+symbol-level cause, and what is enforced versus merely conventional.
+
+The amendment also records something 55.1 could not have known: **a typed catch
+across the boundary is not uniformly broken on Linux.** It works for an
+engine-owned type with default visibility and an out-of-line key function — one
+typeinfo, shared — and fails for every `std::` type and for any engine-owned
+type caught through a `std::` base. So the shape that works is the one nobody
+writes, and the conclusion 55.1 reached ("a non-throwing interface at least at
+that boundary") is right for a sharper reason than the one given.
+
+Still not enforced: rule 3's `catch (...)` at module entry points is a
+convention with nothing checking it. That is handed to **T0048**, which defines
+what a module entry point is.
 
 **A dangling pointer found while checking this:** the conventions doc routes
 recoverable failures to `hp::Expected` and says it "belongs to T0056" — but

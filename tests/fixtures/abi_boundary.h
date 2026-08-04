@@ -26,6 +26,39 @@
 #endif
 
 #ifdef __cplusplus
+
+// --- an engine-owned exception type (T0127) ----------------------------------
+//
+// Not inside the extern "C" block: this is C++, and it is the *only* shape in
+// which a typed catch survives the module boundary on ELF.
+//
+// Two properties make it work, and both are required:
+//   * default visibility, so the symbol is dynamic rather than local;
+//   * an out-of-line key function, so the vtable and typeinfo are emitted in
+//     the engine library alone and every other artifact carries an UNDEFINED
+//     reference to them instead of its own copy.
+//
+// Measured: `_ZTI15HpAbiEngineError` is DEFINED in the engine fixture and
+// UNDEFINED in the module fixture. Contrast `_ZTISt13runtime_error`, which is
+// locally DEFINED in *every* artifact, because zig links a hidden libc++ into
+// each one -- so ELF's pointer comparison sees two different types.
+//
+// Deliberately does NOT derive from std::exception. See the boundary suite: a
+// derived-to-std::base walk fails on ELF for exactly the same reason, and the
+// compiler warns that the *working* handler is unreachable while it is the one
+// that fires.
+class HP_ABI_ENGINE_API HpAbiEngineError {
+public:
+    explicit HpAbiEngineError(int code) : code_(code) {}
+
+    virtual ~HpAbiEngineError(); // key function, defined in abi_engine.cpp
+
+    int code() const { return code_; }
+
+private:
+    int code_;
+};
+
 extern "C" {
 #endif
 
@@ -70,6 +103,9 @@ typedef int (*hp_mod_count_module_components_fn)(void* registry);
 typedef void (*hp_mod_log_fn)(const char* message);
 typedef int (*hp_mod_dynamic_cast_works_fn)(void* base);
 typedef const char* (*hp_mod_typeid_name_fn)(void* base);
+
+// Throws, so the test can try to catch by type across the boundary (T0127).
+typedef void (*hp_mod_throw_fn)(void);
 
 #ifdef __cplusplus
 }

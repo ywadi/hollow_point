@@ -7,6 +7,7 @@
 // template instantiations, and cross-boundary identity has to survive that.
 
 #include "abi_boundary.h"
+#include <stdexcept>
 
 #include "abi_polymorphic.h"
 
@@ -76,5 +77,34 @@ HP_ABI_EXPORT const char* hp_mod_typeid_name(void* b) {
 
 HP_ABI_EXPORT int hp_mod_count_module_components(void* r) {
     return static_cast<int>(static_cast<entt::registry*>(r)->view<ModuleComponent>().size());
+}
+
+// --- exceptions across the boundary (T0127) ----------------------------------
+//
+// Three throws whose only difference is where the thrown type's typeinfo lives.
+// The suite catches each in the host and records what the handler actually saw,
+// because the answers differ by target and the difference is silent.
+
+/// A std:: type. Its typeinfo is emitted locally into every artifact by the
+/// statically linked, hidden libc++ -- so the host's copy and this one are
+/// different objects.
+HP_ABI_EXPORT void hp_mod_throw_std() {
+    throw std::runtime_error("thrown inside the gameplay module");
+}
+
+/// An engine-owned type: default visibility, key function in the engine
+/// library. One typeinfo object, referenced by both sides.
+HP_ABI_EXPORT void hp_mod_throw_engine_owned() {
+    throw HpAbiEngineError(127);
+}
+
+/// The same engine-owned type, thrown through a plain `throw;` rethrow, to show
+/// the property belongs to the type rather than to the throw site.
+HP_ABI_EXPORT void hp_mod_throw_engine_owned_rethrown() {
+    try {
+        throw HpAbiEngineError(128);
+    } catch (...) {
+        throw;
+    }
 }
 }

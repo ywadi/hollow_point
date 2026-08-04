@@ -8,7 +8,7 @@
 | **Phase** | 2 — Engine skeleton |
 | **Created** | 2026-08-03 |
 | **Blocks** | T0048, T0062 |
-| **Refs** | T0013, T0055, T0056, T0076, T0094, [../open/0127-exceptions-across-the-module-boundary.md](../open/0127-exceptions-across-the-module-boundary.md) (qualifies the RTTI result below) |
+| **Refs** | T0013, T0055, T0056, T0076, T0094, [../completed/0127-exceptions-across-the-module-boundary.md](../completed/0127-exceptions-across-the-module-boundary.md) (qualifies the RTTI result below) |
 
 ## Why
 

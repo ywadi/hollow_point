@@ -8,7 +8,7 @@
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 150 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0104 (Blocks this), T0105 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0104 (Blocks this), T0105, [../completed/0127-exceptions-across-the-module-boundary.md](../completed/0127-exceptions-across-the-module-boundary.md) |
 
 ## Why
 
@@ -144,3 +144,22 @@ belongs, for the same reason the unload finalizer and build-id stamp live there.
 Not yet measured: PCH staleness handling (it must be rebuilt when any engine
 public header changes — the same build-graph-input problem T0104 and T0123 both
 had to solve), and the Windows-target figures.
+
+### Cross-ticket obligation — T0127 (2026-08-04)
+
+**An exception must not cross the module boundary, and this ticket is the only
+one able to enforce it.** Measured rather than assumed: on Linux a `std::`
+exception thrown in a module is caught only by `catch (...)`, and even an
+engine-owned exception type is invisible to a `std::exception` handler, while
+Windows matches by name and works in every case. The conventions now state the
+rule and the boundary suite pins the behaviour on both targets — but the
+`catch (...)` at every module entry point is **advisory prose with nothing
+enforcing it**.
+
+This ticket defines what a module entry point *is*, which is where it can stop
+being advisory: a lifecycle whose entry points are declared through the engine,
+rather than hand-written `extern "C"` functions, can carry the guard the same way
+`hp_add_gameplay_module()` already carries the unload finalizer and the build-id
+stamp. Design 48.2 with that in mind. Retrofitting a guard onto entry points
+that already exist means touching every module ever written, which is the cost
+this note exists to avoid.
