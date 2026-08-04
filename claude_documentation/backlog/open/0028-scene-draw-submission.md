@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 410 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0120 |
+| **Refs** | T0120, [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md) |
 
 ## Why
 
@@ -35,6 +35,22 @@ editor viewport can display it without the renderer knowing the editor exists.
 - [ ] 28.6 Profiling zones for parse and submit separately
 
 ## Notes / findings
+
+**T0130 decided reverse-Z, and this ticket is where it is honoured or silently
+broken.** Every pipeline state this ticket creates must set the depth
+comparison to `COMPARISON_FUNC_GREATER_EQUAL`, not `LESS_EQUAL`. The engine maps
+the near plane to depth 1 and the far plane to 0 (`hp::kReverseZ` in
+`hp/DepthConvention.hpp`, which carries the full argument), the depth target is
+`D32_FLOAT`, and the clear value is `hp::kDepthClearValue` — 0.
+
+Getting this wrong does not look like a depth bug. It renders a scene in which
+distant geometry occludes near geometry, which reads as models being inside out
+or as a broken mesh import, and it will be investigated in the wrong place.
+
+The measurement behind the choice, from T0130's fast tests: over the range
+900m–901m with a 0.1m near plane, reverse-Z resolves **135,604** distinct float
+values where the conventional mapping resolves **2**.
+
 
 **Rendering to an offscreen target rather than the swap chain is what makes the
 editor viewport possible at all** — the viewport is an ImGui image of that

@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 460 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0027, T0046, T0060, T0087, T0089, T0111 |
+| **Refs** | T0027, T0046, T0060, T0087, T0089, T0111, [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md) |
 
 ## Why
 
@@ -65,6 +65,22 @@ work here is wiring and policy, not writing a tonemapper.
       settings (T0078) — do not integrate them yet
 
 ## Notes / findings
+
+**T0130 put exposure on the camera, and this ticket must not add a second one.**
+`hp::Camera::exposureEv100` is the exposure, as EV100, and the reasoning is that
+exposure is a property of a view: a frame can hold a main view, a security
+monitor and a portal looking at the same world and needing different exposures,
+which a single post-process value cannot express.
+
+The precedence T0130 set: **this ticket owns the tonemap curve and any
+auto-exposure, and auto-exposure writes `exposureEv100` rather than shadowing
+it.** An exposure value held on the post-process stack as well would multiply
+with the camera's, and the failure mode is that every individual number looks
+reasonable while the image is wrong.
+
+`hp::exposureMultiplierFromEv100` converts to the linear multiplier a shader
+wants.
+
 
 - **Ordering interactions already implied elsewhere, collected here:** fog
   (T0089) must apply in HDR before tonemap; T0093's visibility dimming is a

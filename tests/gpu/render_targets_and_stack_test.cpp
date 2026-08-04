@@ -13,6 +13,7 @@
 #include <doctest/doctest.h>
 
 #include <hp/FrameTargets.hpp>
+#include <hp/Log.hpp>
 #include <hp/Render.hpp>
 #include <hp/RenderStack.hpp>
 #include <hp/Window.hpp>
@@ -37,6 +38,17 @@ struct Device {
 /// running.
 Device bringUp(hp::RenderBackend backend) {
     Device device;
+
+    // Once, for the whole bucket. Without a sink the engine's log goes nowhere,
+    // so a device the engine *deliberately refused* -- the D15 compute floor,
+    // or T0130.3's clip-space floor -- is indistinguishable from a machine with
+    // no GPU: both present as "skipping". The reason is the entire diagnostic
+    // value of a skip, and it was silent until this line existed.
+    static const bool sink = [] {
+        hp::logAddConsoleSink();
+        return true;
+    }();
+    (void)sink;
 
     hp::WindowConfig windowConfig;
     windowConfig.title = "hp gpu test";
@@ -86,6 +98,24 @@ void exerciseTargetsAndStack(hp::RenderBackend backend, const char* backendName)
     // like it named the backend and did not.
     MESSAGE("device up on " << std::string(backendName) << ": "
                             << device.render->adapterDescription());
+
+    SUBCASE("clip space is [0, 1] on every backend") {
+        // T0130.3. This is the measurement the ticket refused to take on
+        // faith. Diligent's `EngineGLCreateInfo::ZeroToOneNDZ` defaults to
+        // **false**, so before T0130 this engine ran Vulkan on [0, 1] and
+        // OpenGL on [-1, 1] -- and nothing had yet built a projection matrix,
+        // which is the only reason it had not produced a visible bug.
+        const hp::ClipSpace clip = device.render->clipSpace();
+        MESSAGE("clip space on " << std::string(backendName) << ": minZ=" << clip.minZ
+                                 << " yToV=" << clip.yToV);
+
+        CHECK(clip.minZ == 0.0F);
+        CHECK_FALSE(clip.negativeOneToOneZ());
+
+        // Not incidental: reverse-Z is only worth having on a [0, 1] clip
+        // space, so this is the precondition for the whole depth convention.
+        CHECK(clip.yToV != 0.0F);
+    }
 
     SUBCASE("targets create for every role") {
         hp::FrameTargets targets;

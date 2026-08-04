@@ -28,6 +28,10 @@
 #pragma once
 
 #include <hp/Api.hpp>
+// `Camera` is a scene component but its vocabulary and its projection maths
+// belong together (T0130), so it is defined there and included here rather than
+// being split across two headers that have to agree.
+#include <hp/Camera.hpp>
 #include <hp/Guid.hpp>
 #include <hp/Math.hpp>
 #include <hp/Reflect.hpp>
@@ -143,26 +147,6 @@ struct MeshRenderer {
     /// material, so a mesh with no material assigned is still visible rather
     /// than silently absent.
     Guid material;
-};
-
-/// A point of view. Which camera renders is not decided here (T0081).
-struct Camera {
-    /// Vertical field of view in radians. Ignored when `orthographic` is set.
-    float verticalFov{1.0472F}; // 60 degrees
-
-    /// Near clip plane distance. Must be greater than zero for a perspective
-    /// camera; a zero near plane collapses depth precision entirely.
-    float nearPlane{0.1F};
-
-    /// Far clip plane distance.
-    float farPlane{1000.0F};
-
-    /// Whether to use an orthographic projection instead of a perspective one.
-    bool orthographic{false};
-
-    /// Half-height of the orthographic view volume. Ignored unless
-    /// `orthographic` is set.
-    float orthographicSize{5.0F};
 };
 
 /// A cheap, non-owning handle to one entity in one scene.

@@ -63,6 +63,13 @@ DOCUMENTED_KINDS = {
     cx.CursorKind.FUNCTION_TEMPLATE,
     cx.CursorKind.TYPEDEF_DECL,
     cx.CursorKind.TYPE_ALIAS_DECL,
+    # Namespace-scope constants. Added because `hp/DepthConvention.hpp`
+    # rendered as "0 public declaration(s)" -- a page whose entire content is
+    # two `inline constexpr` values carrying a binding engine-wide convention,
+    # and the reference silently showed none of it. The index claims to list
+    # every public symbol, and until this line that claim was false for
+    # constants.
+    cx.CursorKind.VAR_DECL,
 }
 
 CALLABLE_KINDS = {
@@ -163,6 +170,18 @@ def signature(cursor) -> str:
         return f"enum class {cursor.spelling}"
     if cursor.kind in (cx.CursorKind.TYPEDEF_DECL, cx.CursorKind.TYPE_ALIAS_DECL):
         return f"using {cursor.spelling} = {cursor.underlying_typedef_type.spelling}"
+    if cursor.kind == cx.CursorKind.VAR_DECL:
+        # Rebuilt from tokens rather than from `cursor.type`, because the value
+        # is the interesting part of a constant and the type alone loses it:
+        # `constexpr bool kReverseZ` says nothing, `constexpr bool kReverseZ =
+        # true` says the whole thing. Tokens also keep `inline` and `constexpr`,
+        # which `type.spelling` reduces to a bare `const`.
+        tokens = [t.spelling for t in cursor.get_tokens()]
+        if not tokens:
+            return f"{cursor.type.spelling} {cursor.spelling}"
+        if ";" in tokens:
+            tokens = tokens[: tokens.index(";")]
+        return " ".join(tokens)
 
     result = cursor.result_type.spelling
     params = ", ".join(
@@ -202,6 +221,17 @@ def collect(tu, header: pathlib.Path):
             # documenting a dependency rather than our own surface.
             if (child.kind in (cx.CursorKind.CLASS_DECL, cx.CursorKind.STRUCT_DECL)
                     and not child.is_definition()):
+                continue
+            # A variable is API only at namespace scope. The traversal descends
+            # into function bodies, so without this every local in every inline
+            # function becomes an undocumented public symbol -- which is how
+            # adding VAR_DECL first reported `app`, `typed` and two locals
+            # inside `ActionId` as documentation defects.
+            if (child.kind == cx.CursorKind.VAR_DECL
+                    and (child.semantic_parent is None
+                         or child.semantic_parent.kind not in (
+                             cx.CursorKind.NAMESPACE,
+                             cx.CursorKind.TRANSLATION_UNIT))):
                 continue
             if child.kind in DOCUMENTED_KINDS and is_public(child):
                 entry = {

@@ -69,7 +69,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 390 | [T0046](inprogress/0046-frame-render-targets.md) | Frame render target management | 4 — Render layer | 🚧 IN PROGRESS | Medium | Simple |
 | 400 | [T0027](inprogress/0027-render-stack.md) | RenderStack: composited visual layers | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
 | 410 | [T0028](open/0028-scene-draw-submission.md) | Scene draw submission and the frame-rendered event | 4 — Render layer | 🔜 TODO | High | Moderate |
-| 415 | [T0130](open/0130-camera-lens-model.md) | Camera lens model: decide what a camera describes | 4 — Render layer | 🔜 TODO | High | Simple |
+| 415 | [T0130](completed/0130-camera-lens-model.md) | Camera lens model: decide what a camera describes | 4 — Render layer | ✅ DONE | High | Simple |
 | 420 | [T0081](open/0081-camera-system.md) | Camera system | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | 430 | [T0085](open/0085-layers-and-masks.md) | Object layers and masks | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 440 | [T0045](open/0045-culling-and-render-queues.md) | Culling, sorting and render queues | 4 — Render layer | 🔜 TODO | High | Complex |

@@ -34,6 +34,7 @@
 #pragma once
 
 #include <hp/Api.hpp>
+#include <hp/DepthConvention.hpp>
 
 #include <cstdint>
 #include <memory>
@@ -154,10 +155,12 @@ public:
 
     /// Depth value used when `clear` includes depth.
     ///
-    /// 1.0 is the conventional far value. If T0130.3 chooses reverse-Z this
-    /// becomes 0.0, which is exactly the kind of sweep that decision implies and
-    /// the reason it is being made deliberately rather than by default.
-    float clearDepth = 1.0F;
+    /// `kDepthClearValue`, which is **0.0** because T0130.3 chose reverse-Z: the
+    /// far plane is 0, so "nothing drawn yet" is 0. It is spelled as the
+    /// constant rather than as a literal so that the day this convention is
+    /// revisited, this line moves with it instead of being the one place that
+    /// quietly did not.
+    float clearDepth = kDepthClearValue;
 };
 
 /// An ordered set of layers, composited into one target per frame.

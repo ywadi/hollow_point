@@ -6,7 +6,7 @@
 #include <hp/Scene.hpp>
 ```
 
-55 public declaration(s), 55 documented.
+54 public declaration(s), 54 documented.
 
 ## `Id`
 
@@ -104,14 +104,6 @@ struct MeshRenderer
 ```
 
  Draws a mesh with a material. Both are asset GUIDs, never pointers.
-
-## `Camera`
-
-```cpp
-struct Camera
-```
-
- A point of view. Which camera renders is not decided here (T0081).
 
 ## `Entity`
 

@@ -6,7 +6,7 @@
 #include <hp/Render.hpp>
 ```
 
-22 public declaration(s), 22 documented.
+25 public declaration(s), 25 documented.
 
 ## `RenderBackend`
 
@@ -25,6 +25,32 @@ enum class RenderBackend
  No Direct3D, and that is deliberate rather than missing: zig targets Windows
  through the MinGW ABI, MinGW has no `atlbase.h`, and DiligentCore gates
  D3D11/D3D12 on ATL. Both targets get Vulkan and OpenGL.
+
+## `ClipSpace`
+
+```cpp
+struct ClipSpace
+```
+
+ The device's clip-space convention (T0130.3).
+
+ **This is a property of the device, not of the engine, and the two backends
+ disagree by default.** Vulkan clips Z to [0, 1]; OpenGL clips it to [-1, 1]
+ unless `glClipControl` says otherwise, and Diligent gates that on an opt-in
+ flag that defaults to off. The engine turns it on and refuses a device that
+ cannot honour it, so in practice `minZ` is always 0 here — but the value is
+ still read from the device rather than assumed, because "assumed" is how a
+ projection matrix ends up right on one backend and mirrored on the other.
+
+## `ClipSpace::negativeOneToOneZ`
+
+```cpp
+bool negativeOneToOneZ() const
+```
+
+ @returns whether clip-space Z runs [-1, 1] rather than [0, 1]. This is
+          the argument every Diligent projection helper takes, so it is
+          spelled the way they spell it.
 
 ## `RenderConfig`
 
@@ -249,3 +275,16 @@ Diligent::ISwapChain * swapChain() const
 
  @returns the swap chain, or nullptr when the layer is inert. Its back
           buffer is where a composited frame ultimately lands.
+
+## `RenderLayer::clipSpace`
+
+```cpp
+ClipSpace clipSpace() const
+```
+
+ @returns the device's clip-space convention, or the defaults when the
+          layer is inert.
+
+ **Read this rather than assuming it.** It is the difference between a
+ projection matrix that is right on Vulkan and silently wrong on OpenGL;
+ see `ClipSpace` and T0130.3.

@@ -6,7 +6,7 @@
 #include <hp/ModuleHost.hpp>
 ```
 
-19 public declaration(s), 19 documented.
+20 public declaration(s), 20 documented.
 
 ## `ModuleContext`
 
@@ -34,6 +34,19 @@ struct ModuleApi
 
  Both are optional (null is fine) so a module that only registers reflected
  types has nothing to write.
+
+## `kModuleApiSymbol`
+
+```cpp
+inline constexpr const char * kModuleApiSymbol = "hp_module_api"
+```
+
+ The symbol a module exports to describe itself.
+
+ Resolved by name, so it is `extern "C"`: a mangled name cannot be spelled in
+ a string literal without guessing the mangling, and that is the *only*
+ reason C linkage appears anywhere near this boundary. What crosses it is
+ rich C++, per D12.
 
 ## `ModuleApiFn`
 

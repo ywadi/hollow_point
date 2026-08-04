@@ -251,6 +251,14 @@ bool RenderLayer::Impl::createOpenGL(const Diligent::NativeWindow& window, int w
     Diligent::EngineGLCreateInfo info;
     info.Window = window;
 
+    // T0130.3. Without this, GL clips Z to [-1, 1] while Vulkan clips to
+    // [0, 1], and every projection matrix in the engine would need to know
+    // which backend it was built for. Diligent honours it through
+    // glClipControl when GL_ARB_clip_control is present, and silently reports
+    // a [-1, 1] NDC when it is not -- so asking is not the same as getting,
+    // and the result is checked below rather than assumed.
+    info.ZeroToOneNDZ = true;
+
     Diligent::SwapChainDesc desc;
     describeSwapChain(desc);
     desc.Width = static_cast<Diligent::Uint32>(width);
@@ -277,6 +285,26 @@ bool RenderLayer::Impl::createOpenGL(const Diligent::NativeWindow& window, int w
                            "floor because particles are GPU-compute-only; a device below it would "
                            "run with effects silently absent. Refusing the device rather than "
                            "starting without it.");
+        swapChain.Release();
+        context.Release();
+        device.Release();
+        return false;
+    }
+
+    // T0130.3's floor, and the same shape of argument as the compute floor
+    // above. Reverse-Z needs a [0, 1] clip space to be worth anything: mapping
+    // a float depth buffer through [-1, 1] throws away exactly the precision
+    // reverse-Z exists to gain. A device that cannot do clip control would
+    // therefore need a second projection convention, a second depth comparison
+    // and a second clear value throughout the renderer -- two code paths that
+    // must agree, to support drivers that predate 2014. Refuse it instead.
+    if (device->GetDeviceInfo().NDC.MinZ != 0.0F) {
+        HP_LOG_ERROR(kLog, "OpenGL device reports a [-1, 1] clip-space Z: the driver did not "
+                           "honour the [0, 1] request, so GL_ARB_clip_control and "
+                           "GL_EXT_clip_control are both absent. T0130.3 requires a [0, 1] clip "
+                           "space on every backend so there is one projection convention rather "
+                           "than two. Refusing the device rather than rendering with mirrored "
+                           "depth.");
         swapChain.Release();
         context.Release();
         device.Release();
@@ -481,6 +509,16 @@ Diligent::IDeviceContext* RenderLayer::context() const {
 
 Diligent::ISwapChain* RenderLayer::swapChain() const {
     return impl_ ? impl_->swapChain.RawPtr() : nullptr;
+}
+
+ClipSpace RenderLayer::clipSpace() const {
+    ClipSpace clip;
+    if (impl_ && impl_->device) {
+        const Diligent::NDCAttribs& ndc = impl_->device->GetDeviceInfo().NDC;
+        clip.minZ = ndc.MinZ;
+        clip.yToV = ndc.YtoVScale;
+    }
+    return clip;
 }
 
 } // namespace hp

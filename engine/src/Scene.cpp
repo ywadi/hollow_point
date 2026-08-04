@@ -87,7 +87,12 @@ void registerCoreComponents() {
         .property<&Camera::nearPlane>("nearPlane")
         .property<&Camera::farPlane>("farPlane")
         .property<&Camera::orthographic>("orthographic")
-        .property<&Camera::orthographicSize>("orthographicSize");
+        .property<&Camera::orthographicSize>("orthographicSize")
+        .property<&Camera::sensorHeightMm>("sensorHeightMm")
+        .property<&Camera::exposureEv100>("exposureEv100")
+        .property<&Camera::depthOfField>("depthOfField")
+        .property<&Camera::aperture>("aperture")
+        .property<&Camera::focusDistance>("focusDistance");
 }
 
 bool Entity::valid() const {

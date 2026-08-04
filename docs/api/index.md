@@ -32,6 +32,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 |---|---|---|
 | [`<hp/Api.hpp>`](Api.md) | 0 | 0 |
 | [`<hp/Application.hpp>`](Application.md) | 22 | 12 |
+| [`<hp/Camera.hpp>`](Camera.md) | 7 | 7 |
+| [`<hp/DepthConvention.hpp>`](DepthConvention.md) | 2 | 2 |
 | [`<hp/Engine.hpp>`](Engine.md) | 4 | 4 |
 | [`<hp/EntryPoint.hpp>`](EntryPoint.md) | 1 | 0 |
 | [`<hp/Event.hpp>`](Event.md) | 72 | 15 |
@@ -41,18 +43,18 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Layer.hpp>`](Layer.md) | 28 | 16 |
 | [`<hp/Log.hpp>`](Log.md) | 22 | 12 |
 | [`<hp/Math.hpp>`](Math.md) | 6 | 6 |
-| [`<hp/Module.hpp>`](Module.md) | 5 | 5 |
-| [`<hp/ModuleHost.hpp>`](ModuleHost.md) | 19 | 19 |
+| [`<hp/Module.hpp>`](Module.md) | 6 | 6 |
+| [`<hp/ModuleHost.hpp>`](ModuleHost.md) | 20 | 20 |
 | [`<hp/Paths.hpp>`](Paths.md) | 1 | 1 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
-| [`<hp/Render.hpp>`](Render.md) | 22 | 22 |
+| [`<hp/Render.hpp>`](Render.md) | 25 | 25 |
 | [`<hp/RenderStack.hpp>`](RenderStack.md) | 21 | 21 |
-| [`<hp/Scene.hpp>`](Scene.md) | 55 | 55 |
+| [`<hp/Scene.hpp>`](Scene.md) | 54 | 54 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 
-**390 public declarations across 21 headers, 273 documented.**
+**403 public declarations across 23 headers, 286 documented.**
 
 ## Every symbol
 
@@ -80,6 +82,15 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Application::input` | [`Application.hpp`](Application.md) |
 | `Application::input` | [`Application.hpp`](Application.md) |
 | `createApplication` | [`Application.hpp`](Application.md) |
+| `kDefaultSensorHeightMm` | [`Camera.hpp`](Camera.md) |
+| `Camera` | [`Camera.hpp`](Camera.md) |
+| `verticalFovFromFocalLength` | [`Camera.hpp`](Camera.md) |
+| `focalLengthFromVerticalFov` | [`Camera.hpp`](Camera.md) |
+| `horizontalFovFromVertical` | [`Camera.hpp`](Camera.md) |
+| `exposureMultiplierFromEv100` | [`Camera.hpp`](Camera.md) |
+| `projectionMatrix` | [`Camera.hpp`](Camera.md) |
+| `kReverseZ` | [`DepthConvention.hpp`](DepthConvention.md) |
+| `kDepthClearValue` | [`DepthConvention.hpp`](DepthConvention.md) |
 | `engineVersion` | [`Engine.hpp`](Engine.md) |
 | `engineInstanceCount` | [`Engine.hpp`](Engine.md) |
 | `engineRegisterConsumer` | [`Engine.hpp`](Engine.md) |
@@ -273,12 +284,14 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `float4x4` | [`Math.hpp`](Math.md) |
 | `Quaternion` | [`Math.hpp`](Math.md) |
 | `engineBuildId` | [`Module.hpp`](Module.md) |
+| `kModuleBuildIdSymbol` | [`Module.hpp`](Module.md) |
 | `ModuleBuildIdFn` | [`Module.hpp`](Module.md) |
 | `ModuleCompatibility` | [`Module.hpp`](Module.md) |
 | `checkModuleBuildId` | [`Module.hpp`](Module.md) |
 | `describeIncompatibility` | [`Module.hpp`](Module.md) |
 | `ModuleContext` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `ModuleApi` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `kModuleApiSymbol` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `ModuleApiFn` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `ModuleLoadError` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `ModuleLoadResult` | [`ModuleHost.hpp`](ModuleHost.md) |
@@ -311,6 +324,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `resolveType` | [`Reflect.hpp`](Reflect.md) |
 | `forgetType` | [`Reflect.hpp`](Reflect.md) |
 | `RenderBackend` | [`Render.hpp`](Render.md) |
+| `ClipSpace` | [`Render.hpp`](Render.md) |
+| `ClipSpace::negativeOneToOneZ` | [`Render.hpp`](Render.md) |
 | `RenderConfig` | [`Render.hpp`](Render.md) |
 | `RenderLayer` | [`Render.hpp`](Render.md) |
 | `RenderLayer::RenderLayer` | [`Render.hpp`](Render.md) |
@@ -332,6 +347,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `RenderLayer::device` | [`Render.hpp`](Render.md) |
 | `RenderLayer::context` | [`Render.hpp`](Render.md) |
 | `RenderLayer::swapChain` | [`Render.hpp`](Render.md) |
+| `RenderLayer::clipSpace` | [`Render.hpp`](Render.md) |
 | `RenderPassContext` | [`RenderStack.hpp`](RenderStack.md) |
 | `LayerClear` | [`RenderStack.hpp`](RenderStack.md) |
 | `IRenderLayer` | [`RenderStack.hpp`](RenderStack.md) |
@@ -360,7 +376,6 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `DirtyTransform` | [`Scene.hpp`](Scene.md) |
 | `Hierarchy` | [`Scene.hpp`](Scene.md) |
 | `MeshRenderer` | [`Scene.hpp`](Scene.md) |
-| `Camera` | [`Scene.hpp`](Scene.md) |
 | `Entity` | [`Scene.hpp`](Scene.md) |
 | `Entity::Entity` | [`Scene.hpp`](Scene.md) |
 | `Entity::Entity` | [`Scene.hpp`](Scene.md) |
