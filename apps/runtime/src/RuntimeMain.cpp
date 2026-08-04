@@ -11,6 +11,7 @@
 #include <hp/Log.hpp>
 #include <hp/ModuleHost.hpp>
 #include <hp/Paths.hpp>
+#include <hp/Render.hpp>
 
 #include <hp/EntryPoint.hpp>
 
@@ -51,6 +52,13 @@ private:
         // this existed, 'loaded at runtime by editor and runtime' was true
         // of the engine's capability and false of the binaries.
         loadSampleModule();
+
+        // The render layer owns the device, so it goes in the stack like any
+        // other feature (T0025). Pushed after the module so a module that wants
+        // to draw is already loaded.
+        if (window() != nullptr) {
+            layers().push(std::make_unique<hp::RenderLayer>(*window()));
+        }
     }
 
     /// Loads the sample gameplay module, if it is where one of the layouts puts

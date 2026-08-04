@@ -44,10 +44,11 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Paths.hpp>`](Paths.md) | 1 | 1 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
+| [`<hp/Render.hpp>`](Render.md) | 16 | 16 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 12 | 4 |
 
-**258 public declarations across 16 headers, 141 documented.**
+**274 public declarations across 17 headers, 157 documented.**
 
 ## Every symbol
 
@@ -278,6 +279,22 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `reflect` | [`Reflect.hpp`](Reflect.md) |
 | `resolveType` | [`Reflect.hpp`](Reflect.md) |
 | `forgetType` | [`Reflect.hpp`](Reflect.md) |
+| `RenderBackend` | [`Render.hpp`](Render.md) |
+| `RenderConfig` | [`Render.hpp`](Render.md) |
+| `RenderLayer` | [`Render.hpp`](Render.md) |
+| `RenderLayer::RenderLayer` | [`Render.hpp`](Render.md) |
+| `RenderLayer::RenderLayer` | [`Render.hpp`](Render.md) |
+| `RenderLayer::operator=` | [`Render.hpp`](Render.md) |
+| `RenderLayer::onAttach` | [`Render.hpp`](Render.md) |
+| `RenderLayer::onDetach` | [`Render.hpp`](Render.md) |
+| `RenderLayer::onRender` | [`Render.hpp`](Render.md) |
+| `RenderLayer::ready` | [`Render.hpp`](Render.md) |
+| `RenderLayer::backend` | [`Render.hpp`](Render.md) |
+| `RenderLayer::adapterDescription` | [`Render.hpp`](Render.md) |
+| `RenderLayer::resize` | [`Render.hpp`](Render.md) |
+| `RenderLayer::vsync` | [`Render.hpp`](Render.md) |
+| `RenderLayer::setVsync` | [`Render.hpp`](Render.md) |
+| `RenderLayer::setClearColour` | [`Render.hpp`](Render.md) |
 | `Clock` | [`Time.hpp`](Time.md) |
 | `Clock::Clock` | [`Time.hpp`](Time.md) |
 | `Clock::tick` | [`Time.hpp`](Time.md) |

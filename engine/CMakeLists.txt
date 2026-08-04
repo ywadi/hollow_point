@@ -70,6 +70,7 @@ add_library(hp_engine SHARED
     src/Guid.cpp
     src/Input.cpp
     src/Paths.cpp
+    src/Render.cpp
     src/Layer.cpp
     src/Log.cpp
     src/Time.cpp
@@ -155,11 +156,52 @@ target_link_libraries(hp_engine PUBLIC EnTT::EnTT)
 
 target_link_libraries(hp_engine PRIVATE SDL3::SDL3-static)
 
-# Deliberately links nothing from Diligent yet.
+# Diligent, PRIVATE (T0025).
 #
-# 13.3 asks for PUBLIC vs PRIVATE to be chosen deliberately, and the deliberate
-# choice today is "nothing", because nothing here needs a device. When T0015
-# brings the window and T0025 the render layer, the rule to apply is: link
-# Diligent targets PRIVATE unless a *public engine header* names their types.
-# D6 records that DiligentFX links Diligent-Imgui PUBLIC, so a careless PUBLIC
-# here would hand ImGui to every gameplay module whether it wants it or not.
+# 13.3 asked for PUBLIC vs PRIVATE to be chosen deliberately, and this is that
+# choice being made: **PRIVATE unless a public engine header names a Diligent
+# type**, and none does. `hp/Render.hpp` is a pimpl precisely so that stays
+# true, and `src/Render.cpp` is the only translation unit in the engine that
+# includes Diligent at all.
+#
+# PUBLIC here is not a build error, which is what makes it dangerous: it hands
+# Diligent's include path to every app and every gameplay module. D6 records
+# that DiligentFX links Diligent-Imgui PUBLIC, so a careless PUBLIC would give
+# ImGui to every module whether it wants it or not.
+#
+# The `-shared` variants rather than `-static`: they are the .so/.dll that
+# `dist` already stages, and linking statically would pull both backends into
+# libhp_engine, which removes any possibility of one being absent.
+#
+# The link is per-platform, and that is forced rather than chosen.
+#
+# On Windows, linking the engine DLLs' *import* libraries fails outright:
+# GraphicsEngineVk_64r.dll exports `atexit`, zig's MinGW `dllcrt2.obj` defines
+# it, and lld-link refuses the duplicate. Diligent's own answer is explicit
+# loading -- link only the interface (headers, no import library) and
+# LoadLibrary the DLL at run time. `LoadEngineDll.h` includes <Windows.h>, so
+# that path exists on Windows and nowhere else, which is exactly why the split
+# is here rather than being avoidable.
+#
+# On Linux there is no such collision, so the shared targets link directly and
+# `GetEngineFactoryVk()` resolves at load time. Measured working on an RTX 2080.
+if (WIN32)
+    target_link_libraries(hp_engine PRIVATE
+        Diligent-GraphicsEngineVkInterface
+        Diligent-GraphicsEngineOpenGLInterface
+        Diligent-Common)
+    target_compile_definitions(hp_engine PRIVATE
+        DILIGENT_VK_EXPLICIT_LOAD=1
+        DILIGENT_OPENGL_EXPLICIT_LOAD=1)
+    # The DLLs are loaded by name at run time, so they must exist beside the
+    # executable -- which `dist` already guarantees, and the build tree gets via
+    # the apps' POST_BUILD copy of the runtime DLL set.
+    add_dependencies(hp_engine
+        Diligent-GraphicsEngineVk-shared
+        Diligent-GraphicsEngineOpenGL-shared)
+else()
+    target_link_libraries(hp_engine PRIVATE
+        Diligent-GraphicsEngineVk-shared
+        Diligent-GraphicsEngineOpenGL-shared
+        Diligent-Common)
+endif()

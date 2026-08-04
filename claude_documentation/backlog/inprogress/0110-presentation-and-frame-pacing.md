@@ -2,14 +2,62 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
 | **Order** | 375 |
 | **Created** | 2026-08-03 |
-| **Blocks** | T0025 |
+| **Blocks** | — (was T0025; withdrawn 2026-08-04, see the correction below) |
 | **Refs** | T0014, T0015, T0031, T0052, T0057, T0078, T0100, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D16, [../../documentation/07-design-gaps.md](../../documentation/07-design-gaps.md) item 1, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) , [../inprogress/0068-input-mapping.md](../inprogress/0068-input-mapping.md) |
+
+## Correction (2026-08-04) — measured against the vendored Diligent
+
+Two claims in this ticket were wrong about the API it has to drive. Both were
+found by reading `DiligentCore` before writing any code, and both change what
+the ticket can promise.
+
+**1. This does not block T0025, and the `Blocks` field is withdrawn.**
+
+The stated reason was that "the present mode is chosen where the swap chain is
+created and presented", so hardening T0025 first would force a retrofit. In the
+vendored Diligent, vsync is a **per-call argument**:
+
+```cpp
+VIRTUAL void METHOD(Present)(THIS_ Uint32 SyncInterval DEFAULT_VALUE(1)) PURE;
+```
+
+The only creation-time knob touching presentation is `SwapChainDesc::BufferCount`
+(default 2). So the coupling is one integer per present call plus one field —
+two seams to leave, not a policy that must exist first. T0025 and this ticket
+are now being done together, which is what the real coupling supports.
+
+**2. "No tearing under the vsync mode" is not something this engine can promise.**
+
+Diligent does not expose present-mode selection at all. It derives the mode from
+a boolean (`SwapChainVkImpl.cpp:332-350`):
+
+| vsync | preferred, in order |
+|---|---|
+| on | `FIFO_RELAXED`, then `FIFO` |
+| off | `MAILBOX`, then `IMMEDIATE`, then `FIFO` |
+
+With vsync **on** it prefers `FIFO_RELAXED`, and Diligent's own comment says that
+mode "still shows [a late frame] even if VSync has already passed, **which may
+result in tearing**". So the Done-when as originally written fails on any
+machine that misses a frame — not because the implementation is wrong, but
+because it asks for a guarantee the chosen mode does not make.
+
+Restated above. If genuine tear-free presentation is wanted, that is a decision
+to force plain `FIFO`, and it cannot be expressed through Diligent's boolean —
+it needs a patch or a bypass, which is 110.5's "advanced option" question with a
+real cost attached.
+
+**3. Toggling vsync rebuilds the swap chain.** `SwapChainVkImpl.cpp:746` forces
+`VK_ERROR_OUT_OF_DATE_KHR` when the flag differs from the last present, then
+recreates. The device survives, so "applied at runtime without recreating the
+device" still holds — but 110.1 and T0025's resize handling (25.3) are the *same
+recreate path* and should be built as one thing.
 
 ## Why
 
@@ -65,9 +113,10 @@ is cheap.
 - [ ] T0100's frame anatomy names the present/pacing step explicitly, so pacing
       has a defined place in the frame rather than being wherever `Present`
       landed
-- [ ] Verified on both backends and both targets: no tearing under the vsync
-      mode, the cap holds within measurement error, the background cap engages
-      on focus loss
+- [ ] Verified on both backends and both targets: the vsync mode behaves as the
+      *chosen* Diligent path implies (see the correction — "no tearing" is not
+      available as written), the cap holds within measurement error, and the
+      background cap engages on focus loss
 
 ## Subtasks
 

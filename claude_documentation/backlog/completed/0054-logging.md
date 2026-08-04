@@ -139,7 +139,7 @@ thread safety and type-safe formatting, all working and tested on both targets.
 **Two items were moved rather than ticked**, and the distinction matters:
 
 - **54.5** (route Diligent's `DebugOutput` into this) is now recorded on
-  [T0025](../open/0025-render-layer.md), which is where the engine first links
+  [T0025](../inprogress/0025-render-layer.md), which is where the engine first links
   Diligent at all. It is most of this ticket's remaining value and should be
   done *then*, not later.
 - **54.6** (Tracy message bridge) waits on T0029, which owns the Tracy client.

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
@@ -28,12 +28,12 @@ relative to everything that allocates GPU resources.
 
 ## Subtasks
 
-- [ ] 25.1 Device/context/swapchain creation via Diligent's engine factories
-- [ ] 25.2 Backend selection and command-line override
-- [ ] 25.3 Resize handling, driven by the window resize event (T0018)
-- [ ] 25.4 Shutdown ordering — GPU resources released before the device
-- [ ] 25.5 Profiling zones using the T0019 macros while writing, not after
-- [ ] 25.6 Enable Vulkan validation layers in debug builds
+- [x] 25.1 Device/context/swapchain creation via Diligent's engine factories — Vulkan up on real hardware; see below
+- [ ] 25.2 Backend selection and command-line override — the selection path exists and both backends are reachable, but **OpenGL cannot come up at all** (see below) and there is no command-line override yet
+- [ ] 25.3 Resize handling — `RenderLayer::resize()` works on a live swap chain (measured), but is **not yet wired to the window resize event**
+- [x] 25.4 Shutdown ordering — GPU resources released before the device — flush, wait-for-idle, then swap chain, context, device
+- [x] 25.5 Profiling zones using the T0019 macros while writing, not after
+- [x] 25.6 Enable Vulkan validation layers in debug builds
 
 ## Notes / findings
 
@@ -116,3 +116,98 @@ widens every consumer's dependency surface.
   compute — D15 says this ticket's fallback assumptions "should be checked
   against that", and the check lives here. A GL device below the floor should
   fail loudly at selection, not when the first emitter dispatches nothing.
+
+## 25.1 done (2026-08-04) — a Vulkan device, on real hardware
+
+```
+[info ] render: Vulkan on 'NVIDIA GeForce RTX 2080', 1280x720, 3 buffers, vsync on
+[info ] render: swap chain buffer count 2 requested, 3 granted by the surface
+[info ] render: device released
+[info ] app: HollowPoint Runtime ran 3 frame(s) in 0.252s, exit 0
+```
+
+`hp::RenderLayer` is an `ILayer` holding device, immediate context and swap
+chain, clearing and presenting at frame phases 10 and 11. **This is the first
+time the engine links Diligent at all.** It is linked PRIVATE, and
+`hp/Render.hpp` is a pimpl specifically so that stays true — `src/Render.cpp` is
+the only translation unit in the engine that includes a Diligent header.
+
+### Finding 1 — the Windows link fails, and the fix is per-platform
+
+Linking the engine DLLs' import libraries does not work under this toolchain:
+
+```
+lld-link: error: duplicate symbol: atexit
+>>> defined at .../mingw/crt/crtdll.c:180 (dllcrt2.obj)
+>>> defined at libGraphicsEngineVk_64r.dll.a(GraphicsEngineVk_64r.dll)
+```
+
+`GraphicsEngineVk_64r.dll` **exports `atexit`**, and zig's MinGW `dllcrt2.obj`
+defines it. Diligent's own answer is explicit loading — link the interface
+target only (headers, no import library) and `LoadLibrary` the DLL at run time.
+`LoadEngineDll.h` includes `<Windows.h>`, so that path exists on Windows and
+nowhere else, which is why the link strategy is genuinely per-platform rather
+than a preference:
+
+| target | link | factory |
+|---|---|---|
+| Windows | `*Interface` + `DILIGENT_*_EXPLICIT_LOAD=1` | `LoadGraphicsEngineVk()` |
+| Linux | `*-shared` | `GetEngineFactoryVk()` |
+
+Worth knowing: the explicit-load macros are `DILIGENT_VK_EXPLICIT_LOAD` and
+`DILIGENT_OPENGL_EXPLICIT_LOAD`. The first draft guessed
+`EXPLICITLY_LOAD_ENGINE_VK_DLL`, which compiled fine as a dead branch and would
+have silently taken the wrong path forever.
+
+### Finding 2 — the OpenGL backend cannot come up, and it is the window's fault
+
+```
+[error] render.diligent: No current GL context found! (GLContextLinux.cpp:47)
+[error] render.diligent: Failed to initialize OpenGL-based render device
+[error] render: no graphics device could be created (OpenGL requested)
+```
+
+`Window::create` asks SDL for `SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY`
+and nothing else — no `SDL_WINDOW_OPENGL`, no GL context — while Diligent's Linux
+GL backend attaches to a context that must already be current.
+
+**This is an ordering constraint, not a missing flag.** The window is created
+before a backend is chosen, so it cannot know whether to make a GL context; and
+a window created *with* `SDL_WINDOW_OPENGL` is not free for Vulkan either. The
+fix is a decision about who chooses the backend and when — plausibly the config
+must name it before the window opens. That is 25.2's real content and it was
+invisible until a device was attempted.
+
+**D15's OpenGL 4.3 compute floor is therefore unchecked**, because no GL device
+exists to query. The check still belongs in 25.2.
+
+### Finding 3 — Diligent's diagnostics needed routing, per factory
+
+Diligent wrote ~250 lines straight to stderr with its own ANSI colouring,
+bypassing the engine log entirely — so the editor console (T0066), the log file
+and every other sink would never have seen a driver warning.
+
+`SetDebugMessageCallback` — the global — **compiled, ran, and changed nothing**:
+each Diligent engine library carries its own copy of that global, the same
+statics-per-artifact property behind T0105.1 and T0127. `IEngineFactory::SetMessageCallback`
+is per-factory and does work. Output went from ~250 stderr lines to 13 through
+`hp::Log`, with the extension dump at Debug where it belongs.
+
+### Finding 4 — the surface overrides what you ask for
+
+Requesting 2 buffers returned 3 ("minimal image count supported for this
+surface"), and `RGBA8_UNORM_SRGB` came back as `BGRA8_UNORM_SRGB`. The layer now
+logs the **created** description rather than the requested one; logging the
+request would have told a latency investigation a quiet lie. The sRGB
+substitution is T0096's business.
+
+Also confirmed, exactly as T0110's correction predicted from reading the source:
+`Using VK_PRESENT_MODE_FIFO_RELAXED_KHR swap chain present mode` with vsync on.
+
+### Verified
+
+```
+zig build test -Dtest=all   18/18 steps, 24/24 tests, 55 integration + 49 fast, both targets
+zig build docs              exit 0
+RenderLayer::resize(800, 600) on a live Vulkan swap chain -- still ready, clean release
+```
