@@ -238,3 +238,73 @@ Two things this does *not* prove, recorded so nobody reads more into it:
 reached the launcher and nobody found out why. Caching output sidesteps it
 rather than solving it. Anyone reaching for a compiler launcher here again
 inherits that unexplained number as their starting point.
+
+## Amendment (2026-08-04) — the cache never saved, and two figures here are wrong
+
+This ticket closed on "the Linux job goes 18-19m to 5m, measured". That held for
+about a day. It is now 22m22s, and the cause is in the mechanism this ticket
+built rather than in anything since.
+
+### The cache restored and never wrote
+
+`actions/cache` writes an entry **only when the primary key misses**. The key
+here — submodule SHAs plus root `CMakeLists.txt` and toolchains — hit on every
+run, so the tree was never updated. That was invisible for exactly as long as
+the cached tree happened to be complete.
+
+It stopped being complete when `engine/CMakeLists.txt` linked Diligent's Vulkan
+and OpenGL backends (T0025.1, `15ee38c`). Nothing in the key moved — the
+submodules had not changed and Diligent was already vendored — but **which parts
+of it got compiled** did. From the job log:
+
+```
+18:31:26  Cache restored from key: buildtree-Linux-b8f9632…   Cache Size: ~78 MB
+18:52:05  2.1G   build
+18:52:05  Cache hit occurred on the primary key buildtree-Linux-b8f9632…, not saving cache.
+```
+
+Restore a 78 MB pre-Diligent snapshot, compile ~955 targets of backend and
+shader-compiler code (glslang, SPIRV-Tools, SPIRV-Cross) into a 2.1 GB tree,
+discard it. Every run, indefinitely, until something *in the key* changed.
+
+Exact boundary, same step, nothing else different:
+
+| job, "Run every test bucket" | `929ce9b` before | `15ee38c` after |
+|---|---|---|
+| Tests (Linux host, both targets) | 3m38s | **20m38s** |
+| Tests (Windows host, native) | 7m48s total | **18m40s** total |
+
+### Two figures recorded here are now wrong
+
+- **"18-19m to 5m."** True when measured; the warm path is 22m22s today.
+- **"the trees are 327 MB and 152 MB, compressing to 78 MB and 34 MB … about 1%
+  of quota."** Measured before Diligent was linked. The trees are **2.1 GB and
+  879 MB**. The original 1.7 GB / 1.3 GB estimate this ticket dismissed as
+  "wrong by roughly 5-9x" was in fact roughly right, just early.
+
+### The fix, and what it is not
+
+The key is now unique per run (`…-${{ github.run_id }}`) with two restore-key
+tiers, so **every run saves** and the cached tree is always what the build
+actually produced. Restore prefers a tree built against the same pinned
+dependencies, then any tree.
+
+The fix deliberately is **not** "add `engine/CMakeLists.txt` to the key". That is
+the same design one input wider, and the lesson is that a key which must
+enumerate everything affecting the build graph is a bet this repository already
+lost once, silently. A unique key cannot go stale; it can only cost storage.
+
+**Cost, stated because it is real rather than a rounding error:** saving every
+run instead of once. Repo cache usage was 1.33 GB of 10 GB at the time of the
+change, and eviction is least-recently-used, so the effect is a rolling window
+of recent trees. The compressed sizes are an **estimate** (~5x ratio, so roughly
+565 MB per run) until a run actually writes one — no post-Diligent tree had ever
+been saved. **Read the real numbers off the first successful save and correct
+this again**, and if they are much worse than estimated, narrowing the cached
+path to `build/*/third_party` is the lever.
+
+### Not fixed here
+
+ccache is unrelated and remains correctly absent — this ticket removed it after
+measuring 82 of ~4,248 compilations. The leftover `ccache-linux-*` cache entries
+predate that removal and will age out on their own.

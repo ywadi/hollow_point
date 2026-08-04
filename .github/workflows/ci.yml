@@ -105,12 +105,30 @@ jobs:
           sudo apt-get install -y --no-install-recommends wine \
             || sudo apt-get install -y --no-install-recommends wine64
 
-      # Cache the build tree, keyed on what actually determines its third-party
-      # contents: the submodule SHAs plus the CMake and toolchain files. Our own
-      # sources are deliberately NOT in the key -- they change every commit, so
-      # including them would mean never hitting the cache. Ninja then rebuilds
-      # only the handful of engine files that changed and leaves SDL, Diligent,
-      # enkiTS, ozz and meshoptimizer alone.
+      # Cache the build tree so pinned code that has not moved does not
+      # recompile. Ninja rebuilds only the handful of engine files that changed
+      # and leaves SDL, Diligent, enkiTS, ozz and meshoptimizer alone.
+      #
+      # The key is unique per run, deliberately. `actions/cache` writes an entry
+      # only when the primary key MISSES; a key that hits is never updated. The
+      # previous key -- submodule SHAs plus root CMake and toolchains -- hit on
+      # every run and therefore never saved, which was invisible for as long as
+      # the cached tree happened to be complete.
+      #
+      # It stopped being complete the moment `engine/CMakeLists.txt` linked
+      # Diligent's Vulkan and OpenGL backends (T0025). Nothing in the key
+      # changed -- the submodules had not moved, Diligent was already vendored --
+      # but *which* of it got compiled did. CI then restored a 78 MB pre-Diligent
+      # snapshot, rebuilt ~955 targets of backend and shader-compiler code into a
+      # 2.1 GB tree, logged "Cache hit occurred on the primary key ..., not
+      # saving cache", and threw all of it away. Every run. The Linux job went
+      # from 3m38s to 22m22s and stayed there.
+      #
+      # The lesson is not "the key was missing an input". It is that a key which
+      # must enumerate everything affecting the build graph is a bet, and this
+      # repository lost it silently. A unique key always saves, so the cached
+      # tree is always what the build actually produced; the restore-keys below
+      # do the matching instead.
       #
       # This is the principle the previous attempt missed: pinned code that has
       # not moved must not recompile. ccache was tried first and did not deliver
@@ -122,12 +140,23 @@ jobs:
       # build/<target>-<buildtype>, and this job builds BOTH targets, so `build`
       # covers linux-x86_64-* and windows-x86_64-* together.
       #
-      # ci.yml originally declined to cache build trees on the grounds that they
-      # were ~1.7 GB Linux and ~1.3 GB Windows against a 10 GB quota. Measured
-      # in run 30891771048, that estimate was wrong by roughly 5-9x: the trees
-      # are 327 MB and 152 MB, compressing to 78 MB and 34 MB in the cache. The
-      # quota objection never actually applied -- both entries together are
-      # about 1% of it.
+      # On quota, with the numbers corrected 2026-08-04.
+      #
+      # ci.yml originally declined to cache build trees as ~1.7 GB Linux and
+      # ~1.3 GB Windows against a 10 GB quota. T0121 measured 327 MB and 152 MB
+      # trees compressing to 78 MB and 34 MB, and concluded the objection never
+      # applied. **Both measurements were taken before the engine linked
+      # Diligent.** The trees are now 2.1 GB and 879 MB -- so the original
+      # estimate was roughly right, just early, and the "about 1% of quota" line
+      # was wrong within a day of being written.
+      #
+      # A unique key per run means saving every run rather than once, so this is
+      # a real cost rather than a rounding error. Repo usage was 1.33 GB of 10 GB
+      # when this changed; eviction is least-recently-used, so the effect is a
+      # rolling window of recent trees rather than a wall. The compressed sizes
+      # are an *estimate* until a run actually saves one -- the ratio has been
+      # ~5x, but no post-Diligent tree had ever been written. Read the real
+      # numbers off the first successful save and correct this comment again.
       - name: Key the build cache on the pinned dependencies
         run: |
           git submodule status --recursive | awk '{print $1, $2}' > .ci-dep-key
@@ -138,8 +167,15 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build
-          key: buildtree-${{ runner.os }}-${{ hashFiles('.ci-dep-key') }}
+          # The run id makes the primary key unique, and that is the point:
+          # actions/cache only writes on a MISS, so a key that hits never saves.
+          # This key never hits, so every run saves the tree as it actually is.
+          key: buildtree-${{ runner.os }}-${{ hashFiles('.ci-dep-key') }}-${{ github.run_id }}
+          # Restore falls through: prefer a tree built against the same pinned
+          # dependencies, then any tree at all. Either way ninja rebuilds only
+          # what changed.
           restore-keys: |
+            buildtree-${{ runner.os }}-${{ hashFiles('.ci-dep-key') }}-
             buildtree-${{ runner.os }}-
 
       - name: Run every test bucket, both targets
@@ -221,8 +257,15 @@ jobs:
         uses: actions/cache@v6
         with:
           path: build
-          key: buildtree-${{ runner.os }}-${{ hashFiles('.ci-dep-key') }}
+          # The run id makes the primary key unique, and that is the point:
+          # actions/cache only writes on a MISS, so a key that hits never saves.
+          # This key never hits, so every run saves the tree as it actually is.
+          key: buildtree-${{ runner.os }}-${{ hashFiles('.ci-dep-key') }}-${{ github.run_id }}
+          # Restore falls through: prefer a tree built against the same pinned
+          # dependencies, then any tree at all. Either way ninja rebuilds only
+          # what changed.
           restore-keys: |
+            buildtree-${{ runner.os }}-${{ hashFiles('.ci-dep-key') }}-
             buildtree-${{ runner.os }}-
 
       - name: Run every test bucket, Windows target
