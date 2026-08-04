@@ -8,7 +8,7 @@
 | **Phase** | 8 — Runtime & export |
 | **Order** | 770 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0103 (Blocks this — D13), T0098, T0115, T0116, T0119 |
+| **Refs** | T0103 (Blocks this — D13), T0098, T0115, T0116, T0119, [../inprogress/0048-hot-reloadable-gameplay-module.md](../inprogress/0048-hot-reloadable-gameplay-module.md) |
 
 ## Why
 
@@ -114,3 +114,11 @@ about the executable's library search path, not about content.
 - **T0119** owns the step after export on Linux (desktop entry, icon,
   packaging format). Keep the exported layout wrappable by AppImage/Flatpak
   rather than treating a bare folder as the end state.
+
+- **T0048.7** is parked on this ticket: the exported *runtime* should link the
+  gameplay module statically rather than loading it. Hot reload is a development
+  affordance — it costs startup time, a copy-before-load per module and a file
+  poll per frame, and it widens the surface a shipped game exposes. None of that
+  should ship. It was not built because there is no export pipeline yet to link
+  into; when this ticket has one, `hp_add_gameplay_module()` is where the
+  static-vs-module choice belongs, next to the finalizer and the build-id stamp.

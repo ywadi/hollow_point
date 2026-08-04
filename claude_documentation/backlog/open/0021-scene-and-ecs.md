@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 200 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0053, T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
+| **Refs** | T0053, T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), [../inprogress/0048-hot-reloadable-gameplay-module.md](../inprogress/0048-hot-reloadable-gameplay-module.md) |
 
 ## Why
 
@@ -105,3 +105,24 @@ knowing before 21.6 is designed, even though behaviours land later.
   wrapping `registry::emplace_or_replace<T>`, roughly thirty lines of glue.
   Identity is the **name**, never `entt::type_index`, which T0095 measured to be
   a per-module number with no meaning across the module boundary.
+
+### Cross-ticket obligation — T0048 (2026-08-04)
+
+**T0048.5 is parked here, and it is a small test rather than a design task.**
+Hot reload is built and works: a module is loaded, swapped and unloaded at frame
+phase 12, and a rebuilt module's *code* is live in the running process
+(measured). What could not be verified is T0048's third Done-when — "the open
+scene, entities and component data survive a reload intact" — because there is
+no scene and no engine-owned `entt::registry` for a component to live in.
+
+When this ticket lands, add the case: put a component on an entity, mutate it,
+reload the gameplay module, and assert the value is unchanged. It belongs in
+`tests/integration/module_host_test.cpp`.
+
+**The rule it is testing is already binding on this ticket's design**, so it is
+worth stating rather than leaving to the test: *all persistent state lives in
+the ECS, owned by the engine — never in the gameplay module.* Statics inside a
+module are destroyed on unload, so anything kept there is gone. That single rule
+is what decides whether hot reload is reliable or a source of baffling bugs, and
+it means the registry must be owned engine-side from the start rather than
+handed to gameplay to keep.

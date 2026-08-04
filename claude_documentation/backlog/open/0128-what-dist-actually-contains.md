@@ -9,7 +9,7 @@
 | **Order** | 740 |
 | **Created** | 2026-08-04 |
 | **Found by** | T0105.4 |
-| **Refs** | [../inprogress/0105-module-linkage-loose-ends.md](../inprogress/0105-module-linkage-loose-ends.md), T0109, T0043, T0013 |
+| **Refs** | [../completed/0105-module-linkage-loose-ends.md](../completed/0105-module-linkage-loose-ends.md), T0109, T0043, T0013 |
 
 ## Why
 

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 2 — Engine skeleton |
@@ -32,9 +32,9 @@ This ticket holds them until their prerequisites land.
       `#ifdef` spread through gameplay code — Debug and Release, evidence below.
       **Profiling is not a third buildable configuration**: `HP_PROFILING=ON`
       does not compile at all (a deliberate `#error` until T0029)
-- [ ] T0048's reload mechanics are re-verified against the shared-engine model:
+- [x] T0048's reload mechanics are re-verified against the shared-engine model:
       the *game* module is copied-before-load and swapped; the *engine* library
-      is loaded once and never reloaded
+      is loaded once and never reloaded — verified 2026-08-04, see below
 - [x] `dist` staging carries the engine shared library correctly on both
       platforms, and an exported build runs from a directory it was not built in
       — measured with the build tree *gone*, both targets, evidence below
@@ -52,17 +52,16 @@ This ticket holds them until their prerequisites land.
 - [x] 105.2 Dev vs shipped configuration — done 2026-08-04, and the
       entanglement with T0104 was real: chasing it found a bug in the build id
       itself. See "105.2 done" below
-- [ ] 105.3 Re-verify T0048's mechanics (was 95.6). Blocked on T0048
+- [x] 105.3 Re-verify T0048's mechanics (was 95.6) — unblocked and done 2026-08-04, now that T0048 has mechanics to verify
 - [x] 105.4 `dist`/export staging of the engine shared library (was 95.7) —
       done 2026-08-04, unblocked by T0013 shipping the engine as a shared
       library. T0043's RUNPATH hazard was already handled on the app side; what
       was *not* handled is what else `dist` was staging. See "105.4 done" below
-- [ ] 105.5 Extend `tests/integration/module_boundary_test.cpp` as each of the
-      above becomes possible. Rolling, and cannot close before 105.3 does.
-      Landed so far: the unload A/B control (105.1) and the build-id
-      configuration-field case (105.2). Still to come: 105.3's reload mechanics,
-      and **T0127's typed-exception assertion on both targets**, which belongs
-      in this suite rather than a second one
+- [x] 105.5 Extend the boundary suite as each of the above became possible.
+      Landed: the unload A/B control (105.1), the build-id configuration-field
+      case (105.2), T0127's typed-exception assertions on both targets, and —
+      in `module_host_test.cpp`, its own file once there was a subsystem rather
+      than a property to guard — T0048's loader cases
 
 ## Notes / findings
 
@@ -441,3 +440,52 @@ $ zig build docs   -> exit 0
   already mandates (advisory today) can be made unforgettable in the same place,
   by the same mechanism. 105.2's dev-vs-shipped work touches that file, so
   whoever lands it should not remove the seam.
+
+## 105.3 done (2026-08-04) — verified against what T0048 actually built
+
+The subtask asked for T0048's mechanics to be re-verified against the
+shared-engine model, and it was blocked because those mechanics did not exist.
+They do now, and all three claims hold — two of them because the loader was
+built to make them hold, and one because it was measured and then designed
+around.
+
+**The game module is copied before load.** `ModuleHost` stages a copy beside the
+original and loads that, on both targets. The subtask inherited this from 95.6
+as a Windows concern — the OS locks a loaded DLL — and T0048 found the Linux
+half is worse: Linux permits the overwrite and performs it into the live
+mapping. Asserted by "the original file can be overwritten while the module is
+live".
+
+**The module is swapped, not accumulated.** A reload closes the old image
+before opening the new — a real `dlclose`, no `RTLD_NODELETE` — and the new one
+is validated first so a bad build leaves the old one running. Ten consecutive
+reloads inside one process, plus 25 whole host lifetimes, all exit 0.
+
+**The engine library is loaded once and never reloaded.** The host links it, so
+it is resolved by `DT_NEEDED` at startup and never enters the loader's
+refcounting for modules. Measured consequence, recorded because nothing else
+records it: `libhp_engine.so` has **no `.fini_array`** (`fini_array=0`), so
+unloading it *would* crash — the invariant is load-bearing rather than merely
+tidy. Anything that `dlopen`s a module without holding an engine reference
+unloads the engine on `dlclose` and dies at exit; that is how it was found.
+
+### The residual doubt from 105.1 is resolved
+
+105.1 closed with Remedy A proven only against "a synthetic `static std::string`"
+and warned that an upstream reporter had seen a residual crash. T0048 supplied
+the real case: `libhp_sandbox` links the engine and registers reflected types
+into the shared `entt::meta` context on load, deregistering on unload.
+
+```
+libhp_sandbox.so          fini_array=2   dlclose -> exit 0
+libhp_throwing_module.so  fini_array=2   dlclose -> exit 0
+libhp_abi_module.so       fini_array=0   dlclose -> SIGSEGV   (plain add_library)
+```
+
+**Remedy A holds.** Remedy B stays unnecessary, and the fallback stays
+documented rather than taken.
+
+The third line is the new rule it produced: a library *without* the finalizer
+still cannot be unloaded, so the loader refuses an unstamped library **and
+leaves it mapped**. Found the hard way — the suite passed 55 cases and then
+segfaulted at process exit.

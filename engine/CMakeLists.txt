@@ -63,6 +63,7 @@ add_custom_target(hp_build_id DEPENDS "${HP_BUILD_ID_HEADER}")
 
 add_library(hp_engine SHARED
     src/Module.cpp
+    src/ModuleHost.cpp
     src/Reflect.cpp
     src/Application.cpp
     src/Engine.cpp

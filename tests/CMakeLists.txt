@@ -177,6 +177,14 @@ if(NOT WIN32)
     target_link_libraries(hp_unload_probe PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
+# T0048/T0127: a gameplay module whose entry point throws. Declared through
+# hp_add_gameplay_module() like any other module -- the point of the fixture is
+# that the guard HP_GAMEPLAY_MODULE installs is real, so it must be built the
+# way a real module is.
+hp_add_gameplay_module(hp_throwing_module
+    SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/throwing_module.cpp"
+    OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+
 foreach(_bucket fast integration gpu perf)
     hp_add_test_bucket(${_bucket})
 endforeach()
@@ -201,6 +209,7 @@ if(TARGET hp_tests_integration)
     # would receive a POSIX path it cannot open. The test composes them against
     # exe_dir() at run time, which is correct on both targets and under interop.
     add_dependencies(hp_tests_integration hp_stamped_module hp_stale_module hp_sandbox)
+    add_dependencies(hp_tests_integration hp_throwing_module)
     # The real sample gameplay module is loaded from where it is built, by a
     # path relative to this binary, rather than copied next to it.
     #
@@ -215,7 +224,8 @@ if(TARGET hp_tests_integration)
         HP_STALE_MODULE_NAME="$<TARGET_FILE_NAME:hp_stale_module>"
         HP_UNLOAD_PROBE_NAME="$<TARGET_FILE_NAME:hp_unload_probe>"
         HP_UNLOAD_MODULE_FIXED_NAME="$<TARGET_FILE_NAME:hp_unload_module_fixed>"
-        HP_UNLOAD_MODULE_BROKEN_NAME="$<TARGET_FILE_NAME:hp_unload_module_broken>")
+        HP_UNLOAD_MODULE_BROKEN_NAME="$<TARGET_FILE_NAME:hp_unload_module_broken>"
+        HP_THROWING_MODULE_NAME="$<TARGET_FILE_NAME:hp_throwing_module>")
     if(NOT WIN32)
         # The boundary fixture, beside the executable for the same reason the
         # engine is. RPATH is already $ORIGIN from the bucket helper above.

@@ -122,3 +122,37 @@ HP_EXPORT void hpSandboxForgetTypes() {
     hp::forgetType("SandboxHealth");
 }
 }
+
+// --- the module lifecycle (T0048) --------------------------------------------
+//
+// Declared through the engine rather than as hand-written entry points, which
+// is what makes the `catch (...)` guard structural: an exception must not cross
+// this boundary, and on Linux a typed one cannot cross it at all (T0127).
+//
+// Note what is *not* here: any state. All persistent state lives in the ECS,
+// owned by the engine. Statics in this image are destroyed on unload, so
+// anything kept here would vanish on reload -- that single rule is what decides
+// whether hot reload is reliable or a source of baffling bugs.
+
+#include <hp/Log.hpp>
+#include <hp/ModuleHost.hpp>
+
+namespace {
+
+const hp::LogCategory kSandboxLog("sandbox");
+
+void onLoad(hp::ModuleContext& ctx) {
+    hpSandboxRegisterTypes();
+    HP_LOG_INFO(kSandboxLog, "sandbox module loaded, generation {}", ctx.generation);
+}
+
+void onUnload(hp::ModuleContext& ctx) {
+    // Deregistration is not tidiness. entt::meta would otherwise keep function
+    // pointers into an image that is about to be unmapped.
+    hpSandboxForgetTypes();
+    HP_LOG_INFO(kSandboxLog, "sandbox module unloading, generation {}", ctx.generation);
+}
+
+} // namespace
+
+HP_GAMEPLAY_MODULE("sandbox", onLoad, onUnload)

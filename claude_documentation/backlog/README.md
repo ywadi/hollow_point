@@ -37,8 +37,8 @@ This is the work. For what is already proven to work — and what only appears t
 | 110 | [T0017](completed/0017-layer-stack.md) | LayerStack (system layers) | 2 — Engine skeleton | ✅ DONE | High | Simple |
 | — | [T0126](completed/0126-remove-single-game-framing.md) | Remove the single-game framing from the backlog | 1 — Harden the build | ✅ DONE | High | Moderate |
 | — | [T0127](completed/0127-exceptions-across-the-module-boundary.md) | A typed exception cannot cross the module boundary on Linux | 2 — Engine skeleton | ✅ DONE | High | Moderate |
-| 150 | [T0048](open/0048-hot-reloadable-gameplay-module.md) | Hot-reloadable gameplay module | 2 — Engine skeleton | 🔜 TODO | High | Very Complex |
-| ▶ | [T0105](inprogress/0105-module-linkage-loose-ends.md) | Module linkage: the parts that need something built first | 2 — Engine skeleton | 🚧 IN PROGRESS | High | Moderate |
+| ▶ | [T0048](inprogress/0048-hot-reloadable-gameplay-module.md) | Hot-reloadable gameplay module | 2 — Engine skeleton | 🚧 IN PROGRESS | High | Very Complex |
+| — | [T0105](completed/0105-module-linkage-loose-ends.md) | Module linkage: the parts that need something built first | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | 170 | [T0068](open/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
 | 180 | [T0103](open/0103-virtual-filesystem-and-packs.md) | Virtual filesystem and content packs | 3 — Data model | 🔜 TODO | High | Moderate |
 | 185 | [T0112](open/0112-string-identity-and-localisation.md) | String identity: keys before literals | 3 — Data model | 🔜 TODO | Medium | Simple |

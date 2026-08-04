@@ -19,6 +19,7 @@
 #include <hp/Api.hpp>
 #include <hp/Event.hpp>
 #include <hp/Layer.hpp>
+#include <hp/ModuleHost.hpp>
 #include <hp/Time.hpp>
 #include <hp/Window.hpp>
 
@@ -93,6 +94,19 @@ public:
 
     const LayerStack& layers() const { return layers_; }
 
+    /// The gameplay modules this application hosts (T0048).
+    ///
+    /// Load them in `onStartup`. The loop reloads changed ones for you at the
+    /// end-of-frame safe point — frame phase 12 — which is the only moment
+    /// replacing code out from under a running process is safe. That is why
+    /// reloading is wired in here rather than left to the editor: a host that
+    /// polls whenever it likes gets it wrong exactly once, in a way that
+    /// presents as memory corruption.
+    ModuleHost& modules() { return modules_; }
+
+    /// The gameplay modules this application hosts, read-only.
+    const ModuleHost& modules() const { return modules_; }
+
 protected:
     /// Called once, after the engine is up and before the first frame.
     virtual void onStartup() {}
@@ -146,6 +160,7 @@ private:
     ApplicationConfig config_;
     std::unique_ptr<Window> window_;
     LayerStack layers_;
+    ModuleHost modules_;
     Clock clock_;
     bool running_ = false;
     int exitCode_ = 0;

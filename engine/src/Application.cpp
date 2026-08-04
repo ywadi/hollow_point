@@ -187,6 +187,17 @@ int Application::run() {
             // before doing anything -- a reload with a module-typed payload
             // still queued is the hazard T0075's review note describes.
             HP_PROFILE_ZONE_NAMED("frame safe point");
+
+            // Gameplay module reload (T0048). Here and nowhere else: nothing is
+            // iterating and nothing is mid-draw, so swapping code out from
+            // under the process is safe. Costs one stat() per loaded module in
+            // the overwhelmingly common case where nothing changed.
+            //
+            // Phase 6 is empty today, so there is nothing to assert drained
+            // yet. When T0072/T0075 fill it, the assertion goes here, before
+            // the reload -- a queued module-typed payload outliving the module
+            // is a use-after-free in a type that no longer exists.
+            modules_.reloadChanged();
         }
 
         HP_PROFILE_FRAME();

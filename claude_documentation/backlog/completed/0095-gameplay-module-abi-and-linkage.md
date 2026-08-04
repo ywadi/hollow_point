@@ -290,7 +290,7 @@ is recorded, the boundary is proven by a suite that runs on both targets in
 `zig build test`, and the conventions that fall out are written into T0055. That
 is what T0013, T0048 and T0062 were waiting for, and they are no longer blocked.
 
-**Four items are moved to [T0105](../inprogress/0105-module-linkage-loose-ends.md)
+**Four items are moved to [T0105](../completed/0105-module-linkage-loose-ends.md)
 rather than ticked**, and the distinction matters: none was overlooked, and each
 needs code that does not exist yet.
 

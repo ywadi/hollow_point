@@ -6,7 +6,7 @@
 #include <hp/Application.hpp>
 ```
 
-17 public declaration(s), 7 documented.
+19 public declaration(s), 9 documented.
 
 ## `ApplicationConfig`
 
@@ -144,6 +144,29 @@ const LayerStack & layers() const
 ```
 
 *No documentation comment.*
+
+## `Application::modules`
+
+```cpp
+ModuleHost & modules()
+```
+
+ The gameplay modules this application hosts (T0048).
+
+ Load them in `onStartup`. The loop reloads changed ones for you at the
+ end-of-frame safe point — frame phase 12 — which is the only moment
+ replacing code out from under a running process is safe. That is why
+ reloading is wired in here rather than left to the editor: a host that
+ polls whenever it likes gets it wrong exactly once, in a way that
+ presents as memory corruption.
+
+## `Application::modules`
+
+```cpp
+const ModuleHost & modules() const
+```
+
+ The gameplay modules this application hosts, read-only.
 
 ## `createApplication`
 

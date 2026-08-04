@@ -31,7 +31,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | Header | Declarations | Documented |
 |---|---|---|
 | [`<hp/Api.hpp>`](Api.md) | 0 | 0 |
-| [`<hp/Application.hpp>`](Application.md) | 17 | 7 |
+| [`<hp/Application.hpp>`](Application.md) | 19 | 9 |
 | [`<hp/Engine.hpp>`](Engine.md) | 4 | 4 |
 | [`<hp/EntryPoint.hpp>`](EntryPoint.md) | 1 | 0 |
 | [`<hp/Event.hpp>`](Event.md) | 72 | 15 |
@@ -39,12 +39,13 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Layer.hpp>`](Layer.md) | 28 | 16 |
 | [`<hp/Log.hpp>`](Log.md) | 22 | 12 |
 | [`<hp/Module.hpp>`](Module.md) | 5 | 5 |
+| [`<hp/ModuleHost.hpp>`](ModuleHost.md) | 19 | 19 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 12 | 4 |
 
-**208 public declarations across 13 headers, 91 documented.**
+**229 public declarations across 14 headers, 112 documented.**
 
 ## Every symbol
 
@@ -66,6 +67,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Application::window` | [`Application.hpp`](Application.md) |
 | `Application::layers` | [`Application.hpp`](Application.md) |
 | `Application::layers` | [`Application.hpp`](Application.md) |
+| `Application::modules` | [`Application.hpp`](Application.md) |
+| `Application::modules` | [`Application.hpp`](Application.md) |
 | `createApplication` | [`Application.hpp`](Application.md) |
 | `engineVersion` | [`Engine.hpp`](Engine.md) |
 | `engineInstanceCount` | [`Engine.hpp`](Engine.md) |
@@ -212,6 +215,25 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `ModuleCompatibility` | [`Module.hpp`](Module.md) |
 | `checkModuleBuildId` | [`Module.hpp`](Module.md) |
 | `describeIncompatibility` | [`Module.hpp`](Module.md) |
+| `ModuleContext` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleApi` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleApiFn` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleLoadError` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleLoadResult` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleHost` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleHost::ModuleHost` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleHost::ModuleHost` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleHost::operator=` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleHost::load` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleHost::reloadChanged` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleHost::reloadAll` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleHost::unloadAll` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleHost::size` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleHost::names` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleHost::totalLoads` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleHost::onReloaded` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `moduleEntryPointThrew` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `invokeGuarded` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `PropertyMeta` | [`Reflect.hpp`](Reflect.md) |
 | `metaContextHandle` | [`Reflect.hpp`](Reflect.md) |
 | `adoptMetaContext` | [`Reflect.hpp`](Reflect.md) |
