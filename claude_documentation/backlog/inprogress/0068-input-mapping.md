@@ -9,7 +9,7 @@
 | **Order** | 170 |
 | **Blocked by** | T0020 (68.7), T0110 (cursor, focus loss) — plus 68.5, which is not blocked, see below |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0110, T0112 , [../inprogress/0129-display-modes-and-window-control.md](../inprogress/0129-display-modes-and-window-control.md) |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0110, T0112 , [../completed/0129-display-modes-and-window-control.md](../completed/0129-display-modes-and-window-control.md) |
 
 ## Blocked on
 

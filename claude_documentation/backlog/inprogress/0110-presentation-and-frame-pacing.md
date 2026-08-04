@@ -9,7 +9,7 @@
 | **Order** | 375 |
 | **Created** | 2026-08-03 |
 | **Blocks** | — (was T0025; withdrawn 2026-08-04, see the correction below) |
-| **Refs** | T0014, T0015, T0031, T0052, T0057, T0078, T0100, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D16, [../../documentation/07-design-gaps.md](../../documentation/07-design-gaps.md) item 1, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) , [../inprogress/0068-input-mapping.md](../inprogress/0068-input-mapping.md) , [../inprogress/0129-display-modes-and-window-control.md](../inprogress/0129-display-modes-and-window-control.md) |
+| **Refs** | T0014, T0015, T0031, T0052, T0057, T0078, T0100, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D16, [../../documentation/07-design-gaps.md](../../documentation/07-design-gaps.md) item 1, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) , [../inprogress/0068-input-mapping.md](../inprogress/0068-input-mapping.md) , [../completed/0129-display-modes-and-window-control.md](../completed/0129-display-modes-and-window-control.md) |
 
 ## Correction (2026-08-04) — measured against the vendored Diligent
 

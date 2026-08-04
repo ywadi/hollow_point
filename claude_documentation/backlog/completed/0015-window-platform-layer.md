@@ -8,7 +8,7 @@
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 90 |
 | **Created** | 2026-08-02 |
-| **Refs** | [../inprogress/0129-display-modes-and-window-control.md](../inprogress/0129-display-modes-and-window-control.md) |
+| **Refs** | [../completed/0129-display-modes-and-window-control.md](../completed/0129-display-modes-and-window-control.md) |
 
 ## Why
 
