@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
-| **Priority** | Medium |
+| **Status** | 🚧 IN PROGRESS |
+| **Priority** | High |
 | **Complexity** | Simple |
 | **Phase** | 1 — Harden the build |
-| **Order** | 6 |
+| **Order** | 1 |
 | **Created** | 2026-08-04 |
 | **Found by** | T0100 |
 | **Refs** | T0102, T0004, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D5 |

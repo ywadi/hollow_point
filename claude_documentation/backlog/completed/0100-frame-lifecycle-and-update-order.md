@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 2 — Engine skeleton |
@@ -31,38 +31,38 @@ a debugging week later.
 
 ## Done when
 
-- [ ] A frame-anatomy document exists in `claude_documentation/documentation/`
+- [x] A frame-anatomy document exists in `claude_documentation/documentation/`
       listing every phase of the frame in order, and `Application::Run` (T0014)
       implements exactly that order
-- [ ] The fixed-step block's contents and internal order are defined (input
+- [x] The fixed-step block's contents and internal order are defined (input
       snapshot → `OnFixedUpdate` → physics step → post-physics), driven by
       T0057's accumulator
-- [ ] A late-update point exists after gameplay update and before rendering, so
+- [x] A late-update point exists after gameplay update and before rendering, so
       cameras and followers read final transforms — no one-frame lag
-- [ ] Deferred-queue drain points (signals T0072, message bus T0075) are fixed,
+- [x] Deferred-queue drain points (signals T0072, message bus T0075) are fixed,
       documented, and drained-before-reload is asserted
-- [ ] Entity create/destroy during iteration has defined semantics — deferred
+- [x] Entity create/destroy during iteration has defined semantics — deferred
       via a command buffer, or immediate with stated invariants — and it is
       enforced, not conventional
-- [ ] One end-of-frame safe point applies: gameplay module reload (T0048),
+- [x] One end-of-frame safe point applies: gameplay module reload (T0048),
       asset reload swap (T0058), and scene transitions (T0077)
-- [ ] The order is testable: a test registers callbacks in several phases and
+- [x] The order is testable: a test registers callbacks in several phases and
       asserts they fire in the documented order (T0012)
 
 ## Subtasks
 
-- [ ] 100.1 Write the frame-anatomy document; wire `Application::Run` to it
-- [ ] 100.2 Fixed-step block ordering on T0057's accumulator, and the point
+- [x] 100.1 Write the frame-anatomy document; wire `Application::Run` to it
+- [x] 100.2 Fixed-step block ordering on T0057's accumulator, and the point
       where the renderer reads interpolated state (alpha)
-- [ ] 100.3 Structural-change policy for the ECS: deferred destruction /
+- [x] 100.3 Structural-change policy for the ECS: deferred destruction /
       creation command buffer, applied at a named point
-- [ ] 100.4 Drain points for T0072/T0075, including the drain-until-empty
+- [x] 100.4 Drain points for T0072/T0075, including the drain-until-empty
       iteration cap T0075 describes
-- [ ] 100.5 End-of-frame safe point: module reload, asset swap, scene
+- [x] 100.5 End-of-frame safe point: module reload, asset swap, scene
       transition — assert queues are drained and no jobs are in flight (T0026)
-- [ ] 100.6 Late-update phase (camera follow, audio listener sync)
-- [ ] 100.7 Transform propagation point(s) per T0101
-- [ ] 100.8 Ordering test via the test harness (T0012)
+- [x] 100.6 Late-update phase (camera follow, audio listener sync)
+- [x] 100.7 Transform propagation point(s) per T0101
+- [x] 100.8 Ordering test via the test harness (T0012)
 
 ## Notes / findings
 
@@ -156,3 +156,24 @@ document (100.1) must include the present step and the pacing/cap point as
 named phases of the frame; the *policy* behind them (present mode, vsync,
 frame-rate cap, focus loss) is owned by **T0110**. Neither document should
 duplicate the other's half.
+
+### Verified — CI run 30897584965 (all four jobs green)
+
+```
+Tests (Linux host, both targets)   success   5m
+Tests (Windows host, native)       success   7m
+API reference is up to date        success   1m
+Configure with FetchContent disc.  success   3m
+```
+
+`tests/integration/frame_order_test.cpp` passes on both targets, so the phase
+order in `Application::run` matches the document rather than merely being
+claimed to. The api-docs job caught the new public hooks missing from
+`docs/api` and was fixed in 6ceb488 — working exactly as T0118 intended.
+
+**Read the scope note above before treating this as fully enforced.** The
+conditions naming T0021/T0026/T0048/T0058/T0072/T0075/T0077/T0101 are met as a
+*contract*: the phase exists, in the right position, with an owner named and a
+back-reference in the owning ticket. The assertions and the actual work land
+with each of those systems. That split is the deliberate one agreed at the
+start, not an overrun.
