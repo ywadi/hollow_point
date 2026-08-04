@@ -211,6 +211,11 @@ add_subdirectory(third_party/SDL)
 #
 # engine/ must come before apps/ and game/, which link it.
 add_subdirectory(engine)
+
+# Gameplay modules are declared through one function so the unload finalizer
+# (T0105.1) and, later, the build-id stamp (T0104) cannot be omitted.
+include("${CMAKE_CURRENT_LIST_DIR}/cmake/HpGameplayModule.cmake")
+
 add_subdirectory(samples/sandbox)
 
 # Apps are globbed, so adding one needs no edit here. They deliberately do NOT

@@ -19,6 +19,13 @@
 
 #include <doctest/doctest.h>
 
+#include <cstdlib>
+#include <string>
+#include <vector>
+#if !defined(_WIN32)
+#include <sys/wait.h>
+#endif
+
 #include "../fixtures/abi_boundary.h"
 
 #include <hp/Log.hpp>
@@ -403,4 +410,117 @@ TEST_CASE("gameplay code can write to the engine's log across the boundary") {
     // The category the module declared is visible to the engine by name, which
     // is what lets an editor console filter on it.
     CHECK(sink.categories[0] == "game.sandbox");
+}
+
+// --- unload lifecycle (T0105.1) ---------------------------------------------
+//
+// Everything above loads modules with RTLD_NODELETE, so nothing above performs
+// a real unload. These cases do, in a separate process, because the failure
+// being guarded lands at process *exit* rather than at dlclose — in-process it
+// would take this binary down and report nothing.
+//
+// `zig cc -shared` links no crtbeginS.o, so a module has no .fini_array while
+// still registering __cxa_atexit destructors for its statics. dlclose unmaps
+// the code with those registrations live, and the runtime walks into nothing at
+// exit. ziglang/zig#17908, open upstream. engine/module/ModuleFinalize.cpp
+// declares one destructor, which makes the linker emit .fini_array and lets the
+// loader retire the registrations through DT_FINI_ARRAY.
+//
+// Two fixtures from one source, differing only by that file, so these cases
+// assert the fix does something rather than observing a pass.
+
+namespace {
+
+/// Run a probe process; true when it exited 0, false on any non-zero exit or
+/// death by signal. The distinction does not matter to the assertion — a
+/// segfault and a clean failure are both "did not unload cleanly" — but the
+/// message wants to say which.
+struct ProbeResult {
+    bool clean = false;
+    int raw = 0;
+};
+
+ProbeResult run_probe(const char* module_name, int cycles) {
+    // Composed at run time against exe_dir(), never baked by CMake: these
+    // binaries are configured on the host, so a Windows test given a POSIX path
+    // would fail to open something that does not exist from its point of view.
+    const std::string probe = exe_dir() + PATH_SEP + HP_UNLOAD_PROBE_NAME;
+    const std::string module = exe_dir() + PATH_SEP + module_name;
+    ProbeResult r;
+
+#if defined(_WIN32)
+    // CreateProcess rather than std::system, and not for tidiness: std::system
+    // goes through CMD.EXE, which refuses a UNC current directory. Running the
+    // Windows suite from a WSL path (which is how it runs locally, via interop)
+    // made every case here fail with "UNC paths are not supported" before the
+    // probe was ever reached. No shell, no problem.
+    std::string cmd = "\"" + probe + "\" \"" + module + "\" " + std::to_string(cycles);
+    std::vector<char> mutable_cmd(cmd.begin(), cmd.end());
+    mutable_cmd.push_back('\0');
+
+    STARTUPINFOA si{};
+    si.cb = sizeof si;
+    PROCESS_INFORMATION pi{};
+    const std::string cwd = exe_dir();
+    if (!CreateProcessA(nullptr, mutable_cmd.data(), nullptr, nullptr, FALSE, 0, nullptr,
+                        cwd.c_str(), &si, &pi)) {
+        r.raw = static_cast<int>(GetLastError());
+        r.clean = false;
+        return r;
+    }
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 1;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    r.raw = static_cast<int>(code);
+    r.clean = (code == 0);
+#else
+    const std::string cmd = "\"" + probe + "\" \"" + module + "\" " + std::to_string(cycles)
+                            + " >/dev/null 2>&1";
+    const int rc = std::system(cmd.c_str());
+    r.raw = rc;
+    // A death by signal is the failure this is looking for, so "exited, with 0"
+    // is the only thing that counts as clean.
+    r.clean = (rc != -1) && WIFEXITED(rc) && WEXITSTATUS(rc) == 0;
+#endif
+    return r;
+}
+
+} // namespace
+
+TEST_CASE("a gameplay module can be genuinely unloaded" * doctest::test_suite("module")) {
+    // The real thing: dlopen without RTLD_NODELETE, use it, dlclose, exit.
+    const ProbeResult once = run_probe(HP_UNLOAD_MODULE_FIXED_NAME, 1);
+    CHECK_MESSAGE(once.clean,
+                  "a module carrying the unload finalizer should load, unload and exit "
+                  "cleanly; probe status ", once.raw);
+
+    // Repeated, because the registration list is global and a leak would show
+    // up as accumulation rather than as a first-cycle failure.
+    const ProbeResult many = run_probe(HP_UNLOAD_MODULE_FIXED_NAME, 50);
+    CHECK_MESSAGE(many.clean, "50 load/unload cycles should stay clean; probe status ", many.raw);
+}
+
+TEST_CASE("the unload finalizer is what makes that work" * doctest::test_suite("module")) {
+    // The control. Identical source, built without engine/module/ModuleFinalize.cpp.
+    const ProbeResult broken = run_probe(HP_UNLOAD_MODULE_BROKEN_NAME, 1);
+
+#if defined(_WIN32)
+    // Windows was never affected: LoadLibrary/FreeLibrary retire the module's
+    // registrations on unload, so the control passes here and this case asserts
+    // only that the platform difference is real and understood.
+    CHECK_MESSAGE(broken.clean,
+                  "Windows should unload cleanly with or without the finalizer; status ",
+                  broken.raw);
+#else
+    // If this ever starts passing, the toolchain bug has been fixed upstream
+    // (ziglang/zig#17908) and ModuleFinalize.cpp may be removable — which is a
+    // thing worth being told rather than a thing to discover. It is not a
+    // regression in this project.
+    CHECK_MESSAGE(!broken.clean,
+                  "a module WITHOUT the finalizer is expected to die at exit; it did not, "
+                  "which likely means zig#17908 is fixed and engine/module/ModuleFinalize.cpp "
+                  "can be revisited. Probe status ", broken.raw);
+#endif
 }

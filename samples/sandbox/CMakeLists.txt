@@ -14,15 +14,10 @@
 # linked against. On ELF the distinction is cosmetic; it matters because it
 # states the intent, and because nothing should be tempted to put it on a
 # target_link_libraries() line.
-add_library(hp_sandbox MODULE
-    src/Sandbox.cpp
-)
-
-target_link_libraries(hp_sandbox PRIVATE hp::engine)
-target_compile_features(hp_sandbox PRIVATE cxx_std_20)
-
-set_target_properties(hp_sandbox PROPERTIES
-    CXX_VISIBILITY_PRESET hidden
-    VISIBILITY_INLINES_HIDDEN ON
-    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/samples/sandbox"
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/samples/sandbox")
+# Declared through hp_add_gameplay_module() rather than add_library() directly:
+# it carries the MODULE/visibility settings that used to be spelled out here,
+# and compiles in the unload finalizer that stops a dlclose'd module from
+# killing the process at exit (T0105.1).
+hp_add_gameplay_module(hp_sandbox
+    SOURCES src/Sandbox.cpp
+    OUTPUT_DIR "${CMAKE_BINARY_DIR}/samples/sandbox")

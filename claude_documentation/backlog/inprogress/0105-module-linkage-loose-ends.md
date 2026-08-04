@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 2 — Engine skeleton |
@@ -26,7 +26,7 @@ This ticket holds them until their prerequisites land.
 
 ## Done when
 
-- [ ] A module can be genuinely unloaded and reloaded, or the project has
+- [x] A module can be genuinely unloaded and reloaded, or the project has
       decided it never will be and the consequences are written down
 - [ ] Dev and shipped configurations build from the same source with no
       `#ifdef` spread through gameplay code
@@ -38,7 +38,7 @@ This ticket holds them until their prerequisites land.
 
 ## Subtasks
 
-- [ ] 105.1 **The unload problem** — root-caused and fixed 2026-08-04, see below; what remains is *choosing* remedy A or B and proving A against a real module. (was 95.3's second half). `dlclose` of a
+- [x] 105.1 **The unload problem** — root-caused and fixed 2026-08-04, see below; what remains is *choosing* remedy A or B and proving A against a real module. (was 95.3's second half). `dlclose` of a
       library holding any static needing destruction segfaults the process at
       exit under this toolchain — reduced during T0095 to a library containing
       one `static std::string` and no engine code at all. Modules are currently
@@ -163,3 +163,83 @@ closed; the choice is between A and B.
   regression test** (105.5). Nothing currently catches this fix being silently
   removed, and it is the kind of change a future toolchain bump could undo
   invisibly.
+
+## 105.1 done (2026-08-04) — Remedy A taken, and it is enforced by the build
+
+**Chosen: Remedy A**, the `__cxa_finalize` destructor. Remedy B
+(`-Wl,-z,nodelete`) is not applied. B achieves safety by never unloading, which
+would leave this ticket's first Done-when unmet in substance while appearing to
+meet it, and would make `entt::meta`'s mandatory `meta_reset` on unload (T0053) a
+ritual guarding registrations that never actually dangle. B remains the
+documented fallback if A fails against a module carrying real engine statics.
+
+### What landed
+
+- `engine/module/ModuleFinalize.cpp` — one destructor, `__ELF__`-guarded, which
+  makes the linker emit `.fini_array` and lets the loader retire the module's
+  `__cxa_atexit` registrations through `DT_FINI_ARRAY`.
+- `cmake/HpGameplayModule.cmake` — `hp_add_gameplay_module()`, now the only
+  supported way to declare a module. It appends the finalizer to the author's
+  sources, so **a module cannot be built without it.** This is where T0104's
+  build-id stamp lands too (its 104.3 asks for exactly this property).
+- `samples/sandbox/CMakeLists.txt` uses it; the hand-rolled `add_library(MODULE)`
+  with its visibility settings is gone.
+
+Verified in the real artifact, not just a fixture:
+
+```
+$ readelf -S build/linux-x86_64-release/samples/sandbox/libhp_sandbox.so | grep -c fini_array
+1
+$ readelf -d ...  -> FINI_ARRAY 0x25b0 / FINI_ARRAYSZ 8
+```
+
+### The regression test is a genuine red/green
+
+`tests/fixtures/unload_module.cpp` is compiled **twice** — once with the
+finalizer, once without — from identical source, and `hp_unload_probe` performs
+a real unload (no `RTLD_NODELETE`) in a **separate process**, because the failure
+lands at process exit and would otherwise take the doctest binary down with it.
+
+Measured before the test was written, so the test asserts something:
+
+```
+BROKEN (control)  N=1  exit=139     N=25 exit=139    (SIGSEGV)
+FIXED             N=1  exit=0       N=50 exit=0
+```
+
+The control case is asserted to **keep failing** on ELF. If it ever passes,
+zig#17908 has been fixed upstream and `ModuleFinalize.cpp` can be revisited —
+the assertion message says so, so that is reported rather than discovered.
+
+On Windows the control is asserted to **pass**, which encodes the measured
+platform difference rather than skipping the case.
+
+### Both targets green
+
+```
++- test (linux-x86_64, integration)   natively                              success
++- test (windows-x86_64, integration) as a real Windows process via interop success
+[doctest] test cases: 34 | 34 passed | 0 failed     (x2)
+Build Summary: 18/18 steps succeeded; 21/21 tests passed
+```
+
+### Two things this cost, recorded because they were not obvious
+
+**`std::system()` is unusable for this on Windows here.** It goes through
+CMD.EXE, which refuses a UNC current directory, so every case failed with "UNC
+paths are not supported" before the probe ran at all — a *test* failure that
+looked exactly like a product failure. Replaced with `CreateProcessA`, no shell.
+
+**CMake must hand the test file *names*, not paths.** `$<TARGET_FILE:...>` bakes
+a host path at configure time, so the Windows binary received a POSIX path it
+could not open. The suite already had this lesson recorded for
+`HP_ABI_MODULE_NAME`; it had to be learned twice.
+
+### Still not closed
+
+**Remedy A has not been proven against a module carrying the engine's own
+statics** — the fixture is deliberately minimal and contains no engine code, and
+`samples/sandbox` is currently near-empty. An upstream reporter saw a residual
+crash with a variant of this approach. Until a module with real engine statics
+is unloaded in anger, this is strong evidence rather than proof, and B is the
+fallback. Revisit when T0048 has something substantial to reload.

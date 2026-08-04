@@ -125,6 +125,39 @@ endforeach()
 # suite asserts that a module can log to the engine's sinks (T0054, T0066).
 target_link_libraries(hp_abi_module PRIVATE hp_abi_engine hp_engine)
 
+# --- unload fixtures (T0105.1) ------------------------------------------------
+#
+# Two modules from ONE source, differing only by whether the unload finalizer is
+# compiled in, plus a probe process that performs a real unload (no
+# RTLD_NODELETE). This is what turns "the fix works" from an observation into a
+# test: the control module must still crash, or the test is asserting nothing.
+#
+# If hp_unload_module_broken ever stops crashing on Linux, the toolchain bug
+# (ziglang/zig#17908) has been fixed upstream and this whole mechanism can be
+# revisited -- the test says so when it fails that way.
+add_library(hp_unload_module_fixed  MODULE
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/unload_module.cpp"
+    "${HP_MODULE_FINALIZE_SOURCE}")
+add_library(hp_unload_module_broken MODULE
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/unload_module.cpp")
+
+foreach(_um hp_unload_module_fixed hp_unload_module_broken)
+    target_compile_features(${_um} PRIVATE cxx_std_20)
+    set_target_properties(${_um} PROPERTIES
+        CXX_VISIBILITY_PRESET hidden
+        VISIBILITY_INLINES_HIDDEN ON
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+endforeach()
+
+add_executable(hp_unload_probe "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/unload_probe.cpp")
+target_compile_features(hp_unload_probe PRIVATE cxx_std_20)
+set_target_properties(hp_unload_probe PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+if(NOT WIN32)
+    target_link_libraries(hp_unload_probe PRIVATE ${CMAKE_DL_LIBS})
+endif()
+
 foreach(_bucket fast integration gpu perf)
     hp_add_test_bucket(${_bucket})
 endforeach()
@@ -140,6 +173,18 @@ if(TARGET hp_tests_integration)
     # "hp_abi_module.dll" built fine and failed every Windows test at run time.
     target_compile_definitions(hp_tests_integration PRIVATE
         HP_ABI_MODULE_NAME="$<TARGET_FILE_NAME:hp_abi_module>")
+    # T0105.1's unload regression. Paths rather than names: the probe is spawned
+    # with an absolute path so the test does not depend on the working directory.
+    add_dependencies(hp_tests_integration
+        hp_unload_probe hp_unload_module_fixed hp_unload_module_broken)
+    # NAMES, not paths, for the same reason HP_ABI_MODULE_NAME is a name: these
+    # definitions are baked at configure time on the *host*, so a Windows binary
+    # would receive a POSIX path it cannot open. The test composes them against
+    # exe_dir() at run time, which is correct on both targets and under interop.
+    target_compile_definitions(hp_tests_integration PRIVATE
+        HP_UNLOAD_PROBE_NAME="$<TARGET_FILE_NAME:hp_unload_probe>"
+        HP_UNLOAD_MODULE_FIXED_NAME="$<TARGET_FILE_NAME:hp_unload_module_fixed>"
+        HP_UNLOAD_MODULE_BROKEN_NAME="$<TARGET_FILE_NAME:hp_unload_module_broken>")
     if(NOT WIN32)
         # The boundary fixture, beside the executable for the same reason the
         # engine is. RPATH is already $ORIGIN from the bucket helper above.
