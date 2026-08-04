@@ -162,6 +162,27 @@ jobs:
           path: .harness
           key: harness-windows-${{ hashFiles('bootstrap.ps1') }}
 
+      # Defender scans every freshly-linked executable, and this job links ~300
+      # of them and then immediately *runs* several. Twice out of three runs the
+      # Zig test runners (harness-paths, harness-pins, harness-cache -- a
+      # different pair each time, which is the tell) exceeded the 60s the build
+      # waits for a runner to respond, failing right after the link step while
+      # ninja was still finishing.
+      #
+      # Excluding the workspace and the toolchain is the standard fix for this
+      # on windows-latest. It is not a masking retry: the tests were never
+      # failing, they were never getting to start.
+      #
+      # If this does not fix it, the next suspects are runner CPU saturation
+      # (the zig test binaries launch while ninja is still linking) and the
+      # test runner's --listen=- protocol on Windows specifically.
+      - name: Exclude the workspace from Defender
+        run: |
+          Add-MpPreference -ExclusionPath "$env:GITHUB_WORKSPACE"
+          Add-MpPreference -ExclusionProcess "zig.exe"
+          Add-MpPreference -ExclusionProcess "ninja.exe"
+        continue-on-error: true
+
       - name: Bootstrap the toolchain
         # Exercises bootstrap.ps1 end to end, including the archive
         # extract-and-rename logic that differs from the Linux path.
