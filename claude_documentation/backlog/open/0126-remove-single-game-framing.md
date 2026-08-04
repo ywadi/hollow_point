@@ -79,14 +79,26 @@ the second game.
 
 ## Notes / findings
 
-**T0093 is the one to look at hardest.** "Visibility, vision cones and fog of
-war" is High priority and Very Complex, and T0044's notes leaned on it as
-evidence about the game ("the vision-cone requirement in T0093 implies moving
-NPCs"). That is genre-specific reasoning sitting in an engine backlog, one
-ticket over from the one just dropped. Whether it belongs here at all is a real
-question: a general-purpose engine can offer visibility queries without
-committing to stealth-game fog of war. **Do not answer it in this ticket** —
-raise it, and let it be decided deliberately rather than swept.
+**T0093 is already done (2026-08-04), and is the worked example for the rest.**
+It was "Visibility, vision cones and fog of war", High and Very Complex — a
+ticket to *build* a stealth mechanic in the engine. It is now a **capability
+validation**: prove a vision mechanic can be built in `samples/sandbox/` with
+zero engine changes, and file any gap against the ticket that owns the missing
+capability (T0060, T0079, T0086, T0094...). Nothing about the mechanic ships in
+the engine.
+
+That is the shape to aim for everywhere else in this sweep. Note what it did
+*not* do: it did not delete the technical content. The architectural constraints
+T0093 imposes on T0060/T0079/T0086 are the reason it is worth keeping, and they
+are binding on tickets built earlier than it. **Reframing ownership is not the
+same as discarding requirements**, and the second is easy to do by accident
+while doing the first.
+
+**Still open from it: T0098's dependency on T0093.** Navigation refs it as
+evidence the engine needs pathfinding ("vision cones and alert states exist").
+That is T0044-shaped reasoning — inferring engine scope from a hypothesised
+game — and 126.1 should correct it. Navigation is an engine capability that
+stands or falls on its own merits.
 
 **Rewording is not the same as deleting the question.** Several of these are
 genuine engine decisions with real consequences — streaming (a Phase-4-shaped

@@ -84,7 +84,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 520 | [T0050](open/0050-threading-model.md) | Threading model and enkiTS workload map | 4 — Render layer | 🔜 TODO | High | Complex |
 | 530 | [T0047](open/0047-evaluate-render-graph.md) | Declarative pass layer (and why not an off-the-shelf frame graph) | 4 — Render layer | 🔜 TODO | Medium | Complex |
 | 535 | [T0108](open/0108-decals.md) | Decals | 4 — Render layer | 🔜 TODO | Medium | Moderate |
-| 540 | [T0093](open/0093-visibility-and-fog-of-war.md) | Visibility, vision cones and fog of war | 4 — Render layer | 🔜 TODO | High | Very Complex |
+| 540 | [T0093](open/0093-visibility-and-fog-of-war.md) | Visibility as an engine capability: prove a vision mechanic needs no engine changes | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 545 | [T0106](open/0106-vfx-sprites-and-flipbooks.md) | VFX sprites, flipbooks and blend modes | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 550 | [T0080](open/0080-particles.md) | Particle and VFX system | 4 — Render layer | 🔜 TODO | Medium | Complex |
 | 555 | [T0107](open/0107-composed-vfx-assets.md) | Composed VFX assets: an effect is more than an emitter | 4 — Render layer | 🔜 TODO | Medium | Complex |
@@ -278,7 +278,10 @@ is. Priority says whether to do it; complexity says what you are walking into.
 | Complex | Several interacting concerns; expect it to take longer than planned |
 | Very Complex | Genuinely hard, with a real chance of needing a different approach |
 
-Current spread: 7 Trivial, 23 Simple, 47 Moderate, 31 Complex, 9 Very Complex.
+Current spread across all 126 tickets: 7 Trivial, 25 Simple, 53 Moderate, 32 Complex,
+8 Very Complex (plus T0044, dropped and no longer rated). Recounted 2026-08-04;
+`check_backlog.py` does not verify these numbers, so they go stale quietly — recount
+rather than trusting them.
 
 The **Very Complex** ones are worth knowing up front: **T0048** hot-reloadable
 gameplay module (state must survive reload), **T0030** Tracy GPU zones (Diligent
