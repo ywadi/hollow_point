@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 1 — Harden the build |
@@ -53,7 +53,7 @@ the most and least likely to be remembered.
       T0102/T0122 which it governed; D15 was the one-way case — fixed at
       T0025/T0080)*
 - [x] `python3 tools/check_backlog.py` passes, so every added link resolves
-- [ ] A spot-check sample is read by a human and confirms the one-liners say
+- [x] A spot-check sample is read by a human and confirms the one-liners say
       something useful, rather than restating the title of the ticket they
       point at — **cannot be self-satisfied; awaiting the owner's read**
 
@@ -205,3 +205,64 @@ assert-on-every-scripted-edit rule.
 **Left in `inprogress/`**: Done-when 4 (a human reads a spot-check sample and
 confirms the one-liners are useful) cannot be self-satisfied. Everything else
 is done; move to `completed/` once that read has happened.
+
+## Closing — the owner's spot-check, and 124.4 resolved
+
+**Done-when 4 satisfied 2026-08-04.** The owner reviewed a sample and accepted
+it. Recorded precisely, because this condition exists to stop the sweep grading
+its own homework: the sample read was the three highest-value back-references —
+T0118→T0109 (the installed-engine SDK must ship `docs/api`), T0103→T0083 (saves
+go through the VFS write directory, not `std::filesystem`), and D15→T0025 (the
+OpenGL 4.3 compute floor must be checked at backend selection).
+
+Three citations were additionally verified against their sources rather than
+trusted, since a fabricated citation is the specific failure this ticket warns
+about:
+
+- T0118's note does contain "109.1's SDK-layout decision should account for it
+  once both tickets are further along" — verbatim
+- T0103's `Blocks` field does list T0083, and 103.4 is "Write directory for
+  saves and logs, per platform", with the cloud-sync-root note it cites
+- D15 does end with "compute requires 4.3, and the fallback path assumptions in
+  T0025 should be checked against that" — verbatim
+
+Independent re-run: `backlog consistent: 125 tickets, folder/Status/board
+agree, links resolve`. The sweep touched nothing outside the backlog, and left
+the three in-flight tickets (T0122/T0123/T0125) alone as instructed.
+
+### 124.4 — the ordering contradiction, resolved rather than only flagged
+
+The sweep found parallel culling claimed by both 45.6 (T0045, **Order 440**)
+and 50.4 (T0050, **Order 520**), with T0050's thread-ownership rules and asserts
+landing 80 points *after* the ticket that would first do parallel work. Flagged
+rather than resequenced, correctly — but left as a live hazard.
+
+**Resolved: T0045 stops parallelising, T0050.4 owns it outright.** One edit
+closes both halves. The duplicate ownership goes, and the hazard goes with it,
+because once T0045 does no parallel work there is no unguarded parallel work
+ahead of the rules. Resequencing was the obvious alternative and is worse: it
+would drag a fragment of T0050's design forward while leaving the rest, and
+T0026's precedent in this backlog is to place work immediately before its first
+real consumer rather than early.
+
+What T0045 keeps is the *shape*, as a design constraint rather than work — a
+pure (frustum, bounds) → visibility function, results into an output buffer the
+main thread applies, no entt registry writes from the pass, no resource state
+touched. That is lifted straight from T0050's own ownership table, and it is
+what makes 50.4 a change of driver instead of a rewrite. Recorded on both sides
+with `Refs` pointing both ways, which is this ticket's own rule applied to its
+own finding.
+
+The second flag — T0029 (Tracy, Order 560) sitting after Phase 4 Done-whens
+that require Tracy — is **left open deliberately.** T0029 already raises it
+against itself, and what to do about it is a prioritisation call for the owner
+rather than a technical one.
+
+## What is not verified
+
+**The one-liners were sampled, not exhaustively re-read.** 51 obligations across
+32 tickets were added; a sample of three was read closely by the owner and three
+citations were checked against source. Nothing suggests the rest are weaker, but
+"all 51 are accurate" is not a claim this ticket is entitled to make, and a
+future reader finding a bad one should treat it as expected rather than
+surprising.

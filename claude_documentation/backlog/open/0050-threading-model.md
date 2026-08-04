@@ -8,6 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 520 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0045, T0026, T0049, T0029 |
 
 ## Why
 
@@ -32,7 +33,8 @@ enforced.
 - [ ] 50.2 Assert thread ownership in debug builds — a cheap assert now saves
       days later
 - [ ] 50.3 Parallel animation sampling (T0049) — the highest-value workload here
-- [ ] 50.4 Parallel frustum culling (T0045)
+- [ ] 50.4 Parallel frustum culling — **this ticket owns it outright**; T0045
+      deliberately ships culling single-threaded. See the 2026-08-04 note
 - [ ] 50.5 Parallel asset import and LOD generation (T0038/T0039)
 - [ ] 50.6 Enable Diligent's `AsyncShaderCompilation` device feature
 - [ ] 50.7 Evaluate moving the window pump to its own thread
@@ -68,6 +70,35 @@ draw-call counts are high.
 **The entt registry is not safe for concurrent mutation.** Parallel reads are
 fine; parallel writes are not. Jobs should read components and write results into
 their own output buffers, which the main thread then applies.
+
+### Ordering fix (2026-08-04) — 50.4 is this ticket's alone, and 50.1/50.2 gate it
+
+T0124's sweep found parallel culling claimed twice: 45.6 in T0045 and 50.4
+here. Worse, T0045 sits at **Order 440** and this ticket at **520**, so the
+board's own order would have had parallel culling written 80 points before the
+ownership rules (50.1) and asserts (50.2) that make it safe.
+
+**T0045 gives up the work; this ticket keeps it.** T0045 now ships culling
+single-threaded, shaped so parallelising it here is a change of driver rather
+than a redesign — a pure (frustum, bounds) → visibility function, results into
+an output buffer the main thread applies, no registry writes and no resource
+state touched from the pass. That constraint is written into T0045 as its 45.6.
+
+Two consequences for this ticket:
+
+- **50.4 must verify the shape actually held** before parallelising, rather
+  than assuming it. If T0045 shipped an in-place `registry.emplace<Visible>`
+  loop, parallelising it is a rewrite and that should be said out loud here
+  rather than absorbed silently.
+- **50.1 and 50.2 are prerequisites of 50.3–50.5, not peers.** They are cheap —
+  the ownership table and the rules are already written in the notes above, so
+  50.1 is largely transcription — and the whole point of an assert is that it
+  exists before the code it guards. Do them first within this ticket.
+
+Deliberately *not* done: splitting 50.1/50.2 into their own earlier ticket.
+That was the obvious alternative and it buys nothing once T0045 stops doing
+parallel work — there is then no consumer of the rules that precedes this
+ticket. It would also strand a fragment of a coherent design across two files.
 
 `AsyncShaderCompilation` is a Diligent device feature — enabling it is far
 cheaper than threading PSO creation ourselves, and removes a common hitching

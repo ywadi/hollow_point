@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 440 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0085, T0086, T0089, T0120 |
+| **Refs** | T0050, T0085, T0086, T0089, T0120 |
 
 ## Why
 
@@ -38,7 +38,8 @@ closing early because the whole renderer's shape depends on it.
 - [ ] 45.4 Render queues with an explicit ordering policy
 - [ ] 45.5 Sort keys packing material/pipeline/depth so one sort achieves both
       state coherence and depth ordering
-- [ ] 45.6 Parallel culling via the job system (T0026)
+- [ ] 45.6 Shape the cull pass so T0050.4 can parallelise it without a redesign
+      — see the 2026-08-04 note. This ticket does **not** parallelise it
 - [ ] 45.7 Debug counters: visible vs culled, draw calls, triangles
 - [ ] 45.8 Profiling zones
 
@@ -87,6 +88,43 @@ Also: the frustum/AABB math in 45.3 already exists — `AdvancedMath.hpp`
 (`ViewFrustum`, `ExtractViewFrustumPlanesFromMatrix` with its OpenGL flag,
 `GetBoxVisibility`, bound-box transform). Consume it (T0056), do not re-derive
 it. World-space bounds come from T0101's world transforms.
+
+### Ordering fix (2026-08-04) — this ticket no longer parallelises culling
+
+T0124's sweep found parallel culling claimed by two tickets — 45.6 here and
+50.4 in T0050 — and, worse, that this ticket sits at **Order 440** while the
+thread-ownership rules and debug asserts that make parallel work safe are
+written at **520**. Working the board in order would have done the dangerous
+thing first, unguarded, and the failure mode T0050 names is "intermittent
+corruption that is extraordinarily hard to debug".
+
+**Resolved by removing the parallel work from here, not by resequencing.**
+T0050.4 is the single owner. Two problems close with one edit: the duplicate
+ownership disappears, and so does the hazard — because once this ticket does no
+parallel work, there is no unguarded parallel work before the rules exist. That
+also matches how T0026 was handled, deliberately placed immediately before its
+first real consumer rather than early.
+
+**What stays here is the shape, and it is not optional.** The risk in deferring
+is that culling gets written in a way that makes parallelising it a rewrite, at
+which point the deferral has cost more than it saved. So 45.6 becomes a design
+constraint, taken from T0050's own ownership table:
+
+- **Jobs compute, the main thread submits.** The cull pass must be a pure
+  function of (frustum, bounds array) producing a visibility/index result — not
+  something that submits, binds or mutates as it walks.
+- **No writes to the entt registry from the cull pass.** Parallel reads of the
+  registry are safe and parallel writes are not, so results go into a per-pass
+  output buffer that the main thread applies. Writing culling as an in-place
+  `registry.emplace<Visible>` loop is the specific thing that cannot be
+  parallelised later.
+- **Nothing in the cull pass touches resource state.** Diligent's state
+  transitions are not thread-safe and only the main thread may perform them —
+  this is the single fact T0050 says determines the entire threading model.
+
+Write it single-threaded, in that shape, and T0050.4 becomes a change of driver
+rather than a redesign. None of this costs anything today; all of it is
+expensive to retrofit.
 
 ### Cross-ticket obligations (2026-08-04, T0124 backfill)
 
