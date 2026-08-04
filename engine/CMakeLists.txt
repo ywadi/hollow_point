@@ -69,6 +69,7 @@ add_library(hp_engine SHARED
     src/Engine.cpp
     src/Guid.cpp
     src/Input.cpp
+    src/Paths.cpp
     src/Layer.cpp
     src/Log.cpp
     src/Time.cpp

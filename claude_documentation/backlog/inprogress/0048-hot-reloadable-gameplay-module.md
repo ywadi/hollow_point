@@ -40,7 +40,7 @@ This is the decision *instead of* embedding a scripting language.
 
 ## Done when
 
-- [x] Gameplay builds as a shared library, loaded at runtime by editor and runtime
+- [x] Gameplay builds as a shared library, loaded at runtime by editor and runtime — **corrected 2026-08-04**: this was ticked while only the *test suite* loaded a module. Both apps now do, in the build tree and in an export, on both targets
 - [x] Editing gameplay code and rebuilding reloads it live — no editor restart — demonstrated end to end, evidence below
 - [ ] The open scene, entities and component data survive a reload intact — **blocked on T0021.** There is no scene and no engine-owned registry yet. What *is* proven is the mechanism the rule rests on; see "What is not done"
 - [x] Reload works on Linux and Windows
@@ -332,3 +332,62 @@ worse failure mode.
 - **Debugging across reload was not evaluated.** The notes flag breakpoints
   detaching on unload as the known rough edge and "worth checking early"; it was
   not checked, and it partly determines whether this is pleasant enough to use.
+
+## Correction (2026-08-04) — the first Done-when was overstated, and fixing it found two more things
+
+**"Loaded at runtime by editor and runtime" was ticked when neither app loaded
+anything.** The mechanism was real and tested — `Application::modules()`,
+`ModuleHost::load()`, reload at phase 12 — but `grep` across `apps/*/src/*.cpp`
+returned nothing, so the claim was true of the engine's capability and false of
+the binaries that ship. That is the class of claim this project treats as worse
+than an open question, and it was mine.
+
+Both apps now load the sample module in `onStartup`, searching the layouts a
+binary can find itself in — beside the exe (Windows dist, any co-located
+export), `../lib` (Linux dist), `../../samples/sandbox` (the build tree).
+Absence is not an error: an app with no gameplay module is legitimate and stays
+legitimate. A *refusal* is different and stops the search, because trying the
+next candidate would silently run an older copy of the same module — exactly the
+confusion the build id exists to prevent.
+
+```
+build tree   [info ] module: loaded 'sandbox' from .../apps/runtime/../../samples/sandbox/libhp_sandbox.so
+linux export [info ] module: loaded 'sandbox' from .../export-test/linux-x86_64/bin/../lib/libhp_sandbox.so
+windows      [info ] module: loaded 'sandbox' from Z:\...\export-test\windows-x86_64\bin\libhp_sandbox.dll
+```
+
+Both exports run with the **build tree deleted**, and both unload cleanly at
+exit.
+
+### Found 1 — `dist` shipped a working copy
+
+`libhp_sandbox.hot1.so` appeared in `dist/linux-x86_64/lib/`. It is the
+copy-before-load working file: the destructor removes it, but a process that is
+**killed** never runs the destructor — an editor crash, or a test runner timing
+one out, which is precisely how this one survived. `dist` then globbed it like
+any other shared object.
+
+Two fixes, because either alone leaves a hole: `cmake/dist.cmake` never stages a
+`.hotN.` file, and the loader sweeps stale copies of a module before making a
+new one. New harness case, proven red first (`5 pass, 1 fail` without the
+exclusion).
+
+### Found 2 — a comment in the loader was confidently wrong
+
+`copyPathFor` claimed the working copy must sit beside the original because the
+module needs `$ORIGIN` to resolve `libhp_engine`. **Measured and false**: a
+module loads fine from `/tmp`, because the host already has the engine mapped,
+so the module's own RUNPATH never enters into it.
+
+Staying beside the original is still right, for a smaller and true reason —
+`$ORIGIN` semantics for any *other* dependency a gameplay module might link one
+day. The comment now says that instead. A wrong reason recorded in a comment is
+worse than no comment: the next person designs around it.
+
+### Also added
+
+`hp::executableDirectory()` (`engine/include/hp/Paths.hpp`). Three places had
+already hand-rolled it — two test suites, and both apps would have been a third
+and fourth — and every copy has to independently remember that the working
+directory is not the answer. It is deliberately a *platform query* and not
+content addressing; packs, patches and mounts are T0103's, with different rules.

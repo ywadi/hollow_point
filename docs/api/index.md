@@ -41,12 +41,13 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Log.hpp>`](Log.md) | 22 | 12 |
 | [`<hp/Module.hpp>`](Module.md) | 5 | 5 |
 | [`<hp/ModuleHost.hpp>`](ModuleHost.md) | 19 | 19 |
+| [`<hp/Paths.hpp>`](Paths.md) | 1 | 1 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 12 | 4 |
 
-**257 public declarations across 15 headers, 140 documented.**
+**258 public declarations across 16 headers, 141 documented.**
 
 ## Every symbol
 
@@ -263,6 +264,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `ModuleHost::onReloaded` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `moduleEntryPointThrew` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `invokeGuarded` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `executableDirectory` | [`Paths.hpp`](Paths.md) |
 | `PropertyMeta` | [`Reflect.hpp`](Reflect.md) |
 | `metaContextHandle` | [`Reflect.hpp`](Reflect.md) |
 | `adoptMetaContext` | [`Reflect.hpp`](Reflect.md) |

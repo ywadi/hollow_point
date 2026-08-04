@@ -71,6 +71,16 @@ fn stage(gpa: std.mem.Allocator, name: []const u8, target_os: []const u8) !Stage
         try writeAt(cwd, work, "build/libRenderer.so", "shared");
     }
 
+    // A gameplay module's working copy (T0048). Transient by construction, and
+    // left behind whenever a process is killed rather than exiting cleanly --
+    // an editor crash, a test runner timing one out. One was staged into a
+    // shipping layout before it was excluded.
+    if (std.mem.eql(u8, target_os, "windows")) {
+        try writeAt(cwd, work, "build/apps/demo/hp_mod.hot1.dll", "must not be staged");
+    } else {
+        try writeAt(cwd, work, "build/libhp_mod.hot1.so", "must not be staged");
+    }
+
     // Test fixtures, which the suite builds under build/tests/ and the
     // recursive globs cannot tell apart from real output by name.
     try writeAt(cwd, work, "build/tests/libfixture.a", "must not be staged");
@@ -163,6 +173,17 @@ test "test fixtures are never staged (windows)" {
     try testing.expect(!s.has("lib/libfixture.a"));
 
     try testing.expect(s.has("bin/Renderer.dll"));
+}
+
+test "a module's working copy is never staged" {
+    var s = try stage(testing.allocator, "hp-dist-test-hotcopy", "linux");
+    defer s.deinit();
+
+    try testing.expect(!s.has("lib/libhp_mod.hot1.so"));
+    try testing.expect(!s.has("bin/libhp_mod.hot1.so"));
+    // The real shared object still stages, so this is an exclusion rather than
+    // a glob that stopped matching anything.
+    try testing.expect(s.has("lib/libRenderer.so"));
 }
 
 test "build bookkeeping is never staged" {

@@ -83,15 +83,45 @@ Fn platformSymbol(void* handle, const char* name) {
 
 /// Where the working copy of `path` for `generation` goes.
 ///
-/// Beside the original rather than in a temp directory, and this is not
-/// arbitrary: on Linux the copy has to resolve libhp_engine.so, and RUNPATH is
-/// `$ORIGIN`-relative (T0105.4). A copy in /tmp would have the right bytes and
-/// the wrong neighbours.
+/// Beside the original, and the reason is narrower than it first looks.
+///
+/// It is **not** that the engine would otherwise be unfound: a module resolves
+/// `libhp_engine` because the host already has it loaded, so a copy in /tmp
+/// loads perfectly well — measured, after this comment first claimed otherwise.
+/// What staying beside the original does buy is `$ORIGIN` semantics for any
+/// *other* dependency a gameplay module might link one day. That is a smaller
+/// claim, and it is the true one.
 std::filesystem::path copyPathFor(const std::filesystem::path& path, std::uint32_t generation) {
     std::filesystem::path copy = path;
     copy.replace_filename(path.stem().string() + ".hot" + std::to_string(generation) +
                           path.extension().string());
     return copy;
+}
+
+/// Removes working copies of `source` left behind by an earlier run.
+///
+/// Only ever deletes files matching the exact shape this loader creates
+/// (`<stem>.hot<n><ext>`) in the module's own directory, so a file that merely
+/// looks similar is safe. Errors are ignored: on Windows a copy still mapped by
+/// this process cannot be deleted, which is expected for a refused module that
+/// was deliberately left mapped.
+void sweepStaleCopies(const std::filesystem::path& source) {
+    std::error_code ec;
+    const std::filesystem::path dir = source.parent_path();
+    const std::string stem = source.stem().string() + ".hot";
+    const std::string ext = source.extension().string();
+
+    for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+        if (ec) {
+            return;
+        }
+        const std::filesystem::path& candidate = entry.path();
+        const std::string name = candidate.filename().string();
+        if (name.rfind(stem, 0) == 0 && candidate.extension().string() == ext) {
+            std::error_code ignored;
+            std::filesystem::remove(candidate, ignored);
+        }
+    }
 }
 
 ModuleLoadResult failure(ModuleLoadError error, std::string message) {
@@ -165,6 +195,14 @@ ModuleLoadResult ModuleHost::Impl::open(const std::string& path, std::uint32_t g
     // build cannot overwrite it, which stops hot reload dead (48.3). Done on
     // Linux too: a platform-specific mechanism is one that only gets exercised
     // on one platform, and this is the one that has to work under pressure.
+    // Sweep working copies left by a previous run before making a new one.
+    //
+    // The destructor removes them, but a process that is killed -- or an editor
+    // that crashes, which is the case that matters -- never runs it. They then
+    // sit in the build tree looking like output, and `dist` staged one into a
+    // shipping layout before this existed.
+    sweepStaleCopies(source);
+
     const std::filesystem::path copy = copyPathFor(source, ++copyCounter);
     std::filesystem::remove(copy, ec);
     std::filesystem::copy_file(source, copy, std::filesystem::copy_options::overwrite_existing, ec);

@@ -17,6 +17,18 @@ add_executable(hp_editor
 target_link_libraries(hp_editor PRIVATE hp::engine)
 target_compile_features(hp_editor PRIVATE cxx_std_20)
 
+# The sample gameplay module this app hosts (T0048).
+#
+# The NAME, not a path: MinGW keeps the `lib` prefix, so it is
+# libhp_sandbox.dll on Windows and libhp_sandbox.so on Linux. Ask CMake rather
+# than guessing -- hardcoding one built fine and failed at run time on the other
+# target, twice, in the boundary suite. The app composes it against
+# hp::executableDirectory() at run time, because a configure-time path is a
+# *host* path and a Windows binary cannot open it.
+target_compile_definitions(hp_editor PRIVATE
+    HP_SANDBOX_MODULE_NAME="$<TARGET_FILE_NAME:hp_sandbox>")
+add_dependencies(hp_editor hp_sandbox)
+
 set_target_properties(hp_editor PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/apps/editor")
 

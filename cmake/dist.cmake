@@ -78,7 +78,12 @@ endforeach()
 # own; shipping it under a name a loader might pick up is worse. Found while
 # verifying 105.4, which is the first time anyone looked at what `dist`
 # actually contained rather than whether it ran.
-set(_never_stage "/CMakeFiles/|/tests/")
+# `.hotN.` is a gameplay module's working copy, made by hp::ModuleHost so the
+# build can overwrite the original while it is loaded (T0048). Transient by
+# construction, and left behind whenever a process is killed rather than exiting
+# -- an editor crash, or a test runner timing one out. One was staged into a
+# shipping layout before this line existed.
+set(_never_stage "/CMakeFiles/|/tests/|\\.hot[0-9]+\\.")
 
 # Shared libraries. On Windows the DLLs must sit beside the exe to be found at
 # all; on Linux they go to lib/ and are located by rpath or LD_LIBRARY_PATH.
