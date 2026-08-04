@@ -63,6 +63,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 370 | [T0082](open/0082-schema-versioning.md) | Schema versioning and migration | 3 — Data model | 🔜 TODO | Medium | Moderate |
 | ▶ | [T0110](inprogress/0110-presentation-and-frame-pacing.md) | Presentation: vsync, present modes, frame pacing and focus loss | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
 | ▶ | [T0025](inprogress/0025-render-layer.md) | Render layer and device lifecycle | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
+| 376 | [T0129](open/0129-display-modes-and-window-control.md) | Display modes: fullscreen, resolution, DPI and monitors | 4 — Render layer | 🔜 TODO | High | Moderate |
 | ▶ | [T0113](inprogress/0113-device-loss.md) | Device loss: decide the policy, fail distinguishably | 4 — Render layer | 🚧 IN PROGRESS | Medium | Simple |
 | 385 | [T0111](open/0111-anti-aliasing-and-render-scale.md) | Anti-aliasing and render scale: decide before the formats freeze | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 390 | [T0046](open/0046-frame-render-targets.md) | Frame render target management | 4 — Render layer | 🔜 TODO | Medium | Simple |

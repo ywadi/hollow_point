@@ -8,6 +8,7 @@
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 90 |
 | **Created** | 2026-08-02 |
+| **Refs** | [../open/0129-display-modes-and-window-control.md](../open/0129-display-modes-and-window-control.md) |
 
 ## Why
 
@@ -209,3 +210,15 @@ are already reached today.
 notes above is unaddressed and still true** — SDL's pump runs on the thread that
 owns the window, so dragging the title bar stalls the loop. Nothing built here
 assumes pump and logic share a thread.
+
+### Where the display-mode work went (2026-08-04)
+
+This ticket's "display modes have no owner" note scoped a floor —
+borderless-fullscreen, runtime resolution change, basic DPI — and a later note
+added monitor enumeration and clipboard. **None of it was built, and the "Not
+done" section does not mention it**, so it was named twice as unowned and needed
+and then carried nowhere.
+
+It is now **T0129**, which quotes this ticket's own scoping rather than
+re-deriving it. The gap surfaced when someone asked whether the engine could go
+fullscreen: the answer was no, and nothing owned making it yes.

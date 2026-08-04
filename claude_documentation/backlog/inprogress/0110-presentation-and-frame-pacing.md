@@ -9,7 +9,7 @@
 | **Order** | 375 |
 | **Created** | 2026-08-03 |
 | **Blocks** | — (was T0025; withdrawn 2026-08-04, see the correction below) |
-| **Refs** | T0014, T0015, T0031, T0052, T0057, T0078, T0100, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D16, [../../documentation/07-design-gaps.md](../../documentation/07-design-gaps.md) item 1, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) , [../inprogress/0068-input-mapping.md](../inprogress/0068-input-mapping.md) |
+| **Refs** | T0014, T0015, T0031, T0052, T0057, T0078, T0100, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D16, [../../documentation/07-design-gaps.md](../../documentation/07-design-gaps.md) item 1, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) , [../inprogress/0068-input-mapping.md](../inprogress/0068-input-mapping.md) , [../open/0129-display-modes-and-window-control.md](../open/0129-display-modes-and-window-control.md) |
 
 ## Correction (2026-08-04) — measured against the vendored Diligent
 
@@ -182,3 +182,14 @@ call**, not its own:
   at. T0068's amendment flags this as the case that reliably breaks. Cursor
   control is not built yet, so the constraint lands here before there is code to
   retrofit it into.
+
+### Cross-ticket obligation — T0129 (2026-08-04)
+
+**T0129 waits on 110.3, and the dependency is one-way.** This ticket decides what
+focus loss means — cap hard, pause, mute, some combination — and fullscreen adds
+"and release the display mode" to that same answer. Deciding it here once is the
+difference between one policy and two that must later be reconciled.
+
+Also: **exclusive fullscreen interacts with presentation.** On some drivers it is
+what enables a true immediate/mailbox present path, so 129.6's decision wants
+this ticket's present-mode work in view rather than after it.

@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 360 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0082, T0085, T0110, T0114 |
+| **Refs** | T0082, T0085, T0110, T0114 , [../open/0129-display-modes-and-window-control.md](../open/0129-display-modes-and-window-control.md) |
 
 ## Why
 
@@ -100,3 +100,14 @@ merely *stored* here. The schema is this ticket's; the consumers read it.
 - **T0114**: cvars may *shadow* a setting for the session, but persistence
   stays here — one store. The rule is recorded on T0114's side; this side must
   not grow a second persistence path when the console arrives.
+
+### Cross-ticket obligation — T0129 (2026-08-04)
+
+This ticket lists **resolution** as a player-facing setting, and until T0129
+lands nothing can apply it: the window has no runtime resolution change, no
+fullscreen and no monitor selection. T0015 spotted exactly this — "so *something*
+must implement applying it" — and that something was never built.
+
+Do not design the display section of the options as though the mechanism exists.
+Agree the settings shape and the window API together, or the options UI offers
+modes the window cannot enter.

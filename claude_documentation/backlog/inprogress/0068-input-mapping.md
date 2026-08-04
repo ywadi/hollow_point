@@ -9,7 +9,7 @@
 | **Order** | 170 |
 | **Blocked by** | T0020 (68.7), T0110 (cursor, focus loss) — plus 68.5, which is not blocked, see below |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0110, T0112 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0110, T0112 , [../open/0129-display-modes-and-window-control.md](../open/0129-display-modes-and-window-control.md) |
 
 ## Blocked on
 
@@ -264,3 +264,11 @@ an alias and no call site changes.
 - **Mouse motion and scroll are not bound to actions.** Only keys and buttons
   are. A look axis needs relative motion, which is the same cursor-capture work
   above.
+
+### Cross-ticket note — T0129 (2026-08-04)
+
+This ticket's cursor amendment cites "T0015's display-modes note" as though it
+were live work. It was not: T0015 closed without building any of it. That work is
+now **T0129**, and the cursor pieces here — hide, pin, custom image — should be
+designed alongside it, because relative-mouse capture and fullscreen fail in the
+same place: alt-tabbing out and back.
