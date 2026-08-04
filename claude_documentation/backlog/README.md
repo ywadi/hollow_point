@@ -35,9 +35,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 90 | [T0015](completed/0015-window-platform-layer.md) | Window, input and platform layer via SDL3 | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | 100 | [T0018](completed/0018-event-system.md) | Event system | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | 110 | [T0017](completed/0017-layer-stack.md) | LayerStack (system layers) | 2 — Engine skeleton | ✅ DONE | High | Simple |
-| 2 | [T0123](open/0123-api-docs-should-not-be-hand-cranked.md) | The API reference is hand-cranked and always re-runs | 1 — Harden the build | 🔜 TODO | Medium | Simple |
 | 3 | [T0124](open/0124-backfill-cross-ticket-references.md) | Backfill cross-ticket references across the whole backlog | 1 — Harden the build | 🔜 TODO | High | Moderate |
-| 4 | [T0125](open/0125-wsl-interop-detection-reads-proc-wrong.md) | WSL-interop detection silently loses to wine | 1 — Harden the build | 🔜 TODO | Medium | Trivial |
 | 130 | [T0104](open/0104-build-id-and-module-compatibility.md) | Build id stamping and module compatibility checks | 2 — Engine skeleton | 🔜 TODO | High | Simple |
 | 140 | [T0053](open/0053-reflection-type-system.md) | Reflection and type system | 2 — Engine skeleton | 🔜 TODO | High | Very Complex |
 | 150 | [T0048](open/0048-hot-reloadable-gameplay-module.md) | Hot-reloadable gameplay module | 2 — Engine skeleton | 🔜 TODO | High | Very Complex |
@@ -147,6 +145,8 @@ This is the work. For what is already proven to work — and what only appears t
 | — | [T0121](completed/0121-ci-build-time.md) | CI build time | 1 — Harden the build | ✅ DONE | Medium | Moderate |
 | — | [T0100](completed/0100-frame-lifecycle-and-update-order.md) | Frame lifecycle and system update order | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | — | [T0122](completed/0122-zig-cache-and-build-tree-host-collision.md) | Zig cannot build from a working tree on `/mnt/c` under WSL | 1 — Harden the build | ✅ DONE | High | Simple |
+| — | [T0123](completed/0123-api-docs-should-not-be-hand-cranked.md) | The API reference is hand-cranked and always re-runs | 1 — Harden the build | ✅ DONE | Medium | Simple |
+| — | [T0125](completed/0125-wsl-interop-detection-reads-proc-wrong.md) | WSL-interop detection silently loses to wine | 1 — Harden the build | ✅ DONE | Medium | Trivial |
 
 
 ## Execution order

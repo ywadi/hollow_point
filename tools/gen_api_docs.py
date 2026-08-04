@@ -398,6 +398,12 @@ def main() -> int:
                         help="known defects, which may shrink but never grow")
     parser.add_argument("--write-baseline", action="store_true",
                         help="record current defects as the baseline (use deliberately)")
+    parser.add_argument("--stamp", default="",
+                        help="write a stamp file here after a successful run (T0123). "
+                             "This exists for the build graph, not for humans: zig's Run "
+                             "step only caches a command it believes produces output, and "
+                             "the real output lands in the source tree where zig cannot "
+                             "model it. The stamp is that declared output.")
     args = parser.parse_args()
 
     include_root = pathlib.Path(args.include).resolve()
@@ -497,6 +503,15 @@ def main() -> int:
     documented = sum(1 for v in per_header.values() for e in v if e["doc"])
     print(f"api docs: {total} declarations across {len(headers)} headers "
           f"({documented} documented) -> {out_dir}")
+
+    # Written last, so it exists only if everything above succeeded. A stamp
+    # left behind by a failed run would let the build cache a failure.
+    if args.stamp:
+        stamp = pathlib.Path(args.stamp)
+        stamp.parent.mkdir(parents=True, exist_ok=True)
+        stamp.write_text(
+            f"{total} declarations across {len(headers)} headers, {documented} documented\n"
+        )
     return 0
 
 

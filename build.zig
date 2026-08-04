@@ -107,21 +107,38 @@ fn hasBucketDir(b: *Build, bucket: []const u8) bool {
 /// The 2x2 of hosts and targets, deliberately mirroring D3's build matrix --
 /// a test suite that only runs for the host target proves half of what it
 /// should.
-fn runnerFor(b: *Build, target_os: std.Target.Os.Tag) ?[]const []const u8 {
+/// How a suite will be executed, and the argv prefix that does it. `how` is
+/// carried so the build can *say* which runner it picked (T0125) rather than
+/// leaving it to be inferred from whether wine happens to print a warning.
+const Runner = struct {
+    argv: []const []const u8,
+    how: []const u8,
+};
+
+fn runnerFor(b: *Build, target_os: std.Target.Os.Tag) ?Runner {
     const host = b.graph.host.result.os.tag;
-    if (host == target_os) return &.{};
+    if (host == target_os) return .{ .argv = &.{}, .how = "natively" };
 
     if (host == .linux and target_os == .windows) {
         // Under WSL, binfmt_misc hands a PE to the real Windows loader, so the
         // .exe runs as a genuine Windows process -- higher fidelity than wine
         // and needing nothing installed. Proven in T0004.
-        if (wslInteropEnabled(b)) return &.{};
+        switch (wslInteropEnabled(b)) {
+            .enabled => return .{ .argv = &.{}, .how = "as a real Windows process via WSL interop" },
+            .disabled => {},
+            .unknown => std.debug.print(
+                "warning: cannot tell whether WSL interop is available -- " ++
+                    "/proc/sys/fs/binfmt_misc/WSLInterop exists but could not be read.\n" ++
+                    "  Falling back to wine. This is a degraded path, not a normal one (T0125).\n",
+                .{},
+            ),
+        }
         // A real Linux box falls back to wine, which T0001 proved works for
         // this project's binaries including DLL loading.
         if (b.findProgram(&.{"wine"}, &.{})) |wine| {
             const arr = b.allocator.alloc([]const u8, 1) catch @panic("OOM");
             arr[0] = wine;
-            return arr;
+            return .{ .argv = arr, .how = "under wine" };
         } else |_| {}
         return null;
     }
@@ -136,7 +153,10 @@ fn runnerFor(b: *Build, target_os: std.Target.Os.Tag) ?[]const []const u8 {
                 "p=$(wslpath -a \"$1\"); shift; exec \"$p\" \"$@\"",
                 "sh",
             };
-            return b.allocator.dupe([]const u8, &argv) catch @panic("OOM");
+            return .{
+                .argv = b.allocator.dupe([]const u8, &argv) catch @panic("OOM"),
+                .how = "through WSL",
+            };
         } else |_| {}
         return null;
     }
@@ -145,14 +165,32 @@ fn runnerFor(b: *Build, target_os: std.Target.Os.Tag) ?[]const []const u8 {
 }
 
 /// Whether this Linux host can execute Windows binaries directly.
-fn wslInteropEnabled(b: *Build) bool {
-    const data = std.Io.Dir.cwd().readFileAlloc(
-        b.graph.io,
-        "/proc/sys/fs/binfmt_misc/WSLInterop",
-        b.allocator,
-        .limited(256),
-    ) catch return false;
-    return std.mem.indexOf(u8, data, "enabled") != null;
+/// Three-valued on purpose (T0125). "This is not WSL" and "I could not tell"
+/// are different answers, and collapsing them into `false` is exactly what let
+/// a broken read masquerade as a real Linux host for as long as it did.
+const Interop = enum { enabled, disabled, unknown };
+
+fn wslInteropEnabled(b: *Build) Interop {
+    const path = "/proc/sys/fs/binfmt_misc/WSLInterop";
+
+    var file = std.Io.Dir.cwd().openFile(b.graph.io, path, .{}) catch |err| switch (err) {
+        // The ordinary "not WSL" case. A real Linux box has no such file, and
+        // announcing that on every build would be noise.
+        error.FileNotFound => return .disabled,
+        else => return .unknown,
+    };
+    defer file.close(b.graph.io);
+
+    // Streaming, *not* stat-sized -- this is the bug T0125 exists for.
+    // procfs reports st_size == 0 for a file holding real content, so a
+    // size-hinted read allocates nothing, returns zero bytes, and yields a
+    // confident "interop disabled". Measured before fixing: 0 bytes read from
+    // a file `wc -c` puts at 56.
+    var buf: [256]u8 = undefined;
+    var reader = file.readerStreaming(b.graph.io, &buf);
+    const data = reader.interface.allocRemaining(b.allocator, .limited(4096)) catch return .unknown;
+
+    return if (std.mem.indexOf(u8, data, "enabled") != null) .enabled else .disabled;
 }
 
 pub fn build(b: *Build) void {
@@ -181,6 +219,11 @@ pub fn build(b: *Build) void {
     // Every C++ test *build* step, so the Zig harness suites can be made to run
     // only after ninja has finished. See the comment where that edge is added.
     var cxx_build_steps = std.ArrayList(*Step).empty;
+
+    // The per-target steps (`zig build linux`), so the API reference can be
+    // hung off them too -- see T0123. A developer whose habit is a named target
+    // would otherwise never regenerate it.
+    var target_steps = std.ArrayList(*Step).empty;
 
     for (specs) |spec| {
         if (only) |k| if (!std.mem.eql(u8, k, spec.key) and !std.mem.eql(u8, k, spec.step_name)) continue;
@@ -256,6 +299,7 @@ pub fn build(b: *Build) void {
 
         const target_step = b.step(spec.step_name, spec.desc);
         target_step.dependOn(&compile.step);
+        target_steps.append(b.allocator, target_step) catch @panic("OOM");
         all_step.dependOn(&compile.step);
 
         // --- dist --------------------------------------------------------
@@ -301,7 +345,7 @@ pub fn build(b: *Build) void {
                 if (spec.os == .windows) ".exe" else "",
             });
 
-            const prefix = runnerFor(b, spec.os) orelse {
+            const runner = runnerFor(b, spec.os) orelse {
                 // Never silently pass: a suite that cannot be executed here is
                 // reported, and the build still fails if it was asked for
                 // explicitly rather than picked up by `all`.
@@ -314,15 +358,18 @@ pub fn build(b: *Build) void {
                 continue;
             };
 
-            const run = if (prefix.len == 0)
+            const run = if (runner.argv.len == 0)
                 b.addSystemCommand(&.{exe})
             else blk: {
-                const r = b.addSystemCommand(prefix);
+                const r = b.addSystemCommand(runner.argv);
                 r.addArg(exe);
                 break :blk r;
             };
             if (test_filter) |f| run.addArg(b.fmt("--test-case={s}", .{f}));
-            run.setName(b.fmt("test ({s}, {s})", .{ spec.key, bucket }));
+            // The name carries the runner, so `--summary all` says how a suite
+            // was executed. Inferring it from an incidental wine warning is how
+            // T0125 went unnoticed.
+            run.setName(b.fmt("test ({s}, {s}) {s}", .{ spec.key, bucket, runner.how }));
             run.stdio = .inherit;
             // Tests must re-run every time; a cached "pass" is not a pass.
             run.has_side_effects = true;
@@ -419,10 +466,18 @@ pub fn build(b: *Build) void {
     // build means it cannot drift; the CI gate is then trivially "run this,
     // then fail if the tree is dirty".
     //
-    // On demand rather than part of the default build. It needs python and
-    // libclang, which not every developer will have, and making `zig build`
-    // fail for someone who only wants to compile the engine would be a poor
-    // trade for output that changes rarely. CI runs it, so drift is caught.
+    // Part of the ordinary build, not on demand (T0123). It was on demand
+    // because the generator needs python and libclang and not every developer
+    // has them -- a real concern, answered then by opting the whole step out.
+    // The cost of that answer was output nobody regenerated: the loop became
+    // change a header, forget, push, watch the `api-docs-current` job fail, run
+    // it by hand, push again. That is a CI job catching a mistake this comment
+    // says the build should have made impossible, and it cost T0100 an extra
+    // commit and cycle.
+    //
+    // So the objection is answered by *detection* instead -- see
+    // docsToolingAvailable(). Tooling present means the build keeps docs/api
+    // honest; absent means a warning and a build that still works.
     //
     // Host-only and target-independent: the API is the same for every target,
     // so there is nothing to generate twice.
@@ -451,9 +506,65 @@ pub fn build(b: *Build) void {
     });
     docs.addArg(if (rewrite_baseline) "--write-baseline" else "--check");
     docs.setName(if (rewrite_baseline) "generate api docs (rewriting baseline)" else "generate api docs");
-    docs.stdio = .inherit;
-    docs.has_side_effects = true;
+
+    // What makes the step skippable, which is the other half of T0123: it used
+    // to do full work on every invocation.
+    //
+    // Zig caches a Run whose argv and declared inputs are unchanged -- but only
+    // if it believes the step has no side effects, and `.inherit` stdio alone
+    // was enough to make it believe otherwise (Step/Run.zig `hasSideEffects`).
+    // Dropping `has_side_effects` without also dropping `.inherit` would have
+    // changed nothing. So: declare a real output, leave stdio inferred, and
+    // name every file the generator reads.
+    //
+    // stderr is still piped and replayed on failure, which is where every
+    // defect message goes; only the "check passed" summary is dropped, and a
+    // step that now runs on every build ought to be quiet when it passes.
+    _ = docs.addPrefixedOutputFileArg("--stamp=", "api-docs.stamp");
+    docs.addFileInput(b.path("tools/gen_api_docs.py"));
+    docs.addFileInput(b.path("tools/api_docs_baseline.txt"));
+    addPublicHeaderInputs(b, docs);
+
+    // The generated markdown is declared as an *input* as well, which looks
+    // backwards and is load-bearing. Zig's declared output here is a stamp in
+    // the cache, not docs/api -- it cannot model output written into the source
+    // tree. So without this, the cache is blind to the thing it is supposed to
+    // keep current: `rm -rf docs/api && zig build docs` hits the cache and
+    // silently regenerates nothing, and a hand-edited reference stays edited.
+    // Both were observed while wiring this up, not theorised.
+    //
+    // The cost is one extra run: regenerating changes these inputs, so the next
+    // build re-runs the generator once, writes byte-identical output, and only
+    // then settles into `cached`. That convergence is verified in T0123 rather
+    // than assumed -- if the generator's output were ever nondeterministic this
+    // would become a permanent re-run, which is at least loud rather than
+    // silent.
+    addGeneratedDocInputs(b, docs);
+
+    // Rewriting the baseline stays uncached and deliberate. It is the one mode
+    // that *writes* the file the other mode is judged against, so letting it be
+    // skipped -- or run by accident -- would turn the ratchet into a rubber
+    // stamp. -Ddocs-baseline is the only way to reach it.
+    if (rewrite_baseline) docs.has_side_effects = true;
+
     b.step("docs", "Generate the markdown API reference for coding agents").dependOn(&docs.step);
+
+    if (docsToolingAvailable(b)) {
+        // Every route a developer actually takes to a build, so that no habit
+        // of typing `zig build linux` quietly skips it.
+        b.getInstallStep().dependOn(&docs.step);
+        all_step.dependOn(&docs.step);
+        for (target_steps.items) |ts| ts.dependOn(&docs.step);
+    } else {
+        std.debug.print(
+            "warning: python3 with libclang bindings not found -- docs/api will not be " ++
+                "regenerated by this build.\n" ++
+                "  Install them with `pip install libclang` so a public-header change cannot " ++
+                "leave the API reference stale.\n" ++
+                "  The build continues; CI's api-docs-current job remains the backstop.\n",
+            .{},
+        );
+    }
 
     // --- clean -----------------------------------------------------------
     const clean = b.addSystemCommand(&.{ cmake, "-E", "rm", "-rf", "build", "dist" });
@@ -498,6 +609,80 @@ fn harnessTool(b: *Build, name: []const u8, version: []const u8, subdir: ?[]cons
         return name;
     };
     return b.fmt("{s}/{s}", .{ b.build_root.path orelse ".", rel });
+}
+
+/// Whether this host can regenerate the API reference (T0123).
+///
+/// Detection rather than assumption, and rather than the older answer of making
+/// the whole step manual. Both failure modes are real: a developer without
+/// libclang should not be blocked from compiling the engine, and a developer
+/// with it should not be able to leave docs/api stale by forgetting a command.
+///
+/// Deliberately checks the *import*, not merely that python exists. `python3`
+/// is on almost every host; `clang.cindex` is the part that is actually
+/// missing, and a step that fails inside the generator would report it far less
+/// clearly than a warning here.
+fn docsToolingAvailable(b: *Build) bool {
+    const py = b.findProgram(&.{"python3"}, &.{}) catch return false;
+    var code: u8 = undefined;
+    _ = b.runAllowFail(&.{ py, "-c", "import clang.cindex" }, &code, .ignore) catch return false;
+    return true;
+}
+
+/// Name every public header to the build graph, so that changing one re-runs
+/// the generator and changing anything else does not (T0123).
+///
+/// Enumerated rather than hardcoded: a fixed list would silently stop covering
+/// a header the moment somebody adds one, which is precisely the staleness this
+/// wiring exists to prevent. If the directory cannot be read the step is left
+/// uncached rather than under-specified -- wrong-but-slow beats wrong-and-fast.
+fn addPublicHeaderInputs(b: *Build, run: *Step.Run) void {
+    const sub = "engine/include/hp";
+    var dir = b.build_root.handle.openDir(b.graph.io, sub, .{ .iterate = true }) catch {
+        std.debug.print(
+            "warning: cannot enumerate {s}/ -- the API reference step will re-run every build\n",
+            .{sub},
+        );
+        run.has_side_effects = true;
+        return;
+    };
+    defer dir.close(b.graph.io);
+
+    var it = dir.iterate();
+    while (it.next(b.graph.io) catch null) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".hpp")) continue;
+        run.addFileInput(b.path(b.fmt("{s}/{s}", .{ sub, entry.name })));
+    }
+}
+
+/// Declare the generated reference as an input, so the cache notices when the
+/// output it is responsible for is deleted or hand-edited (T0123).
+///
+/// A missing directory forces a run rather than declaring nothing. Declaring
+/// nothing is the subtle wrong answer, and it was measured: with docs/api
+/// deleted the input set collapses back to exactly the set the very first run
+/// hashed, so `rm -rf docs/api && zig build docs` scores a cache hit and
+/// restores nothing at all. Deleting the output has to mean "regenerate it".
+fn addGeneratedDocInputs(b: *Build, run: *Step.Run) void {
+    const sub = "docs/api";
+    var dir = b.build_root.handle.openDir(b.graph.io, sub, .{ .iterate = true }) catch {
+        run.has_side_effects = true;
+        return;
+    };
+    defer dir.close(b.graph.io);
+
+    var count: usize = 0;
+    var it = dir.iterate();
+    while (it.next(b.graph.io) catch null) |entry| {
+        if (entry.kind != .file) continue;
+        if (!std.mem.endsWith(u8, entry.name, ".md")) continue;
+        run.addFileInput(b.path(b.fmt("{s}/{s}", .{ sub, entry.name })));
+        count += 1;
+    }
+
+    // Present but empty is the same situation as absent.
+    if (count == 0) run.has_side_effects = true;
 }
 
 /// Say so when a pre-T0102 install is still sitting at the old shared path.
