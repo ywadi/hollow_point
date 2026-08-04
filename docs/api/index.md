@@ -47,11 +47,12 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
 | [`<hp/Render.hpp>`](Render.md) | 22 | 22 |
+| [`<hp/RenderStack.hpp>`](RenderStack.md) | 21 | 21 |
 | [`<hp/Scene.hpp>`](Scene.md) | 55 | 55 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 
-**369 public declarations across 20 headers, 252 documented.**
+**390 public declarations across 21 headers, 273 documented.**
 
 ## Every symbol
 
@@ -331,6 +332,27 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `RenderLayer::device` | [`Render.hpp`](Render.md) |
 | `RenderLayer::context` | [`Render.hpp`](Render.md) |
 | `RenderLayer::swapChain` | [`Render.hpp`](Render.md) |
+| `RenderPassContext` | [`RenderStack.hpp`](RenderStack.md) |
+| `LayerClear` | [`RenderStack.hpp`](RenderStack.md) |
+| `IRenderLayer` | [`RenderStack.hpp`](RenderStack.md) |
+| `IRenderLayer::IRenderLayer` | [`RenderStack.hpp`](RenderStack.md) |
+| `IRenderLayer::IRenderLayer` | [`RenderStack.hpp`](RenderStack.md) |
+| `IRenderLayer::operator=` | [`RenderStack.hpp`](RenderStack.md) |
+| `IRenderLayer::onRenderLayer` | [`RenderStack.hpp`](RenderStack.md) |
+| `IRenderLayer::name` | [`RenderStack.hpp`](RenderStack.md) |
+| `RenderStack` | [`RenderStack.hpp`](RenderStack.md) |
+| `RenderStack::RenderStack` | [`RenderStack.hpp`](RenderStack.md) |
+| `RenderStack::RenderStack` | [`RenderStack.hpp`](RenderStack.md) |
+| `RenderStack::operator=` | [`RenderStack.hpp`](RenderStack.md) |
+| `RenderStack::RenderStack` | [`RenderStack.hpp`](RenderStack.md) |
+| `RenderStack::operator=` | [`RenderStack.hpp`](RenderStack.md) |
+| `RenderStack::add` | [`RenderStack.hpp`](RenderStack.md) |
+| `RenderStack::remove` | [`RenderStack.hpp`](RenderStack.md) |
+| `RenderStack::clear` | [`RenderStack.hpp`](RenderStack.md) |
+| `RenderStack::reorder` | [`RenderStack.hpp`](RenderStack.md) |
+| `RenderStack::layers` | [`RenderStack.hpp`](RenderStack.md) |
+| `RenderStack::size` | [`RenderStack.hpp`](RenderStack.md) |
+| `RenderStack::render` | [`RenderStack.hpp`](RenderStack.md) |
 | `Id` | [`Scene.hpp`](Scene.md) |
 | `Tag` | [`Scene.hpp`](Scene.md) |
 | `Transform` | [`Scene.hpp`](Scene.md) |

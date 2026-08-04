@@ -72,6 +72,7 @@ add_library(hp_engine SHARED
     src/Paths.cpp
     src/FrameTargets.cpp
     src/Render.cpp
+    src/RenderStack.cpp
     src/Scene.cpp
     src/Layer.cpp
     src/Log.cpp
