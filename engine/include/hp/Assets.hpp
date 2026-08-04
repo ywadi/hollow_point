@@ -1,0 +1,209 @@
+// Assets: identity, metafiles and the pool that holds them (T0023).
+//
+// **Scenes reference assets by GUID (T0021); this is what resolves a GUID to
+// loaded data.** It sits *above* the parsers rather than replacing them —
+// Diligent's `GLTFLoader` and `TextureLoader` already do file parsing, and
+// reimplementing that would be work with no upside.
+//
+// **Every read goes through `hp::Vfs` (D13).** No `std::filesystem`, no `fopen`,
+// no absolute paths anywhere in this subsystem. That rule is the entire reason
+// T0103 had to land before this ticket: an asset manager written against
+// `std::filesystem` turns packs, patches and DLC each into a rewrite of every
+// read site instead of a mount.
+//
+// ---
+//
+// **Type identity here is a name, never `type_index`.** The pool is reached by
+// gameplay modules, and T0095 established that `entt::type_index` is not stable
+// across the module boundary — a module and the engine can disagree about it,
+// silently, and the failure is a lookup that returns nothing for an asset that
+// is definitely loaded. So a stored type declares a stable name through
+// `AssetTraits`, exactly as reflected components do.
+#pragma once
+
+#include <hp/Api.hpp>
+#include <hp/Guid.hpp>
+
+#include <cstddef>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
+
+namespace hp {
+
+/// Declares the stable name under which a type is stored in an `AssetPool`.
+///
+/// Specialise for each asset type:
+///
+/// ```cpp
+/// template <> struct hp::AssetTraits<MyMesh> {
+///     static constexpr const char* name = "Mesh";
+/// };
+/// ```
+///
+/// **The name is the identity and renaming it is a breaking change**, the same
+/// rule reflected components live under (T0095). A type with no specialisation
+/// fails to compile rather than falling back to something unstable.
+template <typename T>
+struct AssetTraits;
+
+/// What a metafile records about an imported asset (23.4).
+///
+/// **The metafile is what makes a project reopenable.** Assets can live anywhere,
+/// so without a record tying a GUID to a source path, reopening a project cannot
+/// reconnect a scene to its assets and export cannot find what to copy.
+struct AssetMeta {
+    /// The asset's stable identity, referenced by scenes and other assets.
+    Guid guid;
+
+    /// Virtual path to the source file, through the VFS.
+    ///
+    /// **Virtual, not a host path.** A host path bakes one machine's layout into
+    /// a project file, which breaks for every other person on the team and for
+    /// every shipped build.
+    std::string sourcePath;
+
+    /// The asset type's stable name, matching `AssetTraits<T>::name`.
+    std::string type;
+
+    /// Schema version of the metafile itself, for T0082's migration.
+    std::uint32_t schemaVersion = 1;
+};
+
+/// The metafile schema version this build writes.
+inline constexpr std::uint32_t kAssetMetaVersion = 1;
+
+/// The extension appended to an asset's path to find its metafile.
+///
+/// `foo.gltf` is described by `foo.gltf.hpmeta`. Appending rather than replacing
+/// keeps two assets that differ only by extension from sharing one metafile,
+/// which would silently give them the same GUID.
+inline constexpr const char* kAssetMetaExtension = ".hpmeta";
+
+/// Serialises a metafile to YAML (23.4, via T0020).
+/// @param meta the metadata to write.
+/// @returns the YAML text.
+[[nodiscard]] HP_API std::string writeAssetMeta(const AssetMeta& meta);
+
+/// Parses a metafile.
+///
+/// @param yaml the metafile contents.
+/// @param name a name for error messages, usually the virtual path.
+/// @returns the metadata, or nothing when the text does not parse or is missing
+///          a required field. **A malformed metafile is not fatal** — the caller
+///          reimports, which is the same response as a missing one.
+[[nodiscard]] HP_API std::optional<AssetMeta> parseAssetMeta(std::string_view yaml,
+                                                             std::string_view name = "<memory>");
+
+/// @param assetPath a virtual path to an asset.
+/// @returns the virtual path of its metafile.
+[[nodiscard]] HP_API std::string metaPathFor(std::string_view assetPath);
+
+/// Loads an asset's metafile through the VFS, or synthesises one.
+///
+/// **A missing metafile is normal, not an error**: it is what an asset that has
+/// never been imported looks like, and what a freshly dropped file looks like.
+/// The caller gets a fresh GUID and can write the metafile back.
+/// @param assetPath virtual path to the asset.
+/// @param type the asset type's stable name, used when synthesising.
+/// @returns the metadata, either loaded or newly minted.
+[[nodiscard]] HP_API AssetMeta loadOrCreateAssetMeta(std::string_view assetPath,
+                                                     std::string_view type);
+
+/// Holds loaded assets, addressable by GUID (23.1).
+///
+/// **Storage is per type**, so two assets can share a GUID across types without
+/// colliding — which is not a situation to design for, but is one that must not
+/// silently return the wrong object if it happens.
+///
+/// **Ownership is shared.** An asset can be referenced by many scenes and by
+/// gameplay that outlives a scene load, so the pool holds `shared_ptr` and a
+/// caller that keeps one keeps the asset alive. Reference counting and unload
+/// policy are T0058's, and this is the shape it will need.
+class HP_API AssetPool {
+public:
+    /// Constructs an empty pool.
+    AssetPool();
+
+    /// Destroys the pool, releasing its references. Assets a caller still holds
+    /// survive, which is the point of shared ownership.
+    ~AssetPool();
+
+    /// Not copyable: two pools holding the same assets would double every
+    /// reference count and make unload policy meaningless.
+    AssetPool(const AssetPool&) = delete;
+
+    /// Not copyable; see the copy constructor.
+    /// @returns nothing -- deleted.
+    AssetPool& operator=(const AssetPool&) = delete;
+
+    /// Moves the pool.
+    /// @param other the pool to move from.
+    AssetPool(AssetPool&& other) noexcept;
+
+    /// Moves the pool.
+    /// @param other the pool to move from.
+    /// @returns this pool.
+    AssetPool& operator=(AssetPool&& other) noexcept;
+
+    /// Stores an asset, replacing any existing one with the same GUID and type.
+    ///
+    /// Replacing rather than refusing, because that is what a hot reload (T0058)
+    /// is: the same identity, new data. Callers holding the old `shared_ptr`
+    /// keep the old object until they drop it.
+    /// @param guid the asset's identity.
+    /// @param asset the loaded asset. A null pointer removes the entry.
+    /// @returns nothing.
+    template <typename T>
+    void store(Guid guid, std::shared_ptr<T> asset) {
+        storeErased(guid, AssetTraits<T>::name, std::move(asset));
+    }
+
+    /// Looks an asset up.
+    /// @param guid the asset's identity.
+    /// @returns the asset, or nullptr when it is not loaded or is stored under a
+    ///          different type.
+    template <typename T>
+    [[nodiscard]] std::shared_ptr<T> get(Guid guid) const {
+        return std::static_pointer_cast<T>(getErased(guid, AssetTraits<T>::name));
+    }
+
+    /// @param guid the asset's identity.
+    /// @returns whether an asset of this type is loaded under that GUID.
+    template <typename T>
+    [[nodiscard]] bool contains(Guid guid) const {
+        return getErased(guid, AssetTraits<T>::name) != nullptr;
+    }
+
+    /// Removes an asset from the pool.
+    /// @param guid the asset's identity.
+    /// @returns whether it was there.
+    template <typename T>
+    bool remove(Guid guid) {
+        return removeErased(guid, AssetTraits<T>::name);
+    }
+
+    /// @returns how many assets are held, across every type.
+    [[nodiscard]] std::size_t size() const;
+
+    /// Removes everything.
+    /// @returns nothing.
+    void clear();
+
+    /// @param type the stable type name.
+    /// @returns the GUIDs held under that type, in unspecified order.
+    [[nodiscard]] std::vector<Guid> guidsOfType(std::string_view type) const;
+
+private:
+    void storeErased(Guid guid, std::string_view type, std::shared_ptr<void> asset);
+    [[nodiscard]] std::shared_ptr<void> getErased(Guid guid, std::string_view type) const;
+    bool removeErased(Guid guid, std::string_view type);
+
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+} // namespace hp

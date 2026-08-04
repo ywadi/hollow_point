@@ -32,6 +32,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 |---|---|---|
 | [`<hp/Api.hpp>`](Api.md) | 0 | 0 |
 | [`<hp/Application.hpp>`](Application.md) | 22 | 12 |
+| [`<hp/Assets.hpp>`](Assets.md) | 21 | 21 |
 | [`<hp/Camera.hpp>`](Camera.md) | 10 | 10 |
 | [`<hp/CameraSystem.hpp>`](CameraSystem.md) | 11 | 11 |
 | [`<hp/Cook.hpp>`](Cook.md) | 14 | 14 |
@@ -58,7 +59,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
 
-**499 public declarations across 27 headers, 382 documented.**
+**520 public declarations across 28 headers, 403 documented.**
 
 ## Every symbol
 
@@ -86,6 +87,27 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Application::input` | [`Application.hpp`](Application.md) |
 | `Application::input` | [`Application.hpp`](Application.md) |
 | `createApplication` | [`Application.hpp`](Application.md) |
+| `AssetTraits` | [`Assets.hpp`](Assets.md) |
+| `AssetMeta` | [`Assets.hpp`](Assets.md) |
+| `kAssetMetaVersion` | [`Assets.hpp`](Assets.md) |
+| `kAssetMetaExtension` | [`Assets.hpp`](Assets.md) |
+| `writeAssetMeta` | [`Assets.hpp`](Assets.md) |
+| `parseAssetMeta` | [`Assets.hpp`](Assets.md) |
+| `metaPathFor` | [`Assets.hpp`](Assets.md) |
+| `loadOrCreateAssetMeta` | [`Assets.hpp`](Assets.md) |
+| `AssetPool` | [`Assets.hpp`](Assets.md) |
+| `AssetPool::AssetPool` | [`Assets.hpp`](Assets.md) |
+| `AssetPool::AssetPool` | [`Assets.hpp`](Assets.md) |
+| `AssetPool::operator=` | [`Assets.hpp`](Assets.md) |
+| `AssetPool::AssetPool` | [`Assets.hpp`](Assets.md) |
+| `AssetPool::operator=` | [`Assets.hpp`](Assets.md) |
+| `AssetPool::store` | [`Assets.hpp`](Assets.md) |
+| `AssetPool::get` | [`Assets.hpp`](Assets.md) |
+| `AssetPool::contains` | [`Assets.hpp`](Assets.md) |
+| `AssetPool::remove` | [`Assets.hpp`](Assets.md) |
+| `AssetPool::size` | [`Assets.hpp`](Assets.md) |
+| `AssetPool::clear` | [`Assets.hpp`](Assets.md) |
+| `AssetPool::guidsOfType` | [`Assets.hpp`](Assets.md) |
 | `kDefaultSensorHeightMm` | [`Camera.hpp`](Camera.md) |
 | `AspectPolicy` | [`Camera.hpp`](Camera.md) |
 | `ViewportRect` | [`Camera.hpp`](Camera.md) |

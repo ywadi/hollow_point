@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Complex |
 | **Phase** | 3 — Data model |
@@ -26,24 +26,90 @@ copy.
 ## Done when
 
 - [ ] `ImportAsset` dispatches on extension to the right loader
-- [ ] Imported assets land in an asset pool addressable by GUID
-- [ ] Each import writes a metafile with source path and GUID
+- [~] Imported assets land in an asset pool addressable by GUID
+- [~] Each import writes a metafile with source path and GUID
 - [ ] Reopening a project reloads assets from metafiles and reconnects scenes
-- [ ] Missing or moved source assets fail gracefully and visibly
-- [ ] Tests for import, metafile round-trip and a deliberately missing asset
+- [~] Missing or moved source assets fail gracefully and visibly
+- [~] Tests for import, metafile round-trip and a deliberately missing asset
 
 ## Subtasks
 
-- [ ] 23.1 Asset pool: GUID → asset, with per-type storage
+- [x] 23.1 Asset pool: GUID → asset, with per-type storage
 - [ ] 23.2 `ImportAsset` extension dispatch; glTF and textures first
 - [ ] 23.3 Delegate to Diligent's `GLTFLoader` and `TextureLoader` — do not
       reimplement parsing
-- [ ] 23.4 Metafile format via T0020, alongside the asset in the project
+- [x] 23.4 Metafile format via T0020, alongside the asset in the project
 - [ ] 23.5 Load-on-project-open from metafiles
-- [ ] 23.6 Missing-asset handling: placeholder plus a visible error, never a crash
-- [ ] 23.7 Tests
+- [~] 23.6 Missing-asset handling: placeholder plus a visible error, never a crash
+- [~] 23.7 Tests
 
 ## Notes / findings
+
+## Progress — 2026-08-05
+
+**The identity and storage layers are built; import is not.** `hp/Assets.hpp`
+covers 23.1 and 23.4. Nothing yet reads a glTF or a texture, because that is
+23.2/23.3 delegating to Diligent's loaders, which needs a device.
+
+### 23.1 — the pool is keyed by GUID *and* type name
+
+**Not `entt::type_index`, and this is a T0095 consequence rather than a
+preference.** The pool is reached by gameplay modules, and T0095 established
+that entt's type index is not stable across the module boundary. If it were used
+here, a module and the engine could disagree silently and a lookup would return
+nothing for an asset that is definitely loaded — with no diagnostic at all. So a
+stored type declares a stable name through `AssetTraits<T>::name`, exactly as
+reflected components do, and a type with no specialisation fails to compile
+rather than falling back to something unstable.
+
+Keying on (GUID, type) also means two assets sharing a GUID across types cannot
+silently return the wrong object. That is not a situation worth designing *for*,
+but it is one that must not corrupt a lookup if it happens.
+
+**Ownership is shared**, so gameplay holding an asset across a scene load keeps
+it alive, and a pool teardown cannot pull it out from under a caller. Storing
+again *replaces* rather than refusing, because that is exactly what a hot reload
+is (T0058): same identity, new data, and callers holding the old pointer keep
+the old object until they drop it. A test covers that specifically.
+
+### 23.4 — metafiles, and why they keep the GUID
+
+`foo.gltf` is described by `foo.gltf.hpmeta`. **Appended, not substituted**: a
+substituted extension would give `mesh.gltf` and `mesh.png` one metafile and
+therefore one GUID — two assets with a single identity.
+
+Two decisions that both come down to "never orphan a scene reference":
+
+- **A metafile that disagrees about the type keeps its GUID** and has the type
+  corrected. Minting a new GUID would break every scene reference to the asset,
+  which is much worse than a wrong type field.
+- **A corrupt, absent or future-versioned metafile all mean the same thing**:
+  reimport. None of them is fatal, and none produces a half-populated struct —
+  which would hand the asset a default GUID and silently break everything
+  pointing at it.
+
+The source path is **virtual, not a host path**. A host path bakes one machine's
+layout into a project file and breaks for every other person on the team and for
+every shipped build.
+
+### Evidence
+
+`tests/integration/assets_test.cpp`, 16 cases. Integration suite 89/89 (515
+assertions) on Linux; full both-target run recorded on the commit.
+
+## Not done
+
+- **23.2 and 23.3 — import — are not started.** Extension dispatch and
+  delegation to Diligent's `GLTFLoader` and `TextureLoader` need a device, so
+  they want a gpu-bucket test alongside them.
+- **23.5 load-on-project-open** needs T0024's ProjectManager, which does not
+  exist. The pieces it will use — `loadOrCreateAssetMeta` and the pool — do.
+- **23.6 is half-done.** A missing or unreadable *metafile* is handled. A missing
+  or moved *source asset* is not: there is no placeholder asset and no visible
+  error, because there is nothing loading source assets yet.
+- **Nothing writes metafiles automatically.** `writeAssetMeta` exists and the
+  tests write through the VFS, but no import path calls it.
+
 
 **T0103 landed the VFS, and this ticket is where its central rule is kept or
 quietly broken.** Every asset read goes through `hp::Vfs` — no `std::filesystem`,
