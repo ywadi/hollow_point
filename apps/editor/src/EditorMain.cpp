@@ -11,6 +11,7 @@
 #include <hp/Log.hpp>
 #include <hp/ModuleHost.hpp>
 #include <hp/Paths.hpp>
+#include <hp/Render.hpp>
 
 #include <hp/EntryPoint.hpp>
 
@@ -51,6 +52,17 @@ private:
         // this existed, 'loaded at runtime by editor and runtime' was true
         // of the engine's capability and false of the binaries.
         loadSampleModule();
+
+        // The render layer owns the device (T0025). The editor runs until its
+        // window is closed, so this is where a device is actually visible.
+        if (window() != nullptr) {
+            auto* render = static_cast<hp::RenderLayer*>(
+                layers().push(std::make_unique<hp::RenderLayer>(*window())));
+            // Deliberately not black: a black window and a broken window look
+            // identical, and "did it clear?" is the only question this layer
+            // can currently answer.
+            render->setClearColour(0.16F, 0.22F, 0.34F, 1.0F);
+        }
     }
 
     /// Loads the sample gameplay module, if it is where one of the layouts puts

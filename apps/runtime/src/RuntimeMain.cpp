@@ -37,9 +37,10 @@ private:
     static hp::ApplicationConfig makeConfig() {
         hp::ApplicationConfig config;
         config.name = "HollowPoint Runtime";
-        // Temporary: there is no window to close yet (T0015), so without a
-        // frame budget the loop would never end.
-        config.exitAfterFrames = 3;
+        // No frame budget any more. It existed because T0015 had not shipped a
+        // window, so closing one could not end the loop; it can now, and a
+        // three-frame runtime cannot show anything on screen. Tests that need a
+        // bounded run set exitAfterFrames themselves.
         return config;
     }
 
