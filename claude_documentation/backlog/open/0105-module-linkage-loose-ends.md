@@ -38,7 +38,7 @@ This ticket holds them until their prerequisites land.
 
 ## Subtasks
 
-- [ ] 105.1 **The unload problem** (was 95.3's second half). `dlclose` of a
+- [ ] 105.1 **The unload problem** — root-caused and fixed 2026-08-04, see below; what remains is *choosing* remedy A or B and proving A against a real module. (was 95.3's second half). `dlclose` of a
       library holding any static needing destruction segfaults the process at
       exit under this toolchain — reduced during T0095 to a library containing
       one `static std::string` and no engine code at all. Modules are currently
@@ -78,3 +78,88 @@ current NODELETE approach, and nobody has measured how much that costs.
 **Do not let this ticket become a dumping ground.** It exists because four
 specific items had unmet prerequisites. New linkage questions belong in their own
 tickets; this one closes when these four do.
+
+## 105.1 root-caused and fixed (2026-08-04) — measured, both targets
+
+The unload problem is no longer three unevaluated options. It has a root cause,
+two working remedies that are **not interchangeable**, and one option that turns
+out not to exist.
+
+### The cause is a zig bug, not a C++ constraint
+
+`zig cc -shared` does not link `crtbeginS.o`/`crtendS.o`, so the produced `.so`
+has **no `.fini_array` at all** — yet it imports `__cxa_atexit` and defines
+`__dso_handle`. It registers destructors with nothing to retire them, and on
+`dlclose` those registrations survive into unmapped memory. Confirmed here: the
+identical source built with the host `g++` **has** a populated `.fini_array` and
+unloads cleanly. Same machine, same source, only the driver differs.
+
+Upstream: [ziglang/zig#17908](https://github.com/ziglang/zig/issues/17908), open
+since Nov 2023 with no PR. The workaround suggested there — borrow the host
+GCC's `crtbeginS.o` — **breaks hermeticity (D5), and zig ships no Linux
+crtbegin** at all (only BSD copies). So it is not available to us.
+
+### Remedy A — source-only, and it gives *genuine* unload
+
+Four lines in a header every gameplay module includes:
+
+```cpp
+extern "C" void* __dso_handle;
+extern "C" int __cxa_finalize(void*);
+__attribute__((destructor)) static void hp_module_finalize() { __cxa_finalize(&__dso_handle); }
+```
+
+Controlled A/B, same module source, one `-D` apart, host **not** passing
+`RTLD_NODELETE`:
+
+```
+nofix  fini_array=0   N=1 exit=139   N=5 exit=139   N=50 exit=139   (SIGSEGV)
+fix    fini_array=1   N=1 exit=0     N=5 exit=0     N=50 exit=0
+```
+
+Fully hermetic, no host objects, holds over 50 load/unload cycles.
+
+### Remedy B — link-flag, and it does *not* give unload
+
+`-Wl,-z,nodelete` on the module's link line sets `DF_1_NODELETE` in the ELF, so
+the loader refuses to unmap regardless of what the *caller* passed. Measured:
+`FLAGS_1: NOW NODELETE`, exit 0 at 50 cycles with a loader that passes only
+`RTLD_NOW|RTLD_LOCAL`.
+
+**These are alternatives, not belt-and-braces.** Remedy B works precisely *by
+never unloading* — it is today's `RTLD_NODELETE` behaviour moved into the build
+where CMake can enforce it centrally, so a module cannot be built without it.
+Only **Remedy A** delivers this ticket's first Done-when, "a module can be
+genuinely unloaded and reloaded". Applying both yields safety with no unload,
+which is a coherent choice but must be a chosen one.
+
+### The defect is Linux-only
+
+Windows was never affected. The same construct through
+`LoadLibrary`/`FreeLibrary`, 25 cycles: **exit 0**. The subtask above says "under
+this toolchain" without distinguishing targets, which reads as both. It is not.
+(Measured under WSL interop; worth re-confirming on the native Windows CI job,
+which is what `tests-windows-host` exists for.)
+
+### One option removed
+
+105.1 offers "link libc++ dynamically so one copy is shared". **Zig ships no
+shared libc++** — source only, static linking is the only supported path. A
+trivial `.so` here is 5.9 MB with 13 locally-defined `_ZNSt*` symbols and zero
+undefined ones, i.e. every artifact carries its own C++ runtime. That option is
+closed; the choice is between A and B.
+
+### What this leaves open
+
+- **Choosing A or B** — a real decision, not a formality. A enables reload
+  without accumulating module images in a long-running editor (the cost nobody
+  has measured, per the notes above); B is simpler and cannot be forgotten.
+- **Remedy A has not been tried against a module carrying the *engine's*
+  statics**, only a synthetic `static std::string`. That is the real case and it
+  is the one that matters. An upstream reporter saw a residual crash with a
+  variant of this approach, so treat A as strong evidence rather than proof
+  until it is exercised against a real module.
+- **The A/B belongs in `tests/integration/module_boundary_test.cpp` as a
+  regression test** (105.5). Nothing currently catches this fix being silently
+  removed, and it is the kind of change a future toolchain bump could undo
+  invisibly.

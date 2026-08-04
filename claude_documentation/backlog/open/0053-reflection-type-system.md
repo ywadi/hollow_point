@@ -4,11 +4,12 @@
 |---|---|
 | **Status** | 🔜 TODO |
 | **Priority** | High |
-| **Complexity** | Very Complex |
+| **Complexity** | Complex |
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 140 |
 | **Created** | 2026-08-03 |
 | **Blocks** | T0022, T0035, T0062 |
+| **Refs** | T0095, T0104, T0105, T0048, T0022, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D12 |
 
 ## Why
 
@@ -111,3 +112,123 @@ written twice", and T0062 calls reflection "a hard prerequisite" because its
 hot-reload cycle only works if behaviour state can be serialized generically.
 The same getting-it-wrong-means-redoing-work test that justified the other
 Blocks fields (T0095, T0103, T0104) applies here.
+
+## Mechanism decided (2026-08-04) — `entt::meta`, measured across the boundary
+
+53.1 is answered. **Use `entt::meta`.** It was absent from the options list
+above, which was the gap: it is *already vendored* at `third_party/entt`
+(3.16.0), pinned through `FETCHCONTENT_SOURCE_DIR_ENTT` in the root
+`CMakeLists.txt`, header-only, and reachable via the `EnTT::EnTT` target
+DiligentFX already supplies. Adopting it costs **no new dependency, no submodule
+and no build wiring.**
+
+### Why it wins on this project's own criteria
+
+Its identity model is the one this ticket already mandates, rather than merely
+being compatible with it. `meta_context` is keyed on `type_hash` — the
+name-based hash T0095 measured as stable across the module boundary — and the
+per-module sequential `type_index` is never used as a key anywhere in meta.
+`meta_factory<T>{}.type("Position")` sets identity to
+`hashed_string::value(name)`. That is the rule in the amendment above,
+implemented.
+
+### Measured here, not searched — both targets
+
+A prototype mirroring `tests/fixtures/` (shared engine `.so`/`.dll`, a module
+that links it, a host executable, `-fvisibility=hidden`, pinned toolchain),
+rebuilt and re-run independently of the research that proposed it:
+
+```
+[EXE(after module load)] ctx@... types:
+   id=903561675  name=EnginePos size=12      <- registered by the ENGINE
+      .x id=4245442695  [has PropMeta]
+   id=2616116277 name=ModHealth size=8       <- registered by the MODULE, same ctx
+--- module reads back an ENGINE-registered type ---
+   MODULE: resolved EnginePos, y=2.0, x.tooltip=world X
+   MODULE: after set, y=42.0
+--- after mod_unload (meta_reset ModHealth) ---
+   id=903561675 name=EnginePos                <- module's type gone, engine's intact
+```
+
+Confirmed working across the boundary: one shared context, module→engine resolve
+by name hash, **typed get and set** (53.4), user metadata carrying
+min/max/tooltip/hidden (53.5), and clean deregistration on unload.
+
+**The ids are byte-identical on Linux and Windows.** That is the property that
+actually matters, because those ids are what gets serialised (T0022) — a
+reflection key that differed per target would be discovered at load time, in a
+save file, months later.
+
+### The trap, and it fails silently
+
+`entt::locator<entt::meta_ctx>` is **per-module under `-fvisibility=hidden`,
+and the executable is a module too.** A host reading its own default-constructed
+locator sees an empty context and reports engine types as unresolvable — no
+error, no crash, just nothing there. The fix is one line at boot:
+
+```cpp
+entt::locator<entt::meta_ctx>::reset(engine_boot().meta_handle);
+```
+
+Every participant adopts the handle, or every call passes `meta_ctx&`
+explicitly (entt provides both forms). **This belongs in
+`06-engine-conventions.md` and in a boundary test**, not in whoever-remembers:
+it is exactly the failure mode this ticket's amendment warns about, arriving
+through a different door.
+
+### What entt::meta does *not* do
+
+| Subtask | Covered | Note |
+|---|---|---|
+| 53.2 registration API | yes | macro-free, non-intrusive; still **manual** — no member-name deduction |
+| 53.3 runtime type info | yes | id/name/size/data/func/base, construct, `meta_any` owns and destroys |
+| 53.4 typed get/set + fallback | yes | measured across the boundary |
+| 53.5 property metadata | yes | `custom<PropMeta>(...)` plus a traits bitmask for hidden/read-only |
+| 53.6 containers/nested/enums | mostly | std containers auto-detect; **enums need each value registered by hand** |
+| 53.7 ECS integration | **no — ours** | ~30 lines of `emplace_or_replace` glue |
+| 53.8 serialization round-trip | **no — ours** | entt's snapshot API is byte-level and separate from meta |
+
+So it collapses 53.2–53.6 to registration lines. 53.7 and 53.8 were always ours.
+
+### Two decisions taken with it
+
+- **Wrap registration behind a thin `hp::reflect<T>()` facade on day one.** entt
+  moved meta `prop()` to `custom()`/`traits()` during the 3.14 cycle, and this
+  ticket's own note says the mechanism becomes "a permanent part of how every
+  engine type is declared". A facade makes an entt upgrade one file instead of
+  every type. This is the single most valuable line of insurance available here.
+- **Add `magic_enum` for 53.6's enum half.** entt requires every enum value
+  registered individually; magic_enum derives them and can *drive* the entt
+  registration. MIT, single header, actively maintained. Its known limit is the
+  `[-128, 127]` default value range — fine for gameplay enums, wrong for sparse
+  bitflags, and that constraint should be written down where enums get declared.
+
+### Rejected, with reasons
+
+**RTTR** — eight years since a release, and its own plugin documentation is
+disqualifying for T0048: *"Make sure you throw away all retrieved items when
+unloading. Otherwise UB may occur"*, plus a `-fno-gnu-unique` requirement and
+open bugs on deregistration and on cross-DLL teardown crashes. It would import a
+worse version of a problem this project has already measured and fixed.
+**refl-cpp** — dormant since 2022. **Boost.PFR** — aggregate-only, no member
+names before C++26; a possible helper later, not the mechanism. **libclang
+codegen** — still the right answer only when hand-registration becomes
+untenable, and it is not.
+
+**C++26 static reflection (P2996)** is not available: the pinned zig 0.16.0 is
+clang 21.1.0, where `^^S` is a syntax error and `-freflection` is unknown. It
+does not change this decision, and that is the point — because entt::meta keys
+on stable name hashes and funnels registration through one call site per type, a
+future P2996 migration replaces the registration lines and leaves every consumer
+(serialization, inspector, undo/redo) talking to the same `meta_type`/`meta_data`.
+
+### Still to measure before this is safe at scale
+
+- **Allocation across the boundary into a shared registry/context.** entt's own
+  docs warn that a plugin creating storage in a shared registry "is now managing
+  memory from different spaces". Zig links libc++ **statically into every
+  artifact**, so each module carries its own C++ runtime. The prototype touched
+  this without incident; it did not stress it. Needs a dedicated case in
+  `tests/integration/module_boundary_test.cpp`.
+- **Compile-time cost on a realistic component count.** Not measured — the quick
+  timings were polluted by zig's cache and are not quoted here.
