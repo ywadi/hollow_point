@@ -2,29 +2,34 @@
 
 | | |
 |---|---|
-| **Status** | ⏸ BLOCKED |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Very Complex |
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 150 |
-| **Blocked by** | T0021 (48.5), T0043 (48.7) |
 | **Created** | 2026-08-03 |
 | **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0104 (Blocks this), T0105, [../completed/0127-exceptions-across-the-module-boundary.md](../completed/0127-exceptions-across-the-module-boundary.md) |
 
-## Blocked on
+## Closed 2026-08-04 — on what it achieved, with 48.7 moved to T0043
 
-**The loader is built and hot reload works** (see "Built", below). What remains
-cannot be done here:
+**The loader is built, hot reload works, and the central usability guarantee is
+now proven** rather than assumed. 48.5 was the last real blocker and T0021
+cleared it by providing an engine-owned registry; the test is
+`tests/integration/module_host_test.cpp`, "component data outlives a module
+reload", and it runs against the real sandbox module on both targets.
 
-- **48.5 — T0021.** "The open scene, entities and component data survive a
-  reload intact" needs a scene and an engine-owned registry to put a component
-  in. Neither exists. This is the ticket's central usability guarantee, which is
-  why it is not closed on the rest being done — it is a small test the moment
-  T0021 lands, and T0021 carries the obligation.
-- **48.7 — T0043.** The shipped runtime should link the module statically rather
-  than loading it; there is no export pipeline to link into. Recorded on T0043.
+It asserts the rule this whole design rests on: a component is put on an entity
+in an engine-owned `Scene`, mutated *after* the module is live, the module is
+reloaded, and the value, the tag, the transform, the GUID and the parent link are
+all unchanged. `totalLoads() == 2` is checked first — without that, every
+assertion after it would also pass if the reload had silently no-opped, which is
+the failure this suite exists to catch.
 
-Neither blocker is close: T0021 is the next phase, T0043 is Phase 8.
+**48.7 is moved to T0043**, per CLAUDE.md's rule about tickets blocked on
+something far away. Linking the module statically into a shipped runtime needs an
+export pipeline to link into, and that is Phase 8. Leaving a Phase 2 ticket open
+for months against it helps nobody; T0043 now carries the requirement and the
+reasoning.
 
 ## Why
 
@@ -42,7 +47,7 @@ This is the decision *instead of* embedding a scripting language.
 
 - [x] Gameplay builds as a shared library, loaded at runtime by editor and runtime — **corrected 2026-08-04**: this was ticked while only the *test suite* loaded a module. Both apps now do, in the build tree and in an export, on both targets
 - [x] Editing gameplay code and rebuilding reloads it live — no editor restart — demonstrated end to end, evidence below
-- [ ] The open scene, entities and component data survive a reload intact — **blocked on T0021.** There is no scene and no engine-owned registry yet. What *is* proven is the mechanism the rule rests on; see "What is not done"
+- [x] The open scene, entities and component data survive a reload intact — **done 2026-08-04**, once T0021 provided an engine-owned registry. `tests/integration/module_host_test.cpp`, "component data outlives a module reload"
 - [x] Reload works on Linux and Windows
 - [x] A reload that fails to compile leaves the previous module running
 - [x] Reload time is fast enough to be worth it — measured: **1.76 ms** per swap
@@ -56,9 +61,9 @@ This is the decision *instead of* embedding a scripting language.
       turned out to be different and worse than the Windows one. See below
 - [x] 48.4 Watch and reload on change, debounced — a stat() poll at frame phase
       12, 1.5 µs per module per frame. Polling *is* the debounce; see below
-- [ ] 48.5 Verify state survives: mutate a component, reload, confirm intact — **blocked on T0021**, no ECS exists to hold a component
+- [x] 48.5 Verify state survives: mutate a component, reload, confirm intact — **done 2026-08-04** against the real sandbox module
 - [x] 48.6 Handle load failure gracefully, keeping the old module
-- [ ] 48.7 Ensure the exported *runtime* can link it statically instead — **not done**, and it needs T0043's export pipeline to have something to link into
+- [~] 48.7 Ensure the exported *runtime* can link it statically instead — **moved to T0043**, which owns the export pipeline this needs to link into. See the closing note
 
 ## Notes / findings
 

@@ -8,7 +8,7 @@
 | **Phase** | 8 — Runtime & export |
 | **Order** | 770 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0103 (Blocks this — D13), T0098, T0115, T0116, T0119, [../inprogress/0048-hot-reloadable-gameplay-module.md](../inprogress/0048-hot-reloadable-gameplay-module.md) |
+| **Refs** | T0103 (Blocks this — D13), T0098, T0115, T0116, T0119, [../completed/0048-hot-reloadable-gameplay-module.md](../completed/0048-hot-reloadable-gameplay-module.md) |
 
 ## Why
 
@@ -122,3 +122,30 @@ about the executable's library search path, not about content.
   should ship. It was not built because there is no export pipeline yet to link
   into; when this ticket has one, `hp_add_gameplay_module()` is where the
   static-vs-module choice belongs, next to the finalizer and the build-id stamp.
+
+### Inherited from T0048 (closed 2026-08-04) — 48.7, static linking for the shipped runtime
+
+**The exported runtime should link the gameplay module statically rather than
+loading it at run time.** T0048 built and proved the dynamic path — copy before
+load, build-id refusal, swap at frame phase 12, genuine unload — but that whole
+mechanism is a *development* affordance. In a shipped game it buys nothing and
+costs startup time and attack surface: an executable that `dlopen`s a library
+from beside itself is a library anyone can replace.
+
+This landed here rather than staying open on T0048 because it needs an export
+pipeline to link into, and there was none. Now it is yours.
+
+What T0048 established that constrains it:
+
+- **The engine is a shared library and stays one** (D12). Only the *gameplay
+  module* is a candidate for static linking; engine state must still exist once
+  per process.
+- **`hp_add_gameplay_module()` compiles `engine/module/ModuleFinalize.cpp` into
+  every module** so the linker emits `.fini_array`. A statically linked build
+  path must not quietly drop that, or unload ordering assumptions change.
+- **The build-id check (T0104) exists to refuse a mismatched module.** Linked
+  statically there is nothing to mismatch, so the check becomes vacuous rather
+  than wrong — but it should be *deliberately* vacuous, not accidentally absent.
+- `HP_GAMEPLAY_MODULE` registers entry points through one `extern "C"` symbol
+  that exists solely because `dlsym` takes a string. A static path does not need
+  it and should call the entry points directly.

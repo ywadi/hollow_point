@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 200 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0053, T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), [../inprogress/0048-hot-reloadable-gameplay-module.md](../inprogress/0048-hot-reloadable-gameplay-module.md), [../completed/0112-string-identity-and-localisation.md](../completed/0112-string-identity-and-localisation.md) |
+| **Refs** | T0053, T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), [../completed/0048-hot-reloadable-gameplay-module.md](../completed/0048-hot-reloadable-gameplay-module.md), [../completed/0112-string-identity-and-localisation.md](../completed/0112-string-identity-and-localisation.md) |
 
 ## Why
 

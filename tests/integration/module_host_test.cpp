@@ -12,6 +12,7 @@
 
 #include <hp/Log.hpp>
 #include <hp/ModuleHost.hpp>
+#include <hp/Scene.hpp>
 
 #include <chrono>
 #include <cstdio>
@@ -310,4 +311,72 @@ TEST_CASE("several modules are hosted at once, and unload newest first" *
     host.unloadAll();
     CHECK(host.size() == 0);
     CHECK(host.names().empty());
+}
+
+/// A component a gameplay module would own, defined here so the test can mutate
+/// it directly. What matters is not who declares the type — it is who owns the
+/// storage, and that is the engine's registry either way.
+namespace {
+struct Ammo {
+    int rounds = 0;
+};
+} // namespace
+
+TEST_CASE("component data outlives a module reload" * doctest::test_suite("module")) {
+    // T0048.5, and the rule it exists to prove: **all persistent state lives in
+    // the ECS, owned by the engine — never in the gameplay module.** Statics
+    // inside a module are destroyed on unload, so anything kept there is gone
+    // and comes back default-constructed. This is the case that decides whether
+    // hot reload is genuinely usable or a source of baffling bugs, and until
+    // T0021 there was no scene for it to assert against.
+    hp::registerComponent<Ammo>("Ammo").property<&Ammo::rounds>("rounds");
+
+    // The scene is created *before* the module loads and outlives the reload,
+    // which is the whole point — the engine owns it.
+    hp::Scene scene;
+    auto parent = scene.create("Rig");
+    auto entity = scene.create("Player");
+    REQUIRE(scene.setParent(entity, parent));
+
+    entity.add<Ammo>(Ammo{7});
+    entity.get<hp::Transform>().position = hp::float3{1.0F, 2.0F, 3.0F};
+    const hp::Guid guid = entity.guid();
+    const hp::Guid parentGuid = parent.guid();
+
+    hp::ModuleHost host;
+    REQUIRE(host.load(sandbox_path()).ok);
+
+    // Mutate *after* the module is live, so the value under test is one the
+    // running module could plausibly have written.
+    entity.get<Ammo>().rounds = 42;
+
+    const std::vector<hp::ModuleLoadResult> results = host.reloadAll();
+    REQUIRE(results.size() == 1);
+    REQUIRE_MESSAGE(results[0].ok, results[0].message);
+
+    // Evidence a swap actually happened. Without this every assertion below
+    // would also pass if the reload had silently no-opped, which is the failure
+    // this whole suite is built to catch.
+    REQUIRE(host.totalLoads() == 2);
+    REQUIRE(results[0].generation == 2);
+
+    CHECK(scene.size() == 2);
+
+    // Identity resolves across the reload — a GUID is the thing that survives,
+    // and it is what save data and entity references are keyed on.
+    auto found = scene.find(guid);
+    REQUIRE(found.has_value());
+
+    REQUIRE(found->has<Ammo>());
+    CHECK(found->get<Ammo>().rounds == 42);
+    CHECK(found->get<hp::Tag>().name == "Player");
+    CHECK(found->get<hp::Transform>().position.y == doctest::Approx(2.0F));
+
+    // The hierarchy survives too: a reload that rebuilt the registry would lose
+    // the parent link while leaving component data intact, which would look like
+    // a physics bug rather than a reload bug.
+    auto foundParent = scene.find(parentGuid);
+    REQUIRE(foundParent.has_value());
+    CHECK((found->get<hp::Hierarchy>().parent == foundParent->raw()));
+    CHECK(foundParent->get<hp::Hierarchy>().children.size() == 1);
 }
