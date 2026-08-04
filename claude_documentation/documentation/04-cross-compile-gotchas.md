@@ -188,3 +188,47 @@ Worth recording so they are not re-investigated:
   `Win32AppResource.rc.res` is produced. Needs `/fo` and a `--` separator before
   the source, since absolute Linux paths start with `/` and would otherwise parse
   as options.
+
+
+## G9 — Zig's test runner has a 60-second handshake floor, and Windows will miss it
+
+**Symptom.** On a Windows host, `zig build test` fails with a *different pair*
+of Zig suites each run:
+
+```
++- run test harness-cache failure
+error: test runner failed to respond for 1m350.4us
+failed command: ...\harness-cache.exe --cache-dir=... --listen=-
+```
+
+Always immediately after the link step, while ninja is still finishing. The C++
+suites in the same build pass. It failed 2 runs in 3.
+
+**It is not the tests.** The message comes from `pollZigTest` in
+`std/Build/Step/Run.zig`, and fires *before any test starts* — the build runner
+is waiting for a freshly spawned binary to acknowledge its `--listen=-`
+handshake. The wait is `@max(user_value, 60 * ns_per_s)`: a hardcoded 60-second
+**floor** that cannot be lowered, only raised via `--test-timeout`.
+
+**Why Windows.** Zig 0.16's release notes warn the timeout is real time rather
+than CPU time, "so on a system under heavy load, scheduler stress could cause
+unexpected timeouts". Zig's own maintainers hit this on their Windows CI and
+described the scheduler refusing to schedule a waiting process "for upwards of
+10 minutes" — their commit is titled *"ci: bump test timeouts to stupid numbers
+on Windows"*, and they now pass `--test-timeout 30m`.
+
+**The fix here is structural, not a bigger timeout.** Zig's own CI runs ninja to
+completion *before* `zig build test`. Our build graph was letting the Zig suites
+launch while the CMake/ninja build was still saturating the machine, so
+`build.zig` now makes every Zig suite depend on the C++ test builds. It costs
+only the parallelism between two builds that were never related, and it removes
+the cause rather than tolerating it.
+
+**Two false trails, recorded so they are not retried.** Windows Defender
+exclusions for the workspace and toolchain changed nothing. And the failure was
+initially dismissed as transient because it passed once — one recovery is not
+evidence of flakiness, and it went on to fail more often than it passed.
+
+Sources: `lib/std/Build/Step/Run.zig` (the `response_timeout_ns` floor),
+ziglang.org 0.16.0 release notes "Unit Test Timeouts", and zig commit
+`3d0009b9c6`.

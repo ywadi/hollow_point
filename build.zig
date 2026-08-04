@@ -178,6 +178,10 @@ pub fn build(b: *Build) void {
 
     const host_os = b.graph.host.result.os.tag;
 
+    // Every C++ test *build* step, so the Zig harness suites can be made to run
+    // only after ninja has finished. See the comment where that edge is added.
+    var cxx_build_steps = std.ArrayList(*Step).empty;
+
     for (specs) |spec| {
         if (only) |k| if (!std.mem.eql(u8, k, spec.key) and !std.mem.eql(u8, k, spec.step_name)) continue;
 
@@ -288,6 +292,7 @@ pub fn build(b: *Build) void {
             build_tests.stdio = .inherit;
             build_tests.has_side_effects = true;
             if (needs_cfg) build_tests.step.dependOn(&configure.step);
+            cxx_build_steps.append(b.allocator, &build_tests.step) catch @panic("OOM");
 
             const exe = b.fmt("{s}/{s}/tests/{s}{s}", .{
                 b.build_root.path orelse ".",
@@ -372,6 +377,34 @@ pub fn build(b: *Build) void {
         const t = b.addTest(.{ .name = h.name, .root_module = mod, .filters = filters });
         const run = b.addRunArtifact(t);
         run.has_side_effects = true;
+
+        // Wait for the C++ build before running a Zig suite. This is not about
+        // ordering the *results* -- these tests share nothing with the C++ ones
+        // -- it is about not competing with ninja for the machine.
+        //
+        // Zig's build runner waits for a freshly spawned test binary to
+        // acknowledge its `--listen=-` handshake, and that wait has a hardcoded
+        // 60-second floor (`@max(user_value, 60s)` in std/Build/Step/Run.zig).
+        // Zig 0.16's release notes warn that the timeout is real time rather
+        // than CPU time, "so on a system under heavy load, scheduler stress
+        // could cause unexpected timeouts".
+        //
+        // That is exactly what happened on the Windows CI host: these suites
+        // failed in 2 of 3 runs with "test runner failed to respond for 1m",
+        // always immediately after the link step while ninja was still
+        // finishing ~307 targets, and a *different pair* failed each time. The
+        // tests were never failing -- they were never getting scheduled.
+        //
+        // Zig hit this on their own Windows CI and describe the scheduler
+        // refusing to run a waiting process "for upwards of 10 minutes"; their
+        // fix was a 30-minute timeout, and their CI runs ninja to completion
+        // before `zig build test` rather than concurrently. This edge does the
+        // same thing, and costs only the parallelism between two builds that
+        // were never related.
+        for (cxx_build_steps.items) |cxx| {
+            run.step.dependOn(cxx);
+        }
+
         test_step.dependOn(&run.step);
     }
 

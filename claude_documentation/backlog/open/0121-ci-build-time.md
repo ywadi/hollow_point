@@ -71,8 +71,13 @@ wraps. This is a hypothesis, not a diagnosis — measure it before acting on it.
 keeping whatever mechanism wins: without it the cache would have looked like it
 was working, because the job was green and the cache step said "Cache hit".
 
-**A transient Windows failure was observed once and did not reproduce**: two Zig
-harness runners (`harness-paths`, `harness-cache`) timed out at 60s while the
-runner was compiling SDL, then passed on the next run untouched. Consistent with
-resource starvation on a loaded runner, which is another reason to care about
-build time — but one observation is not a diagnosis.
+**The Windows timeout was not transient, and is now diagnosed and fixed** — see
+G9 in `04-cross-compile-gotchas.md`. Zig's build runner has a hardcoded
+60-second floor on the test-binary handshake, measured in real time rather than
+CPU time, and the Windows scheduler misses it when ninja is saturating the
+machine. `build.zig` now runs the Zig suites after the C++ build rather than
+alongside it, which is what Zig's own CI does.
+
+It is recorded here because it is the same underlying problem as this ticket:
+**the build is heavy enough to starve things.** Fixing build time reduces the
+pressure that produced it.
