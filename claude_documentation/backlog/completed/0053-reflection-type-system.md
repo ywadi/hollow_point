@@ -56,6 +56,25 @@ outcome to avoid, and it is very expensive to unpick later.
 
 ## Notes / findings
 
+### Correction (2026-08-05) — properties were registered without their names
+
+`TypeBuilder::property` passed the name to entt only as a hashed id, so
+`meta_data::name()` returned nullptr for every property. Everything that looks a
+property up **by id** worked, which is every test this ticket shipped; the
+breakage was entirely on the **enumeration** path, and enumeration is what three
+of the four consumers this ticket exists for actually do — serialization
+(T0020.3), the inspector (T0035) and undo/redo (T0065).
+
+Found on the first step of T0020.3, fixed by passing the name alongside the hash
+in `property`, `readOnlyProperty` and `value`. The id is unchanged, so no data
+format moved. `tests/fast/reflect_test.cpp` pins the enumerated name and checks
+that the enumeration key still equals the hash.
+
+Worth remembering as a *class* of gap rather than a one-off: a facade that is
+only ever exercised the way its own tests use it will hide whatever its other
+consumers need.
+
+
 **Mechanism choice is the crux and worth real deliberation:**
 
 - **Manual registration macros** — explicit, no build-step magic, no extra

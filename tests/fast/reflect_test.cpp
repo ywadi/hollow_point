@@ -342,3 +342,42 @@ TEST_CASE("an asset GUID reference survives reflection" * doctest::test_suite("r
     REQUIRE(static_cast<bool>(raw));
     CHECK(raw.get(guid_any).cast<std::uint64_t>() == 0x0123456789abcdefULL);
 }
+
+TEST_CASE("enumerated properties carry their names, not just their ids") {
+    // **Found while starting T0020.3, and it had been wrong since T0053.**
+    //
+    // `TypeBuilder::property` passed the name to entt only as a hashed id.
+    // Everything that *queries* a property by id worked perfectly -- which is
+    // every test that existed, and why nothing caught it -- while everything
+    // that *enumerates* a type got a null name for every field.
+    //
+    // That breaks the three T0053 consumers which walk a type rather than
+    // query it: serialization cannot write a readable key, the inspector
+    // cannot label a field, and undo/redo cannot say what changed. Measured
+    // before the fix: all three properties of `Transform` reported null.
+    //
+    // The id is unchanged -- it is still the hash of the same string -- so this
+    // is not a data-format change. Only the name became available.
+    hp::adoptMetaContext();
+    hp::reflect<Actor>("Actor").property<&Actor::mesh>("mesh");
+
+    const entt::meta_type type = hp::resolveType("Actor");
+    REQUIRE(static_cast<bool>(type));
+
+    auto mesh = type.data("mesh"_hs);
+    REQUIRE(static_cast<bool>(mesh));
+    REQUIRE(mesh.name() != nullptr);
+    CHECK(std::string(mesh.name()) == "mesh");
+
+    // The identity is still the hash of the name, so lookups by id are
+    // untouched and enumeration now yields usable names -- both checked
+    // together, because the point is that the two agree.
+    bool sawMesh = false;
+    for (auto&& [id, data] : type.data()) {
+        if (data.name() != nullptr && std::string(data.name()) == "mesh") {
+            sawMesh = true;
+            CHECK(id == entt::hashed_string{"mesh"}.value());
+        }
+    }
+    CHECK(sawMesh);
+}

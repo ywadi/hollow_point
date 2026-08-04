@@ -121,7 +121,18 @@ public:
     /// @returns this builder, for chaining.
     template <auto Member>
     TypeBuilder& property(const char* name) {
-        factory_ = factory_.template data<Member>(entt::hashed_string{name});
+        // The name is passed **twice, deliberately**: as the hashed id, which
+        // is the identity, and as the literal, which entt stores for
+        // `meta_data::name()`.
+        //
+        // Passing only the hash compiles and works for everything that looks a
+        // property up by id -- which is why this went unnoticed -- and leaves
+        // every property nameless when *enumerated*. That breaks the three
+        // T0053 consumers that walk a type rather than query it: serialization
+        // (T0020.3) cannot write a readable key, the inspector cannot label a
+        // field, and undo/redo cannot describe what changed. Measured before
+        // fixing: every property of `Transform` reported a null name.
+        factory_ = factory_.template data<Member>(entt::hashed_string{name}, name);
         return *this;
     }
 
@@ -150,7 +161,7 @@ public:
     /// @returns this builder, for chaining.
     template <auto Getter>
     TypeBuilder& readOnlyProperty(const char* name) {
-        factory_ = factory_.template data<nullptr, Getter>(entt::hashed_string{name});
+        factory_ = factory_.template data<nullptr, Getter>(entt::hashed_string{name}, name);
         return *this;
     }
 
@@ -166,7 +177,10 @@ public:
     /// @returns this builder, for chaining.
     template <auto Value>
     TypeBuilder& value(const char* name) {
-        factory_ = factory_.template data<Value>(entt::hashed_string{name});
+        // Named as well as hashed, for the same reason as `property`: an
+        // enumerator the inspector cannot name is one it has to show as a bare
+        // integer.
+        factory_ = factory_.template data<Value>(entt::hashed_string{name}, name);
         return *this;
     }
 

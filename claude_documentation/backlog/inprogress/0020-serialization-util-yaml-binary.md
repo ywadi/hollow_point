@@ -129,6 +129,43 @@ no connection to the file that caused it.
 The GUID round-trip T0016 deferred ("there is no serializer yet") is closed here
 and treated as a first-class case rather than an incidental uint64.
 
+## 20.3 groundwork — reflection did not expose property names (2026-08-05)
+
+**Found on the first step of 20.3, and it had been wrong since T0053 shipped.**
+
+`TypeBuilder::property` passed the name to entt only as a hashed id:
+
+```cpp
+factory_.template data<Member>(entt::hashed_string{name});   // id only
+```
+
+entt's `data()` takes the name as a **second** parameter. Without it, every
+property enumerated through `meta_data::name()` returned **nullptr**. Measured:
+all three properties of `Transform` reported null.
+
+**Nothing caught it because everything that existed looked properties up by
+id**, which worked perfectly. The breakage is entirely on the *enumeration*
+path — which is exactly the path 20.3 is built on, and which the other two
+T0053 consumers need too:
+
+| Consumer | What a null name costs |
+|---|---|
+| Serialization (20.3) | No readable YAML key — the whole point of YAML as source of truth |
+| Inspector (T0035) | No field label |
+| Undo/redo (T0065) | Cannot describe what changed |
+
+Fixed by passing the name alongside the hash in `property`, `readOnlyProperty`
+and `value`. **The id is unchanged** — still the hash of the same string — so
+this is not a data-format change and nothing already written becomes
+unreadable. Only the name became available.
+
+`tests/fast/reflect_test.cpp` now pins it, asserting the enumerated name *and*
+that the enumeration key still equals the hash, because the point is that the
+two agree.
+
+This is why 20.3 is listed as "not started" rather than "in progress": the
+groundwork it needed turned out to be a defect somewhere else.
+
 ## Not done
 
 - **20.3 is not started, and it is the largest remaining piece.** The
