@@ -29,17 +29,55 @@ const hp::LogCategory kLog("editor");
 #define HP_PATH_SEP "/"
 #endif
 
+/// Reads `--backend=vulkan|opengl` from the command line (25.2).
+///
+/// Parsed before the window is created, and that ordering is forced rather than
+/// stylistic: an OpenGL context is an SDL *creation* flag, so the backend has to
+/// be known before there is a window at all (see `WindowConfig::openGLContext`).
+/// An unrecognised value is reported and ignored rather than being fatal --
+/// a typo in a debugging flag should not stop the program starting.
+hp::RenderBackend backendFromArgs(int argc, char** argv) {
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg.rfind("--backend=", 0) != 0) {
+            continue;
+        }
+        const std::string value = arg.substr(std::string("--backend=").size());
+        if (value == "vulkan" || value == "vk") {
+            return hp::RenderBackend::Vulkan;
+        }
+        if (value == "opengl" || value == "gl") {
+            return hp::RenderBackend::OpenGL;
+        }
+        HP_LOG_WARN(kLog, "unknown --backend={} (expected vulkan or opengl); using the default",
+                    value);
+    }
+    return hp::RenderBackend::Default;
+}
+
 class Editor final : public hp::Application {
 public:
-    Editor() : hp::Application(makeConfig()) {}
+    explicit Editor(hp::RenderBackend backend)
+        : hp::Application(makeConfig(backend)), backend_(backend) {}
 
 private:
-    static hp::ApplicationConfig makeConfig() {
+    hp::RenderConfig renderConfig() const {
+        hp::RenderConfig config;
+        config.backend = backend_;
+        return config;
+    }
+
+    hp::RenderBackend backend_ = hp::RenderBackend::Default;
+
+    static hp::ApplicationConfig makeConfig(hp::RenderBackend backend) {
         hp::ApplicationConfig config;
         config.name = "HollowPoint Editor";
         config.window.title = "HollowPoint Editor";
         config.window.width = 1280;
         config.window.height = 720;
+        // The GL context must exist before the window does, so the
+        // backend choice reaches all the way back to here.
+        config.window.openGLContext = (backend == hp::RenderBackend::OpenGL);
         return config;
     }
 
@@ -57,7 +95,7 @@ private:
         // window is closed, so this is where a device is actually visible.
         if (window() != nullptr) {
             auto* render = static_cast<hp::RenderLayer*>(
-                layers().push(std::make_unique<hp::RenderLayer>(*window())));
+                layers().push(std::make_unique<hp::RenderLayer>(*window(), renderConfig())));
             // Deliberately not black: a black window and a broken window look
             // identical, and "did it clear?" is the only question this layer
             // can currently answer.
@@ -123,13 +161,11 @@ private:
 } // namespace
 
 std::unique_ptr<hp::Application> hp::createApplication(int argc, char** argv) {
-    (void)argc;
-    (void)argv;
 
     // Before constructing the application, not in onStartup(): the engine logs
     // as it starts up, and a sink installed later misses those lines. Logging
     // that only begins once the thing being logged is already running is the
     // least useful kind.
     hp::logAddConsoleSink();
-    return std::make_unique<Editor>();
+    return std::make_unique<Editor>(backendFromArgs(argc, argv));
 }

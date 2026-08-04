@@ -29,8 +29,8 @@ relative to everything that allocates GPU resources.
 ## Subtasks
 
 - [x] 25.1 Device/context/swapchain creation via Diligent's engine factories — Vulkan up on real hardware; see below
-- [ ] 25.2 Backend selection and command-line override — the selection path exists and both backends are reachable, but **OpenGL cannot come up at all** (see below) and there is no command-line override yet
-- [ ] 25.3 Resize handling — `RenderLayer::resize()` works on a live swap chain (measured), but is **not yet wired to the window resize event**
+- [x] 25.2 Backend selection and command-line override — both backends now come up; `--backend=vulkan|opengl`; D15's compute floor enforced
+- [x] 25.3 Resize handling, driven by the window resize event (T0018) — via `ILayer::onEvent`, and deliberately not consumed
 - [x] 25.4 Shutdown ordering — GPU resources released before the device — flush, wait-for-idle, then swap chain, context, device
 - [x] 25.5 Profiling zones using the T0019 macros while writing, not after
 - [x] 25.6 Enable Vulkan validation layers in debug builds
@@ -210,4 +210,62 @@ Also confirmed, exactly as T0110's correction predicted from reading the source:
 zig build test -Dtest=all   18/18 steps, 24/24 tests, 55 integration + 49 fast, both targets
 zig build docs              exit 0
 RenderLayer::resize(800, 600) on a live Vulkan swap chain -- still ready, clean release
+```
+
+## 25.2 and 25.3 done (2026-08-04)
+
+### The OpenGL failure was an ordering problem, and the fix reaches back to the window
+
+`SDL_WINDOW_OPENGL` is a **creation** flag, and Diligent's Linux GL backend
+attaches to a context that is already current. So a GL context cannot be added to
+a window that already exists, which means **the backend is chosen before the
+window opens** — the opposite of what "push a render layer into a running
+application" suggests.
+
+`WindowConfig::openGLContext` carries that decision, and the apps parse
+`--backend=` before constructing their config so the choice reaches all the way
+back. With it:
+
+```
+### default              render: Vulkan on 'NVIDIA GeForce RTX 2080', 1280x720, 3 buffers, vsync on
+### --backend=opengl     render: OpenGL on 'NVIDIA GeForce RTX 2080/PCIe/SSE2', 1280x720, 2 buffers, vsync on
+### --backend=vulkan     render: Vulkan on 'NVIDIA GeForce RTX 2080', 1280x720, 3 buffers, vsync on
+### --backend=nonsense   warn: unknown --backend=nonsense (expected vulkan or opengl); using the default
+```
+
+An unrecognised value warns and falls back rather than aborting: a typo in a
+debugging flag should not stop the program starting.
+
+**A consequence worth stating plainly:** `RenderBackend::Default` can only fall
+back to OpenGL if the window was created with a GL context, and a window created
+for Vulkan was not. So "Vulkan, falling back to GL" is *not* automatic at run
+time — the fallback is a launch-time decision. Making it automatic would mean
+recreating the window, which is a bigger change than it sounds and belongs with
+whoever owns display mode switching (T0110/T0015).
+
+### D15's OpenGL 4.3 compute floor is enforced
+
+Checked on the created device rather than assumed from a version string:
+
+```cpp
+if (features.ComputeShaders != DEVICE_FEATURE_STATE_ENABLED) { ...refuse... }
+```
+
+The device here clears it. The refusal is deliberately loud and explains itself,
+because the failure a floor prevents is not a crash — it is an emitter that
+dispatches nothing and a scene quietly missing its effects.
+
+### Resize is wired, and deliberately not consumed
+
+`RenderLayer::onEvent` catches `WindowResizeEvent` and resizes the swap chain.
+It does **not** consume the event: a resize is news for everyone — the UI needs
+it, a camera needs the new aspect ratio — and a render layer swallowing it would
+break them in a way that presents as a layout bug.
+
+### Verified
+
+```
+zig build test -Dtest=all   both targets green, 55 integration + 49 fast
+zig build docs              exit 0
+both backends               device up, resize on a live swap chain, clean release
 ```

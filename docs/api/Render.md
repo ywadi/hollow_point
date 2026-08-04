@@ -6,7 +6,7 @@
 #include <hp/Render.hpp>
 ```
 
-16 public declaration(s), 16 documented.
+17 public declaration(s), 17 documented.
 
 ## `RenderBackend`
 
@@ -106,6 +106,19 @@ void onRender()
 ```
 
  Clears the back buffer and presents (frame phases 10 and 11).
+
+## `RenderLayer::onEvent`
+
+```cpp
+void onEvent(Event & event)
+```
+
+ Resizes the swap chain when the window resizes (25.3).
+
+ Taken from the event rather than polled, so the swap chain follows the
+ window without `Application` having to know a render layer exists.
+ @param event the event to inspect; only window resizes are acted on, and
+        none is consumed — other layers need to see a resize too.
 
 ## `RenderLayer::ready`
 

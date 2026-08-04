@@ -202,6 +202,22 @@ bool RenderLayer::Impl::createOpenGL(const Diligent::NativeWindow& window, int w
         return false;
     }
 
+    // D15's floor. Particles are GPU-compute-only, so a GL device without
+    // compute shaders cannot run them -- and the failure a floor prevents is
+    // not a crash, it is an emitter that dispatches nothing and a scene that is
+    // quietly missing its effects. Fail here, where the message can say why.
+    const Diligent::DeviceFeatures& features = device->GetDeviceInfo().Features;
+    if (features.ComputeShaders != Diligent::DEVICE_FEATURE_STATE_ENABLED) {
+        HP_LOG_ERROR(kLog, "OpenGL device has no compute shader support. D15 sets an OpenGL 4.3 "
+                           "floor because particles are GPU-compute-only; a device below it would "
+                           "run with effects silently absent. Refusing the device rather than "
+                           "starting without it.");
+        swapChain.Release();
+        context.Release();
+        device.Release();
+        return false;
+    }
+
     active = RenderBackend::OpenGL;
     return true;
 }
@@ -321,6 +337,17 @@ void RenderLayer::onRender() {
         HP_PROFILE_ZONE_NAMED("present");
         impl_->swapChain->Present(impl_->config.vsync ? 1U : 0U);
     }
+}
+
+void RenderLayer::onEvent(Event& event) {
+    if (event.type() != EventType::WindowResize) {
+        return;
+    }
+    const auto& resized = static_cast<WindowResizeEvent&>(event);
+    resize(resized.width(), resized.height());
+    // Deliberately not consumed. A resize is news for everyone -- the UI needs
+    // it, a camera needs the new aspect ratio -- and a render layer swallowing
+    // it would break them in a way that looks like a layout bug.
 }
 
 bool RenderLayer::ready() const {

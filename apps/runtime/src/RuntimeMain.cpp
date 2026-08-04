@@ -29,18 +29,56 @@ const hp::LogCategory kLog("runtime");
 #define HP_PATH_SEP "/"
 #endif
 
+/// Reads `--backend=vulkan|opengl` from the command line (25.2).
+///
+/// Parsed before the window is created, and that ordering is forced rather than
+/// stylistic: an OpenGL context is an SDL *creation* flag, so the backend has to
+/// be known before there is a window at all (see `WindowConfig::openGLContext`).
+/// An unrecognised value is reported and ignored rather than being fatal --
+/// a typo in a debugging flag should not stop the program starting.
+hp::RenderBackend backendFromArgs(int argc, char** argv) {
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+        if (arg.rfind("--backend=", 0) != 0) {
+            continue;
+        }
+        const std::string value = arg.substr(std::string("--backend=").size());
+        if (value == "vulkan" || value == "vk") {
+            return hp::RenderBackend::Vulkan;
+        }
+        if (value == "opengl" || value == "gl") {
+            return hp::RenderBackend::OpenGL;
+        }
+        HP_LOG_WARN(kLog, "unknown --backend={} (expected vulkan or opengl); using the default",
+                    value);
+    }
+    return hp::RenderBackend::Default;
+}
+
 class Runtime final : public hp::Application {
 public:
-    Runtime() : hp::Application(makeConfig()) {}
+    explicit Runtime(hp::RenderBackend backend)
+        : hp::Application(makeConfig(backend)), backend_(backend) {}
 
 private:
-    static hp::ApplicationConfig makeConfig() {
+    hp::RenderConfig renderConfig() const {
+        hp::RenderConfig config;
+        config.backend = backend_;
+        return config;
+    }
+
+    hp::RenderBackend backend_ = hp::RenderBackend::Default;
+
+    static hp::ApplicationConfig makeConfig(hp::RenderBackend backend) {
         hp::ApplicationConfig config;
         config.name = "HollowPoint Runtime";
         // No frame budget any more. It existed because T0015 had not shipped a
         // window, so closing one could not end the loop; it can now, and a
         // three-frame runtime cannot show anything on screen. Tests that need a
         // bounded run set exitAfterFrames themselves.
+        // The GL context must exist before the window does, so the
+        // backend choice reaches all the way back to here.
+        config.window.openGLContext = (backend == hp::RenderBackend::OpenGL);
         return config;
     }
 
@@ -58,7 +96,7 @@ private:
         // other feature (T0025). Pushed after the module so a module that wants
         // to draw is already loaded.
         if (window() != nullptr) {
-            layers().push(std::make_unique<hp::RenderLayer>(*window()));
+            layers().push(std::make_unique<hp::RenderLayer>(*window(), renderConfig()));
         }
     }
 
@@ -116,13 +154,11 @@ private:
 } // namespace
 
 std::unique_ptr<hp::Application> hp::createApplication(int argc, char** argv) {
-    (void)argc;
-    (void)argv;
 
     // Before constructing the application, not in onStartup(): the engine logs
     // as it starts up, and a sink installed later misses those lines. Logging
     // that only begins once the thing being logged is already running is the
     // least useful kind.
     hp::logAddConsoleSink();
-    return std::make_unique<Runtime>();
+    return std::make_unique<Runtime>(backendFromArgs(argc, argv));
 }

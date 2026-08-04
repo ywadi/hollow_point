@@ -26,6 +26,24 @@ struct WindowConfig {
     int width = 1280;
     int height = 720;
     bool resizable = true;
+
+    /// Create the window with an OpenGL context (T0025.2).
+    ///
+    /// **This has to be decided before the window exists, which is the whole
+    /// awkwardness.** `SDL_WINDOW_OPENGL` is a creation flag and a GL context
+    /// can only be made against a window that carries it, while Diligent's
+    /// Linux GL backend attaches to a context that is *already current*. So the
+    /// graphics backend is chosen before the window opens, not after — which is
+    /// the opposite of what a render layer pushed into a running application
+    /// would suggest.
+    ///
+    /// Found by trying: with this off, requesting the OpenGL backend fails with
+    /// "No current GL context found!" and no amount of work inside the render
+    /// layer can recover it.
+    ///
+    /// Off by default because Vulkan is the default backend and asking for a GL
+    /// context costs a context nothing else uses.
+    bool openGLContext = false;
 };
 
 /// Native handles, in the shape Diligent's `NativeWindow` structs want.

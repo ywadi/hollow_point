@@ -44,11 +44,11 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Paths.hpp>`](Paths.md) | 1 | 1 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
-| [`<hp/Render.hpp>`](Render.md) | 16 | 16 |
+| [`<hp/Render.hpp>`](Render.md) | 17 | 17 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 12 | 4 |
 
-**274 public declarations across 17 headers, 157 documented.**
+**275 public declarations across 17 headers, 158 documented.**
 
 ## Every symbol
 
@@ -288,6 +288,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `RenderLayer::onAttach` | [`Render.hpp`](Render.md) |
 | `RenderLayer::onDetach` | [`Render.hpp`](Render.md) |
 | `RenderLayer::onRender` | [`Render.hpp`](Render.md) |
+| `RenderLayer::onEvent` | [`Render.hpp`](Render.md) |
 | `RenderLayer::ready` | [`Render.hpp`](Render.md) |
 | `RenderLayer::backend` | [`Render.hpp`](Render.md) |
 | `RenderLayer::adapterDescription` | [`Render.hpp`](Render.md) |

@@ -121,6 +121,14 @@ public:
     /// Clears the back buffer and presents (frame phases 10 and 11).
     void onRender() override;
 
+    /// Resizes the swap chain when the window resizes (25.3).
+    ///
+    /// Taken from the event rather than polled, so the swap chain follows the
+    /// window without `Application` having to know a render layer exists.
+    /// @param event the event to inspect; only window resizes are acted on, and
+    ///        none is consumed — other layers need to see a resize too.
+    void onEvent(Event& event) override;
+
     /// @returns whether a device came up. Everything else is safe to call when
     ///          this is false; it simply does nothing.
     [[nodiscard]] bool ready() const;
