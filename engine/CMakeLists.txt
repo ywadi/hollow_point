@@ -186,19 +186,26 @@ target_link_libraries(hp_engine PRIVATE SDL3::SDL3-static)
 # On Linux there is no such collision, so the shared targets link directly and
 # `GetEngineFactoryVk()` resolves at load time. Measured working on an RTX 2080.
 if (WIN32)
+    # Static on Windows, and both alternatives were tried and measured.
+    #
+    # Linking the engine DLLs' import libraries fails at link time:
+    # GraphicsEngineVk_64r.dll exports `atexit`, zig's MinGW dllcrt2.obj defines
+    # it, and lld-link refuses the duplicate.
+    #
+    # Diligent's own explicit-load path fails at *run* time, which is worse
+    # because it compiles. The DLL loads, and then GetProcAddress returns null:
+    # under MinGW the factory is exported as `Diligent_GetEngineFactoryVk`, while
+    # LoadEngineDll asks for `GetEngineFactoryVk`. Measured with a probe --
+    # "loaded, GetEngineFactoryVk=0000000000000000".
+    #
+    # Static linking sidesteps both: no import library, so no atexit collision,
+    # and no name lookup, so no prefix mismatch. The cost is that both backends
+    # are baked into libhp_engine.dll rather than being separate files, so
+    # neither can be absent on Windows.
     target_link_libraries(hp_engine PRIVATE
-        Diligent-GraphicsEngineVkInterface
-        Diligent-GraphicsEngineOpenGLInterface
+        Diligent-GraphicsEngineVk-static
+        Diligent-GraphicsEngineOpenGL-static
         Diligent-Common)
-    target_compile_definitions(hp_engine PRIVATE
-        DILIGENT_VK_EXPLICIT_LOAD=1
-        DILIGENT_OPENGL_EXPLICIT_LOAD=1)
-    # The DLLs are loaded by name at run time, so they must exist beside the
-    # executable -- which `dist` already guarantees, and the build tree gets via
-    # the apps' POST_BUILD copy of the runtime DLL set.
-    add_dependencies(hp_engine
-        Diligent-GraphicsEngineVk-shared
-        Diligent-GraphicsEngineOpenGL-shared)
 else()
     target_link_libraries(hp_engine PRIVATE
         Diligent-GraphicsEngineVk-shared

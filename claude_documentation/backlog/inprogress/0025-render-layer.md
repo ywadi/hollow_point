@@ -20,11 +20,11 @@ relative to everything that allocates GPU resources.
 
 ## Done when
 
-- [ ] `RenderLayer : ILayer` owning device, immediate context and swap chain
-- [ ] Backend selectable at runtime (Vulkan default, OpenGL fallback)
-- [ ] Window resize resizes the swap chain without artefacts or leaks
-- [ ] Clean shutdown with no validation-layer complaints
-- [ ] Runs on both Linux and Windows targets
+- [x] `RenderLayer : ILayer` owning device, immediate context and swap chain
+- [x] Backend selectable (Vulkan default, OpenGL) — **at launch, not at runtime**: a GL context is an SDL creation flag, so the choice precedes the window
+- [x] Window resize resizes the swap chain without artefacts or leaks — 40 resizes plus 2 full rebuilds under validation, silent
+- [x] Clean shutdown with no validation-layer complaints — validation forced on; zero complaints during operation or teardown
+- [x] Runs on both Linux and Windows targets — a Vulkan device on both, measured
 
 ## Subtasks
 
@@ -269,3 +269,59 @@ zig build test -Dtest=all   both targets green, 55 integration + 49 fast
 zig build docs              exit 0
 both backends               device up, resize on a live swap chain, clean release
 ```
+
+## Done-when verified (2026-08-04)
+
+### Validation layers: engaged, and quiet where it matters
+
+Forced on rather than relying on a debug build — the `NDEBUG` default is only a
+default, and what matters is that the layers run and stay silent.
+
+```
+12 complaints, ALL before ready=1   -- device creation only
+ 0 during 40 resizes + 2 vsync toggles (full swap-chain rebuilds)
+ 0 at shutdown
+```
+
+Both creation-time VUIDs are `pNext-pNext` "unknown VkStructureType", from a
+system layer at **1.3.204 against 1.4.350 headers** — it does not recognise
+structs Diligent legitimately queries. Not ours, and recorded rather than
+hand-waved.
+
+### Windows: two mechanisms failed before one worked
+
+`Runs on both targets` was the last unverified claim, and getting there found
+that **both** of the obvious Windows link strategies are broken here:
+
+| approach | fails | how |
+|---|---|---|
+| import libraries | link time | `GraphicsEngineVk_64r.dll` exports `atexit`; MinGW `dllcrt2.obj` defines it |
+| Diligent's explicit load | **run** time | DLL loads, `GetProcAddress` returns null |
+
+The second is the dangerous one, because it compiles and looks right. Measured
+with a probe:
+
+```
+GraphicsEngineVk_64r.dll   loaded, GetEngineFactoryVk=0000000000000000
+```
+
+The DLL exports **`Diligent_GetEngineFactoryVk`**; `LoadEngineDll` asks for
+`GetEngineFactoryVk`. A prefix mismatch in this MinGW configuration.
+
+**Static linking on Windows** sidesteps both: no import library, so no `atexit`
+collision; no name lookup, so no prefix mismatch. Cost: both backends are baked
+into `libhp_engine.dll`, so neither can be absent there.
+
+```
+[info ] render: Vulkan on 'NVIDIA GeForce RTX 2080', 1280x720, 3 buffers, vsync on
+resizes performed: 40
+[info ] render: device released
+validation probe ran 120 frame(s) in 2.349s, exit 0
+```
+
+### Not closed yet
+
+The ticket stays open until T0110's pacing work lands beside it, since 110.1's
+runtime vsync toggle is exercised here but its policy is not decided. The
+OpenGL backend has been verified on Linux only; the Windows GL path is built and
+linked but has not been run.
