@@ -71,6 +71,7 @@ add_library(hp_engine SHARED
     src/Input.cpp
     src/Paths.cpp
     src/Render.cpp
+    src/Scene.cpp
     src/Layer.cpp
     src/Log.cpp
     src/Time.cpp
@@ -185,6 +186,36 @@ target_link_libraries(hp_engine PRIVATE SDL3::SDL3-static)
 #
 # On Linux there is no such collision, so the shared targets link directly and
 # `GetEngineFactoryVk()` resolves at load time. Measured working on an RTX 2080.
+
+# The one PUBLIC piece of Diligent: the math headers (T0021, D21).
+#
+# `hp/Math.hpp` is a public header and it includes `BasicMath.hpp`, so every
+# consumer needs to be able to find it. That is a deliberate amendment to the
+# rule directly above, argued in D21 and in `hp/Math.hpp`'s own comment: the
+# conventions document requires gameplay to use Diligent's math types, and
+# `BasicMath.hpp` drags in 74 headers including the RHI because Diligent hashes
+# its descriptors in the same file it hashes vectors.
+#
+# **Include directories only, never the library.** `Diligent-Common` is a STATIC
+# library; linking it PUBLIC would compile its code into every gameplay module,
+# and a second copy of anything stateful is exactly the failure T0105.1 and
+# T0127 were. Using the target's INTERFACE_INCLUDE_DIRECTORIES rather than a
+# hard-coded path keeps this correct if Diligent moves the directory, without
+# creating a link edge.
+#
+# `Diligent-PublicBuildSettings` *is* linked PUBLIC, and safely: it is an
+# INTERFACE target carrying only `PLATFORM_LINUX=1` / `PLATFORM_WIN32=1`. Those
+# are not optional — `PlatformDefinitions.h` is a hard `#error` without one, so
+# omitting it turns every gameplay TU that includes a transform into a compile
+# failure with a misleading message.
+#
+# Measured: `Common/interface` alone is sufficient. Everything below it resolves
+# through relative includes, so this is one directory rather than the six the
+# chain actually reaches into.
+target_link_libraries(hp_engine PUBLIC Diligent-PublicBuildSettings)
+target_include_directories(hp_engine PUBLIC
+    $<TARGET_PROPERTY:Diligent-Common,INTERFACE_INCLUDE_DIRECTORIES>)
+
 if (WIN32)
     # Static on Windows, and both alternatives were tried and measured.
     #

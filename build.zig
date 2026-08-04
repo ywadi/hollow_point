@@ -509,6 +509,23 @@ pub fn build(b: *Build) void {
         // reference it cannot vouch for.
         "--isystem",
         "third_party/entt/src",
+        // <hp/Math.hpp> includes Diligent's BasicMath.hpp (D21). One directory
+        // is enough -- everything below it resolves through relative includes,
+        // measured -- but the platform macro is not optional: Diligent's
+        // PlatformDefinitions.h is a hard #error without one, and libclang would
+        // report it as a defect in *our* header.
+        "--isystem",
+        "third_party/DiligentEngine/DiligentCore/Common/interface",
+    });
+    // The host's platform, not the build target's. This step parses headers, it
+    // does not compile for anything, and Diligent's Linux platform headers reach
+    // for system headers a Windows host does not have. No public header is
+    // platform-conditional today, so the generated reference is identical either
+    // way -- and if that ever stops being true, the check fails loudly rather
+    // than silently producing two different references.
+    docs.addArg(switch (b.graph.host.result.os.tag) {
+        .windows => "--define=PLATFORM_WIN32=1",
+        else => "--define=PLATFORM_LINUX=1",
     });
     docs.addArg(if (rewrite_baseline) "--write-baseline" else "--check");
     docs.setName(if (rewrite_baseline) "generate api docs (rewriting baseline)" else "generate api docs");

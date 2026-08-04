@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 260 |
 | **Created** | 2026-08-03 |
+| **Refs** | [../inprogress/0021-scene-and-ecs.md](../inprogress/0021-scene-and-ecs.md) |
 
 ## Why
 
@@ -64,3 +65,21 @@ it for the duration of a frame and no longer.
 
 Cross-scene references should be disallowed rather than half-supported — decide
 that explicitly.
+
+### Cross-ticket obligation — T0021 (2026-08-04)
+
+**`Scene::clone` exists and this ticket must extend it.** `CloneIds::Regenerate`
+currently remaps the `Hierarchy` component — parent and children — and nothing
+else. Any component holding an entity reference is copied verbatim, so after a
+duplicate its references still point into the *source* scene.
+
+That is not an oversight to fix here: remapping needs the old-to-new map and the
+reference type itself, and both are yours. The map is built inside
+`Scene::clone` in `engine/src/Scene.cpp` and is discarded when it returns, so
+exposing it is part of the work.
+
+The other half is already honoured and is worth not undoing: **GUID lookup is
+per-scene, never global** (`Scene::byGuid_` is a member). `CloneIds::Preserve`
+puts the same GUIDs in two live scenes at once, which is exactly what makes
+references keep resolving inside a play-mode clone — and exactly what a global
+map would make ambiguous.

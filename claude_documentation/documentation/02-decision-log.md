@@ -726,3 +726,77 @@ nothing for GL context loss on desktop (`glGetGraphicsResetStatus` and
 device loss is therefore **undefined** — it will present as whatever the driver
 does, most likely a crash without the distinguishable message. Vulkan is the
 default backend, which is what keeps this acceptable.
+
+## D21 — Diligent's math headers are public API; the RHI they drag in is visible but unlinkable
+
+**Decided** 2026-08-04, on T0021, when the first public header needed a vector.
+
+Two binding rules collided and neither had anticipated the other:
+
+- `06-engine-conventions.md` (T0056) says **gameplay uses Diligent's math types
+  directly**, not a wrapper. Every renderer call takes them, so a second vector
+  library means conversions at every boundary forever, and the two libraries
+  disagree about row versus column major — a mismatch that produces a transposed
+  matrix about once a month.
+- `hp/Render.hpp` and T0013's 13.3 say **no public engine header may name a
+  Diligent type**, because doing so hands every consumer Diligent's include path.
+
+They cannot both hold, because **the math cannot be had without the RHI.**
+`BasicMath.hpp` includes `HashUtils.hpp` — solely for `ComputeHash`, used by the
+`std::hash` specializations at the bottom of the file — and `HashUtils.hpp`
+includes `Sampler.h`, `PipelineState.h`, `TextureView.h`,
+`PipelineResourceSignature.h` and `VertexPool.h`, so it can hash *their*
+descriptors. The leak is an artifact of Diligent hashing everything in one
+header, not of anything intrinsic to the math.
+
+**Measured, not assumed** (2026-08-04, zig 0.16.0, this tree):
+
+| | |
+|---|---|
+| A TU containing only `#include "BasicMath.hpp"` | **146,280** preprocessed lines |
+| Distinct Diligent headers pulled in | **74** |
+| RHI types made visible | `IRenderDevice`, `IDeviceContext`, `IPipelineState`, `ISampler`, `ITextureView` |
+| Added to a TU already including entt | **+594 ms** (1557 → 2151 ms, +38%, three-run mean) |
+
+**Decision: the math policy wins, and the exposure is made as narrow as it can
+be.** `hp/Math.hpp` is the only public header that includes Diligent, and it
+exists so that this dependency is deliberate and has one place to change.
+
+The narrowness is the substance of the decision, not decoration:
+
+- **Include directories go PUBLIC; libraries never do.** `Diligent-Common` is a
+  STATIC library, and linking it PUBLIC would compile its code into every
+  gameplay module. A second copy of anything stateful is precisely the
+  statics-per-artifact failure behind T0105.1's dangling `__cxa_atexit` and
+  T0127's typeinfo mismatch. The graphics engines stay PRIVATE, so **the RHI
+  types are visible to gameplay and unlinkable by it** — declarations with no
+  symbol behind them.
+- `Diligent-PublicBuildSettings` *is* linked PUBLIC and is safe: it is an
+  `INTERFACE` target carrying only `PLATFORM_LINUX=1` / `PLATFORM_WIN32=1`.
+  Those are not optional — `PlatformDefinitions.h` is a hard `#error` without
+  one — so omitting them turns every gameplay TU that touches a transform into a
+  compile failure with a misleading message.
+- **`hp/Render.hpp` stays a pimpl.** Nothing here makes it acceptable for an
+  engine header to hand out an `IRenderDevice`. 13.3 is amended for *math*, not
+  repealed.
+- Measured: `Common/interface` alone suffices; everything below resolves through
+  relative includes.
+
+**Rejected, with reasons:**
+
+- **An `hp::Vec3` converting at the boundary.** This is what the conventions
+  document already rejected, and the collision above does not make it a better
+  idea — it makes the conversion surface larger, since transforms now cross
+  between gameplay and renderer constantly.
+- **Forward declaration.** A component holds a transform *by value*, so the type
+  must be complete. There is no version of this that works.
+- **Patching or forking Diligent to split the hashers out.** `HashUtils.hpp`
+  uses `#pragma once`, so its guard cannot be pre-tripped from outside;
+  DiligentEngine is an upstream submodule, so the alternative is carrying a fork.
+  Six hundred milliseconds per TU is not worth a permanent merge burden.
+
+**Revisit when** either the compile cost is measured to matter at real project
+scale — the mitigation is a precompiled header, which D19 already commits to for
+iteration speed — or upstream splits the math hashers into their own header, at
+which point `hp/Math.hpp` is the single file that changes and the RHI stops being
+visible at all.

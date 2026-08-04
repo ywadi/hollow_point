@@ -421,6 +421,11 @@ def main() -> int:
                              "include vendored third-party headers (entt, for one); without "
                              "these libclang cannot parse them and the run aborts rather than "
                              "emitting an incomplete reference.")
+    parser.add_argument("--define", action="append", default=[],
+                        help="preprocessor definition, repeatable, e.g. PLATFORM_LINUX=1. "
+                             "Diligent's headers -- which <hp/Math.hpp> includes -- are a "
+                             "hard #error without a platform macro, so parsing them needs "
+                             "the same define the build passes.")
     parser.add_argument("--check", action="store_true",
                         help="fail on documentation defects not present in the baseline")
     parser.add_argument("--baseline", default="tools/api_docs_baseline.txt",
@@ -453,6 +458,7 @@ def main() -> int:
     if args.zig:
         flags += [f"-isystem{p}" for p in zig_include_paths(pathlib.Path(args.zig))]
     flags += [f"-isystem{d}" for d in args.isystem]
+    flags += [f"-D{d}" for d in args.define]
 
     index = cx.Index.create()
     per_header: dict[str, list[dict]] = {}

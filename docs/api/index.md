@@ -39,16 +39,18 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Input.hpp>`](Input.md) | 26 | 26 |
 | [`<hp/Layer.hpp>`](Layer.md) | 28 | 16 |
 | [`<hp/Log.hpp>`](Log.md) | 22 | 12 |
+| [`<hp/Math.hpp>`](Math.md) | 6 | 6 |
 | [`<hp/Module.hpp>`](Module.md) | 5 | 5 |
 | [`<hp/ModuleHost.hpp>`](ModuleHost.md) | 19 | 19 |
 | [`<hp/Paths.hpp>`](Paths.md) | 1 | 1 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
 | [`<hp/Render.hpp>`](Render.md) | 19 | 19 |
+| [`<hp/Scene.hpp>`](Scene.md) | 48 | 48 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 
-**285 public declarations across 17 headers, 168 documented.**
+**339 public declarations across 19 headers, 222 documented.**
 
 ## Every symbol
 
@@ -242,6 +244,12 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `logCategoryAt` | [`Log.hpp`](Log.md) |
 | `logWrite` | [`Log.hpp`](Log.md) |
 | `logEnabled` | [`Log.hpp`](Log.md) |
+| `float2` | [`Math.hpp`](Math.md) |
+| `float3` | [`Math.hpp`](Math.md) |
+| `float4` | [`Math.hpp`](Math.md) |
+| `float3x3` | [`Math.hpp`](Math.md) |
+| `float4x4` | [`Math.hpp`](Math.md) |
+| `Quaternion` | [`Math.hpp`](Math.md) |
 | `engineBuildId` | [`Module.hpp`](Module.md) |
 | `ModuleBuildIdFn` | [`Module.hpp`](Module.md) |
 | `ModuleCompatibility` | [`Module.hpp`](Module.md) |
@@ -299,6 +307,54 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `RenderLayer::vsync` | [`Render.hpp`](Render.md) |
 | `RenderLayer::setVsync` | [`Render.hpp`](Render.md) |
 | `RenderLayer::setClearColour` | [`Render.hpp`](Render.md) |
+| `Scene` | [`Scene.hpp`](Scene.md) |
+| `Id` | [`Scene.hpp`](Scene.md) |
+| `Tag` | [`Scene.hpp`](Scene.md) |
+| `Transform` | [`Scene.hpp`](Scene.md) |
+| `Hierarchy` | [`Scene.hpp`](Scene.md) |
+| `MeshRenderer` | [`Scene.hpp`](Scene.md) |
+| `Camera` | [`Scene.hpp`](Scene.md) |
+| `Entity` | [`Scene.hpp`](Scene.md) |
+| `Entity::Entity` | [`Scene.hpp`](Scene.md) |
+| `Entity::Entity` | [`Scene.hpp`](Scene.md) |
+| `Entity::valid` | [`Scene.hpp`](Scene.md) |
+| `Entity::guid` | [`Scene.hpp`](Scene.md) |
+| `Entity::scene` | [`Scene.hpp`](Scene.md) |
+| `Entity::raw` | [`Scene.hpp`](Scene.md) |
+| `Entity::add` | [`Scene.hpp`](Scene.md) |
+| `Entity::has` | [`Scene.hpp`](Scene.md) |
+| `Entity::get` | [`Scene.hpp`](Scene.md) |
+| `Entity::tryGet` | [`Scene.hpp`](Scene.md) |
+| `Entity::remove` | [`Scene.hpp`](Scene.md) |
+| `Entity::operator==` | [`Scene.hpp`](Scene.md) |
+| `Entity::operator!=` | [`Scene.hpp`](Scene.md) |
+| `CloneIds` | [`Scene.hpp`](Scene.md) |
+| `Scene` | [`Scene.hpp`](Scene.md) |
+| `Scene::Scene` | [`Scene.hpp`](Scene.md) |
+| `Scene::Scene` | [`Scene.hpp`](Scene.md) |
+| `Scene::operator=` | [`Scene.hpp`](Scene.md) |
+| `Scene::Scene` | [`Scene.hpp`](Scene.md) |
+| `Scene::operator=` | [`Scene.hpp`](Scene.md) |
+| `Scene::create` | [`Scene.hpp`](Scene.md) |
+| `Scene::createWithGuid` | [`Scene.hpp`](Scene.md) |
+| `Scene::destroy` | [`Scene.hpp`](Scene.md) |
+| `Scene::valid` | [`Scene.hpp`](Scene.md) |
+| `Scene::find` | [`Scene.hpp`](Scene.md) |
+| `Scene::setParent` | [`Scene.hpp`](Scene.md) |
+| `Scene::roots` | [`Scene.hpp`](Scene.md) |
+| `Scene::size` | [`Scene.hpp`](Scene.md) |
+| `Scene::clone` | [`Scene.hpp`](Scene.md) |
+| `Scene::registry` | [`Scene.hpp`](Scene.md) |
+| `Scene::registry` | [`Scene.hpp`](Scene.md) |
+| `registerComponent` | [`Scene.hpp`](Scene.md) |
+| `registerComponentClone` | [`Scene.hpp`](Scene.md) |
+| `registerCoreComponents` | [`Scene.hpp`](Scene.md) |
+| `add` | [`Scene.hpp`](Scene.md) |
+| `has` | [`Scene.hpp`](Scene.md) |
+| `get` | [`Scene.hpp`](Scene.md) |
+| `tryGet` | [`Scene.hpp`](Scene.md) |
+| `remove` | [`Scene.hpp`](Scene.md) |
+| `registerComponent` | [`Scene.hpp`](Scene.md) |
 | `Clock` | [`Time.hpp`](Time.md) |
 | `Clock::Clock` | [`Time.hpp`](Time.md) |
 | `Clock::tick` | [`Time.hpp`](Time.md) |

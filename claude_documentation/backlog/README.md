@@ -43,7 +43,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 180 | [T0103](open/0103-virtual-filesystem-and-packs.md) | Virtual filesystem and content packs | 3 — Data model | 🔜 TODO | High | Moderate |
 | 185 | [T0112](completed/0112-string-identity-and-localisation.md) | String identity: keys before literals | 3 — Data model | ✅ DONE | Medium | Simple |
 | 190 | [T0020](open/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | 🔜 TODO | High | Complex |
-| 200 | [T0021](open/0021-scene-and-ecs.md) | Scene and entity-component system | 3 — Data model | 🔜 TODO | High | Moderate |
+| 200 | [T0021](inprogress/0021-scene-and-ecs.md) | Scene and entity-component system | 3 — Data model | 🚧 IN PROGRESS | High | Moderate |
 | 210 | [T0101](open/0101-transform-hierarchy-and-world-transforms.md) | Transform hierarchy propagation and world transforms | 3 — Data model | 🔜 TODO | High | Moderate |
 | 220 | [T0023](open/0023-asset-manager.md) | AssetManager, asset pool and metafiles | 3 — Data model | 🔜 TODO | High | Complex |
 | 230 | [T0026](open/0026-job-system-enkits.md) | Job system on enkiTS | 3 — Data model | 🔜 TODO | Medium | Simple |
