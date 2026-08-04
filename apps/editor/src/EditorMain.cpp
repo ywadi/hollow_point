@@ -75,6 +75,14 @@ private:
         config.window.title = "HollowPoint Editor";
         config.window.width = 1280;
         config.window.height = 720;
+        // T0110: the editor does not render uncapped. Vsync alone is not the
+        // answer -- it does nothing for a hidden or minimised window, and a
+        // driver may ignore it -- so the cap is what actually stops an editor
+        // flattening a laptop battery while nobody is looking at it. 60 while
+        // focused is well above what editing needs; 10 in the background is
+        // enough to stay responsive to a click that brings it back.
+        config.frameRateCap = 60;
+        config.backgroundFrameRateCap = 10;
         // The GL context must exist before the window does, so the
         // backend choice reaches all the way back to here.
         config.window.openGLContext = (backend == hp::RenderBackend::OpenGL);

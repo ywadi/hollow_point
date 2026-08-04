@@ -6,7 +6,7 @@
 #include <hp/Application.hpp>
 ```
 
-21 public declaration(s), 11 documented.
+22 public declaration(s), 12 documented.
 
 ## `ApplicationConfig`
 
@@ -111,6 +111,16 @@ std::uint64_t frame() const
 ```
 
 *No documentation comment.*
+
+## `Application::focused`
+
+```cpp
+bool focused() const
+```
+
+ @returns whether the window currently has focus. True in a headless run,
+          where there is no window to lose focus and pretending otherwise
+          would silently apply the background cap forever.
 
 ## `Application::window`
 

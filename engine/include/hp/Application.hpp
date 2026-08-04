@@ -42,6 +42,26 @@ struct ApplicationConfig {
     /// without a display, which is how a test suite ends up needing a desktop.
     bool headless = false;
 
+    /// Frame-rate cap in Hz while the window has focus. 0 means uncapped.
+    ///
+    /// **Independent of vsync** (T0110.2), and both are wanted: vsync stops
+    /// tearing but does nothing when the window is hidden or when the driver
+    /// ignores it, and an editor rendering as fast as it can flattens a laptop
+    /// battery for no benefit anyone asked for. 0 is not "sensible default" —
+    /// it is "this application has thought about it and wants everything".
+    std::uint32_t frameRateCap = 0;
+
+    /// Frame-rate cap in Hz while the window does **not** have focus. 0 means
+    /// unchanged from `frameRateCap`.
+    ///
+    /// This is the whole of the focus-loss policy for now (T0110.3): a
+    /// backgrounded application keeps running and keeps its state, but stops
+    /// competing for the GPU with whatever the user actually switched to.
+    /// Pausing simulation is deliberately *not* done here — that is T0057's
+    /// clock and a game's decision, not the window layer's — and muting audio
+    /// is T0052's.
+    std::uint32_t backgroundFrameRateCap = 10;
+
     /// Stop after this many frames.
     ///
     /// Now that there is a window, closing it is the normal exit condition and
@@ -83,6 +103,11 @@ public:
     const Clock& clock() const { return clock_; }
 
     std::uint64_t frame() const { return clock_.frame(); }
+
+    /// @returns whether the window currently has focus. True in a headless run,
+    ///          where there is no window to lose focus and pretending otherwise
+    ///          would silently apply the background cap forever.
+    [[nodiscard]] bool focused() const { return focused_; }
 
     /// Null in a headless run.
     Window* window() { return window_.get(); }
@@ -173,6 +198,11 @@ private:
     LayerStack layers_;
     ModuleHost modules_;
     InputSystem input_;
+    bool focused_ = true;
+    /// Next frame's deadline, as nanoseconds on the steady clock; 0 when
+    /// uncapped. A plain integer rather than a `chrono::time_point` so this
+    /// widely-included public header does not drag in `<chrono>`.
+    std::uint64_t frameDeadlineNs_ = 0;
     Clock clock_;
     bool running_ = false;
     int exitCode_ = 0;

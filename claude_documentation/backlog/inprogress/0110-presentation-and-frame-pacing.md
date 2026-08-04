@@ -101,15 +101,12 @@ is cheap.
       code, the same shape as T0096's sRGB-framebuffer handling
 - [ ] Vsync is a player-facing display option (T0078's display section, see the
       amendment there), applied at runtime without recreating the device
-- [ ] A frame-rate cap exists independent of vsync -- menus and background
-      windows must not render at 3000 fps
-- [ ] The **editor** does not render uncapped. An editor burning a laptop
-      battery at maximum fps is a daily-life bug; the chosen mechanism (vsync,
-      cap, or render-on-demand) is recorded
-- [ ] Focus-loss policy is decided and implemented: what a backgrounded game
-      does -- cap hard, pause, mute, some combination. "Focus" appeared in five
-      files at survey time, all about input focus or focus-on-selection, none
-      about this. Interacts with pause (T0057) and, later, audio (T0052)
+- [x] A frame-rate cap exists independent of vsync — and works headless, so
+      it does not depend on a window existing at all
+- [x] The **editor** does not render uncapped — measured 116 fps → 57.6 fps.
+      Mechanism: **a cap**, not vsync and not render-on-demand; reasons below
+- [x] Focus-loss policy decided and implemented: **cap hard, and drop held
+      input**. Pause and mute explicitly *not* included — reasons below
 - [ ] T0100's frame anatomy names the present/pacing step explicitly, so pacing
       has a defined place in the frame rather than being wherever `Present`
       landed
@@ -123,13 +120,10 @@ is cheap.
 - [ ] 110.1 Present-mode selection at swap-chain creation and a runtime vsync
       toggle path -- lands inside T0025's device code, driven by this ticket's
       policy
-- [ ] 110.2 Frame-rate cap. The wait strategy matters: a naive `sleep` has
-      millisecond-scale jitter and produces pacing *worse* than none; expect a
-      sleep-then-spin or OS-precision-timer approach, and measure it
-- [ ] 110.3 Focus-loss handling: SDL3 window focus events (D16) feeding the
-      chosen policy
-- [ ] 110.4 Editor pacing -- decide and implement the editor's cap/vsync
-      behaviour, including while a modal or background window is up
+- [x] 110.2 Frame-rate cap — sleep-then-spin, measured at 30/60/120 Hz
+- [x] 110.3 Focus-loss handling — background cap + input reset; simulation
+      pause and audio mute deliberately excluded, see below
+- [x] 110.4 Editor pacing — capped at 60 focused / 10 background
 - [ ] 110.5 Display options wired into T0078: vsync on/off, cap value
       (off/30/60/120/custom), and whether raw present-mode selection is exposed
       as an advanced option or kept internal
@@ -193,3 +187,81 @@ difference between one policy and two that must later be reconciled.
 Also: **exclusive fullscreen interacts with presentation.** On some drivers it is
 what enables a true immediate/mailbox present path, so 129.6's decision wants
 this ticket's present-mode work in view rather than after it.
+
+## 110.2, 110.3 and 110.4 done (2026-08-04)
+
+### The cap holds, and the wait strategy is why
+
+The subtask warned that a naive `sleep` has millisecond-scale jitter and gives
+pacing *worse* than none. Sleep-then-spin — sleep to 1.5 ms short of the
+deadline, then yield-spin the rest — measured over 230 frames after warm-up:
+
+| cap | target | mean | p50 | p99 | max abs error | achieved |
+|---|---|---|---|---|---|---|
+| 30 | 33.333 ms | 33.333 | 33.333 | 33.334 | 0.022 ms | 30.0 fps |
+| 60 | 16.667 ms | 16.667 | 16.667 | 16.697 | 3.953 ms | 60.0 fps |
+| 120 | 8.333 ms | 8.333 | 8.333 | 8.360 | 1.316 ms | 120.0 fps |
+
+Mean and median land on the target to three decimal places and p99 is within
+0.03 ms. The `max abs error` column is honest about the tail: a rare scheduler
+hiccup still costs several milliseconds, and no user-space wait can prevent
+that. What it does *not* do is accumulate — the deadline advances by exactly one
+period from the **previous deadline** rather than from "now", so an overshoot is
+absorbed by the next frame instead of dragging the average down. Falling more
+than a whole period behind resets the baseline rather than trying to catch up,
+because catching up means a burst of unpaced frames.
+
+**Measured headless**, which matters: the cap must not depend on a window
+existing, or "a hidden window must not render at 3000 fps" is unenforceable
+exactly when it is needed.
+
+### The editor: a cap, not vsync, and not render-on-demand
+
+Measured 116 fps → 57.6 fps with the cap at 60.
+
+Vsync alone was rejected as the mechanism: it does nothing for a hidden or
+minimised window and a driver may ignore it, so it is not a battery guarantee.
+Render-on-demand is the right long-term answer for an editor and is a much
+larger change — it needs every panel to know when it is dirty — so it is not
+attempted here. The cap is the cheap thing that removes the daily-life bug now,
+and it does not block render-on-demand later.
+
+Runtime is uncapped while focused, deliberately: a game decides its own frame
+rate and vsync already holds it to the refresh rate. Its *background* cap is not
+a game's decision, because nothing benefits from a minimised game rendering flat
+out.
+
+### Focus-loss policy: cap hard, drop held input — and nothing else
+
+Two things happen on focus loss, and the second is the one that would otherwise
+be a bug report nobody could reproduce:
+
+1. The background cap applies (10 Hz by default).
+2. **`InputSystem::reset()` is called**, closing the hook T0068 deliberately left
+   without a policy. A window that loses focus while a key is held never
+   receives the key-up, so without this the action stays held forever — the
+   character walks into a wall while the player is in another application.
+
+Focus is observed in the application's own pump handler rather than in a layer,
+because a layer that consumed the event would silently take both behaviours
+away.
+
+**Pausing simulation and muting audio are deliberately excluded.** Pausing is
+T0057's clock and a game's decision — a server-authoritative or
+multiplayer-adjacent game must not pause on alt-tab, and the engine should not
+make that choice for it. Muting is T0052's, and there is no audio yet. Choosing
+those here would be inventing policy for subsystems that do not exist, which is
+how a default becomes a constraint nobody agreed to.
+
+## Still open
+
+- **110.1's vsync toggle works but its policy is not decided** — the runtime
+  toggle is implemented and exercised (T0025), and what the *user-facing* vsync
+  option maps to per backend is still unwritten.
+- **110.5 is blocked on T0078** (display options).
+- **110.6, the verification pass on both backends**, is not done: the cap and the
+  focus behaviour are measured on Linux only, and the tearing question was
+  restated rather than tested.
+- **Focus loss itself has not been observed end to end** — the code path is
+  wired and the reset is called from it, but no test alt-tabs a window. The
+  behaviour of the two pieces it calls is verified; the trigger is not.

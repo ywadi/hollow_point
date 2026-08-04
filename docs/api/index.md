@@ -31,7 +31,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | Header | Declarations | Documented |
 |---|---|---|
 | [`<hp/Api.hpp>`](Api.md) | 0 | 0 |
-| [`<hp/Application.hpp>`](Application.md) | 21 | 11 |
+| [`<hp/Application.hpp>`](Application.md) | 22 | 12 |
 | [`<hp/Engine.hpp>`](Engine.md) | 4 | 4 |
 | [`<hp/EntryPoint.hpp>`](EntryPoint.md) | 1 | 0 |
 | [`<hp/Event.hpp>`](Event.md) | 72 | 15 |
@@ -48,7 +48,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 12 | 4 |
 
-**275 public declarations across 17 headers, 158 documented.**
+**276 public declarations across 17 headers, 159 documented.**
 
 ## Every symbol
 
@@ -66,6 +66,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Application::clock` | [`Application.hpp`](Application.md) |
 | `Application::clock` | [`Application.hpp`](Application.md) |
 | `Application::frame` | [`Application.hpp`](Application.md) |
+| `Application::focused` | [`Application.hpp`](Application.md) |
 | `Application::window` | [`Application.hpp`](Application.md) |
 | `Application::window` | [`Application.hpp`](Application.md) |
 | `Application::layers` | [`Application.hpp`](Application.md) |

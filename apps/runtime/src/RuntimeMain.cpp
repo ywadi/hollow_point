@@ -72,6 +72,12 @@ private:
     static hp::ApplicationConfig makeConfig(hp::RenderBackend backend) {
         hp::ApplicationConfig config;
         config.name = "HollowPoint Runtime";
+        // Uncapped while focused, deliberately: a game decides its own frame
+        // rate and vsync already holds it to the refresh rate by default. The
+        // background cap is not a game's decision though -- nothing benefits
+        // from a minimised game rendering flat out (T0110).
+        config.frameRateCap = 0;
+        config.backgroundFrameRateCap = 10;
         // No frame budget any more. It existed because T0015 had not shipped a
         // window, so closing one could not end the loop; it can now, and a
         // three-frame runtime cannot show anything on screen. Tests that need a

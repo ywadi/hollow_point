@@ -1,4 +1,6 @@
+#include <chrono>
 #include <hp/Application.hpp>
+#include <thread>
 
 #include <hp/Event.hpp>
 #include <hp/Log.hpp>
@@ -27,6 +29,32 @@ void Application::requestExit(int exitCode) {
     exitCode_ = exitCode;
     running_ = false;
 }
+
+namespace {
+
+/// Waits until `deadline`, accurately enough to be worth doing.
+///
+/// Sleep-then-spin, and the split is the point (T0110.2). A plain
+/// `sleep_until` has millisecond-scale jitter on a general-purpose OS -- it
+/// wakes up *at least* that late, never early -- so a naive cap produces frame
+/// times that alternate long and short, which reads as worse pacing than no cap
+/// at all. Sleeping to just short of the deadline and busy-waiting the last
+/// slice gives back the accuracy while keeping almost all of the CPU saving.
+///
+/// The slack is deliberately generous. Undershooting costs a little spin;
+/// overshooting costs a missed frame, and a missed frame is visible.
+void waitUntil(std::chrono::steady_clock::time_point deadline) {
+    constexpr auto kSpinSlack = std::chrono::microseconds(1500);
+    const auto sleepUntil = deadline - kSpinSlack;
+    if (std::chrono::steady_clock::now() < sleepUntil) {
+        std::this_thread::sleep_until(sleepUntil);
+    }
+    while (std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::yield();
+    }
+}
+
+} // namespace
 
 int Application::run() {
     HP_PROFILE_ZONE_NAMED("Application::run");
@@ -69,6 +97,25 @@ int Application::run() {
                     // accumulated here rather than sampled at a frame boundary,
                     // which is what makes a key pressed and released inside one
                     // frame still register.
+                    // Focus is observed here rather than in a layer: the cap
+                    // and the input reset are the application's business, and a
+                    // layer that happened to consume the event would take them
+                    // away (T0110.3).
+                    if (e.type() == EventType::WindowFocusGained ||
+                        e.type() == EventType::WindowFocusLost) {
+                        focused_ = (e.type() == EventType::WindowFocusGained);
+                        if (!focused_) {
+                            // A window that loses focus while a key is held
+                            // never receives the key-up, so without this the
+                            // action stays held forever and the character walks
+                            // into a wall while the player is in another
+                            // application. This is the hook T0068 left for
+                            // exactly this decision.
+                            input_.reset();
+                        }
+                        HP_LOG_DEBUG(kLog, "focus {}", focused_ ? "gained" : "lost");
+                    }
+
                     if (input_.onEvent(e)) {
                         return;
                     }
@@ -212,6 +259,37 @@ int Application::run() {
         }
 
         HP_PROFILE_FRAME();
+
+        // Phase 13 tail: hold the frame rate down (T0110.2).
+        //
+        // After everything else, including present -- capping earlier would
+        // measure the wait as part of the frame and feed a wrong delta to the
+        // next one. The cap is *independent of vsync*: vsync does nothing for a
+        // hidden window, and this does nothing about tearing.
+        {
+            const std::uint32_t cap =
+                focused_ ? config_.frameRateCap
+                         : (config_.backgroundFrameRateCap != 0 ? config_.backgroundFrameRateCap
+                                                                : config_.frameRateCap);
+            if (cap != 0) {
+                const auto period = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                    std::chrono::duration<double>(1.0 / static_cast<double>(cap)));
+                // From the previous deadline rather than from "now", so the cap
+                // holds an average rate instead of drifting slower every frame
+                // by however long the wait overshot.
+                const auto nowNs = static_cast<std::uint64_t>(
+                    std::chrono::steady_clock::now().time_since_epoch().count());
+                const auto periodNs = static_cast<std::uint64_t>(period.count());
+                if (frameDeadlineNs_ == 0 || frameDeadlineNs_ + periodNs < nowNs) {
+                    frameDeadlineNs_ = nowNs; // first frame, or we fell far behind
+                }
+                frameDeadlineNs_ += periodNs;
+                waitUntil(std::chrono::steady_clock::time_point{
+                    std::chrono::steady_clock::duration{frameDeadlineNs_}});
+            } else {
+                frameDeadlineNs_ = 0;
+            }
+        }
 
         if (config_.exitAfterFrames && clock_.frame() >= *config_.exitAfterFrames) {
             HP_LOG_DEBUG(kLog, "frame budget reached ({}), stopping", *config_.exitAfterFrames);
