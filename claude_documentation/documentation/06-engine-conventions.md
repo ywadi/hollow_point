@@ -413,6 +413,85 @@ agent reads costs more than silence. The checker tracks these in
 comment leaves a reader to work it out; a wrong one tells them something untrue
 with confidence. That distinction is the whole reason the check exists.
 
+## Player-facing text is a key, never a literal
+
+**Any string a player can read is authored as a string-table key.** Not the
+English text — the key that resolves to it.
+
+```
+item.rusty_key.name          not   "Rusty Key"
+ui.menu.new_game             not   "New Game"
+dialogue.guard.greeting_01   not   "Halt!"
+```
+
+**Player-facing** means it reaches a human playing the game: item and ability
+names, menu and HUD labels, dialogue, tutorial text, subtitles, error text a
+player sees. Everything else is a plain literal and keying it would be actively
+wrong:
+
+- log messages and assertion text (developer-facing, and they must not depend on
+  a table that may not have loaded);
+- asset paths, VFS mount names, GUIDs;
+- reflected type and field names — those are **identity** (T0095), and a
+  localised identity is a bug, not a feature;
+- entity tag/name components (T0021) — the editor's label for an entity, not
+  something a player sees;
+- `DebugDraw::Text` (T0061), which is compiled out of shipping builds anyway.
+
+**Key shape:** lowercase, dot-separated, `domain.subject.field`, ASCII and
+`snake_case` within a segment. The leading segment is the domain (`item`, `ui`,
+`dialogue`, `ability`), so a table can be split by prefix later without renaming
+anything.
+
+**One authoritative English table**, authored as an ordinary data asset
+addressed through the VFS (D13) and loaded through the normal asset path
+(T0020/T0023). Its file format is T0020's decision, not this document's. English
+is the source language, so the English table is the one that gets edited by hand
+and the one a missing translation falls back to.
+
+**A missing key renders as its key in brackets** — `[item.rusty_key.name]` —
+never blank and never the empty string. A blank label is invisible in a
+screenshot and reads as a layout bug; a bracketed key is unmistakable, greppable,
+and tells you exactly which entry to add.
+
+### Why, since English-only would be less work today
+
+The cost is asymmetric and the asymmetry is the whole argument. A key costs one
+table entry at authoring time. A literal costs a migration across every scene,
+prefab, component and call site that exists when localisation arrives — and it is
+not a mechanical migration, because by then nobody can tell which literals were
+player-facing and which were incidental.
+
+The decisive point is that **this engine is not entitled to make that call.** It
+exists to power several games (T0109), and whether any one of them ships in more
+than English is that game's decision, taken years from now by people who will not
+be re-litigating the engine's data format. If the engine's authored data carries
+literals, every future game inherits English-only and the first one that wants
+otherwise pays for all of them. If it carries keys, a game that ships English-only
+pays for a table whose values are English — which is to say, nothing.
+
+So this is an engineering decision about what the engine forecloses, not a
+product decision about which languages a studio will fund.
+
+### What this deliberately does **not** build
+
+No resolver, no string-table loader, no font or text-rendering work — that is
+T0117 (rasterisation and atlas) and T0069 (UI layout and shaping). This is a
+convention only, and it is load-bearing precisely because it costs nothing to
+follow and cannot be applied retroactively.
+
+Two consequences worth naming before they surprise someone:
+
+- **The editor must resolve keys for display** as soon as it can edit a
+  player-facing string (T0035). Authoring against raw keys with no visible
+  English is miserable and people will paste literals instead to stay sane, which
+  quietly defeats the convention. Show the resolved text, edit the key.
+- **The first player-facing string field gets its own reflected type**, not a
+  bare `std::string` — otherwise neither the inspector nor the eventual resolver
+  can tell a key from prose. No such field exists yet (T0021's core components
+  carry none), so the type is not built here; it is built by whichever ticket
+  introduces the first one.
+
 ## What is deliberately not decided here
 
 - **Math, memory and container policy** — T0056. Whether we use Diligent's math

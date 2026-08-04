@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 200 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0053, T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), [../inprogress/0048-hot-reloadable-gameplay-module.md](../inprogress/0048-hot-reloadable-gameplay-module.md) |
+| **Refs** | T0053, T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), [../inprogress/0048-hot-reloadable-gameplay-module.md](../inprogress/0048-hot-reloadable-gameplay-module.md), [../completed/0112-string-identity-and-localisation.md](../completed/0112-string-identity-and-localisation.md) |
 
 ## Why
 
@@ -126,3 +126,24 @@ module are destroyed on unload, so anything kept there is gone. That single rule
 is what decides whether hot reload is reliable or a source of baffling bugs, and
 it means the registry must be owned engine-side from the start rather than
 handed to gameplay to keep.
+
+### Cross-ticket obligation — T0112 (2026-08-04)
+
+**This is the ticket that starts authoring data, so it is the one the string
+convention was written ahead of.** T0112 decided that every player-facing string
+is a string-table key, never an English literal; the rule and the reasoning are
+in [`../../documentation/06-engine-conventions.md`](../../documentation/06-engine-conventions.md).
+
+Two specifics land on this ticket's design:
+
+- **The entity tag/name component (21.3) is not player-facing and must not be a
+  key.** It is the editor's label for an entity — `Door_01`, `PlayerSpawn` —
+  and keying it would put developer identifiers in a translation table while
+  making the hierarchy panel depend on a table load. If a game wants a
+  displayable name for an entity, that is a separate, keyed component.
+- **None of the core components (21.4–21.5: transform, mesh, material, camera)
+  carries player-facing text**, which is why T0112 concluded no engine machinery
+  is needed yet. If that turns out to be wrong while implementing, the first
+  such field gets its own reflected type rather than a bare `std::string` — see
+  the convention's closing note, and say so on T0112 rather than adding one
+  quietly.

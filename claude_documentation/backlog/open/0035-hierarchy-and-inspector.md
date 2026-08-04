@@ -8,7 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 630 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0053 (Blocks this), T0032, T0071 |
+| **Refs** | T0053 (Blocks this), T0032, T0071, [../completed/0112-string-identity-and-localisation.md](../completed/0112-string-identity-and-localisation.md) |
 
 ## Why
 
@@ -97,3 +97,17 @@ rather than treat as an error.
   `min`/`max` for numeric ranges, `tooltip`, `read_only`, `hidden`. Acting on
   them is this ticket's job. Note `hidden` is a UI decision only — hidden
   properties are still serialised, so do not use it to exclude data.
+
+### Cross-ticket obligation — T0112 (2026-08-04)
+
+**A player-facing string field must show its resolved English text, not its
+key.** T0112 decided that all player-facing text is authored as a string-table
+key (`item.rusty_key.name`), and the convention is in
+[`../../documentation/06-engine-conventions.md`](../../documentation/06-engine-conventions.md).
+
+The failure it guards against is behavioural rather than technical: an inspector
+that shows raw keys makes authoring miserable, and people who cannot see what
+they are writing paste the English literal into the field instead — which
+silently defeats the convention everywhere it matters most. Show the resolved
+string, edit the key, and render a missing key as `[the.key]` exactly as the
+convention specifies.

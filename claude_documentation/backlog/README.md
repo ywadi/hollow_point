@@ -41,7 +41,7 @@ This is the work. For what is already proven to work — and what only appears t
 | — | [T0105](completed/0105-module-linkage-loose-ends.md) | Module linkage: the parts that need something built first | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | ▶ | [T0068](inprogress/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | ⏸ BLOCKED | Medium | Moderate |
 | 180 | [T0103](open/0103-virtual-filesystem-and-packs.md) | Virtual filesystem and content packs | 3 — Data model | 🔜 TODO | High | Moderate |
-| 185 | [T0112](open/0112-string-identity-and-localisation.md) | String identity: keys before literals | 3 — Data model | 🔜 TODO | Medium | Simple |
+| 185 | [T0112](completed/0112-string-identity-and-localisation.md) | String identity: keys before literals | 3 — Data model | ✅ DONE | Medium | Simple |
 | 190 | [T0020](open/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | 🔜 TODO | High | Complex |
 | 200 | [T0021](open/0021-scene-and-ecs.md) | Scene and entity-component system | 3 — Data model | 🔜 TODO | High | Moderate |
 | 210 | [T0101](open/0101-transform-hierarchy-and-world-transforms.md) | Transform hierarchy propagation and world transforms | 3 — Data model | 🔜 TODO | High | Moderate |
@@ -351,6 +351,17 @@ aggregate progress bar.
 
 Format is `<number> — <label>`; the number drives ordering. Completed tickets
 predate phases and are ungrouped, which is why the Completed column renders flat.
+
+**Phase numbers are engine-building order, not release order.** They say which
+capability is safe to build on which, and nothing else. Phase 8 is called
+"Runtime & export" and contains T0042, T0043 and T0083 — a runtime, an export
+pipeline and save games — four phases before T0069 makes it possible to *draw a
+menu*. That is not an oversight and it is not a promise that a game ships at
+phase 8: it means the export path is buildable and testable before the UI
+library is chosen, and that choosing the UI library early would gate real work on
+a decision with no forcing function. A game ships when the phases it happens to
+need are done, which is not the same as reaching a numbered milestone.
+Recorded by T0112, which found the ordering easy to misread.
 
 Phases 2 and 3 can start immediately — neither needs to know what the game is.
 Nothing gates them on knowing "what the game is" — that question was dropped with T0044, because this is an engine for a studio's several games rather than for one game (T0109). Engine capabilities are decided on their own tickets, on engineering grounds.

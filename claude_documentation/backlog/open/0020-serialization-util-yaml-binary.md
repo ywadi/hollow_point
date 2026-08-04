@@ -97,3 +97,18 @@ Two properties of that data are worth knowing before designing the format:
 
 Key *display* names for a rebinding UI are T0112's concern, not this one — see
 T0068's own note.
+
+### Cross-ticket obligation — T0112 (2026-08-04)
+
+**The English string table is a plain data asset, and this ticket picks its
+format.** T0112 settled that all player-facing text is authored as a key
+resolved through one authoritative English table, and deliberately did *not*
+decide how that table is stored — it is an ordinary asset through the VFS (D13),
+so whatever this ticket lands is what it uses. Nothing new is required of the
+format; the point is that the table must not grow its own bespoke loader when
+the time comes.
+
+Two properties it needs, both of which the rebinding-file argument above already
+implies: it round-trips human edits (translators and writers edit it by hand),
+and it survives entries being inserted and reordered, since keys are the identity
+and line position means nothing.
