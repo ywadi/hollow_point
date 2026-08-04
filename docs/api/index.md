@@ -34,6 +34,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Application.hpp>`](Application.md) | 22 | 12 |
 | [`<hp/Camera.hpp>`](Camera.md) | 10 | 10 |
 | [`<hp/CameraSystem.hpp>`](CameraSystem.md) | 11 | 11 |
+| [`<hp/Cook.hpp>`](Cook.md) | 14 | 14 |
 | [`<hp/DepthConvention.hpp>`](DepthConvention.md) | 2 | 2 |
 | [`<hp/Engine.hpp>`](Engine.md) | 4 | 4 |
 | [`<hp/EntryPoint.hpp>`](EntryPoint.md) | 1 | 0 |
@@ -55,8 +56,9 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Vfs.hpp>`](Vfs.md) | 23 | 23 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
+| [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
 
-**440 public declarations across 25 headers, 323 documented.**
+**499 public declarations across 27 headers, 382 documented.**
 
 ## Every symbol
 
@@ -105,6 +107,20 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `extractFrustum` | [`CameraSystem.hpp`](CameraSystem.md) |
 | `worldToScreen` | [`CameraSystem.hpp`](CameraSystem.md) |
 | `screenToWorldRay` | [`CameraSystem.hpp`](CameraSystem.md) |
+| `kCookFormatVersion` | [`Cook.hpp`](Cook.md) |
+| `CookHeader` | [`Cook.hpp`](Cook.md) |
+| `CookStatus` | [`Cook.hpp`](Cook.md) |
+| `hashSource` | [`Cook.hpp`](Cook.md) |
+| `writeCook` | [`Cook.hpp`](Cook.md) |
+| `readCookHeader` | [`Cook.hpp`](Cook.md) |
+| `readCook` | [`Cook.hpp`](Cook.md) |
+| `describe` | [`Cook.hpp`](Cook.md) |
+| `writeU32` | [`Cook.hpp`](Cook.md) |
+| `writeU64` | [`Cook.hpp`](Cook.md) |
+| `writeString` | [`Cook.hpp`](Cook.md) |
+| `readU32` | [`Cook.hpp`](Cook.md) |
+| `readU64` | [`Cook.hpp`](Cook.md) |
+| `readString` | [`Cook.hpp`](Cook.md) |
 | `kReverseZ` | [`DepthConvention.hpp`](DepthConvention.md) |
 | `kDepthClearValue` | [`DepthConvention.hpp`](DepthConvention.md) |
 | `engineVersion` | [`Engine.hpp`](Engine.md) |
@@ -502,3 +518,48 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Window::setSize` | [`Window.hpp`](Window.md) |
 | `Window::displayScale` | [`Window.hpp`](Window.md) |
 | `Window::displays` | [`Window.hpp`](Window.md) |
+| `YamlNode` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::YamlNode` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::valid` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::isMap` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::isSequence` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::isScalar` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::size` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::has` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::operator[]` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::at` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::keyAt` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::scalar` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::read` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::read` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::read` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::read` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::read` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::tryRead` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::tryRead` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::tryRead` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::tryRead` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::tryRead` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::addMap` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::addSequence` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::appendMap` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::appendSequence` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::set` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::set` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::set` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::set` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::set` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::append` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::append` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::append` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::append` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::append` | [`Yaml.hpp`](Yaml.md) |
+| `YamlDocument` | [`Yaml.hpp`](Yaml.md) |
+| `YamlDocument::YamlDocument` | [`Yaml.hpp`](Yaml.md) |
+| `YamlDocument::YamlDocument` | [`Yaml.hpp`](Yaml.md) |
+| `YamlDocument::operator=` | [`Yaml.hpp`](Yaml.md) |
+| `YamlDocument::YamlDocument` | [`Yaml.hpp`](Yaml.md) |
+| `YamlDocument::operator=` | [`Yaml.hpp`](Yaml.md) |
+| `YamlDocument::parse` | [`Yaml.hpp`](Yaml.md) |
+| `YamlDocument::root` | [`Yaml.hpp`](Yaml.md) |
+| `YamlDocument::emit` | [`Yaml.hpp`](Yaml.md) |

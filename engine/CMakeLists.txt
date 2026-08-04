@@ -67,6 +67,7 @@ add_library(hp_engine SHARED
     src/Reflect.cpp
     src/Application.cpp
     src/Camera.cpp
+    src/Cook.cpp
     src/CameraSystem.cpp
     src/Engine.cpp
     src/Guid.cpp
@@ -80,6 +81,7 @@ add_library(hp_engine SHARED
     src/Log.cpp
     src/Time.cpp
     src/Vfs.cpp
+    src/Yaml.cpp
     src/Window.cpp
 )
 add_library(hp::engine ALIAS hp_engine)
@@ -176,6 +178,11 @@ target_link_libraries(hp_engine PRIVATE SDL3::SDL3-static)
 # and T0127, in a form where the symptom is "the file is missing" rather than a
 # crash.
 target_link_libraries(hp_engine PRIVATE physfs-static)
+
+# rapidyaml, PRIVATE and static (T0020). Same seam argument as SDL and
+# PhysicsFS: <hp/Yaml.hpp> names no ryml:: or c4:: type, so the parser is
+# replaceable and its span-lifetime rules never reach a caller.
+target_link_libraries(hp_engine PRIVATE ryml)
 
 # Diligent, PRIVATE (T0025).
 #

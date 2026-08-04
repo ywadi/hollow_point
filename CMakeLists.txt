@@ -202,6 +202,54 @@ add_subdirectory(third_party/physfs)
 set(CMAKE_SKIP_RPATH OFF CACHE BOOL "Use RPATH" FORCE)
 set(CMAKE_SKIP_RPATH OFF)
 
+# rapidyaml -- YAML parsing and emitting (T0020). Target: ryml
+#
+# YAML is the source of truth for every serialized thing here; the binary form
+# is a derived cache (T0020's model). rapidyaml over yaml-cpp for speed and
+# maintenance, with <hp/Serialization.hpp> as the seam that makes that
+# reversible -- no ryml:: or c4:: type appears in an engine header.
+#
+# It brings c4core, which brings three more submodules of its own (cmake,
+# debugbreak, fast_float). That is more transitive vendoring than anything else
+# here, and it is the price of the parser; all four are pinned by rapidyaml's
+# own tags rather than floating.
+set(RYML_BUILD_TESTS         OFF CACHE BOOL "" FORCE)
+set(RYML_BUILD_BENCHMARKS    OFF CACHE BOOL "" FORCE)
+set(RYML_BUILD_TOOLS         OFF CACHE BOOL "" FORCE)
+set(RYML_BUILD_API           OFF CACHE BOOL "" FORCE)
+set(RYML_INSTALL             OFF CACHE BOOL "" FORCE)
+set(C4CORE_INSTALL           OFF CACHE BOOL "" FORCE)
+set(C4CORE_BUILD_TESTS       OFF CACHE BOOL "" FORCE)
+add_subdirectory(third_party/rapidyaml)
+
+# c4core cannot detect MinGW when the compiler is clang, and 20.1's "expected
+# fine" was wrong because of it.
+#
+# c4core/src/c4/compiler.hpp nests the MinGW test *inside* its GCC branch:
+#
+#     #elif defined(__clang__)          <- zig cc lands here
+#     #    define C4_CLANG
+#     #elif defined(__GNUC__)
+#     #    ifdef __MINGW32__
+#     #        define C4_MINGW          <- never reached
+#
+# zig cc targeting x86_64-windows-gnu defines __clang__, __MINGW32__ and
+# __MINGW64__ all at once -- verified with `zig cc -target x86_64-windows-gnu
+# -dM -E`. It therefore takes the clang branch, C4_MINGW is never defined, and
+# rapidyaml's common.hpp falls through to `#include <alloca.h>`, which MinGW
+# does not have -- it puts alloca in <malloc.h>. Every translation unit that
+# touches ryml fails to compile, on Windows only.
+#
+# Defining it here rather than patching the tree: the condition is genuinely
+# true (this *is* MinGW), the symbol has exactly one other use in the whole of
+# rapidyaml and c4core -- the malloc.h/alloca.h switch it exists for -- and a
+# vendored tree that is never edited updates cleanly. PUBLIC so our own
+# translation units that include ryml headers agree with the library about it;
+# disagreeing would be an ODR problem rather than a compile error.
+if (WIN32)
+    target_compile_definitions(ryml PUBLIC C4_MINGW)
+endif()
+
 # ozz-animation -- runtime skeletal animation.
 # Targets: ozz_base, ozz_animation, ozz_geometry (and ozz_animation_offline).
 # Everything else is off: the samples need GLFW/OpenGL and the FBX pipeline

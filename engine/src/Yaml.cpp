@@ -1,0 +1,456 @@
+#include <hp/Yaml.hpp>
+
+#include <hp/Log.hpp>
+#include <hp/Profiling.hpp>
+
+#include <charconv>
+#include <cstring>
+
+#include <ryml.hpp>
+#include <ryml_std.hpp>
+
+namespace hp {
+namespace {
+
+const LogCategory kLog("yaml");
+
+c4::csubstr toRyml(std::string_view text) {
+    return {text.data(), text.size()};
+}
+
+std::string_view fromRyml(c4::csubstr text) {
+    return {text.data(), text.size()};
+}
+
+/// Routes rapidyaml's errors through the engine log instead of aborting.
+///
+/// **Not optional.** rapidyaml's default error callback calls `std::abort`, so a
+/// malformed file -- which is *data*, and therefore always possible -- would
+/// take the editor down rather than being reported. The longjmp-free way to
+/// survive it is to throw and catch, which is what `parse` does.
+[[noreturn]] void onRymlError(const char* message, std::size_t length, c4::yml::Location location,
+                              void* /*user*/) {
+    throw std::runtime_error(std::string(message, length) + " at line "
+                             + std::to_string(location.line));
+}
+
+/// Installs the error handler once per process.
+void ensureCallbacks() {
+    static const bool installed = [] {
+        c4::yml::Callbacks callbacks = c4::yml::get_callbacks();
+        callbacks.m_error = &onRymlError;
+        c4::yml::set_callbacks(callbacks);
+        return true;
+    }();
+    (void)installed;
+}
+
+} // namespace
+
+struct YamlDocument::Impl {
+    /// The source text. rapidyaml parses in place and its nodes point into this,
+    /// so it must outlive every node -- which is exactly why the document owns
+    /// it rather than the caller.
+    std::string text;
+    ryml::Tree tree;
+};
+
+YamlDocument::YamlDocument() : impl_(std::make_unique<Impl>()) {
+    ensureCallbacks();
+    impl_->tree.rootref() |= ryml::MAP;
+}
+
+YamlDocument::~YamlDocument() = default;
+
+YamlDocument::YamlDocument(YamlDocument&& other) noexcept = default;
+
+YamlDocument& YamlDocument::operator=(YamlDocument&& other) noexcept = default;
+
+std::optional<YamlDocument> YamlDocument::parse(std::string_view text, std::string_view name) {
+    HP_PROFILE_ZONE();
+
+    ensureCallbacks();
+
+    YamlDocument document;
+    document.impl_->text.assign(text);
+
+    try {
+        document.impl_->tree =
+            ryml::parse_in_place(toRyml(name), c4::to_substr(document.impl_->text));
+    } catch (const std::exception& error) {
+        HP_LOG_ERROR(kLog, "could not parse '{}': {}", name, error.what());
+        return std::nullopt;
+    }
+
+    // An empty document parses to a tree whose root is neither map nor
+    // sequence. Callers universally expect a map, and an empty file is a
+    // legitimate thing to read, so normalise rather than making every caller
+    // handle it.
+    if (document.impl_->tree.empty()) {
+        document.impl_->tree.rootref() |= ryml::MAP;
+    }
+    return document;
+}
+
+YamlNode YamlDocument::root() {
+    return YamlNode{this, impl_->tree.root_id()};
+}
+
+std::string YamlDocument::emit() const {
+    HP_PROFILE_ZONE();
+
+    if (impl_->tree.empty()) {
+        return {};
+    }
+    return ryml::emitrs_yaml<std::string>(impl_->tree);
+}
+
+void* YamlNode::treeHandle() const {
+    // YamlNode is a friend of YamlDocument, which is what lets this one
+    // function reach the impl. Everything else goes through the void*.
+    return document_ != nullptr ? static_cast<void*>(&document_->impl_->tree) : nullptr;
+}
+
+namespace {
+
+/// The tree behind a node, or nullptr when it has no document.
+ryml::Tree* treeOf(const YamlNode& node, void* handle) {
+    (void)node;
+    return static_cast<ryml::Tree*>(handle);
+}
+
+} // namespace
+
+bool YamlNode::valid() const {
+    const ryml::Tree* tree = static_cast<const ryml::Tree*>(treeHandle());
+    return tree != nullptr && id_ != static_cast<std::size_t>(-1)
+           && id_ < static_cast<std::size_t>(tree->capacity());
+}
+
+bool YamlNode::isMap() const {
+    auto* tree = static_cast<ryml::Tree*>(treeHandle());
+    return valid() && tree->is_map(id_);
+}
+
+bool YamlNode::isSequence() const {
+    auto* tree = static_cast<ryml::Tree*>(treeHandle());
+    return valid() && tree->is_seq(id_);
+}
+
+bool YamlNode::isScalar() const {
+    auto* tree = static_cast<ryml::Tree*>(treeHandle());
+    return valid() && tree->has_val(id_);
+}
+
+std::size_t YamlNode::size() const {
+    auto* tree = static_cast<ryml::Tree*>(treeHandle());
+    if (!valid()) {
+        return 0;
+    }
+    return tree->num_children(id_);
+}
+
+bool YamlNode::has(std::string_view key) const {
+    auto* tree = static_cast<ryml::Tree*>(treeHandle());
+    if (!valid() || !tree->is_map(id_)) {
+        return false;
+    }
+    return tree->find_child(id_, toRyml(key)) != ryml::NONE;
+}
+
+YamlNode YamlNode::operator[](std::string_view key) const {
+    auto* tree = static_cast<ryml::Tree*>(treeHandle());
+    if (!valid() || !tree->is_map(id_)) {
+        return {};
+    }
+    const ryml::id_type child = tree->find_child(id_, toRyml(key));
+    if (child == ryml::NONE) {
+        return {};
+    }
+    return YamlNode{document_, child};
+}
+
+YamlNode YamlNode::at(std::size_t index) const {
+    auto* tree = static_cast<ryml::Tree*>(treeHandle());
+    if (!valid() || index >= tree->num_children(id_)) {
+        return {};
+    }
+    return YamlNode{document_, tree->child(id_, static_cast<ryml::id_type>(index))};
+}
+
+std::string_view YamlNode::keyAt(std::size_t index) const {
+    const YamlNode child = at(index);
+    auto* tree = static_cast<ryml::Tree*>(treeHandle());
+    if (!child.valid() || !tree->has_key(child.id_)) {
+        return {};
+    }
+    return fromRyml(tree->key(child.id_));
+}
+
+std::string_view YamlNode::scalar() const {
+    auto* tree = static_cast<ryml::Tree*>(treeHandle());
+    if (!valid() || !tree->has_val(id_)) {
+        return {};
+    }
+    return fromRyml(tree->val(id_));
+}
+
+bool YamlNode::tryRead(bool& out) const {
+    const std::string_view text = scalar();
+    if (text == "true" || text == "True" || text == "yes" || text == "on" || text == "1") {
+        out = true;
+        return true;
+    }
+    if (text == "false" || text == "False" || text == "no" || text == "off" || text == "0") {
+        out = false;
+        return true;
+    }
+    return false;
+}
+
+bool YamlNode::tryRead(std::int64_t& out) const {
+    const std::string_view text = scalar();
+    if (text.empty()) {
+        return false;
+    }
+    std::int64_t value = 0;
+    const auto* first = text.data();
+    const auto* last = text.data() + text.size();
+    const auto result = std::from_chars(first, last, value);
+    if (result.ec != std::errc{} || result.ptr != last) {
+        return false;
+    }
+    out = value;
+    return true;
+}
+
+bool YamlNode::tryRead(std::uint64_t& out) const {
+    const std::string_view text = scalar();
+    if (text.empty() || text.front() == '-') {
+        return false;
+    }
+    std::uint64_t value = 0;
+    const auto* first = text.data();
+    const auto* last = text.data() + text.size();
+    const auto result = std::from_chars(first, last, value);
+    if (result.ec != std::errc{} || result.ptr != last) {
+        return false;
+    }
+    out = value;
+    return true;
+}
+
+bool YamlNode::tryRead(double& out) const {
+    const std::string_view text = scalar();
+    if (text.empty()) {
+        return false;
+    }
+    // `std::from_chars` for floating point is the one piece of <charconv> that
+    // libc++ was late to implement; rapidyaml's own conversion is used instead
+    // so this does not depend on which standard library the target has.
+    double value = 0.0;
+    if (!c4::atod(toRyml(text), &value)) {
+        return false;
+    }
+    out = value;
+    return true;
+}
+
+bool YamlNode::tryRead(std::string& out) const {
+    if (!isScalar()) {
+        return false;
+    }
+    out.assign(scalar());
+    return true;
+}
+
+bool YamlNode::read(bool fallback) const {
+    bool value = fallback;
+    return tryRead(value) ? value : fallback;
+}
+
+std::int64_t YamlNode::read(std::int64_t fallback) const {
+    std::int64_t value = fallback;
+    return tryRead(value) ? value : fallback;
+}
+
+std::uint64_t YamlNode::read(std::uint64_t fallback) const {
+    std::uint64_t value = fallback;
+    return tryRead(value) ? value : fallback;
+}
+
+double YamlNode::read(double fallback) const {
+    double value = fallback;
+    return tryRead(value) ? value : fallback;
+}
+
+std::string YamlNode::read(const std::string& fallback) const {
+    std::string value;
+    return tryRead(value) ? value : fallback;
+}
+
+namespace {
+
+/// Copies text into the tree's arena so the document owns it.
+///
+/// rapidyaml stores spans, not strings: passing a temporary directly leaves a
+/// dangling span that emits garbage much later. Everything written through this
+/// header is arena-copied for that reason.
+c4::csubstr own(ryml::Tree* tree, std::string_view text) {
+    return tree->to_arena(toRyml(text));
+}
+
+} // namespace
+
+YamlNode YamlNode::addMap(std::string_view key) {
+    auto* tree = static_cast<ryml::Tree*>(treeHandle());
+    if (!valid()) {
+        return {};
+    }
+    tree->_p(id_)->m_type |= ryml::MAP;
+    const ryml::id_type child = tree->append_child(id_);
+    tree->to_map(child, own(tree, key));
+    return YamlNode{document_, child};
+}
+
+YamlNode YamlNode::addSequence(std::string_view key) {
+    auto* tree = static_cast<ryml::Tree*>(treeHandle());
+    if (!valid()) {
+        return {};
+    }
+    tree->_p(id_)->m_type |= ryml::MAP;
+    const ryml::id_type child = tree->append_child(id_);
+    tree->to_seq(child, own(tree, key));
+    return YamlNode{document_, child};
+}
+
+YamlNode YamlNode::appendMap() {
+    auto* tree = static_cast<ryml::Tree*>(treeHandle());
+    if (!valid()) {
+        return {};
+    }
+    tree->_p(id_)->m_type |= ryml::SEQ;
+    const ryml::id_type child = tree->append_child(id_);
+    tree->to_map(child);
+    return YamlNode{document_, child};
+}
+
+YamlNode YamlNode::appendSequence() {
+    auto* tree = static_cast<ryml::Tree*>(treeHandle());
+    if (!valid()) {
+        return {};
+    }
+    tree->_p(id_)->m_type |= ryml::SEQ;
+    const ryml::id_type child = tree->append_child(id_);
+    tree->to_seq(child);
+    return YamlNode{document_, child};
+}
+
+namespace {
+
+/// Writes or replaces `key: value` on a map node.
+void setScalar(ryml::Tree* tree, std::size_t id, std::string_view key, std::string_view value) {
+    tree->_p(id)->m_type |= ryml::MAP;
+    ryml::id_type child = tree->find_child(id, toRyml(key));
+    if (child == ryml::NONE) {
+        child = tree->append_child(id);
+    }
+    tree->to_keyval(child, own(tree, key), own(tree, value));
+}
+
+std::string toText(bool value) {
+    return value ? "true" : "false";
+}
+
+std::string toText(std::int64_t value) {
+    return std::to_string(value);
+}
+
+std::string toText(std::uint64_t value) {
+    return std::to_string(value);
+}
+
+/// Formats a double so it round-trips exactly.
+///
+/// `std::to_string` gives six decimal places and silently loses precision, which
+/// for a float would be invisible in a diff and wrong in the world. 17
+/// significant digits is what guarantees a double survives text.
+std::string toText(double value) {
+    char buffer[40];
+    const int written = std::snprintf(buffer, sizeof buffer, "%.17g", value);
+    return written > 0 ? std::string(buffer, static_cast<std::size_t>(written)) : std::string("0");
+}
+
+} // namespace
+
+void YamlNode::set(std::string_view key, bool value) {
+    if (valid()) {
+        setScalar(static_cast<ryml::Tree*>(treeHandle()), id_, key, toText(value));
+    }
+}
+
+void YamlNode::set(std::string_view key, std::int64_t value) {
+    if (valid()) {
+        setScalar(static_cast<ryml::Tree*>(treeHandle()), id_, key, toText(value));
+    }
+}
+
+void YamlNode::set(std::string_view key, std::uint64_t value) {
+    if (valid()) {
+        setScalar(static_cast<ryml::Tree*>(treeHandle()), id_, key, toText(value));
+    }
+}
+
+void YamlNode::set(std::string_view key, double value) {
+    if (valid()) {
+        setScalar(static_cast<ryml::Tree*>(treeHandle()), id_, key, toText(value));
+    }
+}
+
+void YamlNode::set(std::string_view key, std::string_view value) {
+    if (valid()) {
+        setScalar(static_cast<ryml::Tree*>(treeHandle()), id_, key, value);
+    }
+}
+
+namespace {
+
+void appendScalar(ryml::Tree* tree, std::size_t id, std::string_view value) {
+    tree->_p(id)->m_type |= ryml::SEQ;
+    const ryml::id_type child = tree->append_child(id);
+    tree->to_val(child, own(tree, value));
+}
+
+} // namespace
+
+void YamlNode::append(bool value) {
+    if (valid()) {
+        appendScalar(static_cast<ryml::Tree*>(treeHandle()), id_, toText(value));
+    }
+}
+
+void YamlNode::append(std::int64_t value) {
+    if (valid()) {
+        appendScalar(static_cast<ryml::Tree*>(treeHandle()), id_, toText(value));
+    }
+}
+
+void YamlNode::append(std::uint64_t value) {
+    if (valid()) {
+        appendScalar(static_cast<ryml::Tree*>(treeHandle()), id_, toText(value));
+    }
+}
+
+void YamlNode::append(double value) {
+    if (valid()) {
+        appendScalar(static_cast<ryml::Tree*>(treeHandle()), id_, toText(value));
+    }
+}
+
+void YamlNode::append(std::string_view value) {
+    if (valid()) {
+        appendScalar(static_cast<ryml::Tree*>(treeHandle()), id_, value);
+    }
+}
+
+} // namespace hp

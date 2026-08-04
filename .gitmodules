@@ -36,3 +36,6 @@
 [submodule "third_party/physfs"]
 	path = third_party/physfs
 	url = https://github.com/icculus/physfs.git
+[submodule "third_party/rapidyaml"]
+	path = third_party/rapidyaml
+	url = https://github.com/biojppm/rapidyaml.git
