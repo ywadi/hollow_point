@@ -39,7 +39,7 @@ This is the work. For what is already proven to work — and what only appears t
 | — | [T0127](completed/0127-exceptions-across-the-module-boundary.md) | A typed exception cannot cross the module boundary on Linux | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | ▶ | [T0048](inprogress/0048-hot-reloadable-gameplay-module.md) | Hot-reloadable gameplay module | 2 — Engine skeleton | 🚧 IN PROGRESS | High | Very Complex |
 | — | [T0105](completed/0105-module-linkage-loose-ends.md) | Module linkage: the parts that need something built first | 2 — Engine skeleton | ✅ DONE | High | Moderate |
-| 170 | [T0068](open/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
+| ▶ | [T0068](inprogress/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | 🚧 IN PROGRESS | Medium | Moderate |
 | 180 | [T0103](open/0103-virtual-filesystem-and-packs.md) | Virtual filesystem and content packs | 3 — Data model | 🔜 TODO | High | Moderate |
 | 185 | [T0112](open/0112-string-identity-and-localisation.md) | String identity: keys before literals | 3 — Data model | 🔜 TODO | Medium | Simple |
 | 190 | [T0020](open/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | 🔜 TODO | High | Complex |

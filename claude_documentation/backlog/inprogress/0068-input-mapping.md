@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | Medium |
 | **Complexity** | Moderate |
 | **Phase** | 2 — Engine skeleton |
@@ -18,24 +18,24 @@ through gameplay code and rebinding becomes impossible without touching all of i
 
 ## Done when
 
-- [ ] Actions defined as data, bound to keys, buttons or axes
-- [ ] Digital actions report pressed / released / held distinctly
-- [ ] Analog actions produce a normalised axis or vector
-- [ ] Gamepad supported alongside keyboard and mouse
-- [ ] Bindings are serialized (T0020) and user-rebindable
-- [ ] **Input contexts** so editor and game bindings do not collide
-- [ ] Gameplay never reads a raw key code
+- [x] Actions defined as data, bound to keys, buttons or axes
+- [x] Digital actions report pressed / released / held distinctly
+- [x] Analog actions produce a normalised axis or vector — for keyboard composition; a *device* analog axis needs 68.5
+- [ ] Gamepad supported alongside keyboard and mouse — **not done**, see below
+- [ ] Bindings are serialized (T0020) and user-rebindable — **blocked on T0020.** The map is data so a loader is all that is missing, but there is no serializer to write one against
+- [x] **Input contexts** so editor and game bindings do not collide
+- [x] Gameplay never reads a raw key code — there is no API that would let it
 
 ## Subtasks
 
-- [ ] 68.1 Action and binding types, defined as data
-- [ ] 68.2 Map raw events (T0018) onto actions
-- [ ] 68.3 Digital state edges: pressed, released, held
-- [ ] 68.4 Analog axes, including composing WASD into a 2D vector
-- [ ] 68.5 Gamepad support, with hot-plug handling
-- [ ] 68.6 Input contexts with priority, and consumption between them
-- [ ] 68.7 Serialize bindings; support rebinding at runtime
-- [ ] 68.8 Dead zones and sensitivity for analog input
+- [x] 68.1 Action and binding types, defined as data
+- [x] 68.2 Map raw events (T0018) onto actions — consumed at frame phase 2
+- [x] 68.3 Digital state edges: pressed, released, held — including a tap inside one step, and auto-repeat excluded
+- [x] 68.4 Analog axes, including composing WASD into a 2D vector
+- [ ] 68.5 Gamepad support, with hot-plug handling — **not done.** SDL3 supplies it (D16), but no engine event type carries gamepad input yet and there is no controller here to verify against
+- [x] 68.6 Input contexts with priority, and consumption between them
+- [ ] 68.7 Serialize bindings; support rebinding at runtime — **blocked on T0020**
+- [x] 68.8 Dead zones and sensitivity for analog input
 
 ## Notes / findings
 
@@ -159,3 +159,88 @@ user is not looking at. This interacts with the focus-loss policy T0110 owns.
   consumer of the keys-vs-literals decision — check it before authoring any
   user-facing literal here, or those strings become part of the migration
   T0112 exists to prevent.
+
+## Built (2026-08-04) — `hp::InputSystem`, and the decision the notes demanded
+
+### The hot-reload hazard is decided: **actions are polled, never called back**
+
+The notes said to decide this and "do not offer both silently". Decided: there
+is **no callback registration API**, and the header says why.
+
+A gameplay module registering a callback leaves a function pointer into its own
+image, and T0048 now genuinely unmaps that image on reload — so the callback
+dangles and the crash lands nowhere near the cause. Polling by `ActionId` is
+safe across a reload because an id is a hash of a name, not a pointer. That is
+the same reasoning that made component identity name-based in T0095, arrived at
+from a different direction.
+
+### Edges come from events, and that is testable
+
+`pressed` and `released` are edges *within a step*, accumulated as events arrive
+at phase 2 and published whole at the phase-3a snapshot. The case that decides
+the design:
+
+```
+key down, key up, snapshot  ->  pressed=true, released=true, held=false
+```
+
+Sampling "is it down now" against "was it down last step" loses that entirely —
+and loses it *more often as the frame rate rises*, so a fast machine drops
+inputs a slow one catches. Auto-repeat is explicitly not an edge, or `pressed`
+would mean `held` for anything firing on it.
+
+### Contexts consume per input, not per context
+
+A context binding only Escape blocks only Escape. Asserted both ways: a
+consuming menu above gameplay stops gameplay's binding for the same key firing,
+and a non-consuming overlay does not.
+
+Priority beats push order; ties go to the newest, via `stable_sort`, so pushing
+a modal context puts it above an existing one of equal priority without the
+caller inventing a number.
+
+### Two bugs the tests caught, both mine, both in the tests
+
+Recorded because the implementation surviving is the point. The first expected
+`x == -1` after releasing D while A **and W** were still down — but that is a
+diagonal, so the normalised answer is `-1/sqrt(2)`. The test now asserts the
+normalised value deliberately, because a "normalised" axis quietly ceasing to be
+normalised is exactly the regression worth catching. The second asserted that a
+non-consuming overlay makes `onEvent` return false; it returns true, because
+gameplay *underneath* consumed it — which is the behaviour the case exists to
+demonstrate.
+
+### `Axis2D` is deliberately not Diligent's `float2`
+
+T0056 chose Diligent's math, and the engine deliberately links **nothing** from
+Diligent today. Naming a Diligent type in a public engine header would widen
+every consumer's dependency surface silently — the hazard `engine/CMakeLists.txt`
+already warns about. When T0025 links Diligent for the render layer this becomes
+an alias and no call site changes.
+
+### What is not done
+
+- **68.5, gamepad — not started.** D16 settled that SDL3 supplies enumeration,
+  the mapping database, hot-plug and rumble, so the platform work is gone. What
+  remains is real but was not done: no engine event type carries gamepad input
+  yet, so `Event.hpp` needs new types, `Window::pumpEvents` needs to translate
+  them, and `InputMap` needs button and stick bindings. **And there is no
+  controller on this machine to verify against**, so it would have shipped
+  untested — which is worse than shipping it absent. Rumble is output rather
+  than input and needs a place in the API that does not exist yet.
+- **68.7, serialization — blocked on T0020.** The map is deliberately data, so
+  this is a loader rather than a redesign; there is simply no serializer to
+  write one against. Recorded on T0020.
+- **Cursor control (hide / pin / custom image) — not done.** The 2026-08-03
+  amendment adds it to this ticket. It needs `Window` API that does not exist,
+  the context stack should own cursor state rather than whoever set it last, and
+  relative mode must survive focus loss — which is T0110's policy. Left whole
+  rather than half-built, and T0110 has the reference.
+- **`reset()` exists but nothing calls it.** It is the focus-loss hook: a window
+  that loses focus while a key is down never receives the key-up, so the action
+  would stay held forever. Wiring it to a focus event is T0110's call about what
+  focus loss *means*, so the hook is provided and the policy is not invented
+  here.
+- **Mouse motion and scroll are not bound to actions.** Only keys and buttons
+  are. A look axis needs relative motion, which is the same cursor-capture work
+  above.

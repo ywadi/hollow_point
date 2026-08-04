@@ -9,7 +9,7 @@
 | **Order** | 375 |
 | **Created** | 2026-08-03 |
 | **Blocks** | T0025 |
-| **Refs** | T0014, T0015, T0031, T0052, T0057, T0078, T0100, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D16, [../../documentation/07-design-gaps.md](../../documentation/07-design-gaps.md) item 1, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
+| **Refs** | T0014, T0015, T0031, T0052, T0057, T0078, T0100, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D16, [../../documentation/07-design-gaps.md](../../documentation/07-design-gaps.md) item 1, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) , [../inprogress/0068-input-mapping.md](../inprogress/0068-input-mapping.md) |
 
 ## Why
 
@@ -116,3 +116,20 @@ to T0100's document and to D17 — not a new call bolted into `Application::run`
 - The focus-loss policy is deliberately *this* ticket's decision, not T0015's:
   the window layer reports the event; what the game does with it (render rate,
   simulation, audio) is presentation-and-frame policy.
+
+### Cross-ticket obligation — T0068 (2026-08-04)
+
+The action layer is built, and two of its loose ends are **this ticket's policy
+call**, not its own:
+
+- **`InputSystem::reset()` exists and nothing calls it.** A window that loses
+  focus while a key is held never receives the key-up, so the action stays held
+  forever — the character keeps walking into a wall while the player is in
+  another application. The hook is deliberately provided without a policy,
+  because *what focus loss means* is this ticket's decision: clear all input, or
+  clear only held state, or suppress the whole input context stack.
+- **Relative mouse capture must be released on focus loss and re-acquired on
+  focus gain**, or the pointer is trapped in a window the user is not looking
+  at. T0068's amendment flags this as the case that reliably breaks. Cursor
+  control is not built yet, so the constraint lands here before there is code to
+  retrofit it into.

@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 190 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0016, T0082 |
+| **Refs** | T0016, T0082, [../inprogress/0068-input-mapping.md](../inprogress/0068-input-mapping.md) |
 
 ## Why
 
@@ -77,3 +77,23 @@ sits on", not as a parallel per-component mechanism.
 - **T0082.5** ties the binary cache to the schema version: the version header
   in 20.4 must participate in staleness alongside the content hash, or a
   schema change silently loads a stale cook that still parses.
+
+### Cross-ticket obligation — T0068 (2026-08-04)
+
+**T0068.7 is waiting here, and it is a loader rather than a design.** The action
+layer is built and its bindings are deliberately *data* — an `InputMap` is a
+list of (action, physical input) pairs plus per-axis tuning — so serializing
+them needs a serializer to write against and nothing else.
+
+Two properties of that data are worth knowing before designing the format:
+
+- **An action's identity is a name hash (FNV-1a of e.g. `"Jump"`)**, not an
+  index. A binding file must therefore store the *name*; storing the hash would
+  work and would be unreadable and unfixable by hand, and storing an index would
+  break the moment someone inserts an action.
+- **User-rebindable means round-tripping**, so the format needs to survive being
+  written by the engine and edited by a person, which is the argument for the
+  text side of 20.x rather than the binary cook.
+
+Key *display* names for a rebinding UI are T0112's concern, not this one — see
+T0068's own note.

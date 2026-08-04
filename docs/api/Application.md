@@ -6,7 +6,7 @@
 #include <hp/Application.hpp>
 ```
 
-19 public declaration(s), 9 documented.
+21 public declaration(s), 11 documented.
 
 ## `ApplicationConfig`
 
@@ -167,6 +167,26 @@ const ModuleHost & modules() const
 ```
 
  The gameplay modules this application hosts, read-only.
+
+## `Application::input`
+
+```cpp
+InputSystem & input()
+```
+
+ The action layer (T0068).
+
+ Push contexts here; query actions from gameplay. The loop feeds it raw
+ events at frame phase 2 and takes its snapshot at phase 3a, inside the
+ fixed-step block, so every fixed step sees one unchanging view of input.
+
+## `Application::input`
+
+```cpp
+const InputSystem & input() const
+```
+
+ The action layer, read-only.
 
 ## `createApplication`
 

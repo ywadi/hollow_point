@@ -31,11 +31,12 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | Header | Declarations | Documented |
 |---|---|---|
 | [`<hp/Api.hpp>`](Api.md) | 0 | 0 |
-| [`<hp/Application.hpp>`](Application.md) | 19 | 9 |
+| [`<hp/Application.hpp>`](Application.md) | 21 | 11 |
 | [`<hp/Engine.hpp>`](Engine.md) | 4 | 4 |
 | [`<hp/EntryPoint.hpp>`](EntryPoint.md) | 1 | 0 |
 | [`<hp/Event.hpp>`](Event.md) | 72 | 15 |
 | [`<hp/Guid.hpp>`](Guid.md) | 13 | 5 |
+| [`<hp/Input.hpp>`](Input.md) | 26 | 26 |
 | [`<hp/Layer.hpp>`](Layer.md) | 28 | 16 |
 | [`<hp/Log.hpp>`](Log.md) | 22 | 12 |
 | [`<hp/Module.hpp>`](Module.md) | 5 | 5 |
@@ -45,7 +46,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 12 | 4 |
 
-**229 public declarations across 14 headers, 112 documented.**
+**257 public declarations across 15 headers, 140 documented.**
 
 ## Every symbol
 
@@ -69,6 +70,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Application::layers` | [`Application.hpp`](Application.md) |
 | `Application::modules` | [`Application.hpp`](Application.md) |
 | `Application::modules` | [`Application.hpp`](Application.md) |
+| `Application::input` | [`Application.hpp`](Application.md) |
+| `Application::input` | [`Application.hpp`](Application.md) |
 | `createApplication` | [`Application.hpp`](Application.md) |
 | `engineVersion` | [`Engine.hpp`](Engine.md) |
 | `engineInstanceCount` | [`Engine.hpp`](Engine.md) |
@@ -160,6 +163,32 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Guid::parse` | [`Guid.hpp`](Guid.md) |
 | `hash` | [`Guid.hpp`](Guid.md) |
 | `hash::operator()` | [`Guid.hpp`](Guid.md) |
+| `ActionId` | [`Input.hpp`](Input.md) |
+| `ActionId::ActionId` | [`Input.hpp`](Input.md) |
+| `ActionId::ActionId` | [`Input.hpp`](Input.md) |
+| `ActionId::value` | [`Input.hpp`](Input.md) |
+| `ActionId::operator==` | [`Input.hpp`](Input.md) |
+| `ActionId::operator!=` | [`Input.hpp`](Input.md) |
+| `DigitalAction` | [`Input.hpp`](Input.md) |
+| `Axis2D` | [`Input.hpp`](Input.md) |
+| `AxisTuning` | [`Input.hpp`](Input.md) |
+| `InputMap` | [`Input.hpp`](Input.md) |
+| `InputMap::bindKey` | [`Input.hpp`](Input.md) |
+| `InputMap::bindMouseButton` | [`Input.hpp`](Input.md) |
+| `InputMap::bindAxis2D` | [`Input.hpp`](Input.md) |
+| `InputMap::binds` | [`Input.hpp`](Input.md) |
+| `InputContextConfig` | [`Input.hpp`](Input.md) |
+| `InputSystem` | [`Input.hpp`](Input.md) |
+| `InputSystem::InputSystem` | [`Input.hpp`](Input.md) |
+| `InputSystem::InputSystem` | [`Input.hpp`](Input.md) |
+| `InputSystem::operator=` | [`Input.hpp`](Input.md) |
+| `InputSystem::pushContext` | [`Input.hpp`](Input.md) |
+| `InputSystem::removeContext` | [`Input.hpp`](Input.md) |
+| `InputSystem::onEvent` | [`Input.hpp`](Input.md) |
+| `InputSystem::snapshot` | [`Input.hpp`](Input.md) |
+| `InputSystem::digital` | [`Input.hpp`](Input.md) |
+| `InputSystem::axis2D` | [`Input.hpp`](Input.md) |
+| `InputSystem::reset` | [`Input.hpp`](Input.md) |
 | `ILayer` | [`Layer.hpp`](Layer.md) |
 | `ILayer::ILayer` | [`Layer.hpp`](Layer.md) |
 | `ILayer::ILayer` | [`Layer.hpp`](Layer.md) |

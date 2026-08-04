@@ -18,6 +18,7 @@
 
 #include <hp/Api.hpp>
 #include <hp/Event.hpp>
+#include <hp/Input.hpp>
 #include <hp/Layer.hpp>
 #include <hp/ModuleHost.hpp>
 #include <hp/Time.hpp>
@@ -107,6 +108,16 @@ public:
     /// The gameplay modules this application hosts, read-only.
     const ModuleHost& modules() const { return modules_; }
 
+    /// The action layer (T0068).
+    ///
+    /// Push contexts here; query actions from gameplay. The loop feeds it raw
+    /// events at frame phase 2 and takes its snapshot at phase 3a, inside the
+    /// fixed-step block, so every fixed step sees one unchanging view of input.
+    InputSystem& input() { return input_; }
+
+    /// The action layer, read-only.
+    const InputSystem& input() const { return input_; }
+
 protected:
     /// Called once, after the engine is up and before the first frame.
     virtual void onStartup() {}
@@ -161,6 +172,7 @@ private:
     std::unique_ptr<Window> window_;
     LayerStack layers_;
     ModuleHost modules_;
+    InputSystem input_;
     Clock clock_;
     bool running_ = false;
     int exitCode_ = 0;

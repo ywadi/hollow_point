@@ -63,7 +63,17 @@ int Application::run() {
         {
             HP_PROFILE_ZONE_NAMED("poll");
             if (window_) {
-                const WindowEvents events = window_->pumpEvents([this](Event& e) { dispatch(e); });
+                const WindowEvents events = window_->pumpEvents([this](Event& e) {
+                    // The action layer sees raw input before the layers do, and
+                    // consumes what a context claims (T0068). Edges are
+                    // accumulated here rather than sampled at a frame boundary,
+                    // which is what makes a key pressed and released inside one
+                    // frame still register.
+                    if (input_.onEvent(e)) {
+                        return;
+                    }
+                    dispatch(e);
+                });
                 if (events.resized) {
                     // Delivered as an event so layers can react, and as a hook
                     // so an application need not add a layer just to resize.
@@ -97,6 +107,7 @@ int Application::run() {
                 // 3a. Input snapshot (T0068). Each step must see one unchanging
                 // view of input; sampling live mid-block would make two steps in
                 // the same frame disagree.
+                input_.snapshot();
 
                 // 3b. Simulation.
                 layers_.fixedUpdate(step);
