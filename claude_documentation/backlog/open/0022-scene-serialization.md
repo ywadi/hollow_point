@@ -81,3 +81,18 @@ still refuses newer *file* versions; this handles a missing *type*).
   round-trip test lands through this serializer. Consume its representation
   decision rather than inventing a link format here, or the two fix-up paths
   drift and hierarchies break only on load.
+
+
+### Inherited from T0053 (closed 2026-08-04)
+
+- **T0053.8 moved here.** Reflection is built and tested; the round-trip
+  through serialization is not, because there is no serializer yet. This ticket
+  owns proving it: write a component out and read it back through
+  `hp::resolveType` and `meta_data::get/set` alone, with no per-type switch.
+  What is already guaranteed and can be relied on: nested structs resolve *as
+  reflected types* so recursion works, enums carry named values so a file can
+  say `team: Hostile` rather than `2`, `std::vector` is reachable as a sequence
+  container, `hp::Guid` round-trips exactly, and a wrongly-typed `set` returns
+  false instead of reinterpreting bytes.
+- **Serialize by name, never by type index.** `entt::type_index` differs per
+  module and must never reach a file (T0095, D12).

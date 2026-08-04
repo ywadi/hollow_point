@@ -36,7 +36,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 100 | [T0018](completed/0018-event-system.md) | Event system | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | 110 | [T0017](completed/0017-layer-stack.md) | LayerStack (system layers) | 2 — Engine skeleton | ✅ DONE | High | Simple |
 | 5 | [T0126](open/0126-remove-single-game-framing.md) | Remove the single-game framing from the backlog | 1 — Harden the build | 🔜 TODO | High | Moderate |
-| 140 | [T0053](open/0053-reflection-type-system.md) | Reflection and type system | 2 — Engine skeleton | 🔜 TODO | High | Complex |
+| 6 | [T0127](open/0127-exceptions-across-the-module-boundary.md) | A typed exception cannot cross the module boundary on Linux | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | 150 | [T0048](open/0048-hot-reloadable-gameplay-module.md) | Hot-reloadable gameplay module | 2 — Engine skeleton | 🔜 TODO | High | Very Complex |
 | ▶ | [T0105](inprogress/0105-module-linkage-loose-ends.md) | Module linkage: the parts that need something built first | 2 — Engine skeleton | 🚧 IN PROGRESS | High | Moderate |
 | 170 | [T0068](open/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
@@ -146,6 +146,7 @@ This is the work. For what is already proven to work — and what only appears t
 | — | [T0123](completed/0123-api-docs-should-not-be-hand-cranked.md) | The API reference is hand-cranked and always re-runs | 1 — Harden the build | ✅ DONE | Medium | Simple |
 | — | [T0125](completed/0125-wsl-interop-detection-reads-proc-wrong.md) | WSL-interop detection silently loses to wine | 1 — Harden the build | ✅ DONE | Medium | Trivial |
 | — | [T0124](completed/0124-backfill-cross-ticket-references.md) | Backfill cross-ticket references across the whole backlog | 1 — Harden the build | ✅ DONE | High | Moderate |
+| — | [T0053](completed/0053-reflection-type-system.md) | Reflection and type system | 2 — Engine skeleton | ✅ DONE | High | Complex |
 | — | [T0104](completed/0104-build-id-and-module-compatibility.md) | Build id stamping and module compatibility checks | 2 — Engine skeleton | ✅ DONE | High | Simple |
 | — | [T0044](completed/0044-define-the-game.md) | Define the game | 2 — Engine skeleton | ❌ DROPPED | — | — |
 

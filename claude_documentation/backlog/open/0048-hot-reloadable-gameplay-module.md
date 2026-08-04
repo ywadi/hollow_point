@@ -114,3 +114,33 @@ persisted or compared across modules.
   re-verifies this ticket's mechanics against the shared-engine model. Read
   T0095's prototype results and T0105 before designing 48.2 — a loader
   designed around true unload will fight the toolchain.
+
+
+### Iteration speed: use a PCH, not a JIT (2026-08-04, D19)
+
+Runtime C++ compilation was evaluated as a faster inner loop and rejected — see
+**D19** for the reasoning and the measurements.
+
+The finding that matters for this ticket is where the time actually goes.
+Measured on `samples/sandbox/src/Sandbox.cpp` with the pinned toolchain:
+
+| | |
+|---|---|
+| front end only (`-fsyntax-only`) | **1.4 s** |
+| `-O0` vs `-O3` difference | ~0.2 s |
+| link the module | 0.05 s |
+| `dlopen` it | 0.5 ms |
+
+**The front end is the cost.** Codegen, linking and loading together are a small
+fraction of it, which is why a JIT — paying the same parse — had nothing to win.
+
+A precompiled header does have something to win: a 19 MB PCH of the engine's
+public headers plus entt takes the same TU from **1.4 s to 0.34 s**. That is the
+single largest available improvement to this ticket's inner loop, it needs no new
+dependency, and it works on both targets. **48.x should adopt it**, and the
+gameplay-module CMake function (`cmake/HpGameplayModule.cmake`) is where it
+belongs, for the same reason the unload finalizer and build-id stamp live there.
+
+Not yet measured: PCH staleness handling (it must be rebuilt when any engine
+public header changes — the same build-graph-input problem T0104 and T0123 both
+had to solve), and the Windows-target figures.

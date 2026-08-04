@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 200 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
+| **Refs** | T0053, T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
 
 ## Why
 
@@ -93,3 +93,15 @@ Also: once behaviours exist (T0062), cloning a scene must clone behaviour
 reflection serialize/recreate cycle T0062 builds for hot reload is the same
 mechanism; pointer-copying instances between scenes is never correct. Worth
 knowing before 21.6 is designed, even though behaviours land later.
+
+
+### Inherited from T0053 (closed 2026-08-04)
+
+- **T0053.7 moved here.** Reflection landed without ECS integration because
+  there was no registry to hook into. This ticket owns it: when a component type
+  is registered with the registry it must also be registered for reflection, in
+  **one** place — `hp::reflect<T>("Name")` alongside the component's declaration,
+  not a second list that drifts. The documented entt idiom is a meta func
+  wrapping `registry::emplace_or_replace<T>`, roughly thirty lines of glue.
+  Identity is the **name**, never `entt::type_index`, which T0095 measured to be
+  a per-module number with no meaning across the module boundary.

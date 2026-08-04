@@ -503,6 +503,12 @@ pub fn build(b: *Build) void {
         "docs/api",
         "--zig",
         b.graph.zig_exe,
+        // Public headers include vendored third-party headers -- <hp/Reflect.hpp>
+        // includes entt's meta API. libclang has to resolve them or it reports
+        // errors in our own headers and the generator refuses to write a
+        // reference it cannot vouch for.
+        "--isystem",
+        "third_party/entt/src",
     });
     docs.addArg(if (rewrite_baseline) "--write-baseline" else "--check");
     docs.setName(if (rewrite_baseline) "generate api docs (rewriting baseline)" else "generate api docs");

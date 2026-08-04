@@ -25,6 +25,11 @@
 #include <cstring>
 
 #include <hp/Module.hpp>
+#include <hp/Reflect.hpp>
+
+#include <entt/meta/meta.hpp>
+
+using namespace entt::literals;
 #if !defined(_WIN32)
 #include <sys/wait.h>
 #endif
@@ -175,6 +180,17 @@ private:
     void* handle_ = nullptr;
     std::string error_;
 };
+
+/// Path of the real sample gameplay module, relative to this binary.
+///
+/// Composed at run time rather than baked by CMake, for the two reasons this
+/// suite has already learned the hard way: a `$<TARGET_FILE:...>` path is a
+/// *host* path and unopenable from a Windows binary, and a POST_BUILD copy goes
+/// stale whenever the module changes without this target relinking.
+std::string sandbox_module_path() {
+    return exe_dir() + PATH_SEP + ".." + PATH_SEP + "samples" + PATH_SEP + "sandbox" + PATH_SEP
+           + HP_SANDBOX_MODULE_NAME;
+}
 
 } // namespace
 
@@ -599,4 +615,121 @@ TEST_CASE("the refusal says what to rebuild" * doctest::test_suite("module")) {
                   "the message must carry the engine's id: " << message);
     CHECK_MESSAGE(message.find("Rebuild") != std::string::npos,
                   "the message must say what to do: " << message);
+}
+
+// --- reflection across the module boundary (T0053) ---------------------------
+//
+// The case the fast-bucket reflection tests cannot cover: whether a gameplay
+// module and the engine actually share one meta context.
+//
+// This is where the subsystem is most likely to be silently wrong. `entt::locator`
+// keeps its storage in a static per binary, and under -fvisibility=hidden the
+// executable, the engine and every module each get their own. A participant that
+// never adopts the engine's context sees an *empty* one — every type
+// unresolvable, no error, no crash, just a system that quietly does nothing. So
+// these cases assert the sharing directly rather than inferring it from
+// something working.
+//
+// It loads the real `samples/sandbox` module rather than a fixture, because the
+// thing worth guarding is that a module built the way modules are actually built
+// can participate.
+
+TEST_CASE("a gameplay module registers into the engine's meta context"
+          * doctest::test_suite("reflect")) {
+    hp::adoptMetaContext();   // the test executable is a participant too
+
+    LoadedModule sandbox(sandbox_module_path());
+    REQUIRE_MESSAGE(sandbox.ok(), sandbox.error());
+
+    auto register_types = sandbox.sym<void (*)()>("hpSandboxRegisterTypes");
+    auto forget_types = sandbox.sym<void (*)()>("hpSandboxForgetTypes");
+    REQUIRE(register_types != nullptr);
+    REQUIRE(forget_types != nullptr);
+
+    // Before the module registers anything, the engine side must not see it.
+    // Asserted so that a pass below cannot come from a type left behind by
+    // another case.
+    CHECK_FALSE(static_cast<bool>(hp::resolveType("SandboxHealth")));
+
+    register_types();
+
+    const entt::meta_type from_engine_side = hp::resolveType("SandboxHealth");
+    REQUIRE_MESSAGE(static_cast<bool>(from_engine_side),
+                    "a type registered by the module must be visible from this side; an empty "
+                    "result means the module and the host are not sharing one meta context");
+
+    // And it is usable, not merely present -- enumerable, with its metadata.
+    int properties = 0;
+    for (auto&& [id, data] : from_engine_side.data()) {
+        (void)id;
+        (void)data;
+        ++properties;
+    }
+    CHECK(properties == 2);
+
+    auto current = from_engine_side.data("current"_hs);
+    REQUIRE(static_cast<bool>(current));
+    const auto* meta = static_cast<const hp::PropertyMeta*>(current.custom());
+    REQUIRE_MESSAGE(meta != nullptr, "metadata registered in the module must survive the crossing");
+    CHECK(std::strcmp(meta->tooltip, "module-owned") == 0);
+
+    forget_types();
+}
+
+TEST_CASE("a module resolves a type the host registered" * doctest::test_suite("reflect")) {
+    hp::adoptMetaContext();
+
+    // The other direction. The module has never seen this type's definition and
+    // reaches it entirely through reflection.
+    struct HostOnly {
+        float value = 7.5f;
+    };
+    hp::reflect<HostOnly>("HostOnlyType").property<&HostOnly::value>("value");
+
+    LoadedModule sandbox(sandbox_module_path());
+    REQUIRE_MESSAGE(sandbox.ok(), sandbox.error());
+
+    auto register_types = sandbox.sym<void (*)()>("hpSandboxRegisterTypes");
+    auto read_property =
+        sandbox.sym<bool (*)(const char*, const char*, float*)>("hpSandboxReadHostProperty");
+    REQUIRE(register_types != nullptr);
+    REQUIRE(read_property != nullptr);
+    register_types();   // module adopts the context
+
+    float value = 0.0f;
+    CHECK_MESSAGE(read_property("HostOnlyType", "value", &value),
+                  "the module should resolve and read a host-registered type through the "
+                  "shared context");
+    CHECK(value == doctest::Approx(7.5f));
+
+    // A name nobody registered is a clean miss, not a crash, on the far side too.
+    float ignored = 0.0f;
+    CHECK_FALSE(read_property("NoSuchTypeAnywhere", "value", &ignored));
+
+    hp::forgetType("HostOnlyType");
+}
+
+TEST_CASE("a module's types are gone once it deregisters" * doctest::test_suite("reflect")) {
+    hp::adoptMetaContext();
+
+    LoadedModule sandbox(sandbox_module_path());
+    REQUIRE(sandbox.ok());
+    auto register_types = sandbox.sym<void (*)()>("hpSandboxRegisterTypes");
+    auto forget_types = sandbox.sym<void (*)()>("hpSandboxForgetTypes");
+    REQUIRE(register_types != nullptr);
+    REQUIRE(forget_types != nullptr);
+
+    register_types();
+    REQUIRE(static_cast<bool>(hp::resolveType("SandboxHealth")));
+
+    forget_types();
+
+    // Not tidiness. entt::meta stores raw function pointers and unowned name
+    // literals that live in the module's image, so a registration surviving the
+    // module is a pointer into memory that may be unmapped -- structurally the
+    // same failure T0105.1 fixed for static destructors, and just as invisible
+    // until something walks the list.
+    CHECK_MESSAGE(!static_cast<bool>(hp::resolveType("SandboxHealth")),
+                  "deregistration must actually remove the type, or the shared context keeps "
+                  "pointers into the module's image after it unloads");
 }

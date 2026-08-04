@@ -8,6 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 650 |
 | **Created** | 2026-08-03 |
+| **Refs** | T0053, T0035, T0048 |
 
 ## Why
 
@@ -56,3 +57,13 @@ it worked. Serialize the subtree on delete and restore it wholesale.
 **Play mode must not be undoable.** Entering play clones the scene (T0037);
 changes during play are discarded on stop, so mixing them into the same history
 lets an undo after stopping corrupt the authored scene. Clear on entry.
+
+
+### Inherited from T0053 (closed 2026-08-04)
+
+- **Record property changes through reflection, not per-type commands.**
+  T0053's "undo consumes this and nothing else" lands here. A change is a
+  reflected property path plus before/after `meta_any` values, so a new component
+  needs no new command type. The property's stable **name** is what a path is
+  built from — never a type index or a pointer, neither of which survives a
+  module reload (T0048).

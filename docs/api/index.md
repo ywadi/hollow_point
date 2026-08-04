@@ -40,10 +40,11 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Log.hpp>`](Log.md) | 22 | 12 |
 | [`<hp/Module.hpp>`](Module.md) | 5 | 5 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
+| [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 12 | 4 |
 
-**195 public declarations across 12 headers, 78 documented.**
+**208 public declarations across 13 headers, 91 documented.**
 
 ## Every symbol
 
@@ -211,6 +212,19 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `ModuleCompatibility` | [`Module.hpp`](Module.md) |
 | `checkModuleBuildId` | [`Module.hpp`](Module.md) |
 | `describeIncompatibility` | [`Module.hpp`](Module.md) |
+| `PropertyMeta` | [`Reflect.hpp`](Reflect.md) |
+| `metaContextHandle` | [`Reflect.hpp`](Reflect.md) |
+| `adoptMetaContext` | [`Reflect.hpp`](Reflect.md) |
+| `TypeBuilder` | [`Reflect.hpp`](Reflect.md) |
+| `TypeBuilder::TypeBuilder<Type>` | [`Reflect.hpp`](Reflect.md) |
+| `TypeBuilder::property` | [`Reflect.hpp`](Reflect.md) |
+| `TypeBuilder::meta` | [`Reflect.hpp`](Reflect.md) |
+| `TypeBuilder::readOnlyProperty` | [`Reflect.hpp`](Reflect.md) |
+| `TypeBuilder::value` | [`Reflect.hpp`](Reflect.md) |
+| `TypeBuilder::base` | [`Reflect.hpp`](Reflect.md) |
+| `reflect` | [`Reflect.hpp`](Reflect.md) |
+| `resolveType` | [`Reflect.hpp`](Reflect.md) |
+| `forgetType` | [`Reflect.hpp`](Reflect.md) |
 | `Clock` | [`Time.hpp`](Time.md) |
 | `Clock::Clock` | [`Time.hpp`](Time.md) |
 | `Clock::tick` | [`Time.hpp`](Time.md) |

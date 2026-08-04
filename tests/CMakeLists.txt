@@ -200,8 +200,17 @@ if(TARGET hp_tests_integration)
     # definitions are baked at configure time on the *host*, so a Windows binary
     # would receive a POSIX path it cannot open. The test composes them against
     # exe_dir() at run time, which is correct on both targets and under interop.
-    add_dependencies(hp_tests_integration hp_stamped_module hp_stale_module)
+    add_dependencies(hp_tests_integration hp_stamped_module hp_stale_module hp_sandbox)
+    # The real sample gameplay module is loaded from where it is built, by a
+    # path relative to this binary, rather than copied next to it.
+    #
+    # A POST_BUILD copy was the obvious approach and is quietly wrong: it only
+    # runs when *this* target relinks, so editing only the module leaves a stale
+    # copy beside the test. That produced a mutation test which "passed" while
+    # exercising the previous build -- i.e. a guard that was guarding nothing.
+    # A relative path cannot go stale.
     target_compile_definitions(hp_tests_integration PRIVATE
+        HP_SANDBOX_MODULE_NAME="$<TARGET_FILE_NAME:hp_sandbox>"
         HP_STAMPED_MODULE_NAME="$<TARGET_FILE_NAME:hp_stamped_module>"
         HP_STALE_MODULE_NAME="$<TARGET_FILE_NAME:hp_stale_module>"
         HP_UNLOAD_PROBE_NAME="$<TARGET_FILE_NAME:hp_unload_probe>"

@@ -600,3 +600,86 @@ the performance and semantics cost instead.
   `/mnt/c` tree workable.
 - The case-collision on `X11/bitmaps/{Stipple,stipple}`, permanently dirty on a
   case-insensitive Windows filesystem, resolves for free: ext4 holds both.
+
+---
+
+## D19 — No runtime C++ compilation; gameplay is AOT-compiled, and iteration is bought with a precompiled header
+
+**Decision:** there is no embedded C++ interpreter or JIT. Gameplay is compiled
+ahead of time by the pinned toolchain into a module the host loads, as D12 and
+T0048 describe. Iteration speed is bought with a **precompiled header** of the
+engine's public headers plus entt — not with a compiler in the process.
+
+**Why this needed deciding at all:** D14 rejected a scripting *VM* on the cost of
+a per-frame native↔VM boundary. A JIT has no such boundary — it emits native
+code — so D14's reasoning does not dispose of it. The question was never asked,
+and "C++ as the scripting language" is a genuinely different proposition from
+Lua: same language, same headers, no binding layer, native speed.
+
+**Rejected — Cling, `clang-repl`, or ORC JIT as the gameplay-authoring
+mechanism.** Three findings decide it, measured here rather than surveyed:
+
+- **It costs half the build matrix.** `clangInterpreter` cannot be embedded
+  without vendoring and building llvm-project, and **zig ships no LLVM or Clang
+  libraries at all** — verified: zero `libLLVM*`/`libclang*` under
+  `.harness/zig/`, only a single static `zig` binary and source trees. That is a
+  second toolchain to vendor into a hermetic offline build. Worse, the embed has
+  never been run under the MinGW-w64 ABI by anyone: CppInterOp's Windows CI is
+  MSVC-only, and `lli` (the same ORC infrastructure) cannot currently run
+  hello-world on Windows COFF. D3 requires both targets, and this is the half
+  that cannot be recovered.
+- **There is no C++ runtime in the process for JIT'd code to link against.**
+  Zig links libc++/libc++abi/libunwind statically into every artifact with hidden
+  visibility. Verified against the real `libhp_engine.so`: **zero** exported
+  `std::`, `__cxa_*` or `_Unwind_*` symbols, with `__cxa_throw` present only as a
+  *local*. Prototypes confirm the consequence — `std::string` at `-O0`,
+  `std::vector::push_back`, and `entt::registry reg;` all fail to resolve.
+  Supplying the JIT its own libc++ fixes the link and puts **two C++ runtimes in
+  one process** sharing `std::__1` mangling: the `entt::type_index` hazard of
+  T0095 one layer deeper, with no build id to catch it.
+- **The prize does not exist.** Measured on the real gameplay TU with this
+  toolchain: the **front end is the cost**, and a JIT pays it identically.
+  `-fsyntax-only` is 1.4 s while `-O0` vs `-O3` differs by ~0.2 s, linking is
+  0.05 s and `dlopen` is 0.5 ms. A JIT competes for a fraction of a second while
+  adding hundreds of megabytes of LLVM.
+
+**Rejected — the JIT-in-development / AOT-on-ship split** (ROOT's architecture
+applied to a game engine). It is a coherent shape and it fails on its own
+premise: the premise is redefine-in-place, and upstream `clang-repl` **cannot
+redefine** — a second definition of a function is `error: redefinition`, and
+redefining a struct crashes in `IncrementalParser::CleanUpPTU`. Redefinition is
+a Cling extension that was never upstreamed, and Cling is the MSVC-only patched
+fork that fails the matrix requirement hardest. The split also relocates T0048's
+state-survival problem rather than removing it: a module reload has an explicit
+safe point (D17's phase 12), while a type redefined under live instances has
+none — existing objects keep the old layout while new code assumes the new one.
+
+**Rejected — assuming consoles might permit it.** All three families enforce W^X
+for third-party titles; Xbox's XR-018 names the pattern explicitly for UGC,
+LuaJIT hard-codes interpreter-only per console target, and Unity ships IL2CPP
+precisely for platforms that disallow JIT. Switch 2's policy is not publicly
+documented and is not assumed here either way.
+
+**What is taken instead — a precompiled header.** Measured on the real
+`samples/sandbox` TU: front-end time falls from **1.4 s to 0.34 s** with a 19 MB
+PCH of the engine's public headers plus entt. Roughly a 4× cut in the dominant
+cost, hermetic, both targets, no new dependency, and available today. Owned by
+T0048.
+
+**Consequences, accepted:**
+
+- No runtime-authored gameplay of any kind. This strengthens D14 rather than
+  changing it: gameplay is C++, composed from data, and new behaviour ships a
+  binary.
+- **`dlopen`ing gameplay is a development affordance, not the shipping
+  configuration.** Unreal links Monolithic for everything but the Editor, and
+  IL2CPP does no runtime loading at all. T0048's "the exported runtime can link
+  it statically" therefore becomes the console-port requirement rather than an
+  optimisation — recorded on T0105.2.
+- Reflection (T0053) is unaffected. Serialization, the inspector and undo need
+  generic property enumeration regardless, and even ROOT — which *did* choose
+  runtime-compiled C++ — still runs a separate generated dictionary pipeline for
+  I/O. Reflection and binding are separable concerns.
+- **Revisit only if** zig begins exposing LLVM/Clang as linkable libraries, *or*
+  `clang-repl` gains tested MinGW-w64 support *and* upstream redefinition. Both
+  are required; either alone does not reopen this.

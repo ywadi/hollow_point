@@ -39,6 +39,7 @@ add_custom_target(hp_build_id DEPENDS "${HP_BUILD_ID_HEADER}")
 
 add_library(hp_engine SHARED
     src/Module.cpp
+    src/Reflect.cpp
     src/Application.cpp
     src/Engine.cpp
     src/Guid.cpp
@@ -116,6 +117,12 @@ endif()
 # precisely so consumers never see SDL3/SDL.h, and gameplay cannot reach SDL
 # behind the engine's back. Static so there is one fewer file beside every
 # executable.
+# PUBLIC, not PRIVATE. Gameplay modules register their own types into the
+# engine's meta context, so they compile against entt's headers too -- and they
+# must get the *same* headers, because the context's layout is shared across the
+# boundary. D12's lockstep is what makes that safe.
+target_link_libraries(hp_engine PUBLIC EnTT::EnTT)
+
 target_link_libraries(hp_engine PRIVATE SDL3::SDL3-static)
 
 # Deliberately links nothing from Diligent yet.

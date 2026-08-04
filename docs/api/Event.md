@@ -708,7 +708,7 @@ std::string_view name() const
 ## `dispatchEvent`
 
 ```cpp
-bool dispatchEvent()
+bool dispatchEvent(Event & event, Handler && handler)
 ```
 
  Calls `handler` if `event` is of type `T`, and consumes it when the handler
@@ -721,3 +721,10 @@ bool dispatchEvent()
      dispatchEvent<KeyEvent>(event, [](const KeyEvent& e) {
          return e.key() == KeyCode::Escape;   // true consumes it
      });
+
+ @param event the event to test; consumed in place when the handler returns
+        true, so a consumed event stops descending the layer stack.
+ @param handler invoked with `const T&` only when the event is of type `T`.
+        Returning true consumes the event; false leaves it for other layers.
+ @returns whether the handler ran, which is not the same as whether the event
+          was consumed -- a handler that returns false still ran.

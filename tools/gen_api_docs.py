@@ -130,6 +130,30 @@ def clean_comment(raw: str | None) -> str:
     return "\n".join(lines)
 
 
+def parameters_of(cursor) -> list:
+    """Parameter cursors, including for function templates.
+
+    `get_arguments()` returns **nothing** for a `FUNCTION_TEMPLATE` -- measured,
+    not assumed -- while the PARM_DECL children are present and correct. Relying
+    on it alone made every templated function look like it took no arguments,
+    which had two consequences and both are the failure mode this tool exists to
+    prevent:
+
+      * signatures rendered as `property()` for something taking a `const char*`,
+        which is documentation that is confidently wrong
+      * `missing-param` could never fire for a template, while `stale-param`
+        fired for every correctly documented one -- and stale-param is the one
+        defect that is never baselinable
+
+    Found when <hp/Reflect.hpp> arrived (T0053), the first public header with a
+    substantially templated surface.
+    """
+    args = list(cursor.get_arguments())
+    if args:
+        return args
+    return [c for c in cursor.get_children() if c.kind == cx.CursorKind.PARM_DECL]
+
+
 def signature(cursor) -> str:
     """A signature an agent can copy, rather than a name."""
     if cursor.kind in CONTAINER_KINDS:
@@ -142,7 +166,7 @@ def signature(cursor) -> str:
 
     result = cursor.result_type.spelling
     params = ", ".join(
-        f"{p.type.spelling} {p.spelling}".strip() for p in cursor.get_arguments()
+        f"{p.type.spelling} {p.spelling}".strip() for p in parameters_of(cursor)
     )
     text = f"{cursor.spelling}({params})"
     if result and cursor.kind != cx.CursorKind.CONSTRUCTOR:
@@ -178,7 +202,7 @@ def collect(tu, header: pathlib.Path):
                     "doc": clean_comment(child.raw_comment),
                     "owner": owner,
                     "enumerators": [],
-                    "params": [p.spelling for p in child.get_arguments()]
+                    "params": [p.spelling for p in parameters_of(child)]
                     if child.kind in CALLABLE_KINDS
                     else [],
                     "returns": child.result_type.spelling
@@ -392,6 +416,11 @@ def main() -> int:
     parser.add_argument("--include", required=True, help="engine/include")
     parser.add_argument("--out", required=True, help="output directory")
     parser.add_argument("--zig", default="", help="zig executable, for include paths")
+    parser.add_argument("--isystem", action="append", default=[],
+                        help="extra system include directory, repeatable. Public headers may "
+                             "include vendored third-party headers (entt, for one); without "
+                             "these libclang cannot parse them and the run aborts rather than "
+                             "emitting an incomplete reference.")
     parser.add_argument("--check", action="store_true",
                         help="fail on documentation defects not present in the baseline")
     parser.add_argument("--baseline", default="tools/api_docs_baseline.txt",
@@ -423,6 +452,7 @@ def main() -> int:
     ]
     if args.zig:
         flags += [f"-isystem{p}" for p in zig_include_paths(pathlib.Path(args.zig))]
+    flags += [f"-isystem{d}" for d in args.isystem]
 
     index = cx.Index.create()
     per_header: dict[str, list[dict]] = {}

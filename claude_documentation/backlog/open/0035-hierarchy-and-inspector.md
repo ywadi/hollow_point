@@ -84,3 +84,16 @@ inspector to two things it did not previously reference:
 
 "No module loaded" is a legitimate state the inspector must render sensibly
 rather than treat as an error.
+
+
+### Inherited from T0053 (closed 2026-08-04)
+
+- **Draw components through reflection only.** T0053's Done-when "serialization,
+  inspector and undo all consume this and nothing else" could not be met there —
+  this ticket is half of meeting it. The inspector must enumerate
+  `meta_type::data()` rather than switching on a component type, or adding a
+  component means editing the inspector too.
+- **`hp::PropertyMeta` is already carried and currently interpreted by nobody**:
+  `min`/`max` for numeric ranges, `tooltip`, `read_only`, `hidden`. Acting on
+  them is this ticket's job. Note `hidden` is a UI decision only — hidden
+  properties are still serialised, so do not use it to exclude data.

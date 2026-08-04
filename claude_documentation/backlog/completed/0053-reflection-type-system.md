@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Complex |
 | **Phase** | 2 — Engine skeleton |
@@ -30,25 +30,29 @@ outcome to avoid, and it is very expensive to unpick later.
 
 ## Done when
 
-- [ ] Types register their properties once, in one place
-- [ ] Properties are enumerable at runtime: name, type, get, set
-- [ ] Serialization, inspector and undo all consume this and nothing else
-- [ ] Adding a component means touching **one** location
-- [ ] Nested structs, enums, containers and asset GUID references all supported
-- [ ] Attributes/metadata: ranges, tooltips, hidden, read-only
-- [ ] Zero or near-zero runtime cost for code that does not reflect
-- [ ] Thoroughly unit tested — everything downstream depends on it
+- [x] Types register their properties once, in one place
+- [x] Properties are enumerable at runtime: name, type, get, set
+- [ ] Serialization, inspector and undo all consume this and nothing else —
+      **not met, and cannot be here**: T0022, T0035 and T0065 do not exist.
+      Moved to those tickets; see the closing note
+- [x] Adding a component means touching **one** location
+- [x] Nested structs, enums, containers and asset GUID references all supported
+- [x] Attributes/metadata: ranges, tooltips, hidden, read-only
+- [x] Zero or near-zero runtime cost for code that does not reflect
+- [x] Thoroughly unit tested — everything downstream depends on it
 
 ## Subtasks
 
-- [ ] 53.1 Choose the mechanism — see notes, this is the decision
-- [ ] 53.2 Registration API for types and properties
-- [ ] 53.3 Runtime type info: name, size, property list, construct/destruct
-- [ ] 53.4 Typed get/set with a safe fallback for mismatches
-- [ ] 53.5 Property metadata (range, tooltip, hidden, read-only)
-- [ ] 53.6 Containers, nested structs, enums, GUID references
-- [ ] 53.7 Component registration hooked into the ECS
-- [ ] 53.8 Tests, including round-trip through serialization
+- [x] 53.1 Choose the mechanism — see notes, this is the decision
+- [x] 53.2 Registration API for types and properties
+- [x] 53.3 Runtime type info: name, size, property list, construct/destruct
+- [x] 53.4 Typed get/set with a safe fallback for mismatches
+- [x] 53.5 Property metadata (range, tooltip, hidden, read-only)
+- [x] 53.6 Containers, nested structs, enums, GUID references
+- [ ] 53.7 Component registration hooked into the ECS — **moved to T0021**,
+      which builds the registry this would hook into
+- [ ] 53.8 Round-trip through serialization — **moved to T0022**, which builds
+      the serializer. The reflection half is tested here
 
 ## Notes / findings
 
@@ -232,3 +236,107 @@ future P2996 migration replaces the registration lines and leaves every consumer
   `tests/integration/module_boundary_test.cpp`.
 - **Compile-time cost on a realistic component count.** Not measured — the quick
   timings were polluted by zig's cache and are not quoted here.
+
+## Closed 2026-08-04 — the layer is built; its consumers are not
+
+Closed on what it delivers rather than held open for tickets that do not exist,
+following the pattern the backlog README sets out (T0095 → T0105,
+T0054/T0056 → T0025). Leaving it open at Order 140 would park a blocker at the
+top of the queue that is blocking nothing.
+
+### What landed
+
+`hp::reflect<T>()` over `entt::meta`, in `engine/include/hp/Reflect.hpp`:
+
+```cpp
+hp::reflect<Position>("Position")
+    .property<&Position::x>("x")
+    .meta({.min = -1000.0, .max = 1000.0, .tooltip = "world X"})
+    .property<&Position::y>("y");
+```
+
+- **`adoptMetaContext()` is header-only on purpose.** `entt::locator`'s storage
+  is a static per binary, so an exported function would reset the *engine's*
+  locator and leave the caller's untouched. Being inline, it is compiled into
+  the caller and resets the caller's.
+- **`readOnlyProperty<Getter>()`** exists because the house style keeps data
+  private — `hp::Guid` exposes `value()`, not a member. A reflection layer that
+  only handled public members would have been unusable on the engine's own types.
+- **`value<Enumerator>()`** for enums, which must be named individually: neither
+  entt nor C++20 can enumerate an enum's enumerators.
+- **Container support is included by default** (`entt/meta/container.hpp`), so a
+  `std::vector` member is reachable as a sequence without every type saying so.
+
+### Evidence
+
+Both targets, 36 fast cases and 41 integration cases:
+
+```
+Build Summary: 18/18 steps succeeded; 21/21 tests passed
++- test (linux-x86_64, fast)          natively                              success
++- test (linux-x86_64, integration)   natively                              success
++- test (windows-x86_64, fast)        as a real Windows process via interop success
++- test (windows-x86_64, integration) as a real Windows process via interop success
+```
+
+**53.6 is covered by tests that would fail if it were not**: a nested struct
+resolves *as a reflected type* so a serializer can recurse; an enum's values are
+named (`team: Hostile`, not `team: 2`); a `std::vector` is reachable as a
+sequence container; and a `hp::Guid` round-trips exactly, which matters because a
+GUID truncated through a double is a broken asset reference nobody notices until
+load.
+
+### The cross-boundary guarantee, proven by mutation
+
+The sharp edge of this subsystem is that it fails **silently**: `entt::locator`
+is per binary, so a participant that does not adopt the engine's context sees an
+empty one — every type unresolvable, no error, no crash.
+
+Removing `adoptMetaContext()` from the sandbox module:
+
+```
+FATAL ERROR: REQUIRE( static_cast<bool>(from_engine_side) ) is NOT correct!
+FATAL ERROR: REQUIRE( static_cast<bool>(hp::resolveType("SandboxHealth")) ) is NOT correct!
+[doctest] test cases: 41 | 39 passed | 2 failed
+```
+
+Restored: 41/41. So those cases are guards, not decoration.
+
+**That took two attempts, and the first was wrong.** The initial mutation
+"passed", because the sandbox module was staged beside the test binary with a
+`POST_BUILD` copy — which only runs when the *test* target relinks, so editing
+only the module left a stale copy. Confirmed by hash: built module `05bc…`,
+staged copy `b937…`. A test exercising the previous build is indistinguishable
+from a passing test. Fixed by loading the module through a path relative to the
+test binary, which cannot go stale.
+
+### What moved, and to where
+
+| Left undone | Now owned by |
+|---|---|
+| 53.7 component registration in the ECS | **T0021** — there is no registry to hook into yet |
+| 53.8 serialization round-trip | **T0022** — the reflection half is tested here |
+| "serialization, inspector and undo consume this and nothing else" | **T0022 / T0035 / T0065** |
+
+Each of those has been told what it inherits, rather than this ticket merely
+listing them (CLAUDE.md rule 5).
+
+## What is not verified
+
+**Nothing consumes this yet.** Every downstream system is Phase 3 or later, so
+the claim is "the layer works and is tested", not "the engine reflects its own
+types". There are no engine components to register — T0021 brings the first.
+
+**Compile-time cost is unmeasured.** entt::meta is template-heavy and every
+registration instantiates. On the current type count this is invisible; at a
+realistic component count it may not be. D19's PCH work (T0048) is the obvious
+mitigation and the natural place to measure it.
+
+**Thread safety is not addressed.** entt::meta is not safe for concurrent
+mutation; registration must happen on one thread before concurrent access. That
+is entt's documented convention and it is not currently enforced or asserted
+anywhere — T0050 owns thread ownership rules and should cover it.
+
+**`PropertyMeta` is carried, not interpreted.** `hidden` and `read_only` are
+stored and retrievable; nothing acts on them, because the inspector that would
+is T0035.
