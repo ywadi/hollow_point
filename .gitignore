@@ -17,5 +17,10 @@
 # Generated for clangd
 compile_commands.json
 
+# Written by CI to key the build-tree cache on the submodule SHAs (T0121).
+# Local builds never produce it, but a stray untracked file in the tree is
+# noise the offline-configure job would rather not have to explain.
+/.ci-dep-key
+
 # Engine build outputs are covered by /build/ and /dist/ above; nothing else
 # under engine/, apps/ or samples/ is generated.

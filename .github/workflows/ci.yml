@@ -105,11 +105,46 @@ jobs:
           sudo apt-get install -y --no-install-recommends wine \
             || sudo apt-get install -y --no-install-recommends wine64
 
+      # Cache the build tree, keyed on what actually determines its third-party
+      # contents: the submodule SHAs plus the CMake and toolchain files. Our own
+      # sources are deliberately NOT in the key -- they change every commit, so
+      # including them would mean never hitting the cache. Ninja then rebuilds
+      # only the handful of engine files that changed and leaves SDL, Diligent,
+      # enkiTS, ozz and meshoptimizer alone.
+      #
+      # This is the principle the previous attempt missed: pinned code that has
+      # not moved must not recompile. ccache was tried first and did not deliver
+      # it -- it saw 82 of roughly 4,248 compilations, for reasons recorded in
+      # T0121 -- so this caches the *output* rather than hoping to cache the
+      # compilations.
+      #
+      # This job is the expensive one: build.zig lays trees out as
+      # build/<target>-<buildtype>, and this job builds BOTH targets, so `build`
+      # covers linux-x86_64-* and windows-x86_64-* together. Trees are large
+      # (~1.7 GB here, ~1.3 GB on Windows) against a 10 GB quota, which is why
+      # ci.yml originally declined to cache them. That judgement was made when a
+      # full build was ~4 minutes; at 22 it no longer holds, and GitHub evicts
+      # least-recently-used entries rather than failing.
+      - name: Key the build cache on the pinned dependencies
+        run: |
+          git submodule status --recursive | awk '{print $1, $2}' > .ci-dep-key
+          sha256sum CMakeLists.txt cmake/toolchains/*.cmake >> .ci-dep-key
+          echo "--- key inputs ---" && head -5 .ci-dep-key
+
+      - name: Cache the build tree
+        uses: actions/cache@v6
+        with:
+          path: build
+          key: buildtree-${{ runner.os }}-${{ hashFiles('.ci-dep-key') }}
+          restore-keys: |
+            buildtree-${{ runner.os }}-
+
       - name: Run every test bucket, both targets
         run: zig build test -Dtest=all
 
       # Reported so the effect is visible rather than assumed -- a cache that
-      # silently misses looks exactly like one that works.
+      # silently misses looks exactly like one that works. A restore that hit
+      # shows a tree already near full size before the build step runs.
       - name: Build tree size
         if: always()
         run: du -sh build 2>/dev/null || true
@@ -163,29 +198,21 @@ jobs:
           $v = (Select-String -Path bootstrap.ps1 -Pattern "ZigVersion\s*=\s*'([\d.]+)'" | Select-Object -First 1).Matches[0].Groups[1].Value
           "$PWD\.harness\zig\windows-x86_64\$v" | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
-      # Cache the build tree, keyed on what actually determines its third-party
-      # contents: the submodule SHAs plus the CMake and toolchain files. Our own
-      # sources are deliberately NOT in the key -- they change every commit, so
-      # including them would mean never hitting the cache. Ninja then rebuilds
-      # only the handful of engine files that changed and leaves SDL, Diligent,
-      # enkiTS, ozz and meshoptimizer alone.
+      # Same build-tree cache as tests-linux-host, for the reasons spelled out
+      # there. It matters more here than anywhere: T0084 established that this
+      # host cannot use ccache at all -- build.zig declines a PATH-discovered one
+      # because the runner's copy cannot exec the generated .cmd compiler shim --
+      # so a tree cache is the only lever Windows has.
       #
-      # This is the principle the previous attempt missed: pinned code that has
-      # not moved must not recompile. ccache was tried first and did not deliver
-      # it -- it saw 82 of roughly 4,248 compilations, for reasons recorded in
-      # T0121 -- so this caches the *output* rather than hoping to cache the
-      # compilations.
-      #
-      # Build trees are large (~1.7 GB Linux, ~1.3 GB Windows) against a 10 GB
-      # quota, which is why ci.yml originally declined to cache them. That
-      # judgement was made when a full build was ~4 minutes; at 22 it no longer
-      # holds, and GitHub evicts least-recently-used entries rather than failing.
+      # runner.os keeps the two jobs' entries apart, which they must be: this job
+      # passes -Dtarget=windows and so populates only build/windows-x86_64-*,
+      # where tests-linux-host populates both targets.
       - name: Key the build cache on the pinned dependencies
         shell: bash
         run: |
           git submodule status --recursive | awk '{print $1, $2}' > .ci-dep-key
           sha256sum CMakeLists.txt cmake/toolchains/*.cmake >> .ci-dep-key
-          echo "--- key inputs ---" && cat .ci-dep-key | head -5
+          echo "--- key inputs ---" && head -5 .ci-dep-key
 
       - name: Cache the build tree
         uses: actions/cache@v6
@@ -203,6 +230,15 @@ jobs:
         # path; tests-linux-host covers the Linux suite, and T0004 already
         # proved Linux-from-Windows cross-compiles.
         run: zig build test -Dtest=all -Dtarget=windows
+
+      # Same reason as the Linux report: an ineffective cache is invisible
+      # without one. PowerShell, because this job's default shell is not bash.
+      - name: Build tree size
+        if: always()
+        run: |
+          if (Test-Path build) {
+            "{0:N0} MB" -f ((Get-ChildItem -Recurse build | Measure-Object Length -Sum).Sum / 1MB)
+          }
 
   api-docs-current:
     name: API reference is up to date
