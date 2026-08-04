@@ -38,11 +38,12 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Guid.hpp>`](Guid.md) | 13 | 5 |
 | [`<hp/Layer.hpp>`](Layer.md) | 28 | 16 |
 | [`<hp/Log.hpp>`](Log.md) | 22 | 12 |
+| [`<hp/Module.hpp>`](Module.md) | 5 | 5 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 12 | 4 |
 
-**190 public declarations across 11 headers, 73 documented.**
+**195 public declarations across 12 headers, 78 documented.**
 
 ## Every symbol
 
@@ -205,6 +206,11 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `logCategoryAt` | [`Log.hpp`](Log.md) |
 | `logWrite` | [`Log.hpp`](Log.md) |
 | `logEnabled` | [`Log.hpp`](Log.md) |
+| `engineBuildId` | [`Module.hpp`](Module.md) |
+| `ModuleBuildIdFn` | [`Module.hpp`](Module.md) |
+| `ModuleCompatibility` | [`Module.hpp`](Module.md) |
+| `checkModuleBuildId` | [`Module.hpp`](Module.md) |
+| `describeIncompatibility` | [`Module.hpp`](Module.md) |
 | `Clock` | [`Time.hpp`](Time.md) |
 | `Clock::Clock` | [`Time.hpp`](Time.md) |
 | `Clock::tick` | [`Time.hpp`](Time.md) |

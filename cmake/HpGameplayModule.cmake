@@ -19,6 +19,9 @@
 set(HP_MODULE_FINALIZE_SOURCE "${CMAKE_CURRENT_LIST_DIR}/../engine/module/ModuleFinalize.cpp"
     CACHE INTERNAL "Unload finalizer compiled into every gameplay module (T0105.1)")
 
+set(HP_MODULE_BUILD_ID_SOURCE "${CMAKE_CURRENT_LIST_DIR}/../engine/module/ModuleBuildId.cpp"
+    CACHE INTERNAL "Build-id stamp compiled into every gameplay module (T0104.3)")
+
 function(hp_add_gameplay_module target)
     cmake_parse_arguments(ARG "" "OUTPUT_DIR" "SOURCES" ${ARGN})
 
@@ -35,9 +38,15 @@ function(hp_add_gameplay_module target)
     # a linked object, because it must be compiled *into this DSO* — it
     # finalizes this module's own __dso_handle, and one carried in from a static
     # library would finalize the wrong thing or be dropped as unreferenced.
-    add_library(${target} MODULE ${ARG_SOURCES} "${HP_MODULE_FINALIZE_SOURCE}")
+    add_library(${target} MODULE
+        ${ARG_SOURCES}
+        "${HP_MODULE_FINALIZE_SOURCE}"
+        "${HP_MODULE_BUILD_ID_SOURCE}")
 
     target_link_libraries(${target} PRIVATE hp::engine)
+    # The stamp includes the generated <hp/BuildId.h>, so the module cannot be
+    # compiled before it exists.
+    add_dependencies(${target} hp_build_id)
     target_compile_features(${target} PRIVATE cxx_std_20)
 
     set_target_properties(${target} PROPERTIES

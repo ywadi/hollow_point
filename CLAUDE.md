@@ -184,6 +184,28 @@ test that looked like a missing `<format>`, a floating-point step count, and a
 **Assert on every scripted edit.** A `str.replace` that silently matches nothing
 is the most common way a change appears to land and does not. `assert old in t`.
 
+**Production grade is the bar, and a refactor is an acceptable price.**
+Architecture, correctness and performance come before finishing quickly. When
+the right path means changing something already built, take it — the cost of
+carrying a wrong shape compounds, and this repository's history is mostly the
+record of paying that down deliberately rather than accreting around it. "It
+works" is not the standard; "this is the right structure and it is measured" is.
+
+**Do not reinvent wheels. If a library exists and fits, use it.** Check what is
+already vendored first — the answer has twice been sitting in `third_party/`
+while a ticket planned to build it from scratch. `entt::meta` is the worked
+example: T0053 listed three mechanisms for reflection and none of them was the
+full reflection system already in the tree, keyed on exactly the stable
+name-hash identity the ticket itself mandates.
+
+The judgement is *fit*, not novelty, and it is a real judgement. A library that
+fails the hard constraints here — MSVC-only, POSIX-only, its own build system,
+a network fetch at configure time, or an object model that fights D12 — costs
+more than it saves, and several do (see T0048's survey). So: search first,
+evaluate against the constraints in `03-build-harness.md` and the decision log,
+and write down what was rejected and why. Building it yourself is a conclusion
+you should have to argue for, not the default.
+
 **Stuck on a technical decision? Research it rather than guessing.** Spin off a
 Sonnet 5 agent to search the web and report back — library comparisons, format
 details, API behaviour, what other engines do and why. It has been consistently

@@ -150,6 +150,25 @@ foreach(_um hp_unload_module_fixed hp_unload_module_broken)
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 endforeach()
 
+# --- build-id fixtures (T0104.5) ---------------------------------------------
+#
+# Two modules: one stamped by hp_add_gameplay_module() with this engine's real
+# id, and one hand-rolled carrying an id belonging to no build of anything. The
+# stale one is deliberately NOT built through the helper, because the helper's
+# entire purpose is to make staleness impossible -- producing a stale module
+# means going around it.
+hp_add_gameplay_module(hp_stamped_module
+    SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/unload_module.cpp"
+    OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+
+add_library(hp_stale_module MODULE "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/stale_module.cpp")
+target_compile_features(hp_stale_module PRIVATE cxx_std_20)
+set_target_properties(hp_stale_module PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+
 add_executable(hp_unload_probe "${CMAKE_CURRENT_SOURCE_DIR}/fixtures/unload_probe.cpp")
 target_compile_features(hp_unload_probe PRIVATE cxx_std_20)
 set_target_properties(hp_unload_probe PROPERTIES
@@ -181,7 +200,10 @@ if(TARGET hp_tests_integration)
     # definitions are baked at configure time on the *host*, so a Windows binary
     # would receive a POSIX path it cannot open. The test composes them against
     # exe_dir() at run time, which is correct on both targets and under interop.
+    add_dependencies(hp_tests_integration hp_stamped_module hp_stale_module)
     target_compile_definitions(hp_tests_integration PRIVATE
+        HP_STAMPED_MODULE_NAME="$<TARGET_FILE_NAME:hp_stamped_module>"
+        HP_STALE_MODULE_NAME="$<TARGET_FILE_NAME:hp_stale_module>"
         HP_UNLOAD_PROBE_NAME="$<TARGET_FILE_NAME:hp_unload_probe>"
         HP_UNLOAD_MODULE_FIXED_NAME="$<TARGET_FILE_NAME:hp_unload_module_fixed>"
         HP_UNLOAD_MODULE_BROKEN_NAME="$<TARGET_FILE_NAME:hp_unload_module_broken>")

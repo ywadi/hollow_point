@@ -10,7 +10,35 @@
 #
 # Proven on both targets before this layout was committed; see
 # tests/integration/module_boundary_test.cpp and T0095.
+# --- build id (T0104) --------------------------------------------------------
+#
+# Generated at BUILD time with the public headers as declared inputs, so ninja
+# regenerates it when a header changes. A configure-time hash would go stale
+# silently -- CMake re-runs configure for a CMakeLists.txt change, not a header
+# change -- and a stale id claims compatibility it does not have, which is the
+# one failure this whole ticket exists to prevent.
+set(HP_BUILD_ID_HEADER "${CMAKE_BINARY_DIR}/generated/hp/BuildId.h")
+
+file(GLOB _hp_public_headers CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/include/hp/*.hpp")
+
+add_custom_command(
+    OUTPUT "${HP_BUILD_ID_HEADER}"
+    COMMAND "${CMAKE_COMMAND}"
+            -DHP_ID_INCLUDE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/include
+            -DHP_ID_TARGET=${HP_TARGET}
+            -DHP_ID_CONFIG=${CMAKE_BUILD_TYPE}
+            -DHP_ID_PROFILING=${HP_PROFILING}
+            -DHP_ID_OUTPUT=${HP_BUILD_ID_HEADER}
+            -P "${CMAKE_SOURCE_DIR}/cmake/hp_build_id.cmake"
+    DEPENDS ${_hp_public_headers} "${CMAKE_SOURCE_DIR}/cmake/hp_build_id.cmake"
+    COMMENT "Computing engine build id (T0104)"
+    VERBATIM)
+
+add_custom_target(hp_build_id DEPENDS "${HP_BUILD_ID_HEADER}")
+
 add_library(hp_engine SHARED
+    src/Module.cpp
     src/Application.cpp
     src/Engine.cpp
     src/Guid.cpp
@@ -22,7 +50,15 @@ add_library(hp_engine SHARED
 add_library(hp::engine ALIAS hp_engine)
 
 target_include_directories(hp_engine PUBLIC
-    "${CMAKE_CURRENT_SOURCE_DIR}/include")
+    "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    # PUBLIC because gameplay modules include <hp/BuildId.h> to stamp
+    # themselves, and they must get the *same* generated header as the engine --
+    # that identity is what makes a mismatch mean something.
+    "${CMAKE_BINARY_DIR}/generated")
+
+# The generated header is an input to compiling the engine, so say so rather
+# than relying on target ordering.
+add_dependencies(hp_engine hp_build_id)
 
 # PRIVATE: consumers must see the *import* side of HP_API, never the export
 # side. Making this PUBLIC would have every app and module claim to define the

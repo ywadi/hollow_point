@@ -22,6 +22,9 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
+#include <cstring>
+
+#include <hp/Module.hpp>
 #if !defined(_WIN32)
 #include <sys/wait.h>
 #endif
@@ -523,4 +526,77 @@ TEST_CASE("the unload finalizer is what makes that work" * doctest::test_suite("
                   "which likely means zig#17908 is fixed and engine/module/ModuleFinalize.cpp "
                   "can be revisited. Probe status ", broken.raw);
 #endif
+}
+
+// --- build id and module compatibility (T0104) -------------------------------
+//
+// D12's whole ergonomic win — rich C++ across the boundary, no C ABI, no
+// generated binding layer — rests on the module having been compiled against
+// exactly this engine. When that holds, everything works. When it does not,
+// nothing announces it: the module loads, resolves its symbols, and reads
+// fields at offsets that have moved. The corruption then surfaces somewhere
+// unrelated, and reading the gameplay code leads away from the cause.
+//
+// These cases are the guard on that, and the important one is the refusal.
+
+TEST_CASE("a module stamped by the build matches the engine" * doctest::test_suite("module")) {
+    LoadedModule stamped(exe_dir() + PATH_SEP + HP_STAMPED_MODULE_NAME);
+    REQUIRE_MESSAGE(stamped.ok(), stamped.error());
+
+    auto id_fn = stamped.sym<hp::ModuleBuildIdFn>(hp::kModuleBuildIdSymbol);
+    REQUIRE_MESSAGE(id_fn != nullptr,
+                    "hp_add_gameplay_module() must stamp every module; this one has no "
+                    << hp::kModuleBuildIdSymbol << " symbol");
+
+    const hp::ModuleCompatibility result = hp::checkModuleBuildId(id_fn());
+    CHECK_MESSAGE(result.compatible,
+                  hp::describeIncompatibility(HP_STAMPED_MODULE_NAME, result));
+    CHECK(std::strcmp(id_fn(), hp::engineBuildId()) == 0);
+}
+
+TEST_CASE("a module built against a different engine is refused" * doctest::test_suite("module")) {
+    LoadedModule stale(exe_dir() + PATH_SEP + HP_STALE_MODULE_NAME);
+    REQUIRE_MESSAGE(stale.ok(), stale.error());
+
+    auto id_fn = stale.sym<hp::ModuleBuildIdFn>(hp::kModuleBuildIdSymbol);
+    REQUIRE(id_fn != nullptr);
+
+    const hp::ModuleCompatibility result = hp::checkModuleBuildId(id_fn());
+    CHECK_FALSE_MESSAGE(result.compatible,
+                        "a module carrying id " << id_fn() << " must not be accepted by an "
+                                                << "engine whose id is " << hp::engineBuildId());
+
+    // The guarantee that matters: refused *before* any of its code runs.
+    // Refusing afterwards would be a diagnostic rather than a guard, because by
+    // then it has already read memory at the wrong offsets.
+    auto was_called = stale.sym<bool (*)()>("hp_stale_entry_was_called");
+    REQUIRE(was_called != nullptr);
+    CHECK_MESSAGE(!was_called(),
+                  "the module's entry point ran despite the id mismatch -- the check must "
+                  "happen before any module code is invoked");
+}
+
+TEST_CASE("an unstamped module is refused, not assumed fine" * doctest::test_suite("module")) {
+    // What a module built by something that bypassed hp_add_gameplay_module()
+    // looks like: no stamp at all. That is the case with no evidence either
+    // way, which is a refusal.
+    const hp::ModuleCompatibility result = hp::checkModuleBuildId(nullptr);
+    CHECK_FALSE(result.compatible);
+    CHECK(std::strcmp(result.module_id, "<unstamped>") == 0);
+}
+
+TEST_CASE("the refusal says what to rebuild" * doctest::test_suite("module")) {
+    // A refusal that does not tell a developer what to do is only marginally
+    // better than the corruption it prevents (104.6).
+    const hp::ModuleCompatibility result = hp::checkModuleBuildId("dead0000beef0000");
+    const std::string message = hp::describeIncompatibility("libhp_example.so", result);
+
+    CHECK_MESSAGE(message.find("libhp_example.so") != std::string::npos,
+                  "the message must name the module: " << message);
+    CHECK_MESSAGE(message.find("dead0000beef0000") != std::string::npos,
+                  "the message must carry the module's id: " << message);
+    CHECK_MESSAGE(message.find(hp::engineBuildId()) != std::string::npos,
+                  "the message must carry the engine's id: " << message);
+    CHECK_MESSAGE(message.find("Rebuild") != std::string::npos,
+                  "the message must say what to do: " << message);
 }
