@@ -8,7 +8,7 @@
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 155 |
 | **Created** | 2026-08-03 |
-| **Refs** | [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D12, [../completed/0095-gameplay-module-abi-and-linkage.md](../completed/0095-gameplay-module-abi-and-linkage.md), T0013, T0048, T0104 |
+| **Refs** | [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D12, [../completed/0095-gameplay-module-abi-and-linkage.md](../completed/0095-gameplay-module-abi-and-linkage.md), T0013, T0048, T0104, [../open/0127-exceptions-across-the-module-boundary.md](../open/0127-exceptions-across-the-module-boundary.md) |
 
 ## Why
 
@@ -28,13 +28,16 @@ This ticket holds them until their prerequisites land.
 
 - [x] A module can be genuinely unloaded and reloaded, or the project has
       decided it never will be and the consequences are written down
-- [ ] Dev and shipped configurations build from the same source with no
-      `#ifdef` spread through gameplay code
+- [x] Dev and shipped configurations build from the same source with no
+      `#ifdef` spread through gameplay code — Debug and Release, evidence below.
+      **Profiling is not a third buildable configuration**: `HP_PROFILING=ON`
+      does not compile at all (a deliberate `#error` until T0029)
 - [ ] T0048's reload mechanics are re-verified against the shared-engine model:
       the *game* module is copied-before-load and swapped; the *engine* library
       is loaded once and never reloaded
-- [ ] `dist` staging carries the engine shared library correctly on both
+- [x] `dist` staging carries the engine shared library correctly on both
       platforms, and an exported build runs from a directory it was not built in
+      — measured with the build tree *gone*, both targets, evidence below
 
 ## Subtasks
 
@@ -46,18 +49,20 @@ This ticket holds them until their prerequisites land.
       link libc++ dynamically so one copy is shared; forbid statics requiring
       destruction in modules as a convention; or accept NODELETE permanently and
       rely on copy-before-load. Needs T0048 to exist to be worth solving
-- [ ] 105.2 Dev vs shipped configuration. Entangled with T0104: the profiling
-      flag alone changes the engine's symbol surface, so "same source, different
-      configuration" and "refuse a mismatched module" are the same problem seen
-      from two sides
+- [x] 105.2 Dev vs shipped configuration — done 2026-08-04, and the
+      entanglement with T0104 was real: chasing it found a bug in the build id
+      itself. See "105.2 done" below
 - [ ] 105.3 Re-verify T0048's mechanics (was 95.6). Blocked on T0048
-- [ ] 105.4 `dist`/export staging of the engine shared library (was 95.7).
-      Blocked on T0013 producing one; note `cmake/dist.cmake` already handles
-      shared libraries for the Windows target, and T0043 records a RUNPATH
-      problem that this will meet
+- [x] 105.4 `dist`/export staging of the engine shared library (was 95.7) —
+      done 2026-08-04, unblocked by T0013 shipping the engine as a shared
+      library. T0043's RUNPATH hazard was already handled on the app side; what
+      was *not* handled is what else `dist` was staging. See "105.4 done" below
 - [ ] 105.5 Extend `tests/integration/module_boundary_test.cpp` as each of the
-      above becomes possible. The suite exists and is the right home; it
-      currently proves two generations agree, not that one can be retired
+      above becomes possible. Rolling, and cannot close before 105.3 does.
+      Landed so far: the unload A/B control (105.1) and the build-id
+      configuration-field case (105.2). Still to come: 105.3's reload mechanics,
+      and **T0127's typed-exception assertion on both targets**, which belongs
+      in this suite rather than a second one
 
 ## Notes / findings
 
@@ -243,3 +248,196 @@ statics** — the fixture is deliberately minimal and contains no engine code, a
 crash with a variant of this approach. Until a module with real engine statics
 is unloaded in anger, this is strong evidence rather than proof, and B is the
 fallback. Revisit when T0048 has something substantial to reload.
+
+## 105.4 done (2026-08-04) — both platforms, build tree gone
+
+### The RUNPATH half was already right, and that is worth stating
+
+T0043's hazard is handled on the app side: `apps/editor` and `apps/runtime` set
+`BUILD_WITH_INSTALL_RPATH ON` with `INSTALL_RPATH "$ORIGIN:$ORIGIN/../lib"`, so
+no absolute build-tree path is ever baked in. Verified on the staged binary:
+
+```
+$ readelf -d dist/linux-x86_64/bin/hp_editor | grep -i runpath
+ 0x000000000000001d (RUNPATH)  Library runpath: [$ORIGIN:$ORIGIN/../lib]
+```
+
+**That is not sufficient evidence on its own**, which is the trap CLAUDE.md
+records: a binary with an absolute RUNPATH passes both "run it in place" and
+"copy the folder elsewhere" on the machine that built it. So the test moved the
+export *and* removed the build tree.
+
+### The actual test — build tree renamed away, exports run from elsewhere
+
+```
+$ ls -d /media/ywadi/second/hollow_point/build
+ls: cannot access '.../build': No such file or directory
+
+$ ldd .../scratchpad/export-test/linux-x86_64/bin/hp_editor | grep hp_engine
+    libhp_engine.so => .../export-test/linux-x86_64/bin/libhp_engine.so
+
+LINUX   [info ] app: starting HollowPoint Runtime
+        [info ] runtime: engine 0.0.1-skeleton, 1 instance(s), 1 consumer(s)
+        [info ] app: HollowPoint Runtime ran 3 frame(s) in 0.029s, exit 0   exit=0
+
+WINDOWS (wine, same conditions)
+        [info ] app: starting HollowPoint Runtime
+        [info ] runtime: engine 0.0.1-skeleton, 1 instance(s), 1 consumer(s)
+        [info ] app: HollowPoint Runtime ran 3 frame(s) in 0.251s, exit 0   exit=0
+```
+
+`1 instance(s), 1 consumer(s)` is the part that matters: the export did not just
+start, it reached engine state through the staged shared library.
+
+### What verifying it actually found: `dist` was shipping the test fixtures
+
+Nobody had looked at what `dist` *contained*, only whether it ran. It contained
+every fixture the test suite builds, because the staging globs walk the whole
+build tree and a fixture is a shared library like any other:
+
+```
+before   linux   lib/  libhp_abi_engine.so libhp_abi_module.so libhp_stale_module.so
+                       libhp_stamped_module.so libhp_unload_module_broken.so
+                       libhp_unload_module_fixed.so          (15 shared)
+         windows bin/  the same set, *beside hp_editor.exe*  (17 shared)
+
+after    linux   8 shared, windows 9 shared — fixtures gone, nothing else lost
+```
+
+The worst of them is `hp_unload_module_broken`, which exists **because it
+segfaults the process at exit** — it is 105.1's control case. Staging a
+deliberately-broken module into a shipping layout is bad on its own; on Windows
+it was landing in `bin/`, next to the executable, where a loader might find it.
+
+Fixed in `cmake/dist.cmake` with one exclusion (`_never_stage`), covering both
+the shared-library and static/import passes. Two new cases in
+`tests/harness/dist_test.zig`, proven red before green:
+
+```
+without the fix   run test harness-dist 3 pass, 2 fail (5 total)
+with the fix      run test harness-dist 5 pass (5 total)
+```
+
+Each case also asserts a *real* library beside the fixture still stages, so the
+exclusion cannot pass by silently matching nothing.
+
+### Not fixed, recorded instead
+
+- **`dist` stages orphans from deleted source directories.** The Windows tree
+  still yields `libhp_game.dll` from `build/windows-x86_64-release/game/` — a
+  directory whose source was removed when `game/` became `samples/sandbox/`.
+  Ninja does not delete orphans and a glob cannot tell one from output. Not a
+  `dist.cmake` bug; a consequence of staging by glob at all.
+- **`.pdb` files ship** in `bin/` on Windows, and 90–109 static/import libraries
+  ship in `lib/` on both. Both may be intended for an SDK layout, and neither is
+  this ticket's call. → **T0128**.
+
+## 105.2 done (2026-08-04) — and it found a bug in the build id
+
+### Both configurations build from the same source
+
+```
+Release   build id 2eb9c464ec52100b   (x86_64-linux-gnu.2.28, Release, profiling=OFF)
+Debug     build id b88f8277d7bec25f   (x86_64-linux-gnu.2.28, Debug,   profiling=OFF)
+
+$ git status --short engine/ samples/ apps/     # after switching configuration
+(nothing)
+```
+
+1426 targets in Debug, 28 incremental in Release, same tree, no source
+difference. The configuration is captured by the id, exactly as T0104 intended,
+and a module carrying the wrong one is refused before its code runs — that part
+was already proven by T0104's stale-module case.
+
+### The last `#ifdef` in gameplay code is gone
+
+`samples/sandbox/src/Sandbox.cpp` hand-rolled its export macro:
+
+```cpp
+#if defined(_WIN32)
+#define HP_SANDBOX_EXPORT __declspec(dllexport)
+#else
+#define HP_SANDBOX_EXPORT __attribute__((visibility("default")))
+#endif
+```
+
+That is `HP_EXPORT` from `<hp/Api.hpp>`, which the engine has carried since
+T0013 — one preprocessor branch per module, for something already settled once.
+Now `#include <hp/Api.hpp>` and `HP_EXPORT`. **Gameplay code contains zero
+`#ifdef`s.** `HP_EXPORT` and not `HP_API`: a module exports its entry points,
+while `HP_API` resolves to the *import* side outside the engine build, and
+getting that wrong on Windows produces a module with no entry points rather
+than a compile error.
+
+### The bug: the build id was not stable across a no-op reconfigure
+
+`HP_PROFILING` was declared by `option()` at `engine/CMakeLists.txt:109`, below
+the custom command at line 31 that expands `${HP_PROFILING}` into the id. On a
+fresh tree nothing had put it in the cache yet, so the command baked an **empty
+string**; `option()` then wrote `OFF` to the cache, and the next configure baked
+`"OFF"`. Same source, same headers, same arguments:
+
+```
+fresh configure       -- hp: build id 00947a49dbbb42a3 (... Debug, profiling=)
+no-op reconfigure     -- hp: build id b88f8277d7bec25f (... Debug, profiling=OFF)
+```
+
+**This is T0104's guard misfiring, not failing to fire**, and that is the more
+confusing direction: every module built before the reconfigure is refused by an
+engine built after it, and the diagnostic is correct about the ids while being
+wrong about the world. T0104's own header warns about a stale id claiming
+compatibility it does not have; this is the same hazard from the other side.
+
+Fixed by declaring the option above the build-id command, with the ordering rule
+written where someone would break it. Verified:
+
+```
+fresh configure       -- hp: build id b88f8277d7bec25f (... Debug, profiling=OFF)
+no-op reconfigure     (no regeneration -- id unchanged)
+```
+
+Regression test in `module_boundary_test.cpp` — "every configuration field
+feeding the id has a value". An empty field is the signature of this whole bug
+class: a CMake variable read before it is declared reads as empty, never as
+garbage. Proven to fail with the ordering reverted (`profiling=`, id back to
+`00947a49dbbb42a3`) and to pass with it restored.
+
+### What 105.2 does *not* claim
+
+**Profiling is not a second buildable configuration.** `HP_PROFILING=ON` does
+not compile — `engine/include/hp/Profiling.hpp:33` is a deliberate `#error`
+until T0029 wires up a backend. The subtask framed dev-vs-shipped around that
+flag; the flag is a placeholder. What is demonstrated is Debug vs Release, which
+is a real axis, is in the id, and builds both ways. When T0029 lands, the
+profiling axis needs the same two checks: it builds from unchanged source, and
+its id differs.
+
+### Full suite, both targets, after all of the above
+
+```
+[doctest] test cases: 42 | 42 passed | 0 failed        (integration, x2)
+[doctest] test cases: 36 | 36 passed | 0 failed        (fast, x2)
+Build Summary: 18/18 steps succeeded; 23/23 tests passed
+$ zig build docs   -> exit 0
+```
+
+### Cross-ticket obligations (2026-08-04)
+
+- **T0127** is 105.1's finding seen from the other side. Same root cause — every
+  artifact carries its own hidden, statically linked libc++ — surfacing as
+  typeinfo identity rather than static destructors: a typed exception thrown in
+  a module is **not** caught by type in the host on Linux, only by
+  `catch (...)`, while Windows works. **What this ticket must honour: 105.5 owns
+  `tests/integration/module_boundary_test.cpp`, and 127.3's both-target
+  assertion belongs in it**, next to the unload regression and asserted the same
+  way — the broken case pinned as *expected to fail* on ELF and to pass on COFF,
+  so the platform split is encoded rather than skipped. Do not let 127.3 grow a
+  second boundary suite; this one is the right home, and its unload cases
+  already prove the separate-process pattern the exception case needs.
+- **`hp_add_gameplay_module()` is the enforcement point 127.1 will want.** It
+  already appends `ModuleFinalize.cpp` so a module cannot be built without the
+  finalizer; if T0127 decides an exception must never escape a module, the
+  `catch (...)` at every module entry point that `06-engine-conventions.md`
+  already mandates (advisory today) can be made unforgettable in the same place,
+  by the same mechanism. 105.2's dev-vs-shipped work touches that file, so
+  whoever lands it should not remove the seam.

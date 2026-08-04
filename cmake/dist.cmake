@@ -63,6 +63,23 @@ foreach(d IN LISTS _app_dirs)
     endforeach()
 endforeach()
 
+# What the recursive globs below must never pick up.
+#
+# `CMakeFiles/` is build bookkeeping: intermediate objects and the compiler
+# detection artefacts (CompilerIdC/a.exe).
+#
+# `tests/` is the one that had teeth. The globs walk the whole build tree, so
+# every fixture the suite builds was being staged into a shipping layout --
+# `libhp_abi_module`, `libhp_stale_module`, `libhp_stamped_module`, and on
+# Windows straight into bin/ beside hp_editor.exe. Among them
+# `hp_unload_module_broken`, which exists *because* it segfaults the process at
+# exit: it is the control case that proves T0105.1's finalizer does something.
+# Shipping a deliberately-broken module next to the executable is bad on its
+# own; shipping it under a name a loader might pick up is worse. Found while
+# verifying 105.4, which is the first time anyone looked at what `dist`
+# actually contained rather than whether it ran.
+set(_never_stage "/CMakeFiles/|/tests/")
+
 # Shared libraries. On Windows the DLLs must sit beside the exe to be found at
 # all; on Linux they go to lib/ and are located by rpath or LD_LIBRARY_PATH.
 set(_shared_dest "${DIST_DIR}/lib")
@@ -74,7 +91,7 @@ set(_shared_count 0)
 foreach(g IN LISTS _shared_glob)
     file(GLOB_RECURSE _found "${BUILD_DIR}/${g}")
     foreach(f IN LISTS _found)
-        if(NOT f MATCHES "/CMakeFiles/")
+        if(NOT f MATCHES "${_never_stage}")
             file(COPY "${f}" DESTINATION "${_shared_dest}")
             math(EXPR _shared_count "${_shared_count} + 1")
         endif()
@@ -88,7 +105,7 @@ list(APPEND _lib_globs ${_implib_glob})
 foreach(g IN LISTS _lib_globs)
     file(GLOB_RECURSE _found "${BUILD_DIR}/${g}")
     foreach(f IN LISTS _found)
-        if(NOT f MATCHES "/CMakeFiles/")
+        if(NOT f MATCHES "${_never_stage}")
             file(COPY "${f}" DESTINATION "${DIST_DIR}/lib")
             math(EXPR _static_count "${_static_count} + 1")
         endif()

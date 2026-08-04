@@ -24,6 +24,7 @@
 #include <vector>
 #include <cstring>
 
+#include <hp/BuildId.h>
 #include <hp/Module.hpp>
 #include <hp/Reflect.hpp>
 
@@ -554,6 +555,32 @@ TEST_CASE("the unload finalizer is what makes that work" * doctest::test_suite("
 // unrelated, and reading the gameplay code leads away from the cause.
 //
 // These cases are the guard on that, and the important one is the refusal.
+
+TEST_CASE("every configuration field feeding the id has a value" * doctest::test_suite("module")) {
+    // Guards an ordering bug that made the id unstable rather than wrong, and
+    // so produced a *spurious refusal* -- the failure mode that is hardest to
+    // read, because the diagnostic is correct about the ids and wrong about
+    // the world.
+    //
+    // HP_PROFILING was declared with option() *below* the custom command that
+    // expands it. On a fresh tree nothing had put it in the cache yet, so the
+    // command baked an empty string; option() then wrote OFF to the cache and
+    // the next configure baked "OFF". Same source, same headers, same flags,
+    // different id -- measured 00947a49dbbb42a3 -> b88f8277d7bec25f on a no-op
+    // reconfigure, after which every module built before it was refused.
+    //
+    // An empty field is the signature of that class of bug: a flag read before
+    // it was declared reads as empty, never as garbage. Asserting each field
+    // has a value costs nothing and catches the next flag added in the wrong
+    // order (T0105.2, and hp_build_id.cmake's "it will not be the last").
+    CHECK_MESSAGE(std::strlen(HP_BUILD_ID_PROFILING) > 0,
+                  "HP_BUILD_ID_PROFILING is empty -- HP_PROFILING was read before it was "
+                  "declared. Any flag feeding the id must be declared above the build-id "
+                  "command in engine/CMakeLists.txt");
+    CHECK_MESSAGE(std::strlen(HP_BUILD_ID_TARGET) > 0, "HP_BUILD_ID_TARGET is empty");
+    CHECK_MESSAGE(std::strlen(HP_BUILD_ID_CONFIG) > 0, "HP_BUILD_ID_CONFIG is empty");
+    CHECK(std::strlen(hp::engineBuildId()) == 16);
+}
 
 TEST_CASE("a module stamped by the build matches the engine" * doctest::test_suite("module")) {
     LoadedModule stamped(exe_dir() + PATH_SEP + HP_STAMPED_MODULE_NAME);

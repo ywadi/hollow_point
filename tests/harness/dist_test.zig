@@ -71,6 +71,16 @@ fn stage(gpa: std.mem.Allocator, name: []const u8, target_os: []const u8) !Stage
         try writeAt(cwd, work, "build/libRenderer.so", "shared");
     }
 
+    // Test fixtures, which the suite builds under build/tests/ and the
+    // recursive globs cannot tell apart from real output by name.
+    try writeAt(cwd, work, "build/tests/libfixture.a", "must not be staged");
+    if (std.mem.eql(u8, target_os, "windows")) {
+        try writeAt(cwd, work, "build/tests/Fixture.dll", "must not be staged");
+        try writeAt(cwd, work, "build/tests/Fixture.dll.a", "must not be staged");
+    } else {
+        try writeAt(cwd, work, "build/tests/libFixture.so", "must not be staged");
+    }
+
     const build_dir = try std.fs.path.join(gpa, &.{ work, "build" });
     defer gpa.free(build_dir);
     const dist_dir = try std.fs.path.join(gpa, &.{ work, "dist" });
@@ -123,6 +133,36 @@ test "windows staging puts DLLs beside the exe, not in lib/" {
     // lib/ even though the DLL does not.
     try testing.expect(s.has("lib/Renderer.dll.a"));
     try testing.expect(s.has("lib/libengine.a"));
+}
+
+test "test fixtures are never staged (linux)" {
+    var s = try stage(testing.allocator, "hp-dist-test-fixture-linux", "linux");
+    defer s.deinit();
+
+    try testing.expect(!s.has("lib/libFixture.so"));
+    try testing.expect(!s.has("bin/libFixture.so"));
+    try testing.expect(!s.has("lib/libfixture.a"));
+
+    // The real shared object sitting beside them still stages. Without this the
+    // two assertions above would pass just as well if the glob had stopped
+    // finding anything at all.
+    try testing.expect(s.has("lib/libRenderer.so"));
+}
+
+test "test fixtures are never staged (windows)" {
+    var s = try stage(testing.allocator, "hp-dist-test-fixture-windows", "windows");
+    defer s.deinit();
+
+    // This is the case with teeth. Windows stages shared libraries into bin/,
+    // so an unfiltered fixture lands *beside the executable* -- which is where
+    // hp_unload_module_broken.dll was going, an artifact built specifically to
+    // segfault the process at exit (T0105.1's control case).
+    try testing.expect(!s.has("bin/Fixture.dll"));
+    try testing.expect(!s.has("lib/Fixture.dll"));
+    try testing.expect(!s.has("lib/Fixture.dll.a"));
+    try testing.expect(!s.has("lib/libfixture.a"));
+
+    try testing.expect(s.has("bin/Renderer.dll"));
 }
 
 test "build bookkeeping is never staged" {

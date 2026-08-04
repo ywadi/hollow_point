@@ -10,6 +10,30 @@
 #
 # Proven on both targets before this layout was committed; see
 # tests/integration/module_boundary_test.cpp and T0095.
+
+# --- configuration flags that the build id has to see ------------------------
+#
+# Declared *here*, above the build id, and that ordering is load-bearing.
+#
+# It used to be declared further down, next to the code it guards, which reads
+# better and was wrong: the custom command below expands ${HP_PROFILING} at
+# configure time, so on a fresh tree -- where nothing has put it in the cache
+# yet -- it expanded to the empty string. `option()` then wrote OFF to the
+# cache, and the *next* configure expanded it to "OFF" instead. The id therefore
+# changed on a no-op reconfigure, with no source, no header and no argument
+# different: measured 00947a49dbbb42a3 -> b88f8277d7bec25f (T0105.2).
+#
+# The consequence is the guard misfiring rather than failing to fire: every
+# module built before that reconfigure is refused by an engine built after it,
+# for a difference that does not exist. T0104's header warns about a stale id
+# claiming compatibility it does not have; this is the same hazard from the
+# other side, and it is the more confusing one, because the diagnostic is
+# correct about the ids and wrong about the world.
+#
+# **Any flag that feeds the id must be declared before the command that reads
+# it.** That is the rule this comment exists to keep.
+option(HP_PROFILING "Compile in profiling instrumentation (Tracy, T0029)" OFF)
+
 # --- build id (T0104) --------------------------------------------------------
 #
 # Generated at BUILD time with the public headers as declared inputs, so ninja
@@ -106,7 +130,10 @@ target_compile_definitions(hp_engine PUBLIC HP_LOG_MIN_LEVEL=${HP_LOG_MIN_LEVEL}
 # mismatch T0104 exists to refuse at load, because enabling profiling changes
 # the engine's symbol surface. Making this PRIVATE would let that happen
 # silently and is the single easiest way to get this wrong.
-option(HP_PROFILING "Compile in profiling instrumentation (Tracy, T0029)" OFF)
+#
+# The option itself is declared at the top of this file, above the build id that
+# has to hash it -- see the comment there for why moving it back down breaks the
+# id.
 if (HP_PROFILING)
     target_compile_definitions(hp_engine PUBLIC HP_PROFILING)
     message(STATUS "hp_engine: profiling instrumentation ENABLED")

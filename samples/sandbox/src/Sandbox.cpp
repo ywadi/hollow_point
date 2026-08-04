@@ -14,25 +14,30 @@
 // same pinned toolchain with the same flags, so rich C++ crosses the boundary
 // and no binding layer is needed. T0104 adds the build id that turns a
 // mismatched module from silent corruption into a refusal at load.
-#include <hp/Engine.hpp>
 
-#if defined(_WIN32)
-#define HP_SANDBOX_EXPORT __declspec(dllexport)
-#else
-#define HP_SANDBOX_EXPORT __attribute__((visibility("default")))
-#endif
+// HP_EXPORT rather than a module-local `#if defined(_WIN32)` block. The engine
+// already carries that macro, with exactly these semantics, and a gameplay
+// module that hand-rolls it is one preprocessor branch per module for something
+// the engine settled once (T0105.2: no `#ifdef` spread through gameplay code).
+//
+// HP_EXPORT and not HP_API: a module *exports* its entry points, whereas HP_API
+// resolves to the import side outside the engine build. Getting that wrong on
+// Windows is not a compile error -- it produces a module with no entry points
+// and a host that fails to find them at load.
+#include <hp/Api.hpp>
+#include <hp/Engine.hpp>
 
 extern "C" {
 
 /// Called by the host after loading the module. T0048 defines the real
 /// lifecycle; this proves the module can reach engine state.
-HP_SANDBOX_EXPORT void hpSandboxAttach() {
+HP_EXPORT void hpSandboxAttach() {
     hp::engineRegisterConsumer("sandbox");
 }
 
 /// Reports the engine's consumer count as the module sees it. The host compares
 /// this against its own view: one shared engine means they agree.
-HP_SANDBOX_EXPORT unsigned hpSandboxConsumerCount() {
+HP_EXPORT unsigned hpSandboxConsumerCount() {
     return hp::engineConsumerCount();
 }
 }
@@ -69,7 +74,7 @@ struct SandboxHealth {
 extern "C" {
 
 /// Adopts the engine's meta context and registers this module's types into it.
-HP_SANDBOX_EXPORT void hpSandboxRegisterTypes() {
+HP_EXPORT void hpSandboxRegisterTypes() {
     hp::adoptMetaContext();
     hp::reflect<SandboxHealth>("SandboxHealth")
         .property<&SandboxHealth::current>("current")
@@ -83,9 +88,8 @@ HP_SANDBOX_EXPORT void hpSandboxRegisterTypes() {
 /// Takes the value by pointer rather than returning a meta_any, because the
 /// point is to prove the reflection worked, not to move entt types through a C
 /// entry point.
-HP_SANDBOX_EXPORT bool hpSandboxReadHostProperty(const char* type_name,
-                                                 const char* property_name,
-                                                 float* out_value) {
+HP_EXPORT bool hpSandboxReadHostProperty(const char* type_name, const char* property_name,
+                                         float* out_value) {
     const entt::meta_type type = hp::resolveType(type_name);
     if (!type || out_value == nullptr) {
         return false;
@@ -114,7 +118,7 @@ HP_SANDBOX_EXPORT bool hpSandboxReadHostProperty(const char* type_name,
 /// name literals that live in this module's image, so leaving them registered
 /// after the image goes away is the same class of dangling-pointer failure
 /// T0105.1 fixed for static destructors.
-HP_SANDBOX_EXPORT void hpSandboxForgetTypes() {
+HP_EXPORT void hpSandboxForgetTypes() {
     hp::forgetType("SandboxHealth");
 }
 }

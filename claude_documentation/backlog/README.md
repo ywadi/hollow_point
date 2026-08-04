@@ -35,7 +35,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 90 | [T0015](completed/0015-window-platform-layer.md) | Window, input and platform layer via SDL3 | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | 100 | [T0018](completed/0018-event-system.md) | Event system | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | 110 | [T0017](completed/0017-layer-stack.md) | LayerStack (system layers) | 2 — Engine skeleton | ✅ DONE | High | Simple |
-| 5 | [T0126](open/0126-remove-single-game-framing.md) | Remove the single-game framing from the backlog | 1 — Harden the build | 🔜 TODO | High | Moderate |
+| — | [T0126](completed/0126-remove-single-game-framing.md) | Remove the single-game framing from the backlog | 1 — Harden the build | ✅ DONE | High | Moderate |
 | 6 | [T0127](open/0127-exceptions-across-the-module-boundary.md) | A typed exception cannot cross the module boundary on Linux | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | 150 | [T0048](open/0048-hot-reloadable-gameplay-module.md) | Hot-reloadable gameplay module | 2 — Engine skeleton | 🔜 TODO | High | Very Complex |
 | ▶ | [T0105](inprogress/0105-module-linkage-loose-ends.md) | Module linkage: the parts that need something built first | 2 — Engine skeleton | 🚧 IN PROGRESS | High | Moderate |
@@ -109,6 +109,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 720 | [T0039](open/0039-meshoptimizer-auto-lod.md) | Automatic LOD generation with meshoptimizer | 7 — Content pipeline | 🔜 TODO | High | Moderate |
 | 730 | [T0040](open/0040-runtime-lod-selection.md) | Runtime LOD selection | 7 — Content pipeline | 🔜 TODO | Medium | Moderate |
 | 740 | [T0041](open/0041-ozz-animation.md) | ozz-animation runtime and import | 7 — Content pipeline | 🔜 TODO | High | Complex |
+| 740 | [T0128](open/0128-what-dist-actually-contains.md) | `dist` stages by glob, so nobody decides what ships | 8 — Runtime & export | 🔜 TODO | Medium | Moderate |
 | 745 | [T0109](open/0109-external-game-projects.md) | How an external game project builds against the engine | 8 — Runtime & export | 🔜 TODO | High | Complex |
 | 750 | [T0049](open/0049-animation-runtime.md) | Animation runtime library | 7 — Content pipeline | 🔜 TODO | High | Very Complex |
 | 755 | [T0119](open/0119-wayland-and-linux-distribution.md) | Wayland support and Linux distribution | 8 — Runtime & export | 🔜 TODO | Medium | Moderate |
