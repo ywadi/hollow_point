@@ -683,3 +683,46 @@ T0048.
 - **Revisit only if** zig begins exposing LLVM/Clang as linkable libraries, *or*
   `clang-repl` gains tested MinGW-w64 support *and* upstream redefinition. Both
   are required; either alone does not reopen this.
+
+---
+
+## D20 — Device loss is fatal, with a distinguishable message; recreate-and-continue is rejected for now
+
+**Decision:** when the graphics device is lost mid-run, the process logs a
+message that names it as a **GPU or driver failure**, flushes the log, and
+aborts. It does not attempt to recreate the device and carry on.
+
+The message is the point. `VK_ERROR_DEVICE_LOST` happens on real machines —
+driver updates, GPU hangs, a laptop switching between integrated and discrete
+GPUs — and this engine intends to run its entire particle system in compute
+(**D15**), which is the classic way to write an accidental GPU hang while
+developing. A player report saying "device lost" is triaged in seconds; the same
+failure as an unlabelled crash is triaged as memory corruption, which is where
+the afternoons go.
+
+**Rejected — recreate and continue.** Recreating the device means reloading
+every GPU resource, rebuilding every pipeline state, and resuming mid-frame with
+a half-populated cache. It is a large feature, it is exercised almost never, and
+code that is exercised almost never is wrong when it finally runs. Nobody should
+build it speculatively.
+
+**Revisit when** there is evidence of frequent *recoverable* loss in the wild —
+a platform where losses are routine rather than exceptional, or a support burden
+that shows players hitting it repeatedly on healthy hardware. Until then the
+honest engineering position is that a lost device is an environment failure, not
+a state the engine should pretend to survive.
+
+**What this cost, measured while implementing it (T0113):** DiligentCore has no
+device-loss handling of its own — `VK_ERROR_DEVICE_LOST` appears only in the
+vendored Vulkan headers, nowhere in Diligent's source. There is no status query
+to poll and no structured signal to subscribe to. The **only** hook is the
+per-factory debug message callback, so detection is necessarily
+pattern-matching on what the backend reports, and that is a limitation of the
+dependency rather than a shortcut.
+
+The OpenGL side is worse and is recorded rather than guessed: Diligent exposes
+nothing for GL context loss on desktop (`glGetGraphicsResetStatus` and
+`GL_CONTEXT_LOST` appear only in the Android EGL path). On the GL backend,
+device loss is therefore **undefined** — it will present as whatever the driver
+does, most likely a crash without the distinguishable message. Vulkan is the
+default backend, which is what keeps this acceptable.

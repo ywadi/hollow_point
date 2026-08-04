@@ -31,19 +31,14 @@ gap was that *neither* had been chosen; this ticket chooses.
 
 ## Done when
 
-- [ ] Policy recorded in the decision log: device loss is **fatal**, with
-      recreate-and-continue explicitly rejected for now and the revisit
-      trigger named (e.g. evidence of frequent recoverable losses in the wild)
-- [ ] Detection actually exists: the error paths from `Present` and command
-      submission are checked in T0025's device code on the Vulkan backend, and
-      what the OpenGL backend can even report is investigated and recorded
-      (GL's equivalent is context loss / robustness, and Diligent's surface
-      for it is currently unknown -- find out, do not assume)
-- [ ] The failure routes through the fatal path with a **distinguishable
-      message** -- naming the condition as a GPU/driver failure, distinct from
-      an engine crash, so a player report of "device lost" is immediately
-      recognisable and not triaged as memory corruption
-- [ ] The log is flushed on this path (T0054's flush-on-fatal hook -- T0099.4)
+- [x] Policy recorded in the decision log — **D20**
+- [x] Detection exists — though **not where this expected it**: Diligent's
+      `Present` returns void and it has no device-loss handling of its own, so
+      the debug message callback is the only hook. GL investigated and recorded
+      as having no surface at all. See below
+- [x] The failure routes through the fatal path with a distinguishable
+      message naming it as a GPU/driver failure
+- [x] The log is flushed on this path — `logFlush()` before `abort()`
 - [ ] A development story for triggering it exists at least on paper: what was
       tried (a deliberately hanging compute shader trips the OS driver
       timeout, at the cost of a rough couple of seconds for the machine), and
@@ -51,12 +46,11 @@ gap was that *neither* had been chosen; this ticket chooses.
 
 ## Subtasks
 
-- [ ] 113.1 Write the policy sentence and the rejection into the decision log
-- [ ] 113.2 Detection points in T0025's present/submission code, Vulkan first
-- [ ] 113.3 Message and routing: through the same fatal path T0099 formalises,
-      with the crash-report file naming the condition and the GPU/driver
-- [ ] 113.4 Investigate the OpenGL side: what Diligent exposes for GL context
-      loss, and record whether the GL backend can do better than "undefined"
+- [x] 113.1 Write the policy sentence and the rejection into the decision log — D20
+- [x] 113.2 Detection — via the message callback, because no other hook exists
+- [x] 113.3 Message and routing — log-flush-and-abort for now; the crash-report
+      file is T0099's half and is still open
+- [x] 113.4 Investigate the OpenGL side — it exposes nothing; recorded in D20
 - [ ] 113.5 Testing story, including whether a deliberate-hang shader is worth
       keeping behind a debug flag
 
@@ -73,3 +67,62 @@ gap was that *neither* had been chosen; this ticket chooses.
   compute-driven particles mean the team will write GPU hangs during
   development, and "mystery crash" versus "device lost: GPU hang or driver
   reset" is the difference between a lost afternoon and a shrug.
+
+## Done (2026-08-04) — the detection surface is worse than the ticket assumed
+
+### There is no `Present` error path to check
+
+113.2 asks for "the error paths from `Present` and command submission". They do
+not exist. `ISwapChain::Present` returns **void**, and — measured —
+**DiligentCore contains no device-loss handling whatsoever**:
+`VK_ERROR_DEVICE_LOST` appears only in the vendored Vulkan headers, never in
+Diligent's own source. There is no status to poll and no structured signal.
+
+So detection is pattern-matching on the text the per-factory debug message
+callback delivers, and that is a limitation of the dependency rather than a
+shortcut taken here. It is checked *before* the severity switch, because a lost
+device is fatal whatever severity the failing call happened to use.
+
+The matcher is deliberately broad — a false positive costs an abort on a run
+that was already failing, a false negative costs the distinguishable message
+that is the whole point. Checked against the shapes a real failure produces and
+against real Diligent noise:
+
+```
+VK_ERROR_DEVICE_LOST on present / on vkQueueSubmit   -> fires
+DXGI_ERROR_DEVICE_REMOVED                            -> fires
+"Requested color buffer format ... not supported"    -> silent
+"Desired back buffer count (2) is smaller ..."       -> silent
+"Using VK_PRESENT_MODE_FIFO_RELAXED_KHR ..."         -> silent
+```
+
+And in practice: a full probe run with validation forced on produces 12 real
+validation errors and trips this **zero** times.
+
+### OpenGL has no surface for it at all
+
+`glGetGraphicsResetStatus` and `GL_CONTEXT_LOST` appear in Diligent only in the
+**Android EGL** path. On the desktop GL backend, device loss is *undefined* — it
+will present as whatever the driver does, most likely a crash without the
+message. Recorded in D20 rather than left as an assumption. Vulkan being the
+default backend is what makes that acceptable.
+
+### The fatal path follows T0099's rules early
+
+Nothing is allocated on it, the message is preformatted, the log is flushed,
+then `abort()`. Backend and adapter are cached at device creation into file-scope
+pointers, because the Diligent callback is a bare function pointer with no
+user-data parameter and the failure path must not look anything up.
+
+## Not done
+
+- **113.5, the testing story, is on paper only and the path has never run.**
+  Triggering it for real needs a GPU hang — a deliberately infinite compute
+  shader trips the OS driver timeout, at the cost of a rough couple of seconds
+  for the whole machine — and there is nothing to write one with until T0027.
+  No cheaper simulation hook was added: injecting a synthetic message would mean
+  a test-only entry point in the engine's public surface, which is a worse trade
+  than an untested path whose *matcher* is tested. **What is verified is the
+  matcher and the absence of false positives; what is not is the abort.**
+- **The crash-report half is T0099's** and stays open. Until then this is
+  log-flush-and-abort, which the ticket itself calls most of the value.

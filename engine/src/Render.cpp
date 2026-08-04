@@ -9,6 +9,8 @@
 #include <hp/Window.hpp>
 
 #include <array>
+#include <cstdlib>
+#include <cstring>
 
 // Must precede the factory headers: their LoadGraphicsEngine* helpers are
 // inline and call LoadEngineDll, which lives here and is Windows-only.
@@ -27,6 +29,15 @@ namespace {
 const LogCategory kLog("render");
 const LogCategory kDiligentLog("render.diligent");
 
+/// Backend and adapter for the device-loss message.
+///
+/// File-scope because the Diligent callback is a plain function pointer with no
+/// user-data parameter, and the fatal path must allocate nothing and look
+/// nothing up. Written once at device creation, read only when everything is
+/// already going wrong.
+const char* g_activeBackendName = "unknown";
+const char* g_activeAdapter = "unknown";
+
 /// Sends Diligent's diagnostics through the engine's log (T0054).
 ///
 /// Without this they go straight to stderr with their own ANSI colouring, which
@@ -35,11 +46,65 @@ const LogCategory kDiligentLog("render.diligent");
 /// reading is not a diagnostic. It is also the volume control: device creation
 /// dumps every instance extension the driver has at Info, which is exactly what
 /// a category and a level are for.
+/// Whether a backend message describes the device dying, rather than a normal
+/// error (T0113).
+///
+/// Pattern-matching, and not by choice: **DiligentCore has no device-loss
+/// handling at all** -- `VK_ERROR_DEVICE_LOST` appears only in the vendored
+/// Vulkan headers, never in its source -- so there is no status to query and no
+/// structured signal to subscribe to. The debug message callback is the only
+/// hook that exists, which makes the text the only evidence available.
+///
+/// Deliberately broad. A false positive costs an abort on a run that was
+/// already failing; a false negative costs the distinguishable message that is
+/// the entire point of D20.
+bool describesDeviceLoss(const char* text) {
+    if (text == nullptr) {
+        return false;
+    }
+    static constexpr const char* kNeedles[] = {
+        "DEVICE_LOST", "device lost", "Device Lost", "device removed", "DEVICE_REMOVED",
+    };
+    for (const char* needle : kNeedles) {
+        if (std::strstr(text, needle) != nullptr) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// The fatal path for a lost device (D20, T0113).
+///
+/// Named as a GPU/driver failure so a report of it is recognisable in seconds
+/// rather than being triaged as memory corruption. Follows T0099's rules for a
+/// failure path even though T0099 has not built the handler yet: nothing is
+/// allocated here, the message is preformatted, the log is flushed, then abort.
+[[noreturn]] void deviceLost(const char* backend, const char* adapter, const char* detail) {
+    HP_LOG_FATAL(kLog,
+                 "GPU DEVICE LOST -- this is a graphics driver or hardware failure, not an "
+                 "engine crash. backend={} adapter='{}' detail={}. The device cannot be "
+                 "recovered (D20): recreate-and-continue is deliberately not implemented. "
+                 "Common causes are a driver update or reset while running, a GPU hang -- "
+                 "including an infinite loop in a compute shader -- or a laptop switching "
+                 "between integrated and discrete GPUs.",
+                 backend, adapter, detail);
+    logFlush();
+    std::abort();
+}
+
 void DILIGENT_CALL_TYPE diligentMessage(Diligent::DEBUG_MESSAGE_SEVERITY severity,
                                         const Diligent::Char* message,
                                         const Diligent::Char* function, const Diligent::Char* file,
                                         int line) {
     const char* text = message != nullptr ? message : "";
+
+    // Checked before the severity switch: a lost device is fatal whatever
+    // severity the backend chose to report it at, and Diligent reports it at
+    // whatever the failing call happened to use.
+    if (describesDeviceLoss(text)) {
+        deviceLost(g_activeBackendName, g_activeAdapter, text);
+    }
+
     switch (severity) {
     case Diligent::DEBUG_MESSAGE_SEVERITY_FATAL_ERROR:
     case Diligent::DEBUG_MESSAGE_SEVERITY_ERROR:
@@ -277,6 +342,8 @@ void RenderLayer::onAttach() {
     }
 
     impl_->describeAdapter();
+    g_activeBackendName = backendName(impl_->active);
+    g_activeAdapter = impl_->adapter.c_str();
 
     // Report what was *created*, not what was asked for. The surface overrides
     // both: a request for 2 buffers came back as 3 here ("minimal image count
