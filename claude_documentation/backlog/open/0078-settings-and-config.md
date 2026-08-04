@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 360 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0082, T0085, T0110, T0114 , [../open/0129-display-modes-and-window-control.md](../open/0129-display-modes-and-window-control.md) |
+| **Refs** | T0082, T0085, T0110, T0114 , [../inprogress/0129-display-modes-and-window-control.md](../inprogress/0129-display-modes-and-window-control.md) |
 
 ## Why
 

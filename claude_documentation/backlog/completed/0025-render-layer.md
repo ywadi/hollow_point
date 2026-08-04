@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
@@ -319,9 +319,26 @@ resizes performed: 40
 validation probe ran 120 frame(s) in 2.349s, exit 0
 ```
 
-### Not closed yet
+### Both backends, both targets — closed 2026-08-04
 
-The ticket stays open until T0110's pacing work lands beside it, since 110.1's
-runtime vsync toggle is exercised here but its policy is not decided. The
-OpenGL backend has been verified on Linux only; the Windows GL path is built and
-linked but has not been run.
+The last gap was OpenGL on Windows: built and linked but never run. It runs.
+
+```
+[info ] window: OpenGL context created and made current
+[info ] render: OpenGL on 'NVIDIA GeForce RTX 2080', 1280x720, 2 buffers, vsync on
+ready=1 backend=2   resizes performed: 40   device released      (wine, exit 0)
+```
+
+Full matrix, each measured rather than inferred from the others:
+
+| | Vulkan | OpenGL |
+|---|---|---|
+| Linux | device, 40 resizes, 2 vsync rebuilds, clean release | same |
+| Windows (wine) | same | same |
+
+**What this ticket does not own, and is recorded on the tickets that do:**
+110.1's *user-facing* vsync policy is undecided — the runtime toggle is
+implemented and exercised here, but what the player-facing option maps to per
+backend is T0110's. T0129 owns fullscreen and resolution, which this ticket's
+resize path will serve. T0113 owns device loss, which hooks the message callback
+added here.

@@ -46,9 +46,9 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
 | [`<hp/Render.hpp>`](Render.md) | 17 | 17 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
-| [`<hp/Window.hpp>`](Window.md) | 12 | 4 |
+| [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 
-**276 public declarations across 17 headers, 159 documented.**
+**283 public declarations across 17 headers, 166 documented.**
 
 ## Every symbol
 
@@ -318,6 +318,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Clock::setMaxFixedStepsPerFrame` | [`Time.hpp`](Time.md) |
 | `Clock::maxFixedStepsPerFrame` | [`Time.hpp`](Time.md) |
 | `Clock::interpolationAlpha` | [`Time.hpp`](Time.md) |
+| `DisplayMode` | [`Window.hpp`](Window.md) |
+| `DisplayInfo` | [`Window.hpp`](Window.md) |
 | `WindowConfig` | [`Window.hpp`](Window.md) |
 | `NativeWindowHandles` | [`Window.hpp`](Window.md) |
 | `WindowEvents` | [`Window.hpp`](Window.md) |
@@ -330,3 +332,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Window::height` | [`Window.hpp`](Window.md) |
 | `Window::title` | [`Window.hpp`](Window.md) |
 | `Window::nativeHandles` | [`Window.hpp`](Window.md) |
+| `Window::displayMode` | [`Window.hpp`](Window.md) |
+| `Window::setDisplayMode` | [`Window.hpp`](Window.md) |
+| `Window::setSize` | [`Window.hpp`](Window.md) |
+| `Window::displayScale` | [`Window.hpp`](Window.md) |
+| `Window::displays` | [`Window.hpp`](Window.md) |

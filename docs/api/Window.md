@@ -6,7 +6,35 @@
 #include <hp/Window.hpp>
 ```
 
-12 public declaration(s), 4 documented.
+19 public declaration(s), 11 documented.
+
+## `DisplayMode`
+
+```cpp
+enum class DisplayMode
+```
+
+| Enumerator | Value |
+|---|---|
+| `Windowed` | 0 |
+| `BorderlessFullscreen` | 1 |
+
+ How a window occupies the screen (T0129).
+
+ **Exclusive fullscreen is deliberately absent**, and the reason is recorded
+ rather than left as an omission: it changes the *display's* state rather
+ than the window's, which is what makes alt-tab, multi-monitor and
+ crash-recovery harder with it. What it buys — a true immediate present path
+ on some drivers — is a latency optimisation nobody here has measured a need
+ for. See T0129 for what evidence would reopen it.
+
+## `DisplayInfo`
+
+```cpp
+struct DisplayInfo
+```
+
+ A display the window could be placed on.
 
 ## `WindowConfig`
 
@@ -120,3 +148,62 @@ NativeWindowHandles nativeHandles() const
 ```
 
 *No documentation comment.*
+
+## `Window::displayMode`
+
+```cpp
+DisplayMode displayMode() const
+```
+
+ @returns the current display mode.
+
+## `Window::setDisplayMode`
+
+```cpp
+bool setDisplayMode(DisplayMode mode)
+```
+
+ Switches between windowed and borderless fullscreen at run time (129.2).
+
+ The swap chain follows automatically: SDL emits a resize, which reaches
+ the render layer through the normal event path (25.3). Nothing here
+ touches the device.
+
+ @param mode the mode to switch to. Setting the current mode is a no-op.
+ @returns whether the switch succeeded; on failure the previous mode is
+          retained and the reason is logged.
+
+## `Window::setSize`
+
+```cpp
+bool setSize(int width, int height)
+```
+
+ Changes the windowed size at run time (129.3).
+
+ Ignored while in fullscreen, where the size is the display's — silently,
+ because a settings UI applying a saved resolution before restoring
+ windowed mode is normal rather than an error.
+
+ @param width new width in logical units.
+ @param height new height in logical units.
+ @returns whether the size was applied.
+
+## `Window::displayScale`
+
+```cpp
+float displayScale() const
+```
+
+ @returns the content scale of the display this window is on — 1.0 at
+          100%, 2.0 on a doubled display. This is why `width()` (logical)
+          and the swap chain's size (pixels) are not the same number.
+
+## `Window::displays`
+
+```cpp
+static std::vector<DisplayInfo> displays()
+```
+
+ @returns every display currently attached, in SDL's order. The first is
+          the primary. Empty only if the video subsystem is unavailable.

@@ -60,8 +60,50 @@ std::unique_ptr<Window> Window::create(const WindowConfig& config) {
         flags |= SDL_WINDOW_OPENGL;
     }
 
-    SDL_Window* sdlWindow =
-        SDL_CreateWindow(config.title.c_str(), config.width, config.height, flags);
+    if (config.displayMode == DisplayMode::BorderlessFullscreen) {
+        // Set at creation as well as being switchable later: opening straight
+        // into fullscreen avoids a visible windowed flash at startup, which is
+        // the kind of thing that reads as a bug rather than a frame of latency.
+        flags |= SDL_WINDOW_FULLSCREEN;
+    }
+
+    // Place it on the requested display by creating with a position on that
+    // display's desktop rect. SDL_CreateWindow takes no display id, and
+    // SDL_WINDOW_FULLSCREEN follows whichever display the window is on.
+    SDL_Window* sdlWindow = nullptr;
+    {
+        SDL_PropertiesID props = SDL_CreateProperties();
+        SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, config.title.c_str());
+        SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, config.width);
+        SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, config.height);
+        SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER,
+                              static_cast<Sint64>(flags));
+
+        int displayCount = 0;
+        SDL_DisplayID* ids = SDL_GetDisplays(&displayCount);
+        if (ids != nullptr) {
+            // Out of range falls back to the primary rather than failing: a
+            // monitor remembered from a previous session may simply not be
+            // plugged in now, and refusing to start is the wrong response.
+            const int wanted = (config.displayIndex >= 0 && config.displayIndex < displayCount)
+                                   ? config.displayIndex
+                                   : 0;
+            if (wanted != config.displayIndex) {
+                HP_LOG_WARN(kLog, "display {} not present ({} attached); using the primary",
+                            config.displayIndex, displayCount);
+            }
+            SDL_Rect bounds{};
+            if (SDL_GetDisplayBounds(ids[wanted], &bounds)) {
+                SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_X_NUMBER,
+                                      bounds.x + (bounds.w - config.width) / 2);
+                SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_Y_NUMBER,
+                                      bounds.y + (bounds.h - config.height) / 2);
+            }
+            SDL_free(ids);
+        }
+        sdlWindow = SDL_CreateWindowWithProperties(props);
+        SDL_DestroyProperties(props);
+    }
     if (sdlWindow == nullptr) {
         HP_LOG_ERROR(kLog, "SDL_CreateWindow failed: {}", SDL_GetError());
         releaseSdl();
@@ -274,6 +316,107 @@ int Window::height() const {
         SDL_GetWindowSizeInPixels(impl_->window, &w, &h);
     }
     return h;
+}
+
+DisplayMode Window::displayMode() const {
+    if (!impl_ || impl_->window == nullptr) {
+        return DisplayMode::Windowed;
+    }
+    const SDL_WindowFlags flags = SDL_GetWindowFlags(impl_->window);
+    return (flags & SDL_WINDOW_FULLSCREEN) != 0 ? DisplayMode::BorderlessFullscreen
+                                                : DisplayMode::Windowed;
+}
+
+bool Window::setDisplayMode(DisplayMode mode) {
+    if (!impl_ || impl_->window == nullptr) {
+        return false;
+    }
+    if (displayMode() == mode) {
+        return true;
+    }
+    // SDL3 without a mode struct is *borderless* fullscreen: it takes the
+    // desktop resolution rather than changing it. That is the whole reason
+    // exclusive fullscreen is a separate decision and not a parameter here.
+    if (!SDL_SetWindowFullscreen(impl_->window, mode == DisplayMode::BorderlessFullscreen)) {
+        HP_LOG_ERROR(kLog, "SDL_SetWindowFullscreen failed: {}", SDL_GetError());
+        return false;
+    }
+    // **The change is asynchronous**, and this cost an hour of confusion before
+    // it was noticed: SDL applies a fullscreen transition when the window
+    // system next reports it, so immediately after the call `SDL_GetWindowFlags`
+    // still describes the *old* state. Without this sync, `displayMode()`
+    // returns the previous mode and `width()`/`height()` the previous size --
+    // measured, one step behind, every time.
+    //
+    // SDL_SyncWindow blocks until pending state has been applied, which makes
+    // the setter mean what it says. It is also exactly the blocking T0015's
+    // threading caveat warns about: this runs on the thread that owns the
+    // window and can take longer than a frame.
+    SDL_SyncWindow(impl_->window);
+    // The swap chain is not touched here. SDL emits a resize, the application
+    // pump turns it into a WindowResizeEvent, and the render layer resizes
+    // through the path 25.3 already built -- so a mode switch and a dragged
+    // window edge are the same code, which is what stops them diverging.
+    HP_LOG_INFO(kLog, "display mode -> {}",
+                mode == DisplayMode::BorderlessFullscreen ? "borderless fullscreen" : "windowed");
+    return true;
+}
+
+bool Window::setSize(int width, int height) {
+    if (!impl_ || impl_->window == nullptr || width <= 0 || height <= 0) {
+        return false;
+    }
+    if (displayMode() != DisplayMode::Windowed) {
+        // Not an error. A settings UI applying a saved resolution before
+        // restoring windowed mode is ordinary, and failing it would make the
+        // caller sequence two operations that have no reason to be ordered.
+        HP_LOG_DEBUG(kLog, "ignoring setSize while fullscreen");
+        return false;
+    }
+    if (!SDL_SetWindowSize(impl_->window, width, height)) {
+        HP_LOG_ERROR(kLog, "SDL_SetWindowSize failed: {}", SDL_GetError());
+        return false;
+    }
+    SDL_SyncWindow(impl_->window); // asynchronous too; see setDisplayMode
+    return true;
+}
+
+float Window::displayScale() const {
+    if (!impl_ || impl_->window == nullptr) {
+        return 1.0F;
+    }
+    const float scale = SDL_GetWindowDisplayScale(impl_->window);
+    return scale > 0.0F ? scale : 1.0F;
+}
+
+std::vector<DisplayInfo> Window::displays() {
+    std::vector<DisplayInfo> out;
+    // Enumerable without a window: a settings UI lists monitors before anything
+    // has been opened on one. acquireSdl/releaseSdl are refcounted, so this is
+    // safe whether or not a window exists.
+    if (!acquireSdl()) {
+        return out;
+    }
+    int count = 0;
+    SDL_DisplayID* ids = SDL_GetDisplays(&count);
+    if (ids != nullptr) {
+        for (int i = 0; i < count; ++i) {
+            DisplayInfo info;
+            info.index = i;
+            const char* name = SDL_GetDisplayName(ids[i]);
+            info.name = name != nullptr ? name : "display";
+            if (const SDL_DisplayMode* mode = SDL_GetDesktopDisplayMode(ids[i])) {
+                info.width = mode->w;
+                info.height = mode->h;
+            }
+            const float scale = SDL_GetDisplayContentScale(ids[i]);
+            info.scale = scale > 0.0F ? scale : 1.0F;
+            out.push_back(std::move(info));
+        }
+        SDL_free(ids);
+    }
+    releaseSdl();
+    return out;
 }
 
 NativeWindowHandles Window::nativeHandles() const {

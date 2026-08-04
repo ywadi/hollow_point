@@ -29,9 +29,9 @@ mostly deciding to use it rather than building alternatives.
 
 - [x] 56.1 **Math: use Diligent's `BasicMath.hpp` / `AdvancedMath.hpp`** — decide
       and record; see notes for why not glm
-- [ ] 56.2 Confirm the SSE/NEON paths are enabled for release builds — **moved to [T0025](../inprogress/0025-render-layer.md)**
-- [ ] 56.3 Adopt `DynamicLinearAllocator` for per-frame scratch allocations — **moved to [T0025](../inprogress/0025-render-layer.md)**
-- [ ] 56.4 Adopt `FixedBlockMemoryAllocator` where pooling pays — **moved to [T0025](../inprogress/0025-render-layer.md)**, and it needs a profile as well as a linked library
+- [ ] 56.2 Confirm the SSE/NEON paths are enabled for release builds — **moved to [T0025](../completed/0025-render-layer.md)**
+- [ ] 56.3 Adopt `DynamicLinearAllocator` for per-frame scratch allocations — **moved to [T0025](../completed/0025-render-layer.md)**
+- [ ] 56.4 Adopt `FixedBlockMemoryAllocator` where pooling pays — **moved to [T0025](../completed/0025-render-layer.md)**, and it needs a profile as well as a linked library
 - [x] 56.5 Decide on standard containers vs alternatives, and record it
 - [x] 56.6 Decide whether engine types are exposed to gameplay directly or behind
       a narrower surface (interacts with T0048's module boundary)
@@ -82,7 +82,7 @@ recorded in [the conventions doc](../../documentation/06-engine-conventions.md):
   non-negotiable rule being that memory does not cross the module boundary to be
   freed.
 
-**The three adoption subtasks moved to [T0025](../inprogress/0025-render-layer.md)** rather
+**The three adoption subtasks moved to [T0025](../completed/0025-render-layer.md)** rather
 than holding this ticket open. They all need the engine to link Diligent, which
 T0013 deliberately deferred and T0025 owns — and this ticket sits at order 50
 while that lands at 380. A ticket that cannot complete for the whole of Phases 2

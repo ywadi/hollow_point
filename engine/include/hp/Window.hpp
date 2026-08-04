@@ -18,8 +18,42 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace hp {
+
+/// How a window occupies the screen (T0129).
+///
+/// **Exclusive fullscreen is deliberately absent**, and the reason is recorded
+/// rather than left as an omission: it changes the *display's* state rather
+/// than the window's, which is what makes alt-tab, multi-monitor and
+/// crash-recovery harder with it. What it buys — a true immediate present path
+/// on some drivers — is a latency optimisation nobody here has measured a need
+/// for. See T0129 for what evidence would reopen it.
+enum class DisplayMode : std::uint8_t {
+    /// A normal window, sized by the config or by the user dragging it.
+    Windowed,
+    /// Fills the current display, no decorations, no mode change. The desktop
+    /// resolution is used as-is, so alt-tab is instant and nothing is restored
+    /// on a crash.
+    BorderlessFullscreen,
+};
+
+/// A display the window could be placed on.
+struct DisplayInfo {
+    /// Index to pass as `WindowConfig::displayIndex`. Not stable across
+    /// hotplug, so it is a selection made now rather than an identity to store.
+    int index = 0;
+    /// Human-readable name, for a settings UI.
+    std::string name;
+    /// Desktop resolution in pixels.
+    int width = 0;
+    int height = 0;
+    /// Content scale — 1.0 at 100%, 2.0 on a doubled display. Logical and pixel
+    /// sizes differ by this, which matters because the window already asks for
+    /// `SDL_WINDOW_HIGH_PIXEL_DENSITY`.
+    float scale = 1.0F;
+};
 
 struct WindowConfig {
     std::string title = "HollowPoint";
@@ -44,6 +78,19 @@ struct WindowConfig {
     /// Off by default because Vulkan is the default backend and asking for a GL
     /// context costs a context nothing else uses.
     bool openGLContext = false;
+
+    /// Which display mode to open in (T0129).
+    ///
+    /// Unlike `openGLContext`, this one *is* changeable afterwards —
+    /// `Window::setDisplayMode`. It is here as well because opening directly
+    /// into fullscreen avoids a visible windowed flash at startup.
+    DisplayMode displayMode = DisplayMode::Windowed;
+
+    /// Index of the display to open on, from `Window::displays()`. Out of range
+    /// falls back to the primary display rather than failing — a monitor
+    /// remembered from a previous session may simply not be plugged in now, and
+    /// refusing to start is the wrong response to that.
+    int displayIndex = 0;
 };
 
 /// Native handles, in the shape Diligent's `NativeWindow` structs want.
@@ -97,6 +144,40 @@ public:
     const std::string& title() const { return title_; }
 
     NativeWindowHandles nativeHandles() const;
+
+    /// @returns the current display mode.
+    [[nodiscard]] DisplayMode displayMode() const;
+
+    /// Switches between windowed and borderless fullscreen at run time (129.2).
+    ///
+    /// The swap chain follows automatically: SDL emits a resize, which reaches
+    /// the render layer through the normal event path (25.3). Nothing here
+    /// touches the device.
+    ///
+    /// @param mode the mode to switch to. Setting the current mode is a no-op.
+    /// @returns whether the switch succeeded; on failure the previous mode is
+    ///          retained and the reason is logged.
+    bool setDisplayMode(DisplayMode mode);
+
+    /// Changes the windowed size at run time (129.3).
+    ///
+    /// Ignored while in fullscreen, where the size is the display's — silently,
+    /// because a settings UI applying a saved resolution before restoring
+    /// windowed mode is normal rather than an error.
+    ///
+    /// @param width new width in logical units.
+    /// @param height new height in logical units.
+    /// @returns whether the size was applied.
+    bool setSize(int width, int height);
+
+    /// @returns the content scale of the display this window is on — 1.0 at
+    ///          100%, 2.0 on a doubled display. This is why `width()` (logical)
+    ///          and the swap chain's size (pixels) are not the same number.
+    [[nodiscard]] float displayScale() const;
+
+    /// @returns every display currently attached, in SDL's order. The first is
+    ///          the primary. Empty only if the video subsystem is unavailable.
+    [[nodiscard]] static std::vector<DisplayInfo> displays();
 
 private:
     Window() = default;

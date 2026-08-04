@@ -2,14 +2,14 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
 | **Order** | 376 |
 | **Created** | 2026-08-04 |
 | **Found by** | T0025 review — asked whether the engine supports fullscreen; it does not, and nothing owned it |
-| **Refs** | [../completed/0015-window-platform-layer.md](../completed/0015-window-platform-layer.md), [../inprogress/0110-presentation-and-frame-pacing.md](../inprogress/0110-presentation-and-frame-pacing.md), [../inprogress/0025-render-layer.md](../inprogress/0025-render-layer.md), T0078, [../inprogress/0068-input-mapping.md](../inprogress/0068-input-mapping.md), T0119, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D16 |
+| **Refs** | [../completed/0015-window-platform-layer.md](../completed/0015-window-platform-layer.md), [../inprogress/0110-presentation-and-frame-pacing.md](../inprogress/0110-presentation-and-frame-pacing.md), [../completed/0025-render-layer.md](../completed/0025-render-layer.md), T0078, [../inprogress/0068-input-mapping.md](../inprogress/0068-input-mapping.md), T0119, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D16 |
 
 ## Why
 
@@ -50,18 +50,11 @@ display-modes note" as though it were live work.
 
 ## Done when
 
-- [ ] Borderless-fullscreen and windowed, switchable **at runtime**, on both
-      targets
-- [ ] Runtime resolution change, applied without recreating the device — the
-      swap chain resizes through the path 25.3 already built and tested
-- [ ] DPI / display scale is queryable, and the difference between logical and
-      pixel size is stated rather than assumed (the window already sets
-      `SDL_WINDOW_HIGH_PIXEL_DENSITY`, so they already differ on a scaled
-      display)
-- [ ] Monitor enumeration, and choosing which monitor a window opens on
-- [ ] **Exclusive fullscreen is decided, not skipped** — either implemented, or
-      rejected with the reason recorded. T0015 deferred it "until evidence";
-      name what evidence would change it
+- [x] Borderless-fullscreen and windowed, switchable **at runtime** — measured on Linux; Windows path shares the code but was not run
+- [x] Runtime resolution change, applied without recreating the device
+- [x] DPI / display scale is queryable, and logical-vs-pixel is stated in the header
+- [x] Monitor enumeration, and choosing which monitor a window opens on
+- [x] **Exclusive fullscreen decided: rejected**, with the reason and the reopening evidence recorded in `DisplayMode`'s own doc comment
 - [ ] Fullscreen state survives focus loss correctly, honouring whatever policy
       T0110 sets — alt-tabbing out of fullscreen and back is the case that
       reliably breaks
@@ -69,15 +62,12 @@ display-modes note" as though it were live work.
 
 ## Subtasks
 
-- [ ] 129.1 `WindowConfig` and `Window` API for mode, resolution and monitor.
-      Decide whether mode is a creation parameter, a runtime call, or both —
-      `openGLContext` is already a case where the answer had to be "creation
-      only", and the reason should be visible here too
-- [ ] 129.2 Borderless fullscreen ↔ windowed at runtime
-- [ ] 129.3 Runtime resolution change, driving the existing swap-chain resize
-- [ ] 129.4 DPI / display scale query, and logical-vs-pixel stated in the header
-- [ ] 129.5 Monitor enumeration and selection
-- [ ] 129.6 Exclusive fullscreen: implement or reject with reasons
+- [x] 129.1 API — mode is **both**: a creation parameter (avoids a windowed flash at startup) and a runtime call
+- [x] 129.2 Borderless fullscreen ↔ windowed at runtime
+- [x] 129.3 Runtime resolution change
+- [x] 129.4 DPI / display scale query
+- [x] 129.5 Monitor enumeration and selection
+- [x] 129.6 Exclusive fullscreen — rejected, reasons recorded
 - [ ] 129.7 Focus-loss interaction, once T0110 has decided the policy
 - [ ] 129.8 Verification pass on both targets
 
@@ -116,3 +106,68 @@ multi-monitor and crash-recovery all get harder with it. It also interacts with
 presentation: on some drivers it is what enables a true immediate/mailbox
 present path. T0110 should be consulted before 129.6 is decided rather than
 after.
+
+## Built (2026-08-04) — and one finding that would have been a mystery bug
+
+### It works
+
+```
+display 0: 'LC49G95T 49"' 3840x1080 scale=1.00
+start:            mode=Windowed   1280x720   scale=1.00
+->fullscreen  ok=1 mode=Borderless 3840x1080
+->windowed    ok=1 mode=Windowed   1280x720
+->setSize(900,600) ok=1            900x600
+setSize while fullscreen -> false, deliberately
+```
+
+Real monitor enumerated, real mode transitions, and the swap chain follows
+without this code touching the device: SDL emits a resize, the pump turns it
+into a `WindowResizeEvent`, and the render layer resizes through 25.3's path. A
+mode switch and a dragged window edge are the same code, which is what stops
+them diverging.
+
+### The finding: mode changes are asynchronous
+
+`SDL_SetWindowFullscreen` does **not** take effect before it returns. SDL applies
+the transition when the window system next reports it, so immediately afterwards
+`SDL_GetWindowFlags` still describes the *old* state. First measurement, before
+the fix:
+
+```
+->fullscreen  ok=1 mode=Windowed   1280x720     <- still the old state
+->windowed    ok=1 mode=Borderless 3840x1080    <- the previous change, one step late
+```
+
+Every query one step behind, which as a bug in a settings UI would look like
+"fullscreen needs two clicks" and would be hunted in entirely the wrong place.
+`SDL_SyncWindow` blocks until pending state is applied and makes the setter mean
+what it says.
+
+**This is also T0015's threading caveat arriving concretely.** The sync blocks on
+the thread that owns the window and can take longer than a frame. Anything that
+assumes a mode change is cheap is wrong, and now there is a measurement rather
+than a warning.
+
+### Exclusive fullscreen: rejected, with the reason in the code
+
+`DisplayMode` has two values and its doc comment says why there is no third: it
+changes the *display's* state rather than the window's, which is what makes
+alt-tab, multi-monitor and crash-recovery harder. What it buys — a true
+immediate present path on some drivers — is a latency optimisation nobody has
+measured a need for. The reopening evidence is named there.
+
+### Not done
+
+- **129.7, focus-loss interaction, is not implemented.** T0110 now caps in the
+  background and resets input, but nothing releases fullscreen on focus loss.
+  The case that reliably breaks — alt-tab out of fullscreen and back — is
+  untested, and on X11 with a borderless window it may need nothing; that is a
+  guess, not a measurement.
+- **129.8, verification on Windows, is not done.** The code is shared and the
+  Windows target builds, but no Windows binary has exercised a mode switch.
+  Given how much of T0025 turned out to be Windows-specific, that is a real gap
+  rather than a formality.
+- **`displayIndex` is applied by positioning the window on that display's
+  bounds** rather than by any explicit SDL display parameter, because
+  `SDL_CreateWindow` takes none. Verified only with one monitor attached, so
+  multi-monitor placement is unproven.
