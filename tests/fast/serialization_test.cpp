@@ -12,6 +12,8 @@
 
 #include <hp/Cook.hpp>
 #include <hp/Guid.hpp>
+#include <hp/Scene.hpp>
+#include <hp/Serialize.hpp>
 #include <hp/Yaml.hpp>
 
 #include <cstddef>
@@ -457,4 +459,259 @@ TEST_CASE("every status has a distinct human-readable reason") {
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown");
     }
+}
+
+// --- reflection-derived serialization (20.3) -------------------------------
+
+TEST_CASE("a reflected component round-trips through YAML with no per-type code") {
+    // **The whole point of 20.3.** Nothing below knows what a Transform is.
+    // Serialization is derived from T0053's property enumeration, so a
+    // component that registers its properties is serializable by that fact --
+    // there is no second mechanism to keep in step, which is the "four
+    // switches" failure T0053 exists to prevent.
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    hp::Transform original;
+    original.position = hp::float3(1.5F, -2.0F, 3.25F);
+    original.rotation = hp::Quaternion(0.1F, 0.2F, 0.3F, 0.9F);
+    original.scale = hp::float3(2.0F, 2.0F, 2.0F);
+
+    hp::YamlDocument doc;
+    REQUIRE(hp::writeProperties(doc.root(), entt::forward_as_meta(original)));
+
+    const std::string text = doc.emit();
+    // Readable: the names come from reflection, which is what the T0053 fix
+    // made possible.
+    CHECK(text.find("position:") != std::string::npos);
+    CHECK(text.find("rotation:") != std::string::npos);
+    CHECK(text.find("scale:") != std::string::npos);
+
+    const auto parsed = hp::YamlDocument::parse(text);
+    REQUIRE(parsed.has_value());
+
+    hp::Transform restored;
+    REQUIRE(hp::readProperties(const_cast<hp::YamlDocument&>(*parsed).root(),
+                               entt::forward_as_meta(restored)));
+
+    CHECK(restored.position.x == doctest::Approx(original.position.x));
+    CHECK(restored.position.y == doctest::Approx(original.position.y));
+    CHECK(restored.position.z == doctest::Approx(original.position.z));
+    CHECK(restored.scale.x == doctest::Approx(original.scale.x));
+    CHECK(restored.rotation.q.x == doctest::Approx(original.rotation.q.x));
+    CHECK(restored.rotation.q.w == doctest::Approx(original.rotation.q.w));
+}
+
+TEST_CASE("a component with a GUID round-trips, and the GUID stays readable") {
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    hp::MeshRenderer original;
+    original.mesh = hp::Guid::generate();
+    original.material = hp::Guid::generate();
+
+    hp::YamlDocument doc;
+    REQUIRE(hp::writeProperties(doc.root(), entt::forward_as_meta(original)));
+
+    // Written as its canonical string, not a raw integer: a GUID in a diff has
+    // to be matchable against another file by a person.
+    const std::string text = doc.emit();
+    CHECK(text.find(original.mesh.toString()) != std::string::npos);
+
+    const auto parsed = hp::YamlDocument::parse(text);
+    REQUIRE(parsed.has_value());
+
+    hp::MeshRenderer restored;
+    REQUIRE(hp::readProperties(const_cast<hp::YamlDocument&>(*parsed).root(),
+                               entt::forward_as_meta(restored)));
+    CHECK(restored.mesh == original.mesh);
+    CHECK(restored.material == original.material);
+}
+
+TEST_CASE("a camera round-trips every field it gained from T0130") {
+    // Covers bools, floats and integers in one type, and pins that the fields
+    // T0130 and T0081 added are actually reachable through reflection rather
+    // than merely registered.
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    hp::Camera original;
+    original.verticalFov = 1.2F;
+    original.nearPlane = 0.25F;
+    original.farPlane = 500.0F;
+    original.orthographic = true;
+    original.orthographicSize = 12.0F;
+    original.exposureEv100 = 9.5F;
+    original.depthOfField = true;
+    original.aperture = 1.4F;
+    original.focusDistance = 3.5F;
+    original.priority = 42;
+    original.enabled = false;
+    original.cullingMask = 0x00FF00FFU;
+    original.viewSlot = 3;
+
+    hp::YamlDocument doc;
+    REQUIRE(hp::writeProperties(doc.root(), entt::forward_as_meta(original)));
+
+    const auto parsed = hp::YamlDocument::parse(doc.emit());
+    REQUIRE(parsed.has_value());
+
+    hp::Camera restored;
+    REQUIRE(hp::readProperties(const_cast<hp::YamlDocument&>(*parsed).root(),
+                               entt::forward_as_meta(restored)));
+
+    CHECK(restored.verticalFov == doctest::Approx(original.verticalFov));
+    CHECK(restored.farPlane == doctest::Approx(original.farPlane));
+    CHECK(restored.orthographic == original.orthographic);
+    CHECK(restored.depthOfField == original.depthOfField);
+    CHECK(restored.aperture == doctest::Approx(original.aperture));
+    CHECK(restored.priority == original.priority);
+    CHECK(restored.enabled == original.enabled);
+    CHECK(restored.cullingMask == original.cullingMask);
+    CHECK(restored.viewSlot == original.viewSlot);
+}
+
+TEST_CASE("a field absent from the document keeps its current value") {
+    // Forward compatibility, and the reason reading is lenient while writing is
+    // exact. A component gains a property; every file written before it exists
+    // must still load, with the new field at its default rather than at zero.
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    const auto parsed = hp::YamlDocument::parse("position: [9, 9, 9]\n");
+    REQUIRE(parsed.has_value());
+
+    hp::Transform target;
+    target.scale = hp::float3(7.0F, 7.0F, 7.0F);
+    REQUIRE(hp::readProperties(const_cast<hp::YamlDocument&>(*parsed).root(),
+                               entt::forward_as_meta(target)));
+
+    CHECK(target.position.x == doctest::Approx(9.0F));
+    // Untouched, not zeroed.
+    CHECK(target.scale.x == doctest::Approx(7.0F));
+}
+
+TEST_CASE("a field the type does not have is ignored") {
+    // Backward compatibility. A property is removed; files still containing it
+    // must load rather than being refused, or removing a field becomes a
+    // migration.
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    const auto parsed = hp::YamlDocument::parse(
+        "position: [1, 2, 3]\nlongGoneField: 12\nanotherOne: hello\n");
+    REQUIRE(parsed.has_value());
+
+    hp::Transform target;
+    REQUIRE(hp::readProperties(const_cast<hp::YamlDocument&>(*parsed).root(),
+                               entt::forward_as_meta(target)));
+    CHECK(target.position.y == doctest::Approx(2.0F));
+}
+
+TEST_CASE("a malformed field leaves its target alone rather than corrupting it") {
+    // A wrong-length vector is refused whole. A half-applied float3 is a value
+    // that looks plausible and is wrong, which is the failure this layer exists
+    // to avoid.
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    const auto parsed = hp::YamlDocument::parse("position: [1, 2]\nscale: not-a-vector\n");
+    REQUIRE(parsed.has_value());
+
+    hp::Transform target;
+    target.position = hp::float3(5.0F, 5.0F, 5.0F);
+    target.scale = hp::float3(3.0F, 3.0F, 3.0F);
+    REQUIRE(hp::readProperties(const_cast<hp::YamlDocument&>(*parsed).root(),
+                               entt::forward_as_meta(target)));
+
+    CHECK(target.position.x == doctest::Approx(5.0F));
+    CHECK(target.scale.x == doctest::Approx(3.0F));
+}
+
+TEST_CASE("a float survives the round trip exactly, not approximately") {
+    // The reason doubles are emitted with 17 significant digits. A position
+    // that drifts every save is invisible in a diff and wrong in the world.
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    hp::Transform original;
+    original.position = hp::float3(0.1F, 1.0F / 3.0F, 123456.789F);
+
+    hp::YamlDocument doc;
+    REQUIRE(hp::writeProperties(doc.root(), entt::forward_as_meta(original)));
+    const auto parsed = hp::YamlDocument::parse(doc.emit());
+    REQUIRE(parsed.has_value());
+
+    hp::Transform restored;
+    REQUIRE(hp::readProperties(const_cast<hp::YamlDocument&>(*parsed).root(),
+                               entt::forward_as_meta(restored)));
+
+    CHECK(restored.position.x == original.position.x);
+    CHECK(restored.position.y == original.position.y);
+    CHECK(restored.position.z == original.position.z);
+}
+
+TEST_CASE("an unregistered type is refused rather than silently skipped") {
+    struct NotReflected {
+        int value = 0;
+    };
+    hp::adoptMetaContext();
+
+    hp::YamlDocument doc;
+    const NotReflected thing;
+    CHECK_FALSE(hp::writeReflected(doc.root(), "thing", entt::forward_as_meta(thing)));
+    // Nothing was written, rather than a key with a misleading empty value.
+    CHECK_FALSE(doc.root().has("thing"));
+}
+
+namespace {
+
+/// A reflected type containing another reflected type, which is the nesting
+/// path `writeReflected` recurses through.
+struct Inner {
+    float weight = 0.0F;
+    std::string label;
+};
+
+struct Outer {
+    Inner inner;
+    std::int32_t count = 0;
+};
+
+} // namespace
+
+TEST_CASE("a reflected type nested inside another round-trips") {
+    // The recursion in writeReflected/readReflected. Every component tested
+    // above bottoms out in leaves at the first level, so without this the
+    // nested path would be code nothing runs.
+    hp::adoptMetaContext();
+    hp::reflect<Inner>("SerializeInner")
+        .property<&Inner::weight>("weight")
+        .property<&Inner::label>("label");
+    hp::reflect<Outer>("SerializeOuter")
+        .property<&Outer::inner>("inner")
+        .property<&Outer::count>("count");
+
+    Outer original;
+    original.inner.weight = 2.5F;
+    original.inner.label = "nested";
+    original.count = 17;
+
+    hp::YamlDocument doc;
+    REQUIRE(hp::writeProperties(doc.root(), entt::forward_as_meta(original)));
+
+    const std::string text = doc.emit();
+    CHECK(text.find("inner:") != std::string::npos);
+    CHECK(text.find("label: nested") != std::string::npos);
+
+    const auto parsed = hp::YamlDocument::parse(text);
+    REQUIRE(parsed.has_value());
+
+    Outer restored;
+    REQUIRE(hp::readProperties(const_cast<hp::YamlDocument&>(*parsed).root(),
+                               entt::forward_as_meta(restored)));
+
+    CHECK(restored.inner.weight == doctest::Approx(2.5F));
+    CHECK(restored.inner.label == "nested");
+    CHECK(restored.count == 17);
 }

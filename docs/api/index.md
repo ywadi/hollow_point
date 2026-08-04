@@ -54,12 +54,13 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Render.hpp>`](Render.md) | 25 | 25 |
 | [`<hp/RenderStack.hpp>`](RenderStack.md) | 21 | 21 |
 | [`<hp/Scene.hpp>`](Scene.md) | 54 | 54 |
+| [`<hp/Serialize.hpp>`](Serialize.md) | 4 | 4 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Vfs.hpp>`](Vfs.md) | 23 | 23 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
 
-**520 public declarations across 28 headers, 403 documented.**
+**524 public declarations across 29 headers, 407 documented.**
 
 ## Every symbol
 
@@ -477,6 +478,10 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `tryGet` | [`Scene.hpp`](Scene.md) |
 | `remove` | [`Scene.hpp`](Scene.md) |
 | `registerComponent` | [`Scene.hpp`](Scene.md) |
+| `writeReflected` | [`Serialize.hpp`](Serialize.md) |
+| `readReflected` | [`Serialize.hpp`](Serialize.md) |
+| `writeProperties` | [`Serialize.hpp`](Serialize.md) |
+| `readProperties` | [`Serialize.hpp`](Serialize.md) |
 | `Clock` | [`Time.hpp`](Time.md) |
 | `Clock::Clock` | [`Time.hpp`](Time.md) |
 | `Clock::tick` | [`Time.hpp`](Time.md) |

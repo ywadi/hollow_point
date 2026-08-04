@@ -25,7 +25,7 @@ authoring ergonomics and load speed without choosing between them.
 
 - [x] rapidyaml vendored as a submodule and cross-compiling to both targets
 - [x] A wrapper API that engine code uses, so rapidyaml is swappable
-- [~] Round-trip: object → YAML → object, value-identical
+- [x] Round-trip: object → YAML → object, value-identical
 - [~] Cook: YAML → binary, and load binary → object, value-identical
 - [x] Staleness detection — binary is rebuilt when its YAML changes
 - [~] Tests round-trip every supported type through both paths
@@ -35,7 +35,7 @@ authoring ergonomics and load speed without choosing between them.
 - [x] 20.1 Vendor rapidyaml (`biojppm/rapidyaml`) at a pinned tag; confirm it
       cross-compiles to `x86_64-windows-gnu` (it is CMake C++, expected fine)
 - [x] 20.2 Wrapper API — do not let `ryml::` types escape into engine headers
-- [ ] 20.3 Serialization concept/traits so types opt in uniformly
+- [x] 20.3 Serialization concept/traits so types opt in uniformly
 - [x] 20.4 Binary writer/reader with a version header and endianness decision
 - [x] 20.5 Staleness: content hash of the YAML stored in the binary, not mtime
 - [x] 20.6 Tests for both paths and for a deliberately corrupt binary
@@ -166,6 +166,51 @@ two agree.
 This is why 20.3 is listed as "not started" rather than "in progress": the
 groundwork it needed turned out to be a defect somewhere else.
 
+## 20.3 — done, and the bug only a nested type could show
+
+`hp/Serialize.hpp` derives serialization from T0053's property enumeration.
+**Nothing in it knows what a `Transform` is**: a component that registers its
+properties is serializable by that fact alone, which is the "four switches"
+failure T0053 exists to prevent.
+
+Hand-written handling covers only the leaves reflection bottoms out in — the
+numeric types, `bool`, `std::string`, `hp::Guid`, `float3`, `float4`,
+`Quaternion`, `float4x4`. That is 20.3 read exactly as the architecture review
+settled it: define the leaf layer, not a parallel per-component mechanism.
+
+**Reading is lenient, writing is exact.** A field absent from the document
+leaves the target at its current value, so a component can gain a property and
+old files still load with the new field at its default. A field the type no
+longer has is ignored. A save format needs both directions, and the asymmetry is
+deliberate: files outlive the code that wrote them, and refusing a scene because
+one field is missing is worse than loading it with a default.
+
+### The nested-struct bug
+
+The recursion originally threaded `entt::meta_any` **by value**. A leaf one
+level down round-tripped perfectly; a nested reflected struct wrote correct YAML
+and read back as **all defaults**, because each recursion level was mutating its
+own parameter copy rather than the caller's object.
+
+**It was only caught because the nested path got a test.** Every component tested
+before it — `Transform`, `MeshRenderer`, `Camera` — bottoms out in leaves at the
+first level, so all of them passed while the recursion was broken. The write side
+was correct throughout, which made the emitted YAML look like proof that the
+whole path worked.
+
+Fixed by threading a reference internally: `readInto`/`readPropsInto` take
+`meta_any&`, and the public entry points keep by-value so a
+`entt::forward_as_meta` temporary still binds at the call site.
+
+### Evidence
+
+`tests/fast/serialization_test.cpp` now covers `Transform`, `MeshRenderer` and
+`Camera` round-trips through reflection alone, a nested reflected struct, absent
+fields, unknown fields, malformed fields, exact float round-tripping, and an
+unregistered type being refused rather than silently skipped.
+
+Both targets: fast 155, integration 89, gpu 2. Docs pass.
+
 ## Not done
 
 - **20.3 is not started, and it is the largest remaining piece.** The
@@ -184,6 +229,12 @@ groundwork it needed turned out to be a defect somewhere else.
   now exists for scalars and sequences; whether it needs 20.3 depends on how
   `InputMap` is written.
 - **No streaming or partial parse.** Whole documents only.
+- **The sequence-container path is implemented and untested.** `std::vector`
+  members route through entt's container support, and no reflected type in the
+  engine currently registers one — so that branch has never executed. Given the
+  nested-struct bug above was invisible until a test reached one level down,
+  treat this branch as unproven rather than working. The first component to
+  register a vector property should bring a round-trip test with it.
 
 
 **Hash, not mtime.** Timestamps lie after a git checkout, a copy, or a clock
