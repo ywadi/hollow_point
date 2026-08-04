@@ -8,6 +8,7 @@
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 10 |
 | **Created** | 2026-08-03 |
+| **Refs** | [../open/0127-exceptions-across-the-module-boundary.md](../open/0127-exceptions-across-the-module-boundary.md) (amends this) |
 
 ## Why
 
@@ -146,3 +147,35 @@ ugly.cpp:1:4: error: code should be clang-formatted [-Wclang-format-violations]
 That last one is the check that matters — it proves the dry-run gate can fail,
 so it is worth adding to CI later. Applied to all six files under `tests/`, and
 the full suite passes afterwards.
+
+## Amendment pending — T0127 (added 2026-08-04)
+
+**55.1's exception policy is now measured, and it has a platform split.** This
+ticket argued that "each library carries its own statically linked libc++ and
+throwing across that is fragile", and chose a non-throwing interface on that
+reasoning. T0127 measured *how* it fails: on the **Linux** target a typed
+exception thrown in a gameplay module is caught only by `catch (...)` — both
+`catch (const std::runtime_error&)` and `catch (const std::exception&)` are
+silently not taken — while the identical source on the **Windows** target
+matches by type correctly.
+
+**The evidence above is why nobody caught it.** The measurement pasted in this
+ticket is `typeid names agree: 1`. libc++ on ELF selects **pointer** comparison
+for typeinfo, not the deep string comparison it uses on COFF, so the assertion
+that passed was never the one that governs `catch` matching. The rule this
+ticket wrote is right; the reason recorded for it was weaker than the truth.
+
+**What this ticket must honour when T0127.4 lands:** rule 3 of
+`06-engine-conventions.md` — `catch (...)` at every module entry point — is the
+only thing standing between this and undefined behaviour on Linux, and it is
+advisory prose today with nothing testing or enforcing it. The amendment should
+state the platform asymmetry as a fact rather than as the hedge "not safe to
+rely on", because a hedge reads as caution and this is a measurement.
+
+**A dangling pointer found while checking this:** the conventions doc routes
+recoverable failures to `hp::Expected` and says it "belongs to T0056" — but
+T0056 is **closed** and never mentions `Expected`, and no `hp::Expected` exists
+in `engine/`. So the house style for module-to-engine error reporting is agreed
+in shape and has no type behind it. That is T0127.5's question, answered here:
+the shape is decided, the type is not built, and the ticket the doc points at is
+already closed.

@@ -102,3 +102,35 @@ nobody tested because nobody thought to.
 **Related but distinct from T0105.1.** That was static destructors dangling after
 unload; this is typeinfo identity across artifacts. Same root cause — a private,
 statically linked, hidden C++ runtime per artifact — surfacing differently.
+
+## Correction (2026-08-04, found while backfilling references)
+
+**"T0055's error-handling policy does not address the case because it was not
+known" is wrong**, and it changes what this ticket has to do.
+
+`06-engine-conventions.md` already carries the rule, in the Exceptions section:
+engine code does not throw; "**throwing across the gameplay module boundary is
+not safe to rely on**"; and rule 3, `catch (...)` at every module entry point.
+T0095.5 folded exactly this into T0055 at the time. So 127.1 is largely
+**pre-decided** — the policy exists and is the right one.
+
+Two things are genuinely missing, and they are what this ticket is actually for:
+
+- **The rule is advisory prose.** Nothing enforces the `catch (...)` at module
+  entry points and nothing tests it. T0105's `hp_add_gameplay_module()` is the
+  natural enforcement seam, since it already guarantees a module cannot be built
+  without its finalizer; 127.3's test belongs in `module_boundary_test.cpp`,
+  which T0105.5 owns.
+- **The doc states a hedge where there is now a measurement.** "Not safe to rely
+  on" reads as caution; the truth is that it is broken on Linux, works on
+  Windows, and fails by silently taking the wrong handler. 127.4 should replace
+  the hedge with the fact, because a hedge invites someone to test it and
+  conclude it works — on Windows, it does.
+
+**127.5 is answered, and the answer has a hole in it.** The house style *is*
+result-shaped: `std::optional` for normal absence, `hp::Expected<T, Error>` for
+recoverable failure, per the conventions doc's table. But `hp::Expected` **does
+not exist** — no such type in `engine/`, and the doc routes it to T0056, which
+is **closed** and never mentions it. So the shape is agreed, the type was never
+built, and the ticket that owned it is finished. Whoever takes 127.1 should
+expect to raise that as its own ticket rather than discover it late.

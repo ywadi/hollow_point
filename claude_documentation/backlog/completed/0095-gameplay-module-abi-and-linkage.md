@@ -8,7 +8,7 @@
 | **Phase** | 2 — Engine skeleton |
 | **Created** | 2026-08-03 |
 | **Blocks** | T0048, T0062 |
-| **Refs** | T0013, T0055, T0056, T0076, T0094 |
+| **Refs** | T0013, T0055, T0056, T0076, T0094, [../open/0127-exceptions-across-the-module-boundary.md](../open/0127-exceptions-across-the-module-boundary.md) (qualifies the RTTI result below) |
 
 ## Why
 
@@ -317,6 +317,12 @@ behind it.
   as 95.2 proposed makes indices disagree rather than unifying them.
 - **RTTI across the boundary works** on both targets, so it is allowed rather
   than banned — conditional on boundary types being default-visibility.
+  **Qualified 2026-08-04 by T0127**, and the qualification matters: this holds
+  for `dynamic_cast` and for `typeid` *names*, which is what 95.4 measured. It
+  does **not** extend to typed exception matching, which fails silently on
+  Linux — libc++ on ELF compares typeinfo by pointer rather than by name, so
+  the property that was measured is not the property `catch` uses. Read T0127
+  before designing anything that assumes RTTI identity across the boundary.
 - **`dlclose` segfaults the process at exit**, reduced to a shared library
   containing one `static std::string`. Found only because the prototype became
   a test that unloads; the prototype never did.
