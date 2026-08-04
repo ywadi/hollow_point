@@ -43,7 +43,11 @@ Zig-based, incremental, cross-compiling from either host. See
   `.harness\zig\windows-x86_64\0.16.0\`. `tests/harness/pins_test.zig` fails if
   either script's pins or layout drift from `build.zig`, checked by mutating
   each and watching it catch them. **Not** proven: one physical machine running
-  both bootstraps into one tree and building from each in turn
+  both bootstraps into one tree and building from each in turn — and as of
+  **D18** (T0122) it never will be, because that configuration is no longer
+  supported. Under WSL the tree must live on the Linux filesystem, so each host
+  gets its own checkout. The host-keying stays because it is correct and cheap,
+  not because a shared tree works. A retired scenario, not an open gap
 - ✅ **Fully offline** — configure and build need no network. EnTT and abseil-cpp
   are vendored at Diligent's pinned refs and wired via `FETCHCONTENT_SOURCE_DIR_*`.
   Proven inside a network namespace (`unshare -r -n`) and with

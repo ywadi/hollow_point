@@ -24,20 +24,64 @@ and a Windows toolchain sit side by side in one working tree:
 .harness/zig/windows-x86_64/0.16.0/zig.exe
 ```
 
-### On a machine that is both hosts
+### Under WSL, the working tree must not live on `/mnt/`
 
-A Windows box with WSL is two hosts sharing one working tree, which is how this
-project is actually developed. Run each bootstrap once, from its own side:
+**Clone into the Linux filesystem** — `~/dev/hollow_point`, not `/mnt/c/...`.
+A tree on `/mnt/c` fails before it compiles anything:
 
-```sh
-./bootstrap.sh        # from WSL
-.\bootstrap.ps1       # from Windows
+```
+error: failed to rename compilation results ('.zig-cache/tmp/0f37fe50ce00be6e')
+       into local cache ('.zig-cache/o/e238ee67df134356a93b6a24a3f149a0'):
+       AccessDenied
 ```
 
-Neither disturbs the other, so you can switch hosts and build without
-re-bootstrapping. The downloads are shared — `.harness/dl/` holds both hosts'
-archives, and they are named for their host (`zig-x86_64-linux-0.16.0.tar.xz`
-against `zig-x86_64-windows-0.16.0.zip`), so each is fetched once.
+This is not a permissions problem and not something a different path under
+`/mnt/c` avoids. Zig commits its build cache by renaming
+`.zig-cache/tmp/<hash>/` onto `.zig-cache/o/<hash>` — atomically, which is what
+keeps the cache safe against interruption. POSIX permits renaming a directory
+whose files are still open; **Windows does not**, and `/mnt/c` is a 9p bridge
+onto NTFS where Windows performs the operation. The rename is refused.
+
+It is [ziglang/zig#24955][zi] upstream — open, with no maintainer response, and
+its fix ([PR #30588][zp]) closed unmerged. It regressed in Zig 0.15.1; 0.14
+worked. This project pins 0.16.0, so it is affected, and pinning backwards is
+not an option. Treat the constraint as permanent rather than as a local quirk.
+
+Check where you actually are:
+
+```sh
+df -T .    # ext4 or overlay is right; 9p or drvfs means you are still on the Windows side
+```
+
+Recorded as **D18** in the decision log, with the alternatives that were
+rejected and why.
+
+[zi]: https://github.com/ziglang/zig/issues/24955
+[zp]: https://codeberg.org/ziglang/zig/pulls/30588
+
+### On a machine that is both hosts
+
+A Windows box with WSL is two hosts, and **they cannot share one working tree**.
+There is no filesystem that gives Windows and Linux correct semantics at once:
+`/mnt/c` breaks Zig on the Linux side for the reason above, and `\\wsl$` moves
+the same class of cost onto the Windows side. Give each host its own checkout —
+the WSL one inside the Linux filesystem, the Windows one on `C:\` — and run that
+side's bootstrap in it:
+
+```sh
+./bootstrap.sh        # from WSL, in the Linux-filesystem checkout
+.\bootstrap.ps1       # from Windows, in the C:\ checkout
+```
+
+The host-keyed `.harness/` layout below still holds, and the two bootstraps
+still do not destroy each other (T0102). But with a checkout per host that
+protection is now belt-and-braces rather than the thing standing between you and
+a working build — worth keeping because it is correct and cheap, not because a
+shared `/mnt/c` tree is workable. It is not.
+
+Within one tree the downloads are shared — `.harness/dl/` holds both hosts'
+archives, named for their host (`zig-x86_64-linux-0.16.0.tar.xz` against
+`zig-x86_64-windows-0.16.0.zip`), so each is fetched once.
 
 This was not always true. Until T0102 both scripts installed into
 `.harness/<tool>/<version>/` and both deleted the destination before
@@ -308,6 +352,11 @@ where Ninja runs every command from.
 
 ## Known constraints
 
+- **Under WSL the working tree cannot live on `/mnt/`.** Zig's cache commit is a
+  directory rename that drvfs refuses; the build dies before compiling anything.
+  See [Under WSL, the working tree must not live on `/mnt/`](#under-wsl-the-working-tree-must-not-live-on-mnt)
+  and D18. It is [ziglang/zig#24955][zi], open upstream with its fix closed
+  unmerged, so it is not going to lapse.
 - **`configure` and builds are fully offline.** DiligentEngine fetches `entt`
   (DiligentFX) and `abseil-cpp` (DiligentCore/ThirdParty) over the network at
   configure time; both are vendored as submodules at exactly the refs Diligent

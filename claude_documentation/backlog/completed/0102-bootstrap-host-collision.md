@@ -8,7 +8,7 @@
 | **Phase** | 1 — Harden the build |
 | **Created** | 2026-08-03 |
 | **Found by** | T0004 |
-| **Refs** | [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D5 |
+| **Refs** | T0122, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D5, D18 |
 
 ## Why
 
@@ -342,3 +342,33 @@ written about.
 **Checksums are still unguarded.** `pins_test.zig` compares versions and
 layout across the three files; the SHA256 pins are per-host by nature and there
 is nothing to compare them against.
+
+## 2026-08-04 — what this ticket did *not* fix (T0122, D18)
+
+Read after T0122, this ticket is easy to mistake for more coverage than it has,
+so: **host-keying `.harness/` solved a different problem from the one that
+actually stops a WSL developer building.**
+
+This ticket fixed two bootstraps overwriting each other's toolchain. That fix is
+correct and stays. It says nothing about whether a build can run at all from a
+tree on `/mnt/c` — and it cannot: Zig commits its cache by renaming a directory
+whose files are open, which drvfs refuses ([ziglang/zig#24955][zi], open
+upstream, fix closed unmerged). T0122's first diagnosis assumed this ticket's
+shape — a host collision over shared cache paths — and was **wrong**; the rename
+destination did not exist and its hash differed every run. Host-keying the cache
+would not have helped, because a host-keyed cache is still on `/mnt/c`.
+
+The consequence for the "not verified" section above: **the dual-host
+single-tree case it leaves open is not going to be closed, because D18 retires
+the scenario.** One tree cannot serve both hosts — no filesystem gives Windows
+and Linux correct semantics at once. Each host gets its own checkout, so "one
+physical machine running both bootstraps into one working tree and building from
+each in turn" is no longer a configuration this project supports, rather than an
+outstanding gap. The 2×2 build matrix stays proven by CI's `tests-windows-host`
+job (T0004), not by a developer switching hosts in place.
+
+The `Why` section above still describes the machine as "a Windows box with WSL,
+which is how this project is actually developed". That was true when written and
+is now superseded by D18 — the WSL side develops in the Linux filesystem.
+
+[zi]: https://github.com/ziglang/zig/issues/24955
