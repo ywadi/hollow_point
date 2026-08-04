@@ -8,6 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 400 |
 | **Created** | 2026-08-02 |
+| **Refs** | [../completed/0113-device-loss.md](../completed/0113-device-loss.md) |
 
 ## Why
 
@@ -66,3 +67,26 @@ depth policy, not one global depth buffer used by everything.
 This is also where DiligentFX post-processing slots in — tonemapping and bloom
 apply to the world layer, not to the UI drawn on top of it. Getting that ordering
 wrong makes UI look washed out and is a common engine bug.
+
+### Cross-ticket obligation — T0113 (2026-08-04)
+
+**T0113.5 is parked here, and this is the first ticket able to discharge it.**
+
+Device loss is implemented and its policy recorded (D20): the engine detects a
+lost device from the backend's message stream, logs a message naming it as a
+GPU/driver failure rather than an engine crash, flushes the log and aborts.
+**That abort has never run.** Firing it needs a real GPU hang, a GPU hang needs a
+deliberately infinite compute shader, and nothing could author one until this
+ticket exists.
+
+So when the render stack can compile a compute shader, add the trigger: a
+deliberately hanging kernel behind a debug flag, which trips the OS driver
+timeout and costs a rough couple of seconds for the whole machine. Decide at the
+same time whether it is worth keeping in the tree permanently.
+
+Why it matters here specifically rather than being a curiosity: **D15 makes the
+entire particle system compute-driven**, so the team will write accidental GPU
+hangs during development on this very ticket's machinery. "Device lost: GPU hang
+or driver reset" versus an unlabelled crash is the difference between a shrug
+and a lost afternoon — and the message that makes that difference has never been
+seen working.

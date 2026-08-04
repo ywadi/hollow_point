@@ -9,7 +9,7 @@
 | **Order** | 376 |
 | **Created** | 2026-08-04 |
 | **Found by** | T0025 review — asked whether the engine supports fullscreen; it does not, and nothing owned it |
-| **Refs** | [../completed/0015-window-platform-layer.md](../completed/0015-window-platform-layer.md), [../inprogress/0110-presentation-and-frame-pacing.md](../inprogress/0110-presentation-and-frame-pacing.md), [../completed/0025-render-layer.md](../completed/0025-render-layer.md), T0078, [../inprogress/0068-input-mapping.md](../inprogress/0068-input-mapping.md), T0119, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D16 |
+| **Refs** | [../completed/0015-window-platform-layer.md](../completed/0015-window-platform-layer.md), [../completed/0110-presentation-and-frame-pacing.md](../completed/0110-presentation-and-frame-pacing.md), [../completed/0025-render-layer.md](../completed/0025-render-layer.md), T0078, [../inprogress/0068-input-mapping.md](../inprogress/0068-input-mapping.md), T0119, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D16 |
 
 ## Why
 

@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 360 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0082, T0085, T0110, T0114 , [../completed/0129-display-modes-and-window-control.md](../completed/0129-display-modes-and-window-control.md) |
+| **Refs** | T0082, T0085, T0110, T0114 , [../completed/0129-display-modes-and-window-control.md](../completed/0129-display-modes-and-window-control.md) , [../completed/0110-presentation-and-frame-pacing.md](../completed/0110-presentation-and-frame-pacing.md) |
 
 ## Why
 
@@ -111,3 +111,27 @@ must implement applying it" — and that something was never built.
 Do not design the display section of the options as though the mechanism exists.
 Agree the settings shape and the window API together, or the options UI offers
 modes the window cannot enter.
+
+### Cross-ticket obligation — T0110.5 (2026-08-04)
+
+**T0110 closed with one item deferred here: the display section of the options.**
+Vsync and the frame-rate cap are implemented and measured; what does not exist is
+a place for a player to set them.
+
+Two findings constrain the UI before it is designed:
+
+- **Vsync is a boolean and cannot be anything else.** Diligent derives the
+  present mode from it and exposes no way to choose — on prefers
+  `FIFO_RELAXED` then `FIFO`, off prefers `MAILBOX`, `IMMEDIATE`, `FIFO`. So an
+  "advanced" raw present-mode selector **cannot be offered without patching
+  Diligent**. Do not put one in a mockup.
+- **"Vsync on" is not a no-tearing promise.** `FIFO_RELAXED` shows a late frame
+  immediately. Labelling the option "no tearing" would be false on this engine.
+
+The cap is a separate control and genuinely independent: measured 121 fps with
+vsync on versus 4,000-5,200 fps with it off, so the cap is what stops a menu or a
+background window rendering flat out. Offer off/30/60/120/custom, and remember
+the background cap is a second value (T0110 defaults it to 10 Hz).
+
+`resolution` in this ticket's list is **T0129**'s mechanism, now built — see the
+separate obligation above.

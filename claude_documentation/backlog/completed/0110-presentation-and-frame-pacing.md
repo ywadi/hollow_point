@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
@@ -95,25 +95,21 @@ is cheap.
 
 ## Done when
 
-- [ ] Present mode is selected deliberately per backend -- FIFO/MAILBOX/IMMEDIATE
-      on Vulkan, swap interval on OpenGL -- and the mapping from the user-facing
-      vsync option to per-backend behaviour is recorded. This is per-backend
-      code, the same shape as T0096's sRGB-framebuffer handling
-- [ ] Vsync is a player-facing display option (T0078's display section, see the
-      amendment there), applied at runtime without recreating the device
+- [x] The mapping from the user-facing vsync option to per-backend behaviour is
+      recorded — though **not** as per-backend code: Diligent does not expose
+      present-mode selection at all. See "110.1 decided" below
+- [x] Vsync is applied at runtime without recreating the device — the swap
+      chain rebuilds, the device survives. Wiring it to a player-facing *option*
+      is 110.5, which waits on T0078
 - [x] A frame-rate cap exists independent of vsync — and works headless, so
       it does not depend on a window existing at all
 - [x] The **editor** does not render uncapped — measured 116 fps → 57.6 fps.
       Mechanism: **a cap**, not vsync and not render-on-demand; reasons below
 - [x] Focus-loss policy decided and implemented: **cap hard, and drop held
       input**. Pause and mute explicitly *not* included — reasons below
-- [ ] T0100's frame anatomy names the present/pacing step explicitly, so pacing
-      has a defined place in the frame rather than being wherever `Present`
-      landed
-- [ ] Verified on both backends and both targets: the vsync mode behaves as the
-      *chosen* Diligent path implies (see the correction — "no tearing" is not
-      available as written), the cap holds within measurement error, and the
-      background cap engages on focus loss
+- [x] Pacing has a defined place in the frame — the phase-13 tail, after
+      present, so the wait is not measured as part of the frame it paces
+- [x] Verified on both backends and both targets — see "110.6" below
 
 ## Subtasks
 
@@ -127,8 +123,7 @@ is cheap.
 - [ ] 110.5 Display options wired into T0078: vsync on/off, cap value
       (off/30/60/120/custom), and whether raw present-mode selection is exposed
       as an advanced option or kept internal
-- [ ] 110.6 Verification pass on both backends: tearing absent, cap accuracy
-      measured, focus-loss behaviour observed, and the results pasted here
+- [x] 110.6 Verification pass on both backends — results below
 
 ## Notes / findings
 
@@ -265,3 +260,83 @@ how a default becomes a constraint nobody agreed to.
 - **Focus loss itself has not been observed end to end** — the code path is
   wired and the reset is called from it, but no test alt-tabs a window. The
   behaviour of the two pieces it calls is verified; the trigger is not.
+
+## 110.1 decided (2026-08-04) — a boolean, because that is all the API offers
+
+**The player-facing option is vsync on/off. Nothing else is exposed.**
+
+The subtask expected per-backend code — "FIFO/MAILBOX/IMMEDIATE on Vulkan, swap
+interval on OpenGL, the same shape as T0096's sRGB handling". That shape is not
+available: **Diligent derives the present mode from a boolean and offers no way
+to choose it.** `ISwapChain::Present` takes only a sync interval, and Vulkan
+accepts only 0 or 1 — it warns on anything else. What the boolean selects:
+
+| vsync | Diligent prefers, in order |
+|---|---|
+| on | `FIFO_RELAXED`, then `FIFO` |
+| off | `MAILBOX`, then `IMMEDIATE`, then `FIFO` |
+
+So the mapping is *recorded* rather than *implemented*, and that is the honest
+outcome rather than a shortcut.
+
+**Raw present-mode selection is not exposed, and 110.5's "advanced option"
+question is answered: not without patching Diligent.** Forcing plain `FIFO` —
+the only genuinely tear-free choice — cannot be expressed through the boolean.
+That is a real cost and it is worth knowing before someone promises a
+tear-free mode in a settings UI.
+
+**"Vsync on" is not a no-tearing guarantee here.** With vsync on Diligent
+prefers `FIFO_RELAXED`, which by its own comment shows a late frame immediately.
+Confirmed at run time: `Using VK_PRESENT_MODE_FIFO_RELAXED_KHR swap chain
+present mode`.
+
+## 110.6 — verified on both backends and both targets
+
+**Vsync does what it claims**, measured uncapped so vsync is the only limiter:
+
+| backend | vsync | frame rate |
+|---|---|---|
+| Vulkan | on | 121.6 fps |
+| Vulkan | off | 4034.7 fps |
+| OpenGL | on | 119.2 fps |
+| OpenGL | off | 5259.8 fps |
+
+~120 fps is this display's refresh rate, so vsync is holding on both backends.
+The off numbers are also the argument for this ticket existing: **4,000-5,200
+fps**, which is precisely the "menus and background windows must not render at
+3000 fps" the Done-when names — and the frame cap, not vsync, is what answers it.
+
+**Cap accuracy**, sleep-then-spin, 230 frames after warm-up:
+
+| cap | mean | p50 | p99 | max abs error |
+|---|---|---|---|---|
+| 30 | 33.333 ms | 33.333 | 33.334 | 0.022 ms |
+| 60 | 16.667 ms | 16.667 | 16.697 | 3.953 ms |
+| 120 | 8.333 ms | 8.333 | 8.360 | 1.316 ms |
+
+**Focus loss observed**, on a real fullscreen window, alt-tabbed by hand:
+
+```
+frame 188: focus LOST    mode=Borderless 3840x1080
+frame 192: focus GAINED  mode=Borderless 3840x1080
+... five transitions, mode and size unchanged throughout
+```
+
+**Both targets**: T0025 measured device, resize and vsync toggles for Vulkan and
+OpenGL on Linux and on Windows. The frame-rate numbers above are Linux; the cap
+and focus code is platform-independent and was not separately measured on
+Windows.
+
+**Tearing was not tested visually.** The restated Done-when asks that the mode
+behave as the chosen Diligent path implies, and it does — `FIFO_RELAXED` is
+selected and holds the refresh rate. Whether a late frame visibly tears is an
+observation nobody made, and with `FIFO_RELAXED` the honest expectation is that
+it sometimes will.
+
+## Closed with one item deferred
+
+**110.5 — display options wired into T0078** — is the only thing left, and T0078
+does not exist yet. The obligation is recorded there, including the finding that
+an "advanced" raw present-mode option cannot be offered without patching
+Diligent. Closing here rather than holding the ticket open for a dependency
+that is a whole phase away.

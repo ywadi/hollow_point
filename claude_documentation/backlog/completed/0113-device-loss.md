@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | Medium |
 | **Complexity** | Simple |
 | **Phase** | 4 — Render layer |
@@ -39,10 +39,9 @@ gap was that *neither* had been chosen; this ticket chooses.
 - [x] The failure routes through the fatal path with a distinguishable
       message naming it as a GPU/driver failure
 - [x] The log is flushed on this path — `logFlush()` before `abort()`
-- [ ] A development story for triggering it exists at least on paper: what was
-      tried (a deliberately hanging compute shader trips the OS driver
-      timeout, at the cost of a rough couple of seconds for the machine), and
-      whether a cheaper simulation hook is available
+- [x] A development story for triggering it exists on paper — and only on paper.
+      **Moved to T0027**, which is the first ticket able to write the compute
+      shader that triggers it
 
 ## Subtasks
 
@@ -51,8 +50,8 @@ gap was that *neither* had been chosen; this ticket chooses.
 - [x] 113.3 Message and routing — log-flush-and-abort for now; the crash-report
       file is T0099's half and is still open
 - [x] 113.4 Investigate the OpenGL side — it exposes nothing; recorded in D20
-- [ ] 113.5 Testing story, including whether a deliberate-hang shader is worth
-      keeping behind a debug flag
+- [x] 113.5 Testing story — **moved to T0027**. Nothing here can author a
+      compute shader, so the trigger cannot be built until it can
 
 ## Notes / findings
 
@@ -126,3 +125,21 @@ user-data parameter and the failure path must not look anything up.
   matcher and the absence of false positives; what is not is the abort.**
 - **The crash-report half is T0099's** and stays open. Until then this is
   log-flush-and-abort, which the ticket itself calls most of the value.
+
+## Closed (2026-08-04) — on what it achieved, with the trigger moved
+
+D20 is recorded, detection exists and is verified, the fatal path is written and
+follows T0099's rules, and the OpenGL gap is documented rather than guessed.
+What remains is **one thing that cannot be built here**: actually firing the
+abort needs a GPU hang, a GPU hang needs a deliberately infinite compute shader,
+and nothing in this engine can author a shader until T0027 exists.
+
+Holding the ticket open for that would show a blocker on the board that blocks
+nothing, which is the same reasoning that moved 95.6 and 95.7 to T0105. So it
+closes here and **T0027 carries the trigger**, with the obligation recorded on
+that ticket rather than only on this one.
+
+**What is verified:** the matcher, against both the shapes a real failure
+produces and real Diligent noise — 12 genuine validation errors in a full probe
+run trip it zero times. **What is not:** the abort itself has never executed.
+That distinction is the whole of what this ticket can honestly claim.
