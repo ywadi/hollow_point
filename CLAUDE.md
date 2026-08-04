@@ -86,6 +86,7 @@ export PATH="$PWD/.harness/zig/linux-x86_64/0.16.0:$PATH"
 
 zig build linux                # or windows / all
 zig build test -Dtest=all      # both targets; wine runs the Windows suite
+zig build test -Dtest=gpu      # needs a real GPU -- `all` builds it, never runs it
 zig build docs                 # regenerate + CHECK the API reference
 zig build dist                 # stage runnable output
 ```

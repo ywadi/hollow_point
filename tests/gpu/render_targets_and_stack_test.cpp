@@ -1,14 +1,25 @@
 // Frame targets and the render stack, against a real device (T0046, T0027).
 //
 // Bucket: gpu. Every case here needs a graphics device, and **every case skips
-// cleanly when there is not one** — `zig build test -Dtest=all` includes this
-// bucket, and CI runners have no GPU and no display. A case that failed instead
-// of skipping would turn four green jobs red for a reason unrelated to whatever
-// change was being tested, which is worse than not running at all.
+// cleanly when the engine reports there is not one** -- no window (headless), or
+// a window but no device.
+//
+// **That is not enough on its own, which is why `zig build test -Dtest=all`
+// builds this bucket and does not run it.** The skip path handles a device the
+// engine can refuse. It cannot handle a driver that takes the process down: on
+// the Windows CI host this suite exited with code 5 having printed nothing at
+// all, not even doctest's banner, which is what a crash looks like when a piped
+// stdout is never flushed. That host has a desktop session, so a window is
+// created and the engine goes on to meet GDI's generic OpenGL 1.1 -- below the
+// level anything here can intercept. Run it with `-Dtest=gpu` on a machine with
+// hardware.
 //
 // The skip is deliberate about *where* it gives up: no window (headless), or a
 // window but no device (no driver, software-only, wine without a GL/Vulkan ICD).
-// Both are environment facts rather than defects, so both report and return.
+// Both are environment facts rather than defects, so both report and return —
+// and both now say so through the log sink attached in `bringUp`, because a
+// skip whose reason is invisible is indistinguishable from a device the engine
+// deliberately refused.
 
 #include <doctest/doctest.h>
 

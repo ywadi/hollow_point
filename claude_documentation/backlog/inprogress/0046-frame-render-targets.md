@@ -40,6 +40,28 @@ explicitly-managed set of frame resources.
 
 ## Notes / findings
 
+**The gpu bucket broke Windows CI the first time it ran there, and the fix was
+to stop running it there.** `hp_tests_gpu.exe` exited with code 5 having printed
+nothing at all — not doctest's banner, not a skip message — which is what a
+crash looks like when a piped stdout is never flushed. Linux CI is unaffected
+because a headless Linux runner fails at `Window::create` and skips cleanly,
+verified locally by running with `DISPLAY` unset (exit 0). The Windows runner
+has a desktop session, so a window *is* created and the engine goes on to meet
+GDI's generic OpenGL 1.1, below the level the suite's skip path can intercept.
+
+`zig build test -Dtest=all` now **builds** the gpu bucket on both targets and
+**runs** it only when named explicitly. That keeps the half CI can genuinely do
+— a gpu test that stops compiling is still caught — and drops the half it
+cannot.
+
+**Not reproduced here.** No Windows machine without a GPU was available, and
+forcing a GL 1.1 context on Linux failed to reproduce it because the Mesa
+override variables are ignored by the NVIDIA driver. The diagnosis rests on the
+exit signature and on Linux behaving correctly under the same conditions, not on
+a reproduction.
+
+
+
 **Do not add resource aliasing.** Reusing memory between non-overlapping targets
 is the main thing a render graph automates, and doing it by hand is error-prone
 in exactly the way that produces intermittent corruption. If memory pressure ever

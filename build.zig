@@ -201,7 +201,7 @@ pub fn build(b: *Build) void {
     const verbose = b.option(bool, "verbose", "Echo every compiler command line") orelse false;
     const want_ccache = b.option(bool, "ccache", "Use ccache when present (default: yes)") orelse true;
     const only = b.option([]const u8, "target", "Restrict 'all'/'dist' to one target key");
-    const test_sel = b.option([]const u8, "test", "Test bucket: fast|integration|gpu|perf|all (default: fast)") orelse "fast";
+    const test_sel = b.option([]const u8, "test", "Test bucket: fast|integration|gpu|perf|all (default: fast). 'all' builds the gpu bucket but runs it only when named explicitly, because it needs a real graphics device.") orelse "fast";
     const test_filter = b.option([]const u8, "test-filter", "Run only tests whose name matches this pattern");
 
     checkPinnedZig(b);
@@ -344,6 +344,27 @@ pub fn build(b: *Build) void {
                 tgt,
                 if (spec.os == .windows) ".exe" else "",
             });
+
+            // The gpu bucket is **built** by `all` and **run** only when asked
+            // for by name. It needs a real graphics device, and the failure
+            // that forced this is worse than "the tests do not apply": on the
+            // Windows CI host the suite exited with code 5 having printed
+            // nothing at all -- not even doctest's banner -- which is the
+            // signature of a process dying before it can flush a piped stdout.
+            // That host has a desktop session, so SDL creates a window and the
+            // engine goes on to meet Microsoft's GDI generic OpenGL 1.1, and
+            // whatever happens there happens below the level the engine can
+            // refuse. The suite's own skip path handles a device the engine
+            // *reports* as unavailable; it cannot defend against one that takes
+            // the process with it.
+            //
+            // Building it here is the half CI can genuinely do -- a gpu test
+            // that stops compiling is caught on both targets -- while running
+            // it on hardware that has no GPU proves nothing either way.
+            if (std.mem.eql(u8, bucket, "gpu") and !std.mem.eql(u8, test_sel, bucket)) {
+                test_step.dependOn(&build_tests.step);
+                continue;
+            }
 
             const runner = runnerFor(b, spec.os) orelse {
                 // Never silently pass: a suite that cannot be executed here is
