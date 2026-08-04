@@ -223,8 +223,27 @@ fails for reasons that have nothing to do with this wiring. The claim being made
 is the narrow one — the docs step no longer participates, and nothing else
 changed.
 
-**CI has not yet run against this change.** Pushed at the same time as T0125;
-the result belongs in this file before anyone trusts it.
+**CI is green** — run [30904815639][r], all four jobs, pushed together with
+T0125:
+
+```
+success	Tests (Linux host, both targets)
+success	Tests (Windows host, native)
+success	Configure with FetchContent disconnected
+success	API reference is up to date
+```
+
+Read from the jobs API rather than `gh run view`, which truncates and once
+produced a confident, wrong "only Windows failed" here.
+
+`API reference is up to date` is the job that matters for this ticket, and it
+exercises the case local testing cannot: its runner restores only `.harness`,
+never `.zig-cache`, so the docs step meets a genuinely cold cache, regenerates
+from scratch, and the drift gate then finds the tree clean. That is the
+rewiring proven end to end — cache miss regenerates, output matches what was
+committed.
+
+[r]: https://github.com/ywadi/hollow_point/actions/runs/30904815639
 
 ## Notes / findings
 

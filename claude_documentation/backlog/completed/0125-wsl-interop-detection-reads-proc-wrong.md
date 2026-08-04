@@ -208,8 +208,29 @@ and was not synthesised. The branch is reasoned, not measured — the honest
 statement is that it is a guard against a class of failure this ticket proved
 can hide, not a path with evidence behind it.
 
-**CI has not yet run against this change.** Pushed together with T0123; the
-result belongs here before it is trusted.
+**CI is green** — run [30904815639][r], all four jobs, pushed together with
+T0123:
+
+```
+success	Tests (Linux host, both targets)
+success	Tests (Windows host, native)
+success	Configure with FetchContent disconnected
+success	API reference is up to date
+```
+
+`Tests (Linux host, both targets)` is the one that matters here. It runs on a
+real Ubuntu runner with no `WSLInterop` file at all, so it exercises the
+`FileNotFound` → `disabled` → wine path for real rather than through the
+simulation used above — and the Windows suite still runs and passes under wine
+there. The three-valued rewrite did not break the fallback the whole CI matrix
+depends on.
+
+Note what CI does **not** prove: it has no WSL, so the interop path itself is
+unreachable there and will never be covered by it. That path's only evidence is
+the local run above. This is the same shape as T0004's Windows-host row — a
+configuration proven in one place because it cannot exist in the other.
+
+[r]: https://github.com/ywadi/hollow_point/actions/runs/30904815639
 
 ## Notes / findings
 
