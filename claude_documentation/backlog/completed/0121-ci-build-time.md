@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | Medium |
 | **Complexity** | Moderate |
 | **Phase** | 1 — Harden the build |
@@ -24,14 +24,25 @@ Build trees are deliberately **not** cached: ~1.7 GB Linux and ~1.3 GB Windows
 against a 10 GB repository quota. So every run recompiles SDL and Diligent from
 scratch, twice.
 
+> **Those sizes were wrong** — measured during this ticket at 327 MB and 152 MB,
+> compressing to 78 MB and 34 MB. The quota objection never applied. Left here
+> as written because it is what the decision was actually made on; see the
+> 2026-08-04 notes below.
+
 ## Done when
 
-- [ ] The Linux job is materially faster, with before/after numbers recorded
+- [x] The Linux job is materially faster, with before/after numbers recorded —
+      **18–19m → 5m**, measured cold and warm across runs 30891771048 and
+      30893046876; the table under Notes carries both, and the Windows job went
+      23m → 5m alongside it
 - [x] Whatever mechanism is used reports its own effectiveness, so a
       silently-useless cache cannot persist — both test jobs end with a
       **Build tree size** step (`if: always()`), and a restore that hit shows a
       tree already near full size before the build step runs
-- [ ] The cache stays inside the repository's quota
+- [x] The cache stays inside the repository's quota — measured at **78 MB
+      (Linux) + 34 MB (Windows) compressed**, about 1% of the 10 GB. The
+      original ~1.7 GB / ~1.3 GB estimate that kept this off the table was
+      wrong by 5–9x
 
 ## Subtasks
 
@@ -49,8 +60,9 @@ scratch, twice.
       one there because the runner's copy cannot exec the generated `.cmd`
       compiler shim (T0084). Anything done for Windows must be tree-based.
       Satisfied: Windows gets the same tree cache, which is its only lever
-- [ ] 121.6 **Record the before/after numbers from a real run** — cold and warm,
-      both jobs. Nothing above is proven until this is filled in
+- [x] 121.6 **Record the before/after numbers from a real run** — cold and warm,
+      both jobs. Done: runs 30891771048 (cold) and 30893046876 (warm), tabulated
+      under Notes with the cache-hit lines quoted
 
 ### Not pursued
 
@@ -142,12 +154,85 @@ Three things worth knowing about the shape of it:
   builds never produce it, but an untracked stray is noise `offline-configure`
   would otherwise have to account for.
 
-**Not yet measured, and therefore not closed.** Everything above is structural —
-the workflow parses and the steps are in the right jobs, but no run has produced
-a number. The ticket stays in `inprogress/` until 121.6 is filled in with a cold
-and a warm run for both jobs. Per this backlog's own rule, a ticket that claims
-a speedup it has not observed is worse than one left open — and this ticket has
-already been burned once by a cache that *looked* like it was working.
+### 2026-08-04 — measured: run 30891771048
+
+The first run after the fix. Linux was cold by construction (new key prefix;
+ccache's entries used a different one), so it built from scratch and *saved* the
+cache. Windows hit an exact key — nothing in the commit touched a submodule or
+a CMake file, so `.ci-dep-key` hashed identically to the entry run 30888418425
+had already saved.
+
+| Job | Before | This run | Cache |
+|---|---|---|---|
+| Tests (Windows host, native) | 23m (`30888418425`, cold) | **6m** | exact-key hit |
+| Tests (Linux host, both targets) | 18m (`30888418425`) / 19m (`30884687594`, ccache) | 16m | cold — populated it |
+
+Windows, verbatim:
+
+```
+Cache hit for: buildtree-Windows-bdeeef15b3ac65b4007cf7bf758857e3e15deca7...
+Cache Size: ~34 MB (35906558 B)
+Cache restored successfully
+152 MB                                        <- Build tree size
+Cache hit occurred on the primary key ..., not saving cache.
+```
+
+Linux, verbatim:
+
+```
+Cache not found for input keys: buildtree-Linux-83c6def5164c7d4d6cb352207...
+327M	build                                  <- Build tree size
+Sent 78564880 of 78564880 (100.0%), 34.0 MBs/sec
+Cache saved with key: buildtree-Linux-83c6def5164c7d4d6cb3522071df6455d34...
+```
+
+**The premise for not caching build trees was wrong, and by a lot.** The
+original judgement — recorded in the Why above and in `ci.yml`'s own comment —
+was that trees are ~1.7 GB Linux and ~1.3 GB Windows against a 10 GB quota.
+Measured, they are **327 MB and 152 MB**, compressing to **78 MB and 34 MB**.
+Both entries together are about 1% of the quota. The size objection that kept
+this ticket's fix off the table never actually applied; nobody had measured it.
+`ci.yml`'s comment is corrected to say so.
+
+The 16m Linux figure above is a cold build, within noise of the 18–19m
+baselines — it is not the speedup. The cache only exists from the end of that
+run onward, so the number that matters came from the next one.
+
+### 2026-08-04 — measured warm: run 30893046876
+
+Triggered with `gh workflow run ci.yml --ref main`. `workflow_dispatch` rather
+than a commit on purpose: `paths-ignore` excludes `claude_documentation/**` and
+`*.md`, so a docs-only commit does not trigger CI, and inventing a dummy source
+change to force one would have polluted the history for a measurement.
+
+| Job | Before | Cold (`30891771048`) | **Warm (`30893046876`)** |
+|---|---|---|---|
+| Tests (Linux host, both targets) | 18m / 19m | 16m | **5m** |
+| Tests (Windows host, native) | 23m / 22m | 6m | **5m** |
+
+Both jobs hit their primary key and correctly declined to re-save:
+
+```
+Cache hit for: buildtree-Linux-83c6def5164c      Cache Size: ~75 MB   333M build
+Cache hit for: buildtree-Windows-bdeeef15b3ac    Cache Size: ~34 MB   152 MB
+... not saving cache.
+```
+
+**The Linux job went from 18–19 minutes to 5.** That is the ticket's headline
+condition, and it is now met rather than asserted. Total workflow wall clock
+falls from ~23m to ~5m, since the two heavy jobs run in parallel and both are
+now warm.
+
+Two things this does *not* prove, recorded so nobody reads more into it:
+
+- **A pin bump still costs a full cold build.** The key is the submodule SHAs,
+  so moving any pin — SDL, Diligent, or one of the nested Diligent submodules —
+  invalidates it and the next run pays 16–18m again. That is the intended
+  trade and the reason the key is coarse; it is not a regression when it
+  happens.
+- **`restore-keys` makes a near-miss cheap but not free.** On a pin bump the
+  fallback restores the most recent tree and ninja rebuilds what actually
+  changed, which is better than cold but was not separately measured here.
 
 **The ccache question is abandoned, not answered.** 82 of ~4,248 compilations
 reached the launcher and nobody found out why. Caching output sidesteps it

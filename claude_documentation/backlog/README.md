@@ -23,7 +23,6 @@ This is the work. For what is already proven to work — and what only appears t
 | Order | ID | Task | Phase | State | Priority | Complexity |
 |---|---|---|---|---|---|---|
 | — | [T0095](completed/0095-gameplay-module-abi-and-linkage.md) | Gameplay module ABI: engine linkage, one engine state, entt across the boundary | 2 — Engine skeleton | ✅ DONE | High | Complex |
-| ▶ | [T0121](inprogress/0121-ci-build-time.md) | CI build time | 1 — Harden the build | 🚧 IN PROGRESS | Medium | Moderate |
 | 10 | [T0055](completed/0055-engine-conventions.md) | Engine conventions and error handling policy | 2 — Engine skeleton | ✅ DONE | High | Trivial |
 | 30 | [T0013](completed/0013-engine-library-app-split.md) | Split the tree into an engine library and app consumers | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | 35 | [T0019](completed/0019-profiling-macro-surface.md) | Profiling macro surface (Tracy-ready, no-op for now) | 2 — Engine skeleton | ✅ DONE | Medium | Trivial |
@@ -143,6 +142,7 @@ This is the work. For what is already proven to work — and what only appears t
 | — | [T0012](completed/0012-test-harness.md) | Build a test harness for TDD | 1 — Harden the build | ✅ DONE | High | Complex |
 | — | [T0084](completed/0084-continuous-integration.md) | Continuous integration | 1 — Harden the build | ✅ DONE | Medium | Moderate |
 | — | [T0102](completed/0102-bootstrap-host-collision.md) | `bootstrap.sh` and `bootstrap.ps1` destroy each other's toolchain | 1 — Harden the build | ✅ DONE | Medium | Simple |
+| — | [T0121](completed/0121-ci-build-time.md) | CI build time | 1 — Harden the build | ✅ DONE | Medium | Moderate |
 
 
 ## Execution order
