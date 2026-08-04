@@ -85,6 +85,9 @@ stale binary.
       paste the numbers
 - [x] 131.6 Correct the stale figures in `ci.yml` (trees ARE cached; 376 MB +
       156 MB per run measured off 30946039676) and annotate T0121
+- [x] 131.7 Survive first contact: run 30951493282 exposed two more mtime
+      consumers, both fixed and both reproduced locally first — see
+      "What the first CI run taught" below
 
 ## Notes / findings
 
@@ -134,6 +137,41 @@ cached (they are, since 17f50b1) at ~1.7 GB/~1.3 GB (measured 2.1 GB / 879 MB,
 compressing to 376 MB / 156 MB per run — read off run 30946039676's actual
 save, as T0121's amendment asked). Quota: ~532 MB per run against 10 GB, an
 LRU window of roughly 18 runs alongside the two ~250 MB toolchain entries.
+
+### What the first CI run taught (30951493282, failed — usefully)
+
+The mtime step worked: ninja scheduled ~50 edges instead of 1476. Two things
+it had not accounted for produced the failure, and both are the same lesson —
+**ninja is not the only thing reading these mtimes**:
+
+1. **CMake re-ran anyway, and the trigger was `.git`.** The re-run edge's
+   input list (339 files) includes `.git/modules/third_party/SDL/HEAD` — SDL's
+   CMake shells out to git for `SDL_REVISION`, and CMake records the gitdir
+   HEAD as a configure input. Checkout recreates it at clone time, the script
+   deliberately skipped `.git`, so CMake re-ran every run regardless. The
+   re-run unconditionally rewrites a handful of generated headers (Diligent's
+   `shaders_inc/*.h` lists among them), which dirtied their ~50 consumers.
+   Fixed: the script stamps each submodule's gitdir `HEAD` with the
+   submodule's own stamp — its content only changes when the pin moves.
+
+2. **Clang PCH validation hard-fails on any header mtime change**, content
+   notwithstanding: `file ... has been modified since the precompiled header
+   ... mtime changed (was 1785873819, now 1785790582)`. The restored `.pch`
+   files embed the *previous run's checkout* mtimes, which nothing can
+   reproduce. Reproduced locally byte-for-byte with the recorded compile
+   command, then fixed at the root: `-Xclang -fno-pch-timestamp` on every
+   compile (root `CMakeLists.txt`), verified by rebuilding the same PCH with
+   the flag and watching the same consumer compile go clean against a
+   deliberately mis-stamped header. Ninja already rebuilds a `.pch` whose
+   inputs really changed; the embedded-timestamp check only had false
+   positives to offer. The flag changes every compile command, so the first
+   CI run after this pays one full self-healing rebuild that also replaces
+   every timestamped `.pch` in the cached trees.
+
+One micro-wart observed while reproducing: a CMake re-run changes the link
+command of `tests/libhp_abi_module.so` (ninja: "command line changed"), so any
+*legitimate* future re-run relinks that one library. One link edge, seconds,
+not chased further.
 
 ### Measured — to be filled from the scratch-branch runs
 

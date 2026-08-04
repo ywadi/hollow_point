@@ -147,6 +147,15 @@ def main():
         ts = max([head_ct, pin_moved, *parents])
         sub_ts[sub] = ts
         sub_files += stamp_tree(os.path.join(repo_root, sub), ts)
+        # SDL's CMake shells out to git for SDL_REVISION, so CMake records the
+        # submodule's gitdir HEAD as a configure input. Checkout recreates it
+        # with clone-time mtime, which alone re-ran CMake on every CI run --
+        # and the re-run regenerates a handful of headers, which recompiles
+        # their consumers, which is how run 30951493282 tripped PCH validation
+        # on an otherwise clean tree. HEAD's content only changes when the pin
+        # moves, so it earns the submodule's stamp like every other file.
+        gitdir = git(["rev-parse", "--absolute-git-dir"], cwd=sub).strip()
+        stamp(os.path.join(gitdir, "HEAD"), ts)
 
     print(
         f"restored mtimes: {stamped} tracked files "

@@ -23,6 +23,23 @@ if (POLICY CMP0072)
     cmake_policy(SET CMP0072 NEW)
 endif()
 
+# Precompiled headers must not embed file timestamps. Clang's PCH validation
+# hard-fails when a header's mtime differs from what the .pch recorded -- even
+# with identical content -- and this build's outputs legitimately outlive any
+# particular set of source mtimes: CI restores the build tree from cache and
+# re-stamps sources with commit-derived times (tools/ci_restore_mtimes.py), so
+# a restored .pch would otherwise refuse every consumer the moment anything
+# recompiles. Run 30951493282 failed exactly that way on an SDL header that
+# had not changed by a byte. Ninja already rebuilds a .pch when its inputs
+# really change, which is the validation that matters; the timestamp check
+# adds nothing here but a way to fail on correct trees (T0131).
+#
+# Compile-only (add_compile_options does not reach link lines), and set at the
+# top so every subdirectory -- SDL, Diligent, glslang -- inherits it.
+if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options("SHELL:-Xclang -fno-pch-timestamp")
+endif()
+
 # Diligent supplies the renderer. We only need SampleBase as an app shell, so skip
 # building the ~40 bundled tutorials/samples: add_sample_app() is still defined.
 set(DILIGENT_BUILD_SAMPLE_BASE_ONLY ON  CACHE BOOL "" FORCE)
