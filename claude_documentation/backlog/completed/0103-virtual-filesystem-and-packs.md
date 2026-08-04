@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 3 — Data model |
@@ -32,8 +32,10 @@ T0023 hardens, not after.
 
 ## Done when
 
-- [~] Every asset read in engine code goes through the VFS; no `std::filesystem`
-      or `fopen` on asset paths, checkable by grep
+- [x] Every asset read in engine code goes through the VFS; no `std::filesystem`
+      or `fopen` on asset paths, checkable by grep — **true for all code that
+      exists**; keeping it true as asset loading arrives is T0023's, and its
+      ticket says so
 - [x] A loose directory and an archive mount into the same tree and a path
       resolves identically from either
 - [x] A later mount overrides an earlier one per file — the patch/DLC mechanism,
@@ -51,9 +53,10 @@ T0023 hardens, not after.
       library with global state, and the engine should expose a small
       RAII/`std::span`-shaped surface rather than let `PHYSFS_*` calls spread
       through the codebase. This is also the seam that makes it replaceable
-- [~] 103.3 Mount policy: what is mounted, in what order, for editor vs runtime.
-      Write it down — override order *is* the DLC semantics and must not be
-      incidental
+- [x] 103.3 Mount policy: what is mounted, in what order, for editor vs runtime.
+      Written down below. **Wiring it moved to T0023**, which is what will call
+      it — nothing loads assets yet, so a mount sequence here would have no
+      consumer to be wrong for
 - [x] 103.4 Write directory for saves and logs, per platform
 - [x] 103.5 Tests: identical resolution from loose dir and archive; later mount
       overrides earlier; a write cannot escape the write directory; a missing
@@ -63,6 +66,22 @@ T0023 hardens, not after.
 - [x] 103.7 Spike concurrent reads before any threaded loader exists (see below)
 
 ## Notes / findings
+
+## Closed — 2026-08-05
+
+Every "Done when" is met for the code that exists. **Two items were closed by
+moving them to T0023 rather than by being finished here**, which is the pattern
+T0095 → T0105 set:
+
+- **"Every asset read goes through the VFS"** is true and grep-checkable today —
+  `Assets.cpp`, `Yaml.cpp` and `Cook.cpp` contain no `std::filesystem` and no
+  `fopen`; the single occurrence in the subsystem is inside `Vfs.cpp` creating
+  the write directory, which is the documented exception. Keeping it true as
+  asset loading arrives is T0023's job, and its ticket carries the rule.
+- **103.3's mount policy** is written down below and wired to nothing, because
+  nothing loads assets. Applying it belongs to T0023, which now says so. Leaving
+  this ticket open for it would have parked a finished mechanism behind an
+  unrelated ticket's schedule.
 
 ## Built — 2026-08-05
 
