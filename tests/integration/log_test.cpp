@@ -14,6 +14,7 @@
 #include <hp/Log.hpp>
 
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -159,17 +160,23 @@ TEST_CASE("registering the same sink twice does not duplicate delivery") {
 }
 
 TEST_CASE("the file sink writes and flushes on error") {
-    const char* path = "hp_log_test_output.txt";
-    std::remove(path);
+    // The temp directory, not the working directory. This wrote to the CWD --
+    // which is the repository root when tests are run from there -- and the
+    // artefact got committed twice before anyone noticed, because the test
+    // removes it at the end and `git status` only shows it in the window
+    // between the two runs.
+    const std::string path =
+        (std::filesystem::temp_directory_path() / "hp_log_test_output.txt").string();
+    std::remove(path.c_str());
 
-    REQUIRE(hp::logAddFileSink(path));
+    REQUIRE(hp::logAddFileSink(path.c_str()));
 
     const hp::LogCategory cat("test.file");
     cat.setLevel(hp::LogLevel::Trace);
     HP_LOG_ERROR(cat, "written to disk");
     // Error flushes, so the content must be readable without closing the sink.
 
-    std::FILE* f = std::fopen(path, "r");
+    std::FILE* f = std::fopen(path.c_str(), "r");
     REQUIRE(f != nullptr);
     std::string contents;
     char buffer[512];
@@ -182,5 +189,5 @@ TEST_CASE("the file sink writes and flushes on error") {
     CHECK(contents.find("test.file") != std::string::npos);
     CHECK(contents.find("error") != std::string::npos);
 
-    std::remove(path);
+    std::remove(path.c_str());
 }

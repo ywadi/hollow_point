@@ -22,5 +22,10 @@ compile_commands.json
 # noise the offline-configure job would rather not have to explain.
 /.ci-dep-key
 
+# Test artefacts. The log file sink test now writes to the temp directory, but
+# older builds of the suite write this into whatever directory they are run
+# from, and it has been committed twice already.
+hp_log_test_output.txt
+
 # Engine build outputs are covered by /build/ and /dist/ above; nothing else
 # under engine/, apps/ or samples/ is generated.
