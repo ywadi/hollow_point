@@ -2,13 +2,29 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ⏸ BLOCKED |
 | **Priority** | High |
 | **Complexity** | Very Complex |
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 150 |
+| **Blocked by** | T0021 (48.5), T0043 (48.7) |
 | **Created** | 2026-08-03 |
 | **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0104 (Blocks this), T0105, [../completed/0127-exceptions-across-the-module-boundary.md](../completed/0127-exceptions-across-the-module-boundary.md) |
+
+## Blocked on
+
+**The loader is built and hot reload works** (see "Built", below). What remains
+cannot be done here:
+
+- **48.5 — T0021.** "The open scene, entities and component data survive a
+  reload intact" needs a scene and an engine-owned registry to put a component
+  in. Neither exists. This is the ticket's central usability guarantee, which is
+  why it is not closed on the rest being done — it is a small test the moment
+  T0021 lands, and T0021 carries the obligation.
+- **48.7 — T0043.** The shipped runtime should link the module statically rather
+  than loading it; there is no export pipeline to link into. Recorded on T0043.
+
+Neither blocker is close: T0021 is the next phase, T0043 is Phase 8.
 
 ## Why
 

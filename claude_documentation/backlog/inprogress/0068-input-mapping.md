@@ -2,13 +2,33 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ⏸ BLOCKED |
 | **Priority** | Medium |
 | **Complexity** | Moderate |
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 170 |
+| **Blocked by** | T0020 (68.7), T0110 (cursor, focus loss) — plus 68.5, which is not blocked, see below |
 | **Created** | 2026-08-03 |
 | **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0110, T0112 |
+
+## Blocked on
+
+**The action layer is built and working** (see "Built", below). What remains
+splits three ways, and only two of them are genuinely blocked:
+
+- **68.7 — T0020.** Bindings are deliberately data, so serializing them is a
+  loader rather than a design; there is no serializer to write it against.
+  Recorded on T0020, with the two properties a binding format has to honour.
+- **Cursor control and focus loss — T0110.** `InputSystem::reset()` exists as
+  the focus-loss hook with no policy attached, because *what focus loss means*
+  is T0110's decision. Relative-mouse capture has the same owner. Recorded
+  there.
+- **68.5, gamepad — not blocked by a ticket.** SDL3 supplies the devices (D16),
+  so the platform work is gone; what is missing is engine event types, pump
+  translation and stick/button bindings. It was not done because **there is no
+  controller on this machine to verify against**, and shipping input handling
+  that has never seen a device is worse than shipping it absent. This one needs
+  hardware and an afternoon, not another ticket.
 
 ## Why
 
