@@ -120,6 +120,55 @@ the machine.
 | one `.cpp` (`Timer.cpp`) | 8 (compile + dependent archive/so relinks) |
 | hot header (`DeviceContext.h`) | 246 |
 
+## Vendored libraries that reach for global CMake state
+
+**Check what a new `add_subdirectory` does to cache variables, not only what
+targets it defines.** A dependency that sets a `CACHE ... FORCE` variable changes
+*this whole build*, and the symptom rarely points at the cause.
+
+The worked example is PhysicsFS (T0103). `third_party/physfs/CMakeLists.txt`
+contains:
+
+```cmake
+if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_C_COMPILER_ID MATCHES "Clang")
+    set(CMAKE_SKIP_RPATH ON CACHE BOOL "Skip RPATH" FORCE)
+endif()
+```
+
+Not scoped to its own targets, not optional, and `FORCE` — so it lands in our
+cache and strips RPATH from **every target in the build**: the engine, the
+editor, the runtime, every test binary. Reasonable for a library that expects to
+be installed into a system prefix; wrong for a subdirectory dependency.
+
+What it looks like from the outside:
+
+```text
+./build/linux-x86_64-release/tests/hp_tests_integration:
+  error while loading shared libraries: libhp_engine.so:
+  cannot open shared object file: No such file or directory
+```
+
+The file is *sitting right beside the binary*. Nothing in the message suggests a
+CMake option, everything links cleanly, and Diligent's backends fail identically
+one step later once the first is worked around. It **survives a clean rebuild**,
+because the cause is in the source rather than the tree — which is the expensive
+part, since deleting the build tree is the natural first move and it changes
+nothing.
+
+`CMakeCache.txt` is what answers it in one line:
+
+```sh
+grep -iE "SKIP_RPATH|BUILD_RPATH" build/linux-x86_64-release/CMakeCache.txt
+```
+
+The fix is to reset the variable immediately after the `add_subdirectory`, both
+the cache entry and the directory-scope variable — the `FORCE` wrote the cache,
+so a plain `set()` alone is shadowed by it.
+
+Other vendored trees here set global state more politely, but none of that is
+guaranteed. When adding a dependency, grep it for `CACHE` and `FORCE` before
+trusting it.
+
 ## dist
 
 `cmake/dist.cmake` is run with `cmake -P`, not included — kept as a CMake script
