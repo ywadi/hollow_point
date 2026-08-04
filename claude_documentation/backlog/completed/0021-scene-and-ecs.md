@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 3 — Data model |

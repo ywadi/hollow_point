@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 260 |
 | **Created** | 2026-08-03 |
-| **Refs** | [../inprogress/0021-scene-and-ecs.md](../inprogress/0021-scene-and-ecs.md) |
+| **Refs** | [../completed/0021-scene-and-ecs.md](../completed/0021-scene-and-ecs.md) |
 
 ## Why
 
