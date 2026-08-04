@@ -33,3 +33,6 @@
 	path = third_party/SDL
 	url = https://github.com/libsdl-org/SDL.git
 	branch = main
+[submodule "third_party/physfs"]
+	path = third_party/physfs
+	url = https://github.com/icculus/physfs.git
