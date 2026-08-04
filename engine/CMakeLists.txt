@@ -67,6 +67,7 @@ add_library(hp_engine SHARED
     src/Reflect.cpp
     src/Application.cpp
     src/Camera.cpp
+    src/CameraSystem.cpp
     src/Engine.cpp
     src/Guid.cpp
     src/Input.cpp

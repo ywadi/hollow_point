@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 440 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0050, T0085, T0086, T0089, T0120 |
+| **Refs** | T0050, T0085, T0086, T0089, T0120, [../inprogress/0081-camera-system.md](../inprogress/0081-camera-system.md) |
 
 ## Why
 
@@ -44,6 +44,19 @@ closing early because the whole renderer's shape depends on it.
 - [ ] 45.8 Profiling zones
 
 ## Notes / findings
+
+**T0081 supplies the frustum, and it must not be recomputed here.**
+`hp::extractFrustum(viewProjection, clip)` returns the six world-space planes,
+normalised so `intersectsSphere` distances are real distances. Computing a
+frustum in a second place is how culling and LOD selection (T0040) drift and
+start disagreeing about what is visible — which presents as objects popping in
+one system and not the other.
+
+**`Camera::cullingMask` is stored and nothing reads it yet.** It is a bitmask
+over *object* layers (T0085), tested per object during culling — **not** a
+`RenderStack` layer, which is a compositing pass. Confusing the two is the trap
+T0081's header comment calls out. Consuming this mask is this ticket's job.
+
 
 **Transparent objects must not be depth-sorted the same way as opaque.** Opaque
 front-to-back maximises early-Z rejection; transparent needs back-to-front for

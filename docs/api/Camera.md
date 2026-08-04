@@ -6,7 +6,7 @@
 #include <hp/Camera.hpp>
 ```
 
-7 public declaration(s), 7 documented.
+10 public declaration(s), 10 documented.
 
 ## `kDefaultSensorHeightMm`
 
@@ -19,6 +19,57 @@ inline constexpr float kDefaultSensorHeightMm = 24.0F
 
  24mm is full-frame 35mm (36 x 24), which is the frame most people mean when
  they say "50mm looks like this".
+
+## `AspectPolicy`
+
+```cpp
+enum class AspectPolicy
+```
+
+| Enumerator | Value |
+|---|---|
+| `FreeAspect` | 0 |
+| `ClampHorizontalFov` | 1 |
+| `Letterbox` | 2 |
+
+ What happens to the framing when the window is not the shape the camera was
+ authored for (T0081.10).
+
+ **This is a fairness question before it is a rendering one**, which is why it
+ is a policy rather than a constant. On a 21:9 monitor, free aspect literally
+ shows more world than 16:9 — an advantage in any game where what you can see
+ is a mechanic.
+
+ **Per camera rather than global, and that is deliberate.** A world camera can
+ clamp for fairness while a HUD's orthographic camera stays free, and
+ letterboxing a HUD camera is never the right answer. A single global setting
+ could not express that. It is a plain field, so gameplay assigns it directly
+ (D12) and the next frame's projection picks it up — there is no invalidation
+ step to forget.
+
+## `ViewportRect`
+
+```cpp
+struct ViewportRect
+```
+
+ A rectangle of a render target, in normalised coordinates.
+
+ Normalised rather than pixels so it survives a resize: split-screen halves
+ stay halves, and a picture-in-picture inset stays the same fraction of the
+ screen, without anything recomputing them (T0081.4).
+
+ The origin is the top-left corner, matching the render target rather than
+ OpenGL's bottom-left convention — the engine has one texture-space
+ convention and this follows it.
+
+## `ViewportRect::valid`
+
+```cpp
+bool valid() const
+```
+
+ @returns whether the rectangle covers a non-empty area inside the target.
 
 ## `Camera`
 

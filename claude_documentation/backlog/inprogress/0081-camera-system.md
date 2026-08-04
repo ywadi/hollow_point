@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | Medium |
 | **Complexity** | Simple |
 | **Phase** | 4 — Render layer |
@@ -19,33 +19,133 @@ switches between them, or how the render stack's layers get their own cameras
 
 ## Done when
 
-- [ ] An active camera per render layer, resolved each frame
-- [ ] Multiple cameras coexist; priority decides which is active
-- [ ] Perspective and orthographic both supported
-- [ ] Switching cameras from gameplay is one call
-- [ ] Viewport rect per camera, so split-screen or picture-in-picture is possible
-- [ ] An object culling mask, so a camera can render only some object layers
-- [ ] A camera with no valid target degrades visibly rather than rendering nothing
-- [ ] The editor camera (T0063) is explicitly outside this system
+- [~] An active camera per render layer, resolved each frame
+- [x] Multiple cameras coexist; priority decides which is active
+- [x] Perspective and orthographic both supported
+- [x] Switching cameras from gameplay is one call
+- [x] Viewport rect per camera, so split-screen or picture-in-picture is possible
+- [~] An object culling mask, so a camera can render only some object layers
+- [~] A camera with no valid target degrades visibly rather than rendering nothing
+- [x] The editor camera (T0063) is explicitly outside this system
 
 ## Subtasks
 
-- [ ] 81.1 Camera component: projection, FOV/size, near/far, priority, layer mask
-- [ ] 81.2 Active camera resolution per render layer
-- [ ] 81.3 Projection and view matrix computation from the transform
-- [ ] 81.4 Viewport rect support
-- [ ] 81.5 **Object culling mask** (T0085) — which object layers this camera
+- [x] 81.1 Camera component: projection, FOV/size, near/far, priority, layer mask
+- [~] 81.2 Active camera resolution per render layer
+- [x] 81.3 Projection and view matrix computation from the transform
+- [x] 81.4 Viewport rect support
+- [~] 81.5 **Object culling mask** (T0085) — which object layers this camera
       renders. Distinct from RenderStack layers, see notes
-- [ ] 81.6 Frustum extraction shared with culling (T0045)
-- [ ] 81.7 Screen-to-world and world-to-screen helpers — gameplay and UI both need them
-- [ ] 81.8 Debug draw of camera frustums (T0061)
-- [ ] 81.9 Post-resolve view offset seam -- shake, recoil, blends hook here
+- [x] 81.6 Frustum extraction shared with culling (T0045)
+- [x] 81.7 Screen-to-world and world-to-screen helpers — gameplay and UI both need them
+- [ ] 81.8 Debug draw of camera frustums — BLOCKED on T0061 (T0061)
+- [x] 81.9 Post-resolve view offset seam -- shake, recoil, blends hook here
       (see the 2026-08-03 amendment)
-- [ ] 81.10 Decide the aspect-ratio policy and implement it -- **this ticket
+- [x] 81.10 Decide the aspect-ratio policy and implement it -- **this ticket
       owns it**, because this is where projection is computed from the viewport
       rect (see the 2026-08-03 amendment)
 
 ## Notes / findings
+
+## Progress — 2026-08-05
+
+Eight of ten subtasks are done. **This ticket is not finished**: 81.8 is blocked
+on a debug-draw system that does not exist, and the per-frame wiring belongs to
+T0028. What follows is what was built and what was deliberately not.
+
+### Built
+
+`hp/CameraSystem.hpp` and `engine/src/CameraSystem.cpp`, with the lens itself
+still in `hp/Camera.hpp` (T0130). The split is the one the ticket asked for:
+T0130 decides what a camera *describes*, this decides which one is *active* and
+what matrices follow.
+
+**Nothing here owns state.** `resolveCamera` is a query over the scene returning
+a value, not a cached "active camera" pointer. A cached handle would have to be
+invalidated when the entity is destroyed, the scene reloads, or a module
+unloads — a query cannot dangle.
+
+- **81.1** — `Camera` gained `priority`, `enabled`, `viewport`, `cullingMask`,
+  `viewSlot`, `aspectPolicy`, `referenceAspect`; all reflected except the two
+  compound types, so the inspector shows them.
+- **81.2** — `resolveCamera(scene, viewSlot)`: highest priority among enabled
+  cameras on that slot. **A tie is logged rather than resolved silently**,
+  because the fallback is registry order and registry order is not a stable
+  guarantee — a scene that renders correctly today would change on an unrelated
+  edit.
+- **81.3** — view matrix from the entity's `WorldTransform`, so a camera on a
+  boom arm or a head socket works with no special case. Tested with a parented
+  camera.
+- **81.4** — viewport rects are **normalised**, so split-screen halves stay
+  halves across a resize with nothing recomputing them.
+- **81.6** — Gribb-Hartmann frustum extraction from the view-projection matrix,
+  planes normalised so distances are real distances. Derived from the matrix
+  rather than the lens, so reverse-Z needs no special case. **The near plane is
+  the one that depends on the clip-space convention** and is branched on it.
+- **81.7** — `worldToScreen` and `screenToWorldRay`. The first **refuses** a
+  point behind the camera rather than projecting it, which is the specific
+  failure where a world-space marker appears mirrored behind the player. The
+  second builds the ray from 1 towards 0 under reverse-Z, which is the opposite
+  of the conventional reading.
+- **81.9** — the post-resolve view offset seam. `buildView` takes a matrix
+  applied to the camera's world transform *after* resolution, so shake, recoil
+  and camera blends never touch the entity — which matters because the audio
+  listener and T0100's late update both read it.
+
+### 81.10 — aspect-ratio policy: decided, all three implemented
+
+**Default is free aspect**, chosen by the owner on 2026-08-05 after being
+presented with the trade. All three are implemented and it is a **per-camera**
+field, not a global setting:
+
+| Policy | On a 21:9 window |
+|---|---|
+| `FreeAspect` (default) | Sees more world. No bars. |
+| `ClampHorizontalFov` | Same horizontal extent as the reference, gains vertical. No bars. |
+| `Letterbox` | Identical framing everywhere, bars at the sides. |
+
+Per camera rather than global because a world camera can clamp for fairness
+while a HUD's orthographic camera stays free — letterboxing a HUD camera is
+never right, and one global setting cannot express that. It is a plain field, so
+gameplay assigns it directly (D12) and the next frame picks it up; there is no
+invalidation step to forget.
+
+Two details that a one-line implementation would get wrong, both tested:
+
+- **Clamping only applies when the window is *wider* than the reference.** A
+  naive `min` would widen the view on a 4:3 monitor — the opposite of the
+  policy's purpose.
+- **A letterboxed view reports the reference aspect, not the window's.**
+  `ResolvedView::aspect` is explicit for this reason; code that reads the window
+  aspect instead produces an image stretched by exactly the letterbox ratio.
+
+### Not done
+
+- **81.8 debug draw of camera frustums — blocked.** T0061's debug-draw system
+  does not exist. `extractFrustum` gives it everything it needs; only the
+  drawing is missing.
+- **81.5's mask is stored, not consumed.** Nothing tests visibility against
+  `cullingMask` because culling is T0045. It is stored now because adding it
+  after cameras are authored costs a component migration.
+- **"Resolved each frame" is a mechanism, not yet a wiring.** Nothing calls
+  `resolveCamera` during a frame, because nothing draws yet. `RenderStack`
+  deliberately does not depend on `Scene` — a compositing pass has no business
+  knowing about the ECS — so the resolve belongs to whatever submits draws.
+  **That is T0028**, and the obligation is recorded on its ticket.
+- **"Degrades visibly" is half-met.** A camera with an unusable lens or an
+  off-target viewport yields no view and logs an error, rather than rendering a
+  meaningless frame. Showing *something* to the player is a caller decision and
+  no caller exists.
+- **No pixel has gone through any of this.** Every assertion is arithmetic on a
+  scene. The clip-space convention is device-measured (T0130) but no draw has
+  used these matrices.
+
+### Evidence
+
+`tests/fast/camera_system_test.cpp`, 22 cases and 96 assertions, green on both
+targets. Full suite: fast 123, integration 56, gpu 2 (on an RTX 2080), and
+`zig build docs` passes.
+
 
 
 ### Frame anatomy — phase 8 — late update (T0100, D17)

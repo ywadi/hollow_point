@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 500 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0117 |
+| **Refs** | T0117, [../inprogress/0081-camera-system.md](../inprogress/0081-camera-system.md) |
 
 ## Why
 
@@ -41,6 +41,13 @@ wants skeletons, and the editor wants selection outlines and grids.
 - [ ] 61.7 Compile out in shipping builds
 
 ## Notes / findings
+
+**T0081.8 is blocked on this ticket, and is the only thing it is blocked on.**
+`hp::extractFrustum(viewProjection, clip)` already returns the six world-space
+planes with normals pointing inwards and distances normalised, so drawing a
+camera's frustum needs no new maths — only the ability to draw lines. When this
+ticket lands, close 81.8 with it.
+
 
 **Batch aggressively.** The naive implementation issues a draw call per line and
 becomes the slowest thing in the frame, which then distorts every profile taken

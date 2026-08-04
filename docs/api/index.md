@@ -32,7 +32,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 |---|---|---|
 | [`<hp/Api.hpp>`](Api.md) | 0 | 0 |
 | [`<hp/Application.hpp>`](Application.md) | 22 | 12 |
-| [`<hp/Camera.hpp>`](Camera.md) | 7 | 7 |
+| [`<hp/Camera.hpp>`](Camera.md) | 10 | 10 |
+| [`<hp/CameraSystem.hpp>`](CameraSystem.md) | 11 | 11 |
 | [`<hp/DepthConvention.hpp>`](DepthConvention.md) | 2 | 2 |
 | [`<hp/Engine.hpp>`](Engine.md) | 4 | 4 |
 | [`<hp/EntryPoint.hpp>`](EntryPoint.md) | 1 | 0 |
@@ -54,7 +55,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 
-**403 public declarations across 23 headers, 286 documented.**
+**417 public declarations across 24 headers, 300 documented.**
 
 ## Every symbol
 
@@ -83,12 +84,26 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Application::input` | [`Application.hpp`](Application.md) |
 | `createApplication` | [`Application.hpp`](Application.md) |
 | `kDefaultSensorHeightMm` | [`Camera.hpp`](Camera.md) |
+| `AspectPolicy` | [`Camera.hpp`](Camera.md) |
+| `ViewportRect` | [`Camera.hpp`](Camera.md) |
+| `ViewportRect::valid` | [`Camera.hpp`](Camera.md) |
 | `Camera` | [`Camera.hpp`](Camera.md) |
 | `verticalFovFromFocalLength` | [`Camera.hpp`](Camera.md) |
 | `focalLengthFromVerticalFov` | [`Camera.hpp`](Camera.md) |
 | `horizontalFovFromVertical` | [`Camera.hpp`](Camera.md) |
 | `exposureMultiplierFromEv100` | [`Camera.hpp`](Camera.md) |
 | `projectionMatrix` | [`Camera.hpp`](Camera.md) |
+| `ResolvedView` | [`CameraSystem.hpp`](CameraSystem.md) |
+| `Frustum` | [`CameraSystem.hpp`](CameraSystem.md) |
+| `Frustum::contains` | [`CameraSystem.hpp`](CameraSystem.md) |
+| `Frustum::intersectsSphere` | [`CameraSystem.hpp`](CameraSystem.md) |
+| `resolveCamera` | [`CameraSystem.hpp`](CameraSystem.md) |
+| `buildView` | [`CameraSystem.hpp`](CameraSystem.md) |
+| `effectiveAspect` | [`CameraSystem.hpp`](CameraSystem.md) |
+| `letterboxViewport` | [`CameraSystem.hpp`](CameraSystem.md) |
+| `extractFrustum` | [`CameraSystem.hpp`](CameraSystem.md) |
+| `worldToScreen` | [`CameraSystem.hpp`](CameraSystem.md) |
+| `screenToWorldRay` | [`CameraSystem.hpp`](CameraSystem.md) |
 | `kReverseZ` | [`DepthConvention.hpp`](DepthConvention.md) |
 | `kDepthClearValue` | [`DepthConvention.hpp`](DepthConvention.md) |
 | `engineVersion` | [`Engine.hpp`](Engine.md) |

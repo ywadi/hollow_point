@@ -92,7 +92,12 @@ void registerCoreComponents() {
         .property<&Camera::exposureEv100>("exposureEv100")
         .property<&Camera::depthOfField>("depthOfField")
         .property<&Camera::aperture>("aperture")
-        .property<&Camera::focusDistance>("focusDistance");
+        .property<&Camera::focusDistance>("focusDistance")
+        .property<&Camera::referenceAspect>("referenceAspect")
+        .property<&Camera::priority>("priority")
+        .property<&Camera::enabled>("enabled")
+        .property<&Camera::cullingMask>("cullingMask")
+        .property<&Camera::viewSlot>("viewSlot");
 }
 
 bool Entity::valid() const {

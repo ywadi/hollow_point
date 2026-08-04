@@ -44,6 +44,8 @@
 #include <hp/Math.hpp>
 #include <hp/Render.hpp>
 
+#include <cstdint>
+
 namespace hp {
 
 /// The height of the reference sensor, in millimetres, for a camera that does
@@ -52,6 +54,70 @@ namespace hp {
 /// 24mm is full-frame 35mm (36 x 24), which is the frame most people mean when
 /// they say "50mm looks like this".
 inline constexpr float kDefaultSensorHeightMm = 24.0F;
+
+/// What happens to the framing when the window is not the shape the camera was
+/// authored for (T0081.10).
+///
+/// **This is a fairness question before it is a rendering one**, which is why it
+/// is a policy rather than a constant. On a 21:9 monitor, free aspect literally
+/// shows more world than 16:9 — an advantage in any game where what you can see
+/// is a mechanic.
+///
+/// **Per camera rather than global, and that is deliberate.** A world camera can
+/// clamp for fairness while a HUD's orthographic camera stays free, and
+/// letterboxing a HUD camera is never the right answer. A single global setting
+/// could not express that. It is a plain field, so gameplay assigns it directly
+/// (D12) and the next frame's projection picks it up — there is no invalidation
+/// step to forget.
+enum class AspectPolicy : std::uint8_t {
+    /// Vertical field of view is preserved; a wider window shows more at the
+    /// sides. The engine default, because it is what every other engine does and
+    /// what `verticalFov` being the stored truth already implies.
+    FreeAspect,
+
+    /// Horizontal extent is held to `referenceAspect`; a wider window gains
+    /// vertical view instead of horizontal. No bars, and no ultrawide advantage
+    /// — the compromise competitive games usually ship.
+    ClampHorizontalFov,
+
+    /// The reference framing is preserved exactly and a wider window gets bars.
+    /// Strictest fairness and the most predictable composition, at the cost of
+    /// unused screen.
+    ///
+    /// **The bars are not drawn here.** This policy only shapes the projection;
+    /// the viewport rect it implies comes from `letterboxViewport`, and whatever
+    /// is outside it is simply never rendered into.
+    Letterbox,
+};
+
+/// A rectangle of a render target, in normalised coordinates.
+///
+/// Normalised rather than pixels so it survives a resize: split-screen halves
+/// stay halves, and a picture-in-picture inset stays the same fraction of the
+/// screen, without anything recomputing them (T0081.4).
+///
+/// The origin is the top-left corner, matching the render target rather than
+/// OpenGL's bottom-left convention — the engine has one texture-space
+/// convention and this follows it.
+struct ViewportRect {
+    /// Left edge, 0 to 1.
+    float x = 0.0F;
+
+    /// Top edge, 0 to 1.
+    float y = 0.0F;
+
+    /// Width as a fraction of the target. 1 is the full width.
+    float width = 1.0F;
+
+    /// Height as a fraction of the target. 1 is the full height.
+    float height = 1.0F;
+
+    /// @returns whether the rectangle covers a non-empty area inside the target.
+    [[nodiscard]] constexpr bool valid() const {
+        return width > 0.0F && height > 0.0F && x >= 0.0F && y >= 0.0F && x + width <= 1.0001F
+               && y + height <= 1.0001F;
+    }
+};
 
 /// A point of view. Which camera renders, and into what viewport, is not
 /// decided here (T0081).
@@ -126,6 +192,50 @@ struct Camera {
     /// Distance to the plane in perfect focus, in metres. Ignored unless
     /// `depthOfField` is set.
     float focusDistance{10.0F};
+
+    /// What happens when the window is not `referenceAspect` (T0081.10).
+    AspectPolicy aspectPolicy{AspectPolicy::FreeAspect};
+
+    /// The aspect this camera was framed for. Ignored under
+    /// `AspectPolicy::FreeAspect`, which is why it can carry a sensible value
+    /// without implying a policy.
+    float referenceAspect{16.0F / 9.0F};
+
+    /// Where in the render target this camera draws (T0081.4).
+    ///
+    /// Normalised, so split-screen and picture-in-picture survive a resize
+    /// without recomputation.
+    ViewportRect viewport{};
+
+    /// Which camera wins when several are active. Highest renders.
+    ///
+    /// Ties are broken by the order entities appear in the registry, which is
+    /// **not** a stable guarantee — two cameras at the same priority is a
+    /// content bug, and `resolveCamera` logs it rather than picking silently.
+    int priority{0};
+
+    /// Whether this camera is a candidate at all. The cheap way to switch
+    /// cameras without destroying or reordering anything (T0081.2).
+    bool enabled{true};
+
+    /// Which object layers this camera renders (T0081.5, T0085).
+    ///
+    /// **Not a `RenderStack` layer, and confusing the two is the trap this
+    /// comment exists for.** A `RenderStack` layer is a compositing pass — world,
+    /// then HUD. This is a bitmask over *object* layers, tested per object during
+    /// culling. A weapon viewmodel uses both: its own compositing layer, and a
+    /// mask selecting only viewmodel objects.
+    ///
+    /// **Nothing tests this yet** — culling is T0045. It is stored now because
+    /// adding it after cameras are authored costs a component migration.
+    std::uint32_t cullingMask{0xFFFFFFFFU};
+
+    /// Which composited view this camera feeds (T0081.2).
+    ///
+    /// A `RenderStack` layer resolves the highest-priority enabled camera
+    /// carrying its slot, so a world layer and a HUD layer each get their own
+    /// without either knowing about the other's cameras.
+    std::uint8_t viewSlot{0};
 };
 
 /// Converts a photographic focal length to the vertical field of view it

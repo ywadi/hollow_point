@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 410 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0120, [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md) |
+| **Refs** | T0120, [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), [../inprogress/0081-camera-system.md](../inprogress/0081-camera-system.md) |
 
 ## Why
 
@@ -35,6 +35,26 @@ editor viewport can display it without the renderer knowing the editor exists.
 - [ ] 28.6 Profiling zones for parse and submit separately
 
 ## Notes / findings
+
+**T0081 built the camera resolution; this ticket is what calls it each frame.**
+`hp::resolveCamera(scene, viewSlot)` picks the active camera and
+`hp::buildView(entity, width, height, clip)` produces every matrix. Neither is
+wired into a frame, because nothing draws yet — that is this ticket.
+
+`RenderStack` deliberately does **not** depend on `Scene`: a compositing pass has
+no business knowing about the ECS, and making it know would couple every layer to
+the scene graph. So the resolve belongs here, where draws are submitted, and the
+resolved view is handed to whatever renders.
+
+Two things T0081 left for this ticket specifically:
+
+- **Resolve per view slot, not once globally.** A world layer and a HUD layer
+  each resolve their own slot, which is how a HUD gets an orthographic camera
+  without the world knowing about it.
+- **`ResolvedView::aspect` is the aspect to use, not the window's.** Under a
+  letterboxing camera they differ, and using the window's produces an image
+  stretched by exactly the letterbox ratio.
+
 
 **T0130 decided reverse-Z, and this ticket is where it is honoured or silently
 broken.** Every pipeline state this ticket creates must set the depth
