@@ -36,13 +36,13 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/EntryPoint.hpp>`](EntryPoint.md) | 1 | 0 |
 | [`<hp/Event.hpp>`](Event.md) | 72 | 15 |
 | [`<hp/Guid.hpp>`](Guid.md) | 13 | 5 |
-| [`<hp/Layer.hpp>`](Layer.md) | 24 | 12 |
+| [`<hp/Layer.hpp>`](Layer.md) | 28 | 16 |
 | [`<hp/Log.hpp>`](Log.md) | 22 | 12 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Window.hpp>`](Window.md) | 12 | 4 |
 
-**186 public declarations across 11 headers, 69 documented.**
+**190 public declarations across 11 headers, 73 documented.**
 
 ## Every symbol
 
@@ -161,7 +161,9 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `ILayer::operator=` | [`Layer.hpp`](Layer.md) |
 | `ILayer::onAttach` | [`Layer.hpp`](Layer.md) |
 | `ILayer::onDetach` | [`Layer.hpp`](Layer.md) |
+| `ILayer::onFixedUpdate` | [`Layer.hpp`](Layer.md) |
 | `ILayer::onUpdate` | [`Layer.hpp`](Layer.md) |
+| `ILayer::onLateUpdate` | [`Layer.hpp`](Layer.md) |
 | `ILayer::onRender` | [`Layer.hpp`](Layer.md) |
 | `ILayer::onEvent` | [`Layer.hpp`](Layer.md) |
 | `ILayer::name` | [`Layer.hpp`](Layer.md) |
@@ -173,7 +175,9 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `LayerStack::pushOverlay` | [`Layer.hpp`](Layer.md) |
 | `LayerStack::pop` | [`Layer.hpp`](Layer.md) |
 | `LayerStack::clear` | [`Layer.hpp`](Layer.md) |
+| `LayerStack::fixedUpdate` | [`Layer.hpp`](Layer.md) |
 | `LayerStack::update` | [`Layer.hpp`](Layer.md) |
+| `LayerStack::lateUpdate` | [`Layer.hpp`](Layer.md) |
 | `LayerStack::render` | [`Layer.hpp`](Layer.md) |
 | `LayerStack::dispatch` | [`Layer.hpp`](Layer.md) |
 | `LayerStack::size` | [`Layer.hpp`](Layer.md) |
