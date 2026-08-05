@@ -6,6 +6,7 @@
 #include <hp/Profiling.hpp>
 
 #include <GLTFLoader.hpp>
+#include <GraphicsTypesX.hpp>
 #include <GraphicsUtilities.h>
 #include <MapHelper.hpp>
 #include <RefCntAutoPtr.hpp>
@@ -273,7 +274,6 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                     Diligent::PBR_Renderer::PSO_FLAG_USE_COLOR_MAP |
                     Diligent::PBR_Renderer::PSO_FLAG_USE_NORMAL_MAP |
                     Diligent::PBR_Renderer::PSO_FLAG_USE_PHYS_DESC_MAP);
-            (void)material;
             const Diligent::PBR_Renderer::PSO_FLAGS flags =
                 (vertexFlags | kMaterialFlags) & kFeatureMask;
 
@@ -302,6 +302,27 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                         renderer->GetSettings().UseSkinPreTransform);
                 }
                 context->UnmapBuffer(renderer->GetPBRPrimitiveAttribsCB(), Diligent::MAP_WRITE);
+            }
+
+            // **The material constant buffer is a second, separate buffer**, and
+            // leaving it unwritten is why the first version of this drew nothing
+            // at all. The shader reads base colour, metallic/roughness and the
+            // alpha cutoff from here; against an uninitialised buffer that is a
+            // zero base colour and a cutoff that discards every fragment. The
+            // symptom is indistinguishable from a depth or culling failure --
+            // a draw is issued, statistics report a submission, and the target
+            // comes back pure clear colour.
+            {
+                void* materialAttribs = nullptr;
+                context->MapBuffer(renderer->GetPBRMaterialAttribsCB(), Diligent::MAP_WRITE,
+                                   Diligent::MAP_FLAG_DISCARD, materialAttribs);
+                if (materialAttribs != nullptr) {
+                    const Diligent::GLTF_PBR_Renderer::PBRMaterialShaderAttribsData data{
+                        flags, renderer->GetSettings().TextureAttribIndices, material};
+                    Diligent::GLTF_PBR_Renderer::WritePBRMaterialShaderAttribs(materialAttribs,
+                                                                               data);
+                }
+                context->UnmapBuffer(renderer->GetPBRMaterialAttribsCB(), Diligent::MAP_WRITE);
             }
 
             if (primitive.HasIndices()) {
@@ -354,6 +375,38 @@ bool SceneRenderer::create(Diligent::IRenderDevice* device, Diligent::IDeviceCon
     // "entities with no material get a visible default" costs nothing here --
     // and turning it off is what would make an unassigned mesh invisible.
     info.CreateDefaultTextures = true;
+    // **The engine is row-major and the shaders must be told so.**
+    // `hp::float4x4` is Diligent's, documented in `hp/Math.hpp` as row-major and
+    // multiplied left to right (`World * View * Proj`) -- and `PBR_Renderer`
+    // defaults this to *false*, compiling its shaders for column-major.
+    //
+    // Left at the default, every matrix written into the frame constants is read
+    // transposed. There is no error, no validation warning and no failed draw:
+    // the geometry is simply transformed somewhere off screen, and the frame
+    // comes back pure clear colour with `submitted == 1`. It cost an afternoon
+    // and it is indistinguishable, from the outside, from a depth or culling bug.
+    //
+    // It also has to agree with the transpose flag passed to
+    // `WritePBRPrimitiveShaderAttribs` below, which is spelled
+    // `!PackMatrixRowMajor` for exactly that reason -- set here, the two move
+    // together instead of disagreeing silently.
+    info.PackMatrixRowMajor = true;
+
+    // **Without this the vertex shader has no inputs and nothing is ever drawn.**
+    // `CreateInfo::InputLayout` defaults to empty, and `PBR_Renderer` builds its
+    // vertex-shader input struct from it -- so an unset layout produces a
+    // pipeline that compiles, binds, issues draws and rasterises nothing. The
+    // symptom is a frame of pure clear colour with `submitted == 1`, which reads
+    // exactly like a depth or culling failure and is neither.
+    //
+    // `GLTF::DefaultVertexAttributes` is what `MeshAsset`'s models are loaded
+    // with (T0023 passes no override), so the layout the renderer expects and
+    // the layout the buffers actually have are the same by construction rather
+    // than by coincidence.
+    const Diligent::InputLayoutDescX inputLayout = Diligent::GLTF::VertexAttributesToInputLayout(
+        Diligent::GLTF::DefaultVertexAttributes.data(),
+        static_cast<Diligent::Uint32>(Diligent::GLTF::DefaultVertexAttributes.size()));
+    info.InputLayout = inputLayout;
 
     impl->renderer = std::make_unique<Diligent::PBR_Renderer>(device, nullptr, context, info);
 

@@ -56,14 +56,14 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/RenderStack.hpp>`](RenderStack.md) | 21 | 21 |
 | [`<hp/Scene.hpp>`](Scene.md) | 54 | 54 |
 | [`<hp/SceneRenderer.hpp>`](SceneRenderer.md) | 11 | 11 |
-| [`<hp/SceneView.hpp>`](SceneView.md) | 17 | 17 |
+| [`<hp/SceneView.hpp>`](SceneView.md) | 18 | 18 |
 | [`<hp/Serialize.hpp>`](Serialize.md) | 6 | 6 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Vfs.hpp>`](Vfs.md) | 23 | 23 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
 
-**619 public declarations across 32 headers, 502 documented.**
+**620 public declarations across 32 headers, 503 documented.**
 
 ## Every symbol
 
@@ -571,6 +571,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `SceneView::render` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::colour` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::colourTexture` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::readback` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::width` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::height` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::setClearColour` | [`SceneView.hpp`](SceneView.md) |

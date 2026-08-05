@@ -6,7 +6,7 @@
 #include <hp/SceneView.hpp>
 ```
 
-17 public declaration(s), 17 documented.
+18 public declaration(s), 18 documented.
 
 ## `SceneViewStats`
 
@@ -161,6 +161,26 @@ Diligent::ITexture * colourTexture() const
  wants a texture and the event carries a view, and an app that had to call
  `GetTexture()` itself would need the RHI include path that the engine
  deliberately keeps PRIVATE.
+
+## `SceneView::readback`
+
+```cpp
+bool readback(Diligent::IDeviceContext * context, int & outRgba) const
+```
+
+ Copies the colour target back to CPU memory.
+
+ **Slow, and deliberately so** — it stalls the GPU. This is for tests,
+ screenshots and thumbnail generation (T0120.2), never for a per-frame
+ path. It exists in the engine rather than in a test because Diligent is
+ linked PRIVATE, so nothing outside can reach the RHI to do it.
+
+ @param context the immediate context. Must not be null.
+ @param outRgba filled with `width() * height() * 4` bytes, row-major from
+        the top-left, 8 bits per channel in the target's own encoding —
+        which is **sRGB** for `TargetFormat::Colour`, so these are not
+        linear values.
+ @returns whether the readback succeeded.
 
 ## `SceneView::width`
 

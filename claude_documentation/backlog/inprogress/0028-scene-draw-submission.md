@@ -18,13 +18,16 @@ editor viewport can display it without the renderer knowing the editor exists.
 
 ## Done when
 
-- [ ] Entities with transform + mesh are collected and drawn
+- [x] Entities with transform + mesh are collected and drawn — **pixels read
+      back and asserted**, both backends
 - [x] A scene with no camera renders nothing and says so, rather than crashing
-- [ ] Entities with no material get a visible default
+- [x] Entities with no material get a visible default — the drawn quad has no
+      textures at all and samples the renderer's defaults
 - [x] Output goes to an offscreen target, not straight to the swap chain
 - [x] A "new frame rendered" event carries that texture to any listener — and
       the editor publishes one every frame
-- [ ] Assets resolve from the pool by GUID (T0023)
+- [x] Assets resolve from the pool by GUID (T0023) — the *success* path, not
+      just the missing-asset path
 
 ## Subtasks
 
@@ -32,7 +35,8 @@ editor viewport can display it without the renderer knowing the editor exists.
       "The parse step" below. The *require a camera* half belongs to the submit
       path and is tracked under 28.4/28.5, since the parse step deliberately
       takes no camera
-- [ ] 28.2 Default material for meshes without one
+- [x] 28.2 Default material for meshes without one — `CreateDefaultTextures`,
+      exercised by a mesh with no textures rendering visibly
 - [x] 28.3 Resolve mesh/material GUIDs against the asset pool — mesh resolves
       through `AssetPool::get<MeshAsset>`; **material GUIDs are not yet resolved**,
       because there is no material asset type until T0060
@@ -443,6 +447,50 @@ else within seconds" — and then reported every frame, because
 The comment describing the failure sat three lines from the code committing it.
 Fixed by resetting only when the source pointer actually changes; verified as
 1 warning over a 20-second run where it had been one per frame.
+
+### It draws. And three bugs stood between "a draw was issued" and "pixels exist"
+
+`tests/gpu/scene_draws_mesh_test.cpp` loads a glTF quad through the VFS, puts it
+in front of a default camera, renders, and **reads the pixels back**:
+**65,536 of 65,536 differ from the clear colour**, on both backends. GPU suite:
+**9 cases / 219 assertions / SUCCESS**.
+
+**That assertion is the entire reason this test exists.** Every earlier check
+passed throughout the debugging below — pipeline states built, the draw was
+issued, `submitted == 1`, and **Diligent reported no error or validation warning
+of any kind**. The frame was nonetheless pure clear colour. Statistics cannot
+tell "drew nothing" from "drew correctly"; only pixels can.
+
+The three faults, in the order they were found, because each was hidden behind
+the last:
+
+1. **The material constant buffer was never written.** `PBR_Renderer` keeps
+   material data in `GetPBRMaterialAttribsCB()` — a *second* buffer, separate
+   from the primitive one — filled via the static
+   `GLTF_PBR_Renderer::WritePBRMaterialShaderAttribs`. Unwritten, it is a zero
+   base colour and an alpha cutoff that discards every fragment.
+2. **`CreateInfo::InputLayout` was empty.** It defaults empty, and the renderer
+   builds its vertex-shader input struct from it — so the pipeline compiled,
+   bound and rasterised nothing. Fixed with
+   `GLTF::VertexAttributesToInputLayout(GLTF::DefaultVertexAttributes…)`, which
+   is what `MeshAsset`'s models are loaded with, so the two now agree by
+   construction rather than by luck.
+3. **`PackMatrixRowMajor` was left at its default of `false`.** This was the
+   one that actually kept the screen empty. `hp::float4x4` is row-major —
+   `hp/Math.hpp` says so — and the setting defaulting to false compiles the
+   shaders for **column-major**, so every matrix in the frame constants was read
+   transposed and the geometry was transformed off screen. Diligent's own
+   GLTFViewer sets it true (`GLTFViewer.cpp:560`); it was missed because the
+   default is silent.
+
+**What kept the search honest** was ruling things out with probes rather than
+reasoning. Disabling the depth test changed nothing, which eliminated reverse-Z
+early — worth stating, since this ticket's whole theme made depth the obvious
+suspect and it was innocent. Projecting the quad's centre through the real
+view-projection gave NDC (0, 0, 0.033) with w = +3, which eliminated the camera.
+And `PSOKey` was *suspected* and turned out fine: it has a three-argument
+overload defaulting alpha to opaque, so the construction was already correct and
+"fixing" it would have been a change for nothing.
 
 ### What is NOT verified, and must not be read as working
 
