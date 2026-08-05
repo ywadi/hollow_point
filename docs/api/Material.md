@@ -6,7 +6,7 @@
 #include <hp/Material.hpp>
 ```
 
-11 public declaration(s), 11 documented.
+15 public declaration(s), 15 documented.
 
 ## `AlphaMode`
 
@@ -167,3 +167,61 @@ std::shared_ptr<Material> loadMaterial(std::string_view virtualPath)
  @returns the material, or nullptr when the file is missing or unreadable.
           **Not fatal**: the caller substitutes the fallback, which is the
           whole of 60.10.
+
+## `MaterialSlot`
+
+```cpp
+enum class MaterialSlot
+```
+
+| Enumerator | Value |
+|---|---|
+| `Imported` | 0 |
+| `Assigned` | 1 |
+| `Missing` | 2 |
+
+ What a material slot resolved to.
+
+## `ResolvedMaterial`
+
+```cpp
+struct ResolvedMaterial
+```
+
+ A slot, resolved against a pool.
+
+## `resolveMaterialSlot`
+
+```cpp
+ResolvedMaterial resolveMaterialSlot(const AssetPool & pool, const int & slots, std::size_t surface)
+```
+
+ Resolves one surface's material slot (60.10).
+
+ @param pool the pool to look the material up in.
+ @param slots the `MeshRenderer::materials` overrides, which may be empty.
+ @param surface the surface index, matching the model's `primitive.MaterialId`.
+ @returns what the slot resolved to. **An index past the end of @p slots is
+          `Imported`, not an error** — that is what makes an empty override
+          vector mean "use the import for everything" and lets the renderer
+          index without first checking the length against the model's
+          material count.
+
+## `missingMaterial`
+
+```cpp
+Material missingMaterial()
+```
+
+ The material a surface is shaded with when its slot is `Missing`.
+
+ **Unlit and magenta**, and the unlit part is the one that gets missed: a
+ magenta surface standing in shadow reads as plausible art, and an unlit one
+ cannot. Visible, never invisible — a mesh that disappears is a much harder
+ bug to find than an ugly one.
+
+ The **checkerboard** comes from binding `makePlaceholderTexture` (T0023.6) as
+ this material's base colour map, which needs a device and is therefore
+ T0141.12's half. What is here is the part that needs none, so the convention
+ is pinned by a test rather than by a comment.
+ @returns the fallback material.

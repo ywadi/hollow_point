@@ -123,7 +123,7 @@ function readBoard() {
 // have.
 
 const SEQUENCE_HEADING = '## Current ticket sequence';
-// "| 1 | [T0060.6](inprogress/0060-material-system.md) | code | why... |"
+// "| 1 | [T0060.6](completed/0060-material-system.md) | code | why... |"
 const SEQ_LINK = /^\[(T\d{4})(\.\d+)?\]\((open|inprogress|completed)\/(.+\.md)\)$/;
 
 function readSequence() {

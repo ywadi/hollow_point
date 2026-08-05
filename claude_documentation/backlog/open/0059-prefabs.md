@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 300 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0053, T0107, [../inprogress/0060-material-system.md](../inprogress/0060-material-system.md) — raised 59.10; material slots are per *model*, so a node-level entity must decide deliberately what it overrides |
+| **Refs** | T0053, T0107, [../completed/0060-material-system.md](../completed/0060-material-system.md) — raised 59.10; material slots are per *model*, so a node-level entity must decide deliberately what it overrides |
 
 ## Why
 

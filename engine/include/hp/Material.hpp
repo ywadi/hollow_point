@@ -311,4 +311,86 @@ HP_API void registerMaterialTypes();
 ///          whole of 60.10.
 [[nodiscard]] HP_API std::shared_ptr<Material> loadMaterial(std::string_view virtualPath);
 
+// --- the missing-material convention (60.10) --------------------------------
+//
+// **Three states, and conflating the first two would make every unassigned mesh
+// in the project look broken.** That is the whole reason this is a resolver
+// returning a state rather than a `shared_ptr` that is null on both "nothing
+// assigned" and "assigned but broken".
+//
+// | Slot | Meaning | What renders |
+// |---|---|---|
+// | default GUID, or no slot at that index | Nothing assigned. **Legitimate and the common case** | The model's imported material |
+// | names an asset that is not in the pool | An error | The missing-material pattern |
+// | names a loaded material | Assigned | That material |
+//
+// **The policy lives here and the drawing lives in T0141.12**, which is the
+// re-cut: deciding *what a slot means* is data-model work and needs no device,
+// so it is testable in the fast bucket and cannot drift with the shader. T0141's
+// failed-compile path (141.4) reaches the same convention rather than inventing
+// a second one — one visual language for "something is wrong here", with the log
+// saying which.
+
+/// What a material slot resolved to.
+enum class MaterialSlot : std::uint8_t {
+    /// Nothing is assigned to this surface, so the model's own material is used.
+    ///
+    /// **Not an error, and by far the most common state.** An untouched import
+    /// is entirely this. Rendering the missing-material pattern here would make
+    /// every unassigned surface in a project look broken.
+    Imported,
+
+    /// A material asset is assigned and loaded.
+    Assigned,
+
+    /// A material is assigned and **could not be resolved** — not in the pool,
+    /// or it failed to load. Renders the missing-material pattern (T0141.12).
+    Missing,
+};
+
+/// A slot, resolved against a pool.
+struct ResolvedMaterial {
+    /// Which of the three states this slot is in.
+    MaterialSlot state = MaterialSlot::Imported;
+
+    /// The GUID the slot named. Default when `state` is `Imported`; **valid and
+    /// worth logging** when `Missing`, because "which asset is missing" is the
+    /// only question a developer has at that point.
+    Guid guid;
+
+    /// The material, non-null **only** when `state` is `Assigned`.
+    ///
+    /// Held by `shared_ptr` so a draw keeps the material alive even if the pool
+    /// drops it mid-frame (T0058's hot reload is exactly that).
+    std::shared_ptr<Material> material;
+};
+
+/// Resolves one surface's material slot (60.10).
+///
+/// @param pool the pool to look the material up in.
+/// @param slots the `MeshRenderer::materials` overrides, which may be empty.
+/// @param surface the surface index, matching the model's `primitive.MaterialId`.
+/// @returns what the slot resolved to. **An index past the end of @p slots is
+///          `Imported`, not an error** — that is what makes an empty override
+///          vector mean "use the import for everything" and lets the renderer
+///          index without first checking the length against the model's
+///          material count.
+[[nodiscard]] HP_API ResolvedMaterial resolveMaterialSlot(const AssetPool& pool,
+                                                          const std::vector<Guid>& slots,
+                                                          std::size_t surface);
+
+/// The material a surface is shaded with when its slot is `Missing`.
+///
+/// **Unlit and magenta**, and the unlit part is the one that gets missed: a
+/// magenta surface standing in shadow reads as plausible art, and an unlit one
+/// cannot. Visible, never invisible — a mesh that disappears is a much harder
+/// bug to find than an ugly one.
+///
+/// The **checkerboard** comes from binding `makePlaceholderTexture` (T0023.6) as
+/// this material's base colour map, which needs a device and is therefore
+/// T0141.12's half. What is here is the part that needs none, so the convention
+/// is pinned by a test rather than by a comment.
+/// @returns the fallback material.
+[[nodiscard]] HP_API Material missingMaterial();
+
 } // namespace hp

@@ -13,6 +13,8 @@
 #include <hp/Serialize.hpp>
 #include <hp/Yaml.hpp>
 
+#include <memory>
+#include <vector>
 #include <string>
 
 namespace {
@@ -328,4 +330,101 @@ TEST_CASE("a float2 survives the cook, which had no case for one at all") {
     CHECK(restored.offset.x == doctest::Approx(-0.25F));
     CHECK(restored.offset.y == doctest::Approx(0.75F));
     CHECK(restored.wrapV == hp::TextureWrap::Mirror);
+}
+
+// --- the missing-material convention (T0060.10) ------------------------------
+//
+// **Three states, and the first two must never be conflated.** If "nothing
+// assigned" and "assigned but broken" both rendered the fallback, every
+// unassigned surface in a project would look like an error — which would make
+// the error signal worthless, since it would be everywhere.
+//
+// The policy is testable with no device, which is why it lives in the data model
+// and not in the renderer. T0141.12 draws whatever these states say.
+
+TEST_CASE("an empty override vector means every surface uses the import") {
+    const hp::AssetPool pool;
+    const std::vector<hp::Guid> none;
+    for (std::size_t surface = 0; surface < 4; ++surface) {
+        const hp::ResolvedMaterial resolved = hp::resolveMaterialSlot(pool, none, surface);
+        CHECK(resolved.state == hp::MaterialSlot::Imported);
+        CHECK_FALSE(resolved.material);
+        CHECK(resolved.guid == hp::Guid{});
+    }
+}
+
+TEST_CASE("a surface past the end of the overrides is imported, not an error") {
+    // This is what lets the renderer index a slot without first checking the
+    // vector's length against the model's material count.
+    const hp::AssetPool pool;
+    const std::vector<hp::Guid> one{hp::Guid{}};
+    CHECK(hp::resolveMaterialSlot(pool, one, 7).state == hp::MaterialSlot::Imported);
+}
+
+TEST_CASE("a default GUID in the middle is a hole, not a terminator") {
+    // Surface 1 keeps the model's material while 0 and 2 are overridden. A
+    // resolver that stopped at the first default would silently drop surface 2.
+    hp::AssetPool pool;
+    const hp::Guid first{0xAA};
+    const hp::Guid third{0xCC};
+    pool.store(first, std::make_shared<hp::Material>());
+    pool.store(third, std::make_shared<hp::Material>());
+
+    const std::vector<hp::Guid> slots{first, hp::Guid{}, third};
+    CHECK(hp::resolveMaterialSlot(pool, slots, 0).state == hp::MaterialSlot::Assigned);
+    CHECK(hp::resolveMaterialSlot(pool, slots, 1).state == hp::MaterialSlot::Imported);
+    CHECK(hp::resolveMaterialSlot(pool, slots, 2).state == hp::MaterialSlot::Assigned);
+}
+
+TEST_CASE("an assigned material comes back with the material itself") {
+    hp::AssetPool pool;
+    const hp::Guid guid{0x1234};
+    auto stored = std::make_shared<hp::Material>();
+    stored->roughness = 0.125F;
+    pool.store(guid, stored);
+
+    const hp::ResolvedMaterial resolved = hp::resolveMaterialSlot(pool, {guid}, 0);
+    REQUIRE(resolved.state == hp::MaterialSlot::Assigned);
+    REQUIRE(resolved.material);
+    CHECK(resolved.material->roughness == doctest::Approx(0.125F));
+    CHECK(resolved.guid == guid);
+}
+
+TEST_CASE("a GUID naming nothing in the pool is Missing, and says which") {
+    // **`Missing` is the only state that is an error**, and the GUID has to
+    // survive it: "which asset is missing" is the only question a developer has
+    // at that point, and the pattern on screen cannot answer it.
+    const hp::AssetPool pool;
+    const hp::Guid absent{0xDEAD};
+
+    const hp::ResolvedMaterial resolved = hp::resolveMaterialSlot(pool, {absent}, 0);
+    CHECK(resolved.state == hp::MaterialSlot::Missing);
+    CHECK(resolved.guid == absent);
+    CHECK_FALSE(resolved.material);
+}
+
+TEST_CASE("a material stored under a different type does not resolve") {
+    // The pool is keyed per type, so a texture and a material can share a GUID.
+    // What must not happen is a texture resolving as a material.
+    hp::AssetPool pool;
+    const hp::Guid guid{0x777};
+    pool.store(guid, std::make_shared<hp::TextureAsset>());
+    CHECK(hp::resolveMaterialSlot(pool, {guid}, 0).state == hp::MaterialSlot::Missing);
+}
+
+TEST_CASE("the fallback material is unlit, and that is the half that gets missed") {
+    const hp::Material fallback = hp::missingMaterial();
+    // A magenta surface standing in shadow reads as plausible art. An unlit one
+    // cannot be dimmed into looking deliberate.
+    CHECK(fallback.unlit);
+    CHECK(fallback.baseColour.x == doctest::Approx(1.0F));
+    CHECK(fallback.baseColour.y == doctest::Approx(0.0F));
+    CHECK(fallback.baseColour.z == doctest::Approx(1.0F));
+    // Fully opaque and visible. **Never invisible**: a mesh that disappears is a
+    // much harder bug to find than an ugly one.
+    CHECK(fallback.baseColour.w == doctest::Approx(1.0F));
+    CHECK(fallback.alphaMode == hp::AlphaMode::Opaque);
+    // The fallback must not additionally change how the surface sorts or culls,
+    // or "it went missing" and "it renders oddly" get conflated.
+    CHECK_FALSE(fallback.doubleSided);
 }

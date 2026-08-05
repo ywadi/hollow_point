@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
@@ -26,12 +26,12 @@ standard material shader included — is T0141's, for the reason recorded under
 
 - [x] Material is an asset with a GUID, serialized (T0022/T0020), and reflected
       so the inspector gets it for free
-- [ ] Materials are assignable **per surface** on the mesh component, overriding
+- [x] Materials are assignable **per surface** on the mesh component, overriding
       what the model imported
-- [ ] A material that is missing or will not load has a **defined, visible**
+- [x] A material that is missing or will not load has a **defined, visible**
       fallback — the convention and the three-state table are this ticket's; the
       *rendering* of it is T0141's
-- [ ] Nothing here decides how a surface is shaded, so **T0141 is free to change
+- [x] Nothing here decides how a surface is shaded, so **T0141 is free to change
       the shader without changing the asset**
 
 ## Subtasks
@@ -39,7 +39,7 @@ standard material shader included — is T0141's, for the reason recorded under
 - [x] 60.1 Material asset: the parameter block, mapped onto
       `PBRMaterialShaderAttribs`, plus room for a shader reference T0141 fills
 - [x] 60.6 Material assignment on the mesh component, overriding import defaults
-- [ ] 60.10 The fallback **convention** for missing or unloadable assets — the
+- [x] 60.10 The fallback **convention** for missing or unloadable assets — the
       three-state table, and a default-GUID slot never being treated as an error
 
 ### Moved to T0141 on 2026-08-05 — the re-cut
@@ -99,9 +99,12 @@ shadow casters) — and a *shader system*, which is larger and blocks nothing.
 Keeping them together meant culling and shadows waiting behind a shader compile
 cache, which is the wrong dependency to accept.
 
-- [ ] 60.9 Sort by material/PSO in the render queue → **T0045 owns this**; it is
-      listed in that ticket's Done-when already. What this ticket owes T0045 is
-      the material *identity and blend mode* to sort and bucket on
+- [~] 60.9 Sort by material/PSO in the render queue → **T0045 owns this** and
+      always did; it is in that ticket's Done-when. **Not done here and never
+      will be**, which is not a shortfall: what this ticket owed T0045 is the
+      material *identity and blend mode* to sort and bucket on, and both landed
+      in 60.1. The PSO half of the sort key does not exist until T0141, which is
+      recorded on T0045 rather than left implicit here.
 
 ## Decided 2026-08-05, with the owner, before writing code
 
@@ -174,6 +177,36 @@ Two properties it must have, and the second is the one that gets missed:
   placeholder rather than silently detaching every entity. The same rule here:
   the mesh still draws, loudly wrong, rather than disappearing — a missing object
   is a much harder bug to find than an ugly one.
+
+## Closed 2026-08-05 — what was delivered, and what deliberately was not
+
+**Delivered.** A material asset (`hp::Material`) that is GUID-addressable,
+serialized, reflected, hand-authorable and cooked; per-surface assignment on
+`MeshRenderer`; and the missing-material convention as a resolver with the
+fallback material beside it.
+
+**Evidence:** 302 fast + 89 integration green on both targets, `zig build docs`
+clean. The fast bucket covers the document round trip byte for byte, authoring a
+material from three lines, refusing a version-less and a newer-schema file,
+lenient reads in both directions, UV channels, the binary cook, and all three
+slot states including a texture stored under the same GUID not resolving as a
+material.
+
+**Not delivered, and moved rather than dropped** — see "Re-cut" above:
+
+- **Nothing renders differently yet.** `SceneRenderer` still resolves materials
+  from the glTF model's own table; the component's GUIDs reach the draw list and
+  are not yet consulted. That is **141.10**, and it is deliberate: the standard
+  material shader is shaped by 141.0's answer.
+- **The checkerboard is not drawn.** This ticket defines *when* it applies and
+  what the fallback material is; binding `makePlaceholderTexture` needs a device
+  and is **141.12**.
+- **The textured-render regression test T0134 wanted** is **141.11**, because it
+  needs a working textured path.
+
+**So a reader should not expect a visual change from this ticket.** It is the
+data model that makes T0045's sort keys and T0086's cutout materials possible,
+and it is finished on that basis rather than on appearance.
 
 ## Notes / findings
 

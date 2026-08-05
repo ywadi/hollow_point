@@ -20,12 +20,12 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-05, revised the same day** — T0060.6 landed and left the list. The owner's reason for this section: *"This way we know what
+**Set 2026-08-05, revised twice the same day** — T0060.6 then T0060.10 landed and left the list, closing T0060. **Item 1 is now a decision**, so the sequence opens on something to ask about rather than something to build. The owner's reason for this section: *"This way we know what
 needs to happen next even if the context and session restart."* The
 [Board](#board) below is every ticket there is; this is the six items in flight
 **now**, in order.
 
-**Just landed, and therefore not upcoming:** T0060.6 (per-surface material slots) and T0060.1 — the material asset
+**Just landed, and therefore not upcoming:** all of **T0060**, now closed — the material asset
 (`hp::Material`, `.hpmat`, `AssetKind::Material`, UV channels), plus a generic
 enum-by-name fix in the serialization leaf layer. It is named because items 1
 and 5 read as half-finished without it.
@@ -39,11 +39,10 @@ been a choice.
 
 | # | Ticket | Kind | Why it sits here |
 |---|---|---|---|
-| 1 | [T0060.10](inprogress/0060-material-system.md) | code | The missing-material fallback **convention** — the three-state table already recorded on T0060. A policy, so it is shader-independent too. **T0060 closes here**; the *rendering* of the fallback is 141.12, in item 4 |
-| 2 | [T0141.0](open/0141-custom-shader-materials.md) | **decision — the owner's, not an agent's** | C1 (a vendored patch adding a surface-stage hook to DiligentFX's shaders), C2 (subclass `PBR_Renderer` and own PSO creation — **the only route to tessellation**) or C3 (upstream the hook). Must amend **D24** explicitly, whichever way it goes. **Blocks T0086**, which is the whole reason it sits this early: shadow sampling built on `RenderPBR.psh` is rebuilt if the standard material later moves onto our own pixel shader |
-| 3 | [T0141](open/0141-custom-shader-materials.md) | code | The surface stage: the standard material shader (141.10), the textured-render regression test (141.11), fallback rendering (141.12), parallax and height (141.7), triplanar (141.8). Every one of them is shaped by item 3's answer, so none of it starts before that |
-| 4 | [T0045](open/0045-culling-and-render-queues.md) | code | Culling, sorting and render queues. **Shader-independent**, so it may slot anywhere after item 1 — see below |
-| 5 | [T0086](open/0086-shadows.md) | code | Shadows. Last because it is **blocked by item 3**, not because it matters least |
+| 1 | [T0141.0](open/0141-custom-shader-materials.md) | **decision — the owner's, not an agent's** | C1 (a vendored patch adding a surface-stage hook to DiligentFX's shaders), C2 (subclass `PBR_Renderer` and own PSO creation — **the only route to tessellation**) or C3 (upstream the hook). Must amend **D24** explicitly, whichever way it goes. **Blocks T0086**, which is the whole reason it sits this early: shadow sampling built on `RenderPBR.psh` is rebuilt if the standard material later moves onto our own pixel shader |
+| 2 | [T0141](open/0141-custom-shader-materials.md) | code | The surface stage: the standard material shader (141.10), the textured-render regression test (141.11), fallback rendering (141.12), parallax and height (141.7), triplanar (141.8). Every one of them is shaped by item 3's answer, so none of it starts before that |
+| 3 | [T0045](open/0045-culling-and-render-queues.md) | code | Culling, sorting and render queues. **Shader-independent**, so it may slot anywhere after item 1 — see below |
+| 4 | [T0086](open/0086-shadows.md) | code | Shadows. Last because it is **blocked by item 3**, not because it matters least |
 
 ### T0045 is the movable one, and that is the useful thing to know about it
 
@@ -162,7 +161,7 @@ wrong in the confident voice of a document that is normally right.
 | 430 | [T0085](completed/0085-layers-and-masks.md) | Object layers and masks | 4 — Render layer | ✅ DONE | High | Moderate |
 | 440 | [T0045](open/0045-culling-and-render-queues.md) | Culling, sorting and render queues | 4 — Render layer | 🔜 TODO | High | Complex |
 | 445 | [T0134](completed/0134-pbr-renderer-adoption.md) | How far DiligentFX's PBR renderer goes, and what inherits it | 4 — Render layer | ✅ DONE | High | Moderate |
-| 450 | [T0060](inprogress/0060-material-system.md) | Material assets | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
+| 450 | [T0060](completed/0060-material-system.md) | Material assets | 4 — Render layer | ✅ DONE | High | Moderate |
 | 455 | [T0141](open/0141-custom-shader-materials.md) | The surface stage: standard and custom material shaders | 4 — Render layer | 🔜 TODO | High | Complex |
 | 460 | [T0096](open/0096-hdr-pipeline-and-tonemapping.md) | HDR pipeline, tonemapping and the linear-workflow policy | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 470 | [T0079](completed/0079-lighting-system.md) | Lights and per-object light selection | 4 — Render layer | ✅ DONE | High | Complex |

@@ -142,6 +142,61 @@ std::optional<Material> parseMaterial(std::string_view yaml, std::string_view na
     return material;
 }
 
+ResolvedMaterial resolveMaterialSlot(const AssetPool& pool, const std::vector<Guid>& slots,
+                                     std::size_t surface) {
+    HP_PROFILE_ZONE();
+
+    ResolvedMaterial resolved;
+
+    // **Past the end is `Imported`, not an error**, and that is what lets an
+    // untouched import carry an empty vector rather than one default GUID per
+    // surface. It also means the renderer can index a slot without first
+    // checking the vector's length against the model's material count.
+    if (surface >= slots.size()) {
+        return resolved;
+    }
+
+    const Guid guid = slots[surface];
+    if (!guid.isValid()) {
+        // Assigned nothing. The common case, and deliberately indistinguishable
+        // from having no slot at all.
+        return resolved;
+    }
+
+    resolved.guid = guid;
+    if (auto material = pool.get<Material>(guid)) {
+        resolved.state = MaterialSlot::Assigned;
+        resolved.material = std::move(material);
+        return resolved;
+    }
+
+    // Named, and not there. **No logging from here**: this runs per surface per
+    // object per frame, and a missing material logged at 60 Hz is thousands of
+    // lines a minute that make the console useless -- which is the opposite of
+    // what the visible fallback is for. The same trap is written on T0141 for
+    // the failed-compile path, and it is the same rule: report on the
+    // transition, never from the draw path.
+    resolved.state = MaterialSlot::Missing;
+    return resolved;
+}
+
+Material missingMaterial() {
+    Material material;
+    // Magenta, matching `makePlaceholderTexture`'s checks (T0023.6) rather than
+    // inventing a second colour for the same message.
+    material.baseColour = float4{1.0F, 0.0F, 1.0F, 1.0F};
+    // **Unlit is the load-bearing half.** A magenta surface standing in shadow
+    // reads as plausible art; an unlit one cannot be dimmed into looking
+    // deliberate.
+    material.unlit = true;
+    // Opaque and single-sided: the fallback must not additionally change how the
+    // surface sorts or culls, or "it went missing" and "it renders oddly" get
+    // conflated.
+    material.alphaMode = AlphaMode::Opaque;
+    material.doubleSided = false;
+    return material;
+}
+
 std::shared_ptr<Material> loadMaterial(std::string_view virtualPath) {
     HP_PROFILE_ZONE();
 
