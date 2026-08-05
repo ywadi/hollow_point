@@ -7,6 +7,11 @@
 // The editor is also a *module host* -- it loads the gameplay module so the
 // inspector can show game-defined types (T0032, T0035). Not built yet.
 #include <hp/Application.hpp>
+#include <hp/Assets.hpp>
+#include <hp/Event.hpp>
+#include <hp/Scene.hpp>
+#include <hp/SceneView.hpp>
+
 #include <hp/Engine.hpp>
 #include <hp/Log.hpp>
 #include <hp/ModuleHost.hpp>
@@ -55,6 +60,81 @@ hp::RenderBackend backendFromArgs(int argc, char** argv) {
     return hp::RenderBackend::Default;
 }
 
+/// Renders the editor's scene into an offscreen target and publishes it.
+///
+/// **Pushed *before* the render layer, and that ordering is the whole trick.**
+/// `LayerStack::render` runs layers in push order, and `hp::RenderLayer` clears,
+/// blits and presents in one call — so anything that must appear on screen has
+/// to have drawn before it runs. The device does not exist until the render
+/// layer attaches, which happens at push time, so this creates its resources
+/// lazily on the first frame rather than in `onAttach`.
+///
+/// It publishes a `FrameRenderedEvent` and *also* hands the texture to the
+/// render layer's dev present path. Those are not redundant: the event is the
+/// real interface that T0033's viewport panel will consume, and the blit is the
+/// throwaway that makes Phase 4 visible before that panel exists.
+class SceneLayer final : public hp::ILayer {
+public:
+    /// @param app the application, for dispatching the frame event.
+    /// @param render the render layer that owns the device. Must outlive this.
+    SceneLayer(hp::Application& app, hp::RenderLayer& render) : app_(app), render_(render) {}
+
+    /// @returns the scene, so the editor can populate it.
+    hp::Scene& scene() { return scene_; }
+
+    void onRender() override {
+        if (!render_.ready()) {
+            return;
+        }
+        const int width = render_.swapChainWidth();
+        const int height = render_.swapChainHeight();
+
+        if (!view_.valid()) {
+            if (!view_.create(render_.device(), render_.context(), width, height)) {
+                // Said why already. Do not retry every frame -- a device that
+                // cannot make a render target will not start being able to.
+                failed_ = true;
+                return;
+            }
+        }
+        // Matching the swap chain exactly is what lets the dev blit be a plain
+        // copy with no scaling (T0028's present path).
+        view_.resize(width, height);
+
+        hp::SceneViewStats stats;
+        Diligent::ITextureView* colour = view_.render(render_.context(), scene_, assets_,
+                                                      render_.clipSpace(), 0, &stats);
+        if (colour == nullptr) {
+            render_.setPresentSource(nullptr);
+            return;
+        }
+
+        render_.setPresentSource(view_.colourTexture());
+
+        // The real interface. Nothing listens yet -- T0033's viewport panel is
+        // the first consumer -- but publishing from the start is what stops the
+        // viewport being written against a renderer pointer later.
+        hp::FrameRenderedEvent frame(colour, view_.width(), view_.height());
+        app_.dispatch(frame);
+    }
+
+    void onDetach() override {
+        render_.setPresentSource(nullptr);
+        view_.release();
+    }
+
+    /// @returns a stable name for logs.
+    const char* name() const { return "scene"; }
+
+private:
+    hp::Application& app_;
+    hp::RenderLayer& render_;
+    hp::Scene scene_;
+    hp::AssetPool assets_;
+    hp::SceneView view_;
+    bool failed_ = false;
+};
+
 class Editor final : public hp::Application {
 public:
     explicit Editor(hp::RenderBackend backend)
@@ -102,12 +182,29 @@ private:
         // The render layer owns the device (T0025). The editor runs until its
         // window is closed, so this is where a device is actually visible.
         if (window() != nullptr) {
-            auto* render = static_cast<hp::RenderLayer*>(
-                layers().push(std::make_unique<hp::RenderLayer>(*window(), renderConfig())));
+            // **Order matters, and it is the opposite of the obvious one.**
+            // `LayerStack::render` walks layers in push order, and
+            // `hp::RenderLayer` clears, blits and presents in a single
+            // `onRender`. So the scene must be pushed *first* to draw first --
+            // pushed after, it would render into a frame already presented and
+            // nothing would ever appear.
+            //
+            // The render layer is therefore constructed before it is pushed, so
+            // the scene layer can hold a reference to it. Constructing does not
+            // create a device; `push` attaches, and that is when the device
+            // appears -- which is why the scene layer builds its targets lazily
+            // on the first frame rather than in `onAttach`.
+            auto renderOwned = std::make_unique<hp::RenderLayer>(*window(), renderConfig());
+            hp::RenderLayer& render = *renderOwned;
+
+            scene_ = static_cast<SceneLayer*>(
+                layers().push(std::make_unique<SceneLayer>(*this, render)));
+            layers().push(std::move(renderOwned));
+
             // Deliberately not black: a black window and a broken window look
             // identical, and "did it clear?" is the only question this layer
             // can currently answer.
-            render->setClearColour(0.16F, 0.22F, 0.34F, 1.0F);
+            render.setClearColour(0.16F, 0.22F, 0.34F, 1.0F);
         }
     }
 
@@ -164,6 +261,9 @@ private:
     }
 
     void onShutdown() override { HP_LOG_INFO(kLog, "editor shutting down"); }
+
+private:
+    SceneLayer* scene_ = nullptr;
 };
 
 } // namespace

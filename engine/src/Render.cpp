@@ -22,6 +22,7 @@
 #include <EngineFactoryVk.h>
 
 #include <RefCntAutoPtr.hpp>
+#include <Texture.h>
 
 namespace hp {
 namespace {
@@ -166,6 +167,12 @@ struct RenderLayer::Impl {
     Diligent::RefCntAutoPtr<Diligent::IRenderDevice> device;
     Diligent::RefCntAutoPtr<Diligent::IDeviceContext> context;
     Diligent::RefCntAutoPtr<Diligent::ISwapChain> swapChain;
+
+    /// Dev present path (T0028). Not owned; see `setPresentSource`.
+    Diligent::ITexture* presentSource = nullptr;
+
+    /// So a format or size mismatch is reported once rather than every frame.
+    bool presentMismatchReported = false;
 
     /// Fills `desc` from the config. Separate so both backends get the same
     /// answer -- a buffer count that differs by backend is a latency difference
@@ -426,11 +433,52 @@ void RenderLayer::onRender() {
                                           Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
     }
 
+    // The dev present path (T0028). A straight copy, no shader and no scaling:
+    // anything cleverer here would be a real compositor, which is T0027's, and
+    // T0033 deletes this entirely once a viewport panel exists.
+    if (impl_->presentSource != nullptr) {
+        HP_PROFILE_ZONE_NAMED("dev present blit");
+        Diligent::ITexture* back = impl_->swapChain->GetCurrentBackBufferRTV()->GetTexture();
+        const Diligent::TextureDesc& from = impl_->presentSource->GetDesc();
+        const Diligent::TextureDesc& to = back->GetDesc();
+        if (from.Format == to.Format && from.Width == to.Width && from.Height == to.Height) {
+            Diligent::CopyTextureAttribs copy;
+            copy.pSrcTexture = impl_->presentSource;
+            copy.pDstTexture = back;
+            copy.SrcTextureTransitionMode = Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+            copy.DstTextureTransitionMode = Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+            impl_->context->CopyTexture(copy);
+            impl_->presentMismatchReported = false;
+        } else if (!impl_->presentMismatchReported) {
+            // Reported once, not per frame: at 60fps a per-frame warning buries
+            // everything else in the log within seconds, which is how a real
+            // message next to it gets missed.
+            HP_LOG_WARN(kLog,
+                        "present source is {}x{} fmt {} and the back buffer is {}x{} fmt {}; "
+                        "skipping the dev blit rather than stretching it",
+                        from.Width, from.Height, static_cast<int>(from.Format), to.Width,
+                        to.Height, static_cast<int>(to.Format));
+            impl_->presentMismatchReported = true;
+        }
+    }
+
     // Phase 11. The sync interval is state rather than a literal, which is what
     // makes T0110's runtime toggle a one-liner instead of a rewrite.
     {
         HP_PROFILE_ZONE_NAMED("present");
         impl_->swapChain->Present(impl_->config.vsync ? 1U : 0U);
+    }
+}
+
+void RenderLayer::setPresentSource(Diligent::ITexture* texture) {
+    // **Only reset the once-per-source warning when the source actually
+    // changes.** Resetting unconditionally made "report once" mean "report every
+    // frame", because the caller sets this every frame -- which is exactly the
+    // log-burying failure the warning's own comment warns about, committed three
+    // lines away from it.
+    if (impl_->presentSource != texture) {
+        impl_->presentSource = texture;
+        impl_->presentMismatchReported = false;
     }
 }
 

@@ -9,6 +9,7 @@
 
 #include <DeviceContext.h>
 #include <RenderDevice.h>
+#include <TextureView.h>
 
 #include <algorithm>
 #include <array>
@@ -97,6 +98,11 @@ void SceneView::setClearColour(float r, float g, float b, float a) {
 
 Diligent::ITextureView* SceneView::colour() const {
     return impl_ == nullptr ? nullptr : impl_->targets.shaderResource(kColourTarget);
+}
+
+Diligent::ITexture* SceneView::colourTexture() const {
+    Diligent::ITextureView* view = colour();
+    return view == nullptr ? nullptr : view->GetTexture();
 }
 
 int SceneView::width() const {

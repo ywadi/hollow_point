@@ -6,7 +6,7 @@
 #include <hp/SceneView.hpp>
 ```
 
-16 public declaration(s), 16 documented.
+17 public declaration(s), 17 documented.
 
 ## `SceneViewStats`
 
@@ -147,6 +147,20 @@ Diligent::ITextureView * colour() const
 
  @returns the colour target's shader-resource view, or nullptr. **Valid
           for the current frame only** — a resize recreates it.
+
+## `SceneView::colourTexture`
+
+```cpp
+Diligent::ITexture * colourTexture() const
+```
+
+ @returns the colour target's **texture**, or nullptr.
+
+ Exposed alongside `colour()` so a consumer does not need Diligent's
+ headers to get from one to the other. `RenderLayer::setPresentSource`
+ wants a texture and the event carries a view, and an app that had to call
+ `GetTexture()` itself would need the RHI include path that the engine
+ deliberately keeps PRIVATE.
 
 ## `SceneView::width`
 

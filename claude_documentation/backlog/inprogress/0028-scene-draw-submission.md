@@ -401,6 +401,49 @@ Two decisions worth keeping:
   publishes, because dispatch belongs to `Application` and an engine class
   reaching into the layer stack to announce itself inverts that ownership.
 
+### The editor is wired, and the dev present path is half a success (2026-08-05)
+
+The editor now owns a `SceneLayer` that creates a `SceneView`, renders the scene
+offscreen, publishes a `FrameRenderedEvent`, and hands the texture to
+`RenderLayer::setPresentSource`. **Run and observed**, not merely compiled.
+
+**Layer order is the opposite of the obvious one, and it is load-bearing.**
+`LayerStack::render` walks layers in *push* order and `RenderLayer` clears, blits
+and presents in a single `onRender` — so the scene must be pushed **first** to
+draw first. Pushed after, it would render into a frame already presented and
+nothing would ever appear. The render layer is therefore constructed before it is
+pushed so the scene layer can hold a reference; constructing creates no device,
+`push` attaches and does, which is why `SceneView` is built lazily on the first
+frame rather than in `onAttach`.
+
+**The dev blit works on OpenGL and correctly refuses on Vulkan.** It is a plain
+`CopyTexture` — no shader, no scaling — which requires an exact format match:
+
+| backend | swap chain | result |
+|---|---|---|
+| OpenGL | `RGBA8_UNORM_SRGB` (29) | blits, **0 warnings over a 20s run** |
+| Vulkan | `BGRA8_UNORM_SRGB` (91) | **skipped**, reported once |
+
+The scene target is `RGBA8_UNORM_SRGB`, and Vulkan's surface here is BGRA.
+`CopyTexture` does not convert, so copying anyway would put a red/blue-swapped
+image on screen — worse than nothing, because it looks like a shader bug.
+Refusing is correct, and it means **the dev path shows a frame on GL and a plain
+clear on Vulkan**.
+
+Not worth patching around: the honest fix is a fullscreen-triangle blit with a
+trivial shader, which converts formats as a matter of course. That is small, and
+it is also *exactly* what a compositor does, so it may belong to T0027 rather
+than being built twice. **Recorded rather than fixed, because choosing where it
+lives is not this ticket's call to make quietly.**
+
+**A bug worth recording because of where it was.** The mismatch warning was
+written "report once, because at 60fps a per-frame warning buries everything
+else within seconds" — and then reported every frame, because
+`setPresentSource` reset the flag and the caller sets the source every frame.
+The comment describing the failure sat three lines from the code committing it.
+Fixed by resetting only when the source pointer actually changes; verified as
+1 warning over a 20-second run where it had been one per frame.
+
 ### What is NOT verified, and must not be read as working
 
 **Nothing has been drawn yet.** The GPU test proves pipeline states build, that
@@ -411,11 +454,10 @@ attribs, the draw calls — is written and compiled and **entirely unexercised**
 
 Specifically still open:
 
-- **No app publishes a frame yet.** `SceneView::render` returns the texture and
-  `FrameRenderedEvent` carries it, but neither the editor nor the runtime
-  constructs one — so the mechanism is proven and **unused**. That wiring, plus
-  the ~20-line dev present path from the second review pass, is what remains of
-  28.5 in practice.
+- **The runtime is still unwired.** The editor publishes a frame; `apps/runtime`
+  does not. T0042 owns that, and it can now copy the editor's `SceneLayer`.
+- **Vulkan shows a clear, not a scene**, until the blit converts formats — see
+  the dev-present table above.
 - **The traversal itself.** Until a mesh is drawn and looked at, "it renders" is
   not a claim this ticket may make.
 - **Colour-space conversion on material textures.** `GetPBRTextureSRV` is not

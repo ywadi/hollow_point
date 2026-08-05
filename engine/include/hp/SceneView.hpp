@@ -23,6 +23,7 @@
 namespace Diligent {
 struct IRenderDevice;
 struct IDeviceContext;
+struct ITexture;
 struct ITextureView;
 } // namespace Diligent
 
@@ -127,6 +128,15 @@ public:
     /// @returns the colour target's shader-resource view, or nullptr. **Valid
     ///          for the current frame only** — a resize recreates it.
     [[nodiscard]] Diligent::ITextureView* colour() const;
+
+    /// @returns the colour target's **texture**, or nullptr.
+    ///
+    /// Exposed alongside `colour()` so a consumer does not need Diligent's
+    /// headers to get from one to the other. `RenderLayer::setPresentSource`
+    /// wants a texture and the event carries a view, and an app that had to call
+    /// `GetTexture()` itself would need the RHI include path that the engine
+    /// deliberately keeps PRIVATE.
+    [[nodiscard]] Diligent::ITexture* colourTexture() const;
 
     /// @returns the current target width in pixels, or 0.
     [[nodiscard]] int width() const;

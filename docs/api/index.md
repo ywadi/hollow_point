@@ -52,18 +52,18 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Paths.hpp>`](Paths.md) | 1 | 1 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
-| [`<hp/Render.hpp>`](Render.md) | 25 | 25 |
+| [`<hp/Render.hpp>`](Render.md) | 26 | 26 |
 | [`<hp/RenderStack.hpp>`](RenderStack.md) | 21 | 21 |
 | [`<hp/Scene.hpp>`](Scene.md) | 54 | 54 |
 | [`<hp/SceneRenderer.hpp>`](SceneRenderer.md) | 11 | 11 |
-| [`<hp/SceneView.hpp>`](SceneView.md) | 16 | 16 |
+| [`<hp/SceneView.hpp>`](SceneView.md) | 17 | 17 |
 | [`<hp/Serialize.hpp>`](Serialize.md) | 6 | 6 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Vfs.hpp>`](Vfs.md) | 23 | 23 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
 
-**617 public declarations across 32 headers, 500 documented.**
+**619 public declarations across 32 headers, 502 documented.**
 
 ## Every symbol
 
@@ -470,6 +470,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `RenderLayer::context` | [`Render.hpp`](Render.md) |
 | `RenderLayer::swapChain` | [`Render.hpp`](Render.md) |
 | `RenderLayer::clipSpace` | [`Render.hpp`](Render.md) |
+| `RenderLayer::setPresentSource` | [`Render.hpp`](Render.md) |
 | `RenderPassContext` | [`RenderStack.hpp`](RenderStack.md) |
 | `LayerClear` | [`RenderStack.hpp`](RenderStack.md) |
 | `IRenderLayer` | [`RenderStack.hpp`](RenderStack.md) |
@@ -569,6 +570,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `SceneView::valid` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::render` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::colour` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::colourTexture` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::width` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::height` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::setClearColour` | [`SceneView.hpp`](SceneView.md) |

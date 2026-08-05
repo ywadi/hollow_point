@@ -44,6 +44,7 @@
 namespace Diligent {
 struct IRenderDevice;
 struct IDeviceContext;
+struct ITexture;
 struct ISwapChain;
 } // namespace Diligent
 
@@ -245,6 +246,27 @@ public:
     /// projection matrix that is right on Vulkan and silently wrong on OpenGL;
     /// see `ClipSpace` and T0130.3.
     [[nodiscard]] ClipSpace clipSpace() const;
+
+    /// Copies a texture onto the back buffer just before presenting.
+    ///
+    /// **A development path, and deliberately a crude one.** Phase 4 otherwise
+    /// has no on-screen output at all: the two real consumers of a rendered
+    /// frame are the editor viewport (T0033, Phase 6) and the runtime (T0042,
+    /// Phase 8), so every render ticket before those would be unverifiable by
+    /// eye. This is what makes a frame visible in the meantime, and T0033
+    /// replaces it rather than building on it.
+    ///
+    /// It is a straight `CopyTexture`, so **the source must match the back
+    /// buffer in format and size** — no scaling, no conversion, no shader. A
+    /// mismatch is reported once and skipped rather than guessed at, because a
+    /// silently letterboxed or stretched dev view is worse than none: it is the
+    /// kind of thing that gets mistaken for a projection bug.
+    ///
+    /// @param texture the texture to copy, or nullptr to stop copying. Not
+    ///        retained beyond the next frame's use — the caller owns it, and a
+    ///        caller that releases it must clear this first.
+    /// @returns nothing.
+    void setPresentSource(Diligent::ITexture* texture);
 
 private:
     struct Impl;
