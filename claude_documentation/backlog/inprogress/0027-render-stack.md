@@ -62,6 +62,63 @@ things it leaves for this ticket:
   solves the same problem and T0033 should use it rather than either being
   written twice. See T0033's notes.
 
+## What 27.3 and 27.4 need, worked out 2026-08-05
+
+Written down rather than re-derived. Both are unblocked; neither is started.
+
+### 27.3 — the world layer
+
+A `hp::SceneRenderLayer : IRenderLayer` in `engine/`, holding a `Scene*`, an
+`AssetPool*`, a view slot and a `SceneRenderer`. `onRenderLayer(pass)`:
+
+1. `resolveCamera(scene, viewSlot)` — return early if none, the stack has
+   already cleared;
+2. `buildView(entity, pass.width, pass.height, clip)`;
+3. `SetViewports` from `ResolvedView::viewport*`, **not** from `pass.width/height`;
+4. `parseScene` then `SceneRenderer::render`.
+
+**It must not bind targets.** `RenderPassContext` arrives with colour and depth
+already bound and cleared, which is why `SceneRenderer::render` was written to
+take a context and bind nothing — the seam is already correct.
+
+`hp::SceneView` keeps its direct path; it is what the editor uses today and what
+T0033 will consume. This layer is the same submission driven by the stack
+instead, so the two must share `SceneRenderer` rather than growing a second copy
+of the resolve.
+
+### 27.4 — the HUD layer, with no UI library
+
+**A HUD is a camera on another view slot**, which is what T0028's notes
+predicted: "a world layer and a HUD layer each resolve their own slot, which is
+how a HUD gets an orthographic camera without the world knowing about it."
+
+So 27.4 is a second `SceneRenderLayer` on **view slot 1** with an orthographic
+camera, `useDepth = false` and `clear = LayerClear::None`, ordered above the
+world layer. No new shader, no UI dependency.
+
+**Deliberately not a UI library.** This subtask proves *compositing*, and
+choosing Dear ImGui or RmlUi here would be this ticket answering
+[T0069](../open/0069-game-ui.md)'s question — the same mistake T0134 exists to
+prevent. T0069 already surveys the options and leans RmlUi; **D6** records that
+ImGui ships in the runtime binary regardless, so "it is already linked" is not an
+argument. Leave it there.
+
+`useDepth = false` is the part worth asserting: the header warns that a UI layer
+which depth-tests against the world vanishes behind near geometry, and reads as
+flickering UI rather than as a depth bug.
+
+### The test
+
+GPU bucket, both backends. Stack a world layer (slot 0, perspective, geometry at
+one depth) under a HUD layer (slot 1, orthographic, geometry nearer the camera in
+world terms but drawn without depth), render, and **read the pixels back** —
+`SceneView::readback` exists for exactly this. Assert the HUD's pixels win where
+they overlap.
+
+**Assert pixels, not statistics.** T0028 spent an afternoon on a frame where
+every counter said a draw was issued and nothing was on screen; two submitted
+layers prove nothing about ordering.
+
 ## Notes / findings
 
 **The stack must accept layers implemented outside the engine** (T0094). Fog of
