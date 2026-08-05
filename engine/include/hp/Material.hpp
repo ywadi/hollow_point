@@ -89,6 +89,52 @@ enum class AlphaMode : std::uint8_t {
     Blend,
 };
 
+/// How a texture is addressed outside the 0..1 range.
+///
+/// Values match `Diligent::TEXTURE_ADDRESS_MODE` minus one, which is the packing
+/// `GLTF::Material::TextureShaderAttribs::SetWrapUMode` uses.
+enum class TextureWrap : std::uint8_t {
+    /// Tiles. The default, and what a surface texture almost always wants.
+    Repeat,
+
+    /// Tiles, flipping every other repeat. Hides a seam in a non-tiling texture.
+    Mirror,
+
+    /// Clamps to the edge pixel. What a decal, a lightmap or an atlased texture
+    /// wants — **tiling one of those bleeds a neighbour's pixels in**.
+    Clamp,
+};
+
+/// One UV channel: how the mesh's texture coordinates are transformed before use.
+///
+/// **Per channel rather than per texture slot, which is Godot's shape and not
+/// Diligent's.** `TextureShaderAttribs` carries a transform on every one of the
+/// 17 slots independently; exposing that directly would mean five copies of the
+/// same four numbers in the common case, where every map on a surface shares one
+/// tiling. Writing a channel's settings into each slot that selects it is one
+/// loop in the renderer and recovers the general case for anything that ever
+/// needs it.
+///
+/// Two channels because `PBR_Renderer` has two — `PSO_FLAG_USE_TEXCOORD0` and
+/// `USE_TEXCOORD1` — and `SelectUV` lerps between exactly those.
+struct UvChannel {
+    /// Tiling. `[2, 2]` repeats the texture twice over the mesh's UVs.
+    float2 scale{1.0F, 1.0F};
+
+    /// Shift, applied after scaling. Scrolling water is this animated.
+    float2 offset{0.0F, 0.0F};
+
+    /// Rotation about the UV origin, in **radians**, matching every other angle
+    /// in the engine (`Light::innerConeAngle`, `Camera::verticalFov`).
+    float rotation = 0.0F;
+
+    /// How U repeats outside 0..1.
+    TextureWrap wrapU = TextureWrap::Repeat;
+
+    /// How V repeats outside 0..1.
+    TextureWrap wrapV = TextureWrap::Repeat;
+};
+
 /// A material asset: the parameters one surface is shaded with (60.1).
 ///
 /// Plain data with no GPU resources of its own, deliberately — the textures it
@@ -170,6 +216,38 @@ struct Material {
 
     /// Emitted light, multiplied by `emissive`.
     Guid emissiveTexture;
+
+    /// The first UV channel's transform, used by every slot whose selector is 0.
+    UvChannel uv0;
+
+    /// The second UV channel's transform, used by every slot whose selector is 1.
+    ///
+    /// **A second channel is what a lightmap, a detail map or an atlas needs**:
+    /// one set of coordinates laid out for tiling the surface, another laid out
+    /// for a unique unwrap. A mesh that carries only one set makes this inert —
+    /// `SelectUV` falls back to whichever it has.
+    UvChannel uv1;
+
+    /// Which UV channel the base colour texture samples with. 0 or 1.
+    ///
+    /// **Per slot, because that is the whole reason two channels exist.** A
+    /// material with a tiling base colour and a unique-unwrapped occlusion map
+    /// is the ordinary case, not an exotic one, and a single material-wide
+    /// selector could not express it.
+    std::uint8_t baseColourUv = 0;
+
+    /// Which UV channel the metallic-roughness texture samples with.
+    std::uint8_t metallicRoughnessUv = 0;
+
+    /// Which UV channel the normal map samples with.
+    std::uint8_t normalUv = 0;
+
+    /// Which UV channel the occlusion texture samples with. **Frequently 1** —
+    /// baked occlusion usually comes from the same unique unwrap a lightmap does.
+    std::uint8_t occlusionUv = 0;
+
+    /// Which UV channel the emissive texture samples with.
+    std::uint8_t emissiveUv = 0;
 };
 
 /// The stable pool name for a material.

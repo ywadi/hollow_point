@@ -42,6 +42,23 @@ material:
   normalTexture: c3d4e5f60718293a
   occlusionTexture: 0102030405060708
   emissiveTexture: a1b2c3d4e5f60718
+  uv0:
+    scale: [2, 4]
+    offset: [0.125, 0.25]
+    rotation: 1.5
+    wrapU: Mirror
+    wrapV: Repeat
+  uv1:
+    scale: [1, 1]
+    offset: [0, 0]
+    rotation: 0
+    wrapU: Clamp
+    wrapV: Clamp
+  baseColourUv: 0
+  metallicRoughnessUv: 0
+  normalUv: 0
+  occlusionUv: 1
+  emissiveUv: 1
 ```
 
 And this is a complete, valid material too:
@@ -102,6 +119,8 @@ per-field code in `Material.cpp` at all.
 | `doubleSided` | `false` | Whether back faces are drawn |
 | `unlit` | `false` | Whether lighting is skipped and `baseColour` shown directly |
 | `*Texture` | unset | A `TextureAsset`'s GUID, or absent for none |
+| `uv0`, `uv1` | identity | Per-channel scale, offset, rotation and wrap |
+| `*Uv` | `0` | Which UV channel that texture slot samples with |
 
 **The factors default to 1, not to 0**, and that is not a style choice: a
 material that sets a texture and nothing else must come out as the texture says,
@@ -132,6 +151,62 @@ two slots would have to be combined before they could be sampled anyway.
 a `displacementTexture` key would be a field nothing reads — which is the mistake
 `Camera::cullingMask` spent three tickets being. Height-mapped surfaces need
 shader work rather than a material parameter, and that belongs with **T0141**.
+
+### UV channels: two of them, transformed per channel, selected per slot
+
+`PBR_Renderer` carries exactly two texture coordinate sets —
+`PSO_FLAG_USE_TEXCOORD0` and `USE_TEXCOORD1` — and its `SelectUV` picks between
+them per texture. This format exposes that as **two channels with a transform
+each, and a selector on each slot**:
+
+```yaml
+  uv0:
+    scale: [8, 8]        # tiling
+  uv1:
+    wrapU: Clamp         # a unique unwrap, so clamping is right
+    wrapV: Clamp
+  occlusionUv: 1         # baked AO uses the unique unwrap
+```
+
+That is Godot's shape rather than Diligent's. `TextureShaderAttribs` carries an
+independent transform on all 17 slots, and exposing it directly would mean five
+copies of the same four numbers in the ordinary case, where every map on a
+surface shares one tiling. The renderer writes a channel's settings into each
+slot that selects it, which is one loop and recovers the general case if
+anything ever needs it.
+
+**Rotation is in radians**, matching every other angle in the engine
+(`Light::innerConeAngle`, `Camera::verticalFov`) rather than inventing a second
+unit for one file format.
+
+**Wrap defaults to `Repeat`**, because a surface texture tiles. `Clamp` is what
+a lightmap, a decal or an atlased texture wants — tiling one of those bleeds a
+neighbour's pixels across the seam.
+
+A mesh carrying only one UV set makes `uv1` inert: `SelectUV` falls back to
+whichever set exists rather than sampling garbage.
+
+### Strengths are 0..1, not 0..100
+
+Every factor here is in **shader units**, which is 0..1 for the bounded ones —
+they are multiplied straight into a texture sample or a BRDF term. Storing 0..100
+would mean a conversion at exactly one edge, and a conversion at one edge is a
+bug the first time someone writes a material by hand and it comes out a hundred
+times too bright.
+
+A **percentage is a presentation choice**, and the inspector is where it belongs:
+`PropertyMeta` already carries `min`, `max` and a tooltip per property (T0053),
+so a slider can read 0–100% while the file stays in the units the shader wants.
+
+Three of these are deliberately **not** bounded at 1, and clamping them would be
+wrong:
+
+- **`emissive`** is HDR. Values above 1 are the entire point once T0096's
+  tonemapping exists.
+- **`normalScale`** above 1 exaggerates a normal map, which is a legitimate and
+  common authoring move.
+- **`baseColour`** *is* bounded to 0..1 — it is a reflectance, and a surface that
+  reflects more light than falls on it is not a material, it is a bug.
 
 ### `alphaMode` is written by name
 
@@ -189,10 +264,21 @@ invalidates it rather than being misread from it.
 - **Custom shader materials** — T0141. Nothing in this format forecloses them: a
   `shader` key and its declared parameters are additive, and a material without
   one is what this document describes.
-- **Per-texture sampler and colour-space settings.** `TextureShaderAttribs`
-  carries UV selector, wrap modes and a UV transform per slot; none of it is
-  exposed here yet, and the sRGB question is inherited from T0028 and sits with
-  T0097.
+- **Per-slot UV transforms.** Exposed per *channel*, which covers the ordinary
+  case; a slot needing its own transform independent of the channel it selects
+  has nowhere to say so yet. The plumbing underneath is per slot, so this is an
+  addition rather than a rework.
+- **Colour-space conversion per texture.** Inherited from T0028: `GetPBRTextureSRV`
+  is not public, so textures bind through the model's own views with no
+  conversion. Sits with T0097's sRGB work.
+- **`SpecularFactor`.** Present in `PBRMaterialShaderAttribs` and read **only**
+  under `PBR_WORKFLOW_SPECULAR_GLOSSINESS` (`RenderPBR.psh:159`), which this
+  engine does not use. Absent on purpose, not forgotten.
+- **Height, parallax occlusion, triplanar and tessellation** — **T0141.7/141.8/141.9**.
+  These are not material parameters at all: they need a hook *before* texture
+  sampling, and `PBR_Renderer` has none. See T0141 for the finding that
+  DiligentFX's lighting is a reusable public library even though its material
+  shader is not hookable, which is what makes owning the surface stage cheap.
 - **Material instances** — a material overriding a few parameters of a parent.
   Worth having and not yet designed; it belongs with T0141's parameter work
   rather than being retrofitted onto this.

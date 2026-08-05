@@ -6,7 +6,7 @@
 #include <hp/Material.hpp>
 ```
 
-9 public declaration(s), 9 documented.
+11 public declaration(s), 11 documented.
 
 ## `AlphaMode`
 
@@ -24,6 +24,42 @@ enum class AlphaMode
 
  Matches `GLTF::Material::ALPHA_MODE` value for value, because it is written
  straight into `PBRMaterialShaderAttribs::AlphaMode`.
+
+## `TextureWrap`
+
+```cpp
+enum class TextureWrap
+```
+
+| Enumerator | Value |
+|---|---|
+| `Repeat` | 0 |
+| `Mirror` | 1 |
+| `Clamp` | 2 |
+
+ How a texture is addressed outside the 0..1 range.
+
+ Values match `Diligent::TEXTURE_ADDRESS_MODE` minus one, which is the packing
+ `GLTF::Material::TextureShaderAttribs::SetWrapUMode` uses.
+
+## `UvChannel`
+
+```cpp
+struct UvChannel
+```
+
+ One UV channel: how the mesh's texture coordinates are transformed before use.
+
+ **Per channel rather than per texture slot, which is Godot's shape and not
+ Diligent's.** `TextureShaderAttribs` carries a transform on every one of the
+ 17 slots independently; exposing that directly would mean five copies of the
+ same four numbers in the common case, where every map on a surface shares one
+ tiling. Writing a channel's settings into each slot that selects it is one
+ loop in the renderer and recovers the general case for anything that ever
+ needs it.
+
+ Two channels because `PBR_Renderer` has two — `PSO_FLAG_USE_TEXCOORD0` and
+ `USE_TEXCOORD1` — and `SelectUV` lerps between exactly those.
 
 ## `Material`
 

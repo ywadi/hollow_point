@@ -9,6 +9,7 @@
 | **Order** | 455 |
 | **Created** | 2026-08-05 |
 | **Blocked by** | T0060 (there is no material asset to attach a shader to yet) |
+| **Blocks** | height mapping, parallax occlusion and triplanar — 141.7/141.8, which T0060 cannot deliver because Diligent's material shader has no hook before texture sampling |
 | **Refs** | [../inprogress/0060-material-system.md](../inprogress/0060-material-system.md) (split from it), [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md), T0093, T0053, T0094, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D24 |
 
 ## Why
@@ -43,6 +44,70 @@ compiler cache, which is the wrong dependency to accept.
 - [ ] Variant growth is bounded by a decision that is written down, not by
       whatever the permutations happen to be
 
+## Decided-shaped finding 2026-08-05 — DiligentFX's *lighting* is a reusable library; its *material shader* is not hookable
+
+Raised by the owner asking why height maps, parallax occlusion and tessellation
+are not in T0060, and whether the engine's own shader ought to be the standard
+material. Both halves were checked against the vendored source rather than
+guessed, and the answer changes this ticket's shape.
+
+**What is hookable.** `PBR_Renderer::CreateInfo::GetPSMainSource` is a callback
+returning `{OutputStruct, Footer}` — enough to change what the pixel shader
+*emits* (a G-buffer layout, say). It is **not** a hook before texture sampling,
+so it cannot displace UVs and therefore cannot implement parallax. `RenderPBR.psh`
+is under `Shaders/PBR/private` with no injection point in
+`ReadBaseLayerProperties`. Tessellation is further out still: `PBR_Renderer`
+creates no hull or domain shaders at all.
+
+**What is reusable, and this is the part that matters.**
+`Shaders/PBR/public/PBR_Shading.fxh` is public and is a library of free
+functions: `GetSurfaceReflectanceMR`, `PerturbNormal`, `ApplyPunctualLight`,
+`ApplyIBL`, `GetBaseLayerLighting`, `GetSpecularIBL_GGX`, and the sheen and
+clearcoat equivalents. It takes surface properties in and returns radiance out.
+
+So the split is already drawn for us, and it is the one every modern engine
+uses:
+
+| Stage | Whose | Contains |
+|---|---|---|
+| **Surface** | **ours, and this ticket's real subject** | sampling, UV displacement, parallax, triplanar, detail maps, blending, anything the artist writes |
+| **Lighting** | Diligent's, kept per D24 | BRDF, punctual lights, IBL, sheen, clearcoat, shadows |
+
+### So: should our shader be the standard material?
+
+**Eventually yes, and the architecture permits it cheaply — but not by
+rewriting PBR.** Three options were weighed:
+
+- **A — keep `RenderPBR.psh` as the standard material, custom shaders alongside.**
+  What T0060 does today. Cheapest, and the ceiling is exactly the one the owner
+  hit: nothing can be added to the standard path without forking DiligentFX.
+- **B — write our own uber-shader outright.** Reimplements split-sum IBL,
+  punctual lighting, shadow filtering, tonemapping, every alpha mode and the
+  glTF extensions. That is precisely the body of work D24 declined to write, and
+  "do not reinvent wheels" applies at full force.
+- **C — own the surface stage, `#include` Diligent's lighting.** Our pixel
+  shader main, our surface function, their `PBR_Shading.fxh`. Height mapping,
+  parallax and triplanar all become ordinary surface-stage code rather than
+  upstream feature requests, and the standard material becomes *our* surface
+  function feeding *their* lighting — which is Godot's and Unreal's shape.
+
+**C is the recommendation**, and it reframes this ticket: it is not "bolt custom
+shaders onto the side of `PBR_Renderer`", it is "own the surface stage, and the
+standard material is the first shader written against it".
+
+Two things are genuinely the owner's call rather than technical, so they are
+**left open here rather than decided**: how much shader maintenance the studio
+takes on, and whether the standard material moving onto our own surface stage is
+worth the regression risk to what T0134 already got working. Ask before starting
+141.1.
+
+### Consequence for T0060
+
+**Nothing to change there**, which is the useful part — the material asset is
+parameters and texture references, and it is the same asset either way. What
+option C would add is a `shader` reference plus its declared parameters, which
+T0060 already says it must not foreclose and does not.
+
 ## Subtasks
 
 - [ ] 141.1 Custom shader material with a declared parameter interface (was 60.3)
@@ -52,6 +117,14 @@ compiler cache, which is the wrong dependency to accept.
       console error naming the shader and the compiler's message (was 60.7)
 - [ ] 141.5 Shader hot reload (was 60.8)
 - [ ] 141.6 Document the engine intermediates a custom shader may read
+- [ ] 141.7 **Height mapping and parallax occlusion** — needs the surface stage;
+      `PBR_Renderer` has no path for it and `GetPSMainSource` cannot reach before
+      texture sampling. Raised from T0060 on 2026-08-05
+- [ ] 141.8 **Triplanar projection** — same reason: a surface-stage technique,
+      not a material parameter. Raised from T0060 on 2026-08-05
+- [ ] 141.9 **Tessellation / displacement**, or an explicit decision not to.
+      Further out than the other two: `PBR_Renderer` creates no hull or domain
+      shaders, so this is new pipeline work rather than new shader code
 
 ## Decided 2026-08-05, with the owner — one pattern, three causes, and the console tells you which
 

@@ -154,6 +154,15 @@ separate assets — which is what puts the whole of 60.1 in the fast bucket.
 
 #### Finding 1: the texture lineup is five slots, and displacement does not exist
 
+**Height mapping, parallax occlusion and triplanar are now 141.7/141.8/141.9**,
+referenced both ways, with the reason recorded there: they need a hook *before*
+texture sampling and `PBR_Renderer` has none — `GetPSMainSource` only reaches
+the output struct and a footer. They are not "missing from materials", they are
+shader-stage work that no material parameter can express. T0141 also now carries
+the finding that DiligentFX's *lighting* is a reusable public library
+(`PBR_Shading.fxh`) even though its *material shader* is not hookable, which is
+what makes owning the surface stage cheap rather than a PBR rewrite.
+
 Diligent defines **17** texture attributes; this carries the five the renderer
 binds (base colour, metallic-roughness, normal, occlusion, emissive). The other
 twelve are extended materials (clearcoat, sheen, anisotropy, iridescence,

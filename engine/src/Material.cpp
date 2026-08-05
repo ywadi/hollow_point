@@ -49,6 +49,18 @@ void registerMaterialTypes() {
         .value<AlphaMode::Mask>("Mask")
         .value<AlphaMode::Blend>("Blend");
 
+    reflect<TextureWrap>("TextureWrap")
+        .value<TextureWrap::Repeat>("Repeat")
+        .value<TextureWrap::Mirror>("Mirror")
+        .value<TextureWrap::Clamp>("Clamp");
+
+    reflect<UvChannel>("UvChannel")
+        .property<&UvChannel::scale>("scale")
+        .property<&UvChannel::offset>("offset")
+        .property<&UvChannel::rotation>("rotation")
+        .property<&UvChannel::wrapU>("wrapU")
+        .property<&UvChannel::wrapV>("wrapV");
+
     reflect<Material>("Material")
         .property<&Material::baseColour>("baseColour")
         .property<&Material::emissive>("emissive")
@@ -64,7 +76,14 @@ void registerMaterialTypes() {
         .property<&Material::metallicRoughnessTexture>("metallicRoughnessTexture")
         .property<&Material::normalTexture>("normalTexture")
         .property<&Material::occlusionTexture>("occlusionTexture")
-        .property<&Material::emissiveTexture>("emissiveTexture");
+        .property<&Material::emissiveTexture>("emissiveTexture")
+        .property<&Material::uv0>("uv0")
+        .property<&Material::uv1>("uv1")
+        .property<&Material::baseColourUv>("baseColourUv")
+        .property<&Material::metallicRoughnessUv>("metallicRoughnessUv")
+        .property<&Material::normalUv>("normalUv")
+        .property<&Material::occlusionUv>("occlusionUv")
+        .property<&Material::emissiveUv>("emissiveUv");
 }
 
 std::string writeMaterial(const Material& material) {

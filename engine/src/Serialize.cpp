@@ -238,6 +238,10 @@ bool writeLeaf(YamlNode parent, std::string_view key, const entt::meta_any& valu
         parent.set(key, *v);
         return true;
     }
+    if (const auto* v = value.try_cast<float2>()) {
+        writeFloats(parent, key, &v->x, 2);
+        return true;
+    }
     if (const auto* v = value.try_cast<float3>()) {
         writeFloats(parent, key, &v->x, 3);
         return true;
@@ -356,6 +360,9 @@ bool readLeaf(YamlNode node, entt::meta_any& value) {
     }
     if (auto* v = value.try_cast<double>()) {
         return node.tryRead(*v);
+    }
+    if (auto* v = value.try_cast<float2>()) {
+        return readFloats(node, &v->x, 2);
     }
     if (auto* v = value.try_cast<float3>()) {
         return readFloats(node, &v->x, 3);
@@ -669,6 +676,9 @@ bool cookLeaf(const entt::meta_any& value, std::vector<std::byte>& out) {
         writeU64(out, bits);
         return true;
     }
+    if (const auto* v = value.try_cast<float2>()) {
+        return cookFloats(&v->x, 2, out);
+    }
     if (const auto* v = value.try_cast<float3>()) {
         return cookFloats(&v->x, 3, out);
     }
@@ -764,6 +774,9 @@ bool uncookLeaf(const std::vector<std::byte>& bytes, std::size_t& cursor, entt::
         }
         std::memcpy(v, &bits, sizeof bits);
         return true;
+    }
+    if (auto* v = value.try_cast<float2>()) {
+        return uncookFloats(bytes, cursor, &v->x, 2);
     }
     if (auto* v = value.try_cast<float3>()) {
         return uncookFloats(bytes, cursor, &v->x, 3);
