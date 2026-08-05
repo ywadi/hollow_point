@@ -40,7 +40,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/DrawSubmission.hpp>`](DrawSubmission.md) | 3 | 3 |
 | [`<hp/Engine.hpp>`](Engine.md) | 4 | 4 |
 | [`<hp/EntryPoint.hpp>`](EntryPoint.md) | 1 | 0 |
-| [`<hp/Event.hpp>`](Event.md) | 72 | 15 |
+| [`<hp/Event.hpp>`](Event.md) | 80 | 23 |
 | [`<hp/FrameTargets.hpp>`](FrameTargets.md) | 24 | 24 |
 | [`<hp/Guid.hpp>`](Guid.md) | 13 | 5 |
 | [`<hp/Input.hpp>`](Input.md) | 39 | 39 |
@@ -56,13 +56,14 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/RenderStack.hpp>`](RenderStack.md) | 21 | 21 |
 | [`<hp/Scene.hpp>`](Scene.md) | 54 | 54 |
 | [`<hp/SceneRenderer.hpp>`](SceneRenderer.md) | 11 | 11 |
+| [`<hp/SceneView.hpp>`](SceneView.md) | 16 | 16 |
 | [`<hp/Serialize.hpp>`](Serialize.md) | 6 | 6 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Vfs.hpp>`](Vfs.md) | 23 | 23 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
 
-**593 public declarations across 31 headers, 476 documented.**
+**617 public declarations across 32 headers, 500 documented.**
 
 ## Every symbol
 
@@ -203,6 +204,14 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Event::consume` | [`Event.hpp`](Event.md) |
 | `Event::isConsumed` | [`Event.hpp`](Event.md) |
 | `Event::isIn` | [`Event.hpp`](Event.md) |
+| `FrameRenderedEvent` | [`Event.hpp`](Event.md) |
+| `FrameRenderedEvent::FrameRenderedEvent` | [`Event.hpp`](Event.md) |
+| `FrameRenderedEvent::colour` | [`Event.hpp`](Event.md) |
+| `FrameRenderedEvent::width` | [`Event.hpp`](Event.md) |
+| `FrameRenderedEvent::height` | [`Event.hpp`](Event.md) |
+| `FrameRenderedEvent::type` | [`Event.hpp`](Event.md) |
+| `FrameRenderedEvent::categories` | [`Event.hpp`](Event.md) |
+| `FrameRenderedEvent::name` | [`Event.hpp`](Event.md) |
 | `WindowCloseEvent` | [`Event.hpp`](Event.md) |
 | `WindowCloseEvent::type` | [`Event.hpp`](Event.md) |
 | `WindowCloseEvent::categories` | [`Event.hpp`](Event.md) |
@@ -547,6 +556,22 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `SceneRenderer::release` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `SceneRenderer::valid` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `SceneRenderer::render` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `SceneViewStats` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::SceneView` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::SceneView` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::operator=` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::SceneView` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::operator=` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::create` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::resize` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::release` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::valid` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::render` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::colour` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::width` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::height` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::setClearColour` | [`SceneView.hpp`](SceneView.md) |
 | `writeReflected` | [`Serialize.hpp`](Serialize.md) |
 | `readReflected` | [`Serialize.hpp`](Serialize.md) |
 | `writeProperties` | [`Serialize.hpp`](Serialize.md) |

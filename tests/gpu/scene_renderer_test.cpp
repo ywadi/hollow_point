@@ -20,6 +20,7 @@
 #include <hp/Render.hpp>
 #include <hp/Scene.hpp>
 #include <hp/SceneRenderer.hpp>
+#include <hp/SceneView.hpp>
 #include <hp/Window.hpp>
 
 #include <memory>
@@ -178,4 +179,128 @@ TEST_CASE("the scene renderer builds and submits on the default backend"
 
 TEST_CASE("the scene renderer builds and submits on OpenGL" * doctest::test_suite("gpu")) {
     exerciseSceneRenderer(hp::RenderBackend::OpenGL, "OpenGL");
+}
+
+// --- the offscreen target and the published frame (28.4, 28.5) ---------------
+
+namespace {
+
+void exerciseSceneView(hp::RenderBackend backend, const char* backendName) {
+    Device device = bringUp(backend);
+    if (!device.ok()) {
+        MESSAGE("no " << std::string(backendName)
+                      << " device available -- skipping (this is expected on CI)");
+        tearDown(device);
+        return;
+    }
+
+    hp::SceneView sceneView;
+    REQUIRE(sceneView.create(device.render->device(), device.render->context(), 320, 240));
+    REQUIRE(sceneView.valid());
+    CHECK(sceneView.width() == 320);
+    CHECK(sceneView.height() == 240);
+
+    hp::AssetPool pool;
+
+    SUBCASE("a scene with no camera renders nothing and says so, rather than crashing") {
+        // One of the ticket's "Done when" clauses, and the one most likely to be
+        // met with a crash: an empty scene is the normal state of a scene being
+        // built, not an error.
+        hp::Scene scene;
+        scene.propagateTransforms();
+
+        hp::SceneViewStats stats;
+        Diligent::ITextureView* published =
+            sceneView.render(device.render->context(), scene, pool,
+                             device.render->clipSpace(), 0, &stats);
+
+        CHECK_FALSE(stats.hadCamera);
+        CHECK(stats.submitted == 0);
+        // Still published: the frame was cleared, and showing the clear colour is
+        // what distinguishes "no camera" from "the renderer froze".
+        CHECK(published != nullptr);
+    }
+
+    SUBCASE("a camera with no drawable entities publishes a cleared frame") {
+        hp::Scene scene;
+        hp::Entity cameraEntity = scene.create("camera");
+        cameraEntity.add<hp::Camera>(hp::Camera{});
+        scene.propagateTransforms();
+
+        hp::SceneViewStats stats;
+        Diligent::ITextureView* published =
+            sceneView.render(device.render->context(), scene, pool,
+                             device.render->clipSpace(), 0, &stats);
+
+        CHECK(stats.hadCamera);
+        CHECK(stats.considered == 0);
+        CHECK(stats.submitted == 0);
+        CHECK(published != nullptr);
+    }
+
+    SUBCASE("an entity whose mesh is not loaded is counted, and the frame still publishes") {
+        hp::Scene scene;
+        hp::Entity cameraEntity = scene.create("camera");
+        cameraEntity.add<hp::Camera>(hp::Camera{});
+
+        hp::Entity drawable = scene.create("mesh");
+        hp::MeshRenderer renderer;
+        renderer.mesh = hp::Guid(0x1234);
+        drawable.add<hp::MeshRenderer>(renderer);
+        scene.propagateTransforms();
+
+        hp::SceneViewStats stats;
+        Diligent::ITextureView* published =
+            sceneView.render(device.render->context(), scene, pool,
+                             device.render->clipSpace(), 0, &stats);
+
+        CHECK(stats.hadCamera);
+        CHECK(stats.considered == 1);
+        CHECK(stats.submitted == 0);
+        CHECK(stats.missingMesh == 1);
+        CHECK(published != nullptr);
+    }
+
+    SUBCASE("resizing the view resizes the target, and is a no-op when unchanged") {
+        REQUIRE(sceneView.resize(640, 480));
+        CHECK(sceneView.width() == 640);
+        CHECK(sceneView.height() == 480);
+        // Safe to call every frame -- FrameTargets debounces, which is what lets
+        // callers skip a guard each of them would get slightly wrong.
+        REQUIRE(sceneView.resize(640, 480));
+        CHECK(sceneView.width() == 640);
+
+        hp::Scene scene;
+        scene.propagateTransforms();
+        CHECK(sceneView.render(device.render->context(), scene, pool,
+                               device.render->clipSpace()) != nullptr);
+    }
+
+    SUBCASE("the published texture is a shader resource, so a viewport can sample it") {
+        // 28.5's whole purpose: the texture handed to a listener must be usable
+        // as an ImGui image (T0033) or a full-screen blit (T0042). A render
+        // target view that is not also a shader resource would pass every test
+        // above and be useless to both.
+        hp::Scene scene;
+        scene.propagateTransforms();
+        Diligent::ITextureView* published =
+            sceneView.render(device.render->context(), scene, pool, device.render->clipSpace());
+        REQUIRE(published != nullptr);
+        CHECK(published == sceneView.colour());
+    }
+
+    sceneView.release();
+    CHECK_FALSE(sceneView.valid());
+    tearDown(device);
+}
+
+} // namespace
+
+TEST_CASE("the scene view publishes an offscreen frame on the default backend"
+          * doctest::test_suite("gpu")) {
+    exerciseSceneView(hp::RenderBackend::Default, "default");
+}
+
+TEST_CASE("the scene view publishes an offscreen frame on OpenGL" * doctest::test_suite("gpu")) {
+    exerciseSceneView(hp::RenderBackend::OpenGL, "OpenGL");
 }

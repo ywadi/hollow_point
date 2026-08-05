@@ -26,6 +26,15 @@
 #include <cstdint>
 #include <string_view>
 
+// Forward-declared rather than included: `ITextureView` appears in
+// `FrameRenderedEvent` because a consumer genuinely needs to sample the frame
+// (D22 permits naming RHI interface types in public headers for exactly that),
+// but pulling Diligent's headers into the event system would widen every
+// consumer's include surface for one pointer.
+namespace Diligent {
+struct ITextureView;
+} // namespace Diligent
+
 namespace hp {
 
 enum class EventType : std::uint8_t {
@@ -44,6 +53,9 @@ enum class EventType : std::uint8_t {
     MouseButtonReleased,
     MouseMoved,
     MouseScrolled,
+
+    /// A frame finished rendering into an offscreen target (T0028).
+    FrameRendered,
 };
 
 /// Broad grouping, so a layer can say "I care about input" without listing
@@ -55,6 +67,10 @@ enum class EventCategory : std::uint8_t {
     Input = 1 << 1,
     Keyboard = 1 << 2,
     Mouse = 1 << 3,
+
+    /// Produced by the renderer rather than by the platform. A layer can ask for
+    /// "anything the renderer published" without naming each type.
+    Render = 1 << 4,
 };
 
 constexpr EventCategory operator|(EventCategory a, EventCategory b) {
@@ -94,6 +110,57 @@ protected:
 
 private:
     bool consumed_ = false;
+};
+
+// --- render ------------------------------------------------------------------
+
+/// A frame was rendered into an offscreen target, and here is the texture.
+///
+/// **This event is the only connection between the renderer and whatever
+/// displays its output** (T0028). The editor viewport (T0033) draws this texture
+/// as an ImGui image; the runtime (T0042) stretches the same texture
+/// full-window. Neither is given a pointer to the renderer, and that is the
+/// point: handing the viewport a renderer is the coupling the event system
+/// exists to avoid, and it is the shortcut that would make the editor
+/// undeletable from a shipped build.
+///
+/// **The view is valid for this dispatch only.** Like every event here it lives
+/// on the stack, and the texture behind it is recreated whenever the viewport
+/// resizes — so a listener that stores the pointer and uses it next frame has a
+/// use-after-free that appears only when someone drags a window edge. Copy what
+/// you need, or consume it now.
+class HP_API FrameRenderedEvent final : public Event {
+public:
+    /// @param colour the colour target's shader-resource view. Never null when
+    ///        the event is emitted; the renderer does not publish a frame it
+    ///        failed to produce.
+    /// @param width the target's width in pixels.
+    /// @param height the target's height in pixels.
+    FrameRenderedEvent(Diligent::ITextureView* colour, int width, int height)
+        : colour_(colour), width_(width), height_(height) {}
+
+    /// @returns the colour target, for sampling. Valid for this dispatch only.
+    [[nodiscard]] Diligent::ITextureView* colour() const { return colour_; }
+
+    /// @returns the target width in pixels.
+    [[nodiscard]] int width() const { return width_; }
+
+    /// @returns the target height in pixels.
+    [[nodiscard]] int height() const { return height_; }
+
+    /// @returns the event type.
+    EventType type() const override { return EventType::FrameRendered; }
+
+    /// @returns the categories this event belongs to.
+    EventCategory categories() const override { return EventCategory::Render; }
+
+    /// @returns a name for logging.
+    std::string_view name() const override { return "FrameRendered"; }
+
+private:
+    Diligent::ITextureView* colour_ = nullptr;
+    int width_ = 0;
+    int height_ = 0;
 };
 
 // --- window ------------------------------------------------------------------

@@ -19,10 +19,11 @@ editor viewport can display it without the renderer knowing the editor exists.
 ## Done when
 
 - [ ] Entities with transform + mesh are collected and drawn
-- [ ] A scene with no camera renders nothing and says so, rather than crashing
+- [x] A scene with no camera renders nothing and says so, rather than crashing
 - [ ] Entities with no material get a visible default
-- [ ] Output goes to an offscreen target, not straight to the swap chain
-- [ ] A "new frame rendered" event carries that texture to any listener
+- [x] Output goes to an offscreen target, not straight to the swap chain
+- [x] A "new frame rendered" event carries that texture to any listener — the
+      mechanism; no app publishes one yet
 - [ ] Assets resolve from the pool by GUID (T0023)
 
 ## Subtasks
@@ -35,8 +36,11 @@ editor viewport can display it without the renderer knowing the editor exists.
 - [x] 28.3 Resolve mesh/material GUIDs against the asset pool — mesh resolves
       through `AssetPool::get<MeshAsset>`; **material GUIDs are not yet resolved**,
       because there is no material asset type until T0060
-- [ ] 28.4 Render to an offscreen target sized to the viewport
-- [ ] 28.5 Emit the frame-rendered event with the texture handle
+- [x] 28.4 Render to an offscreen target sized to the viewport — `SceneView`,
+      GPU-verified on both backends
+- [x] 28.5 Emit the frame-rendered event with the texture handle — the event
+      type, its dispatch and its consumption semantics are built and tested.
+      **Nothing in an app emits it yet**; see "what is left" below
 - [x] 28.6 Profiling zones for parse and submit separately — `HP_PROFILE_ZONE`
       in `parseScene`, in `render`, in `drawModel`, and a named zone around the
       frame-attribs write
@@ -360,6 +364,43 @@ Three things worth keeping:
   with different data, and an SRB built against the old model's textures would
   bind freed views.
 
+### 28.4 and 28.5 — built and measured (2026-08-05)
+
+`hp::SceneView` owns a colour and a depth target, resolves the camera, submits
+the scene and hands back the texture. `hp::FrameRenderedEvent` carries it.
+
+**GPU-verified on both backends** — `zig build test -Dtest=gpu`, **7 cases / 323
+assertions / SUCCESS** (was 5 / 233):
+
+- a scene with **no camera** renders nothing, says so at debug level, and still
+  publishes a *cleared* frame. Both halves matter: not crashing is the Done-when,
+  and publishing anyway is what stops a stale image reading as "the renderer
+  froze". A warning every frame would train people to ignore the log, so a scene
+  under construction is not warned about;
+- a camera with nothing drawable publishes a cleared frame;
+- an entity whose mesh is not loaded is **counted**, draws nothing, and does not
+  take the frame down;
+- resize works and is a no-op when unchanged, so it is safe every frame;
+- **the published view is the shader-resource view**, which is 28.5's whole
+  point — a render-target view that was not also sampleable would pass every
+  other assertion here and be useless to both consumers.
+
+The event's own behaviour is in the **fast** bucket, because it needs no device
+(4 cases): it reaches a listener that never sees the renderer, it is categorised
+`Render` rather than `Window`, a consuming listener stops it reaching layers
+below, and two non-consuming listeners both receive it. That last pair is
+deliberate — a game view and a preview on one frame is legitimate, so
+consumption is the listener's choice rather than automatic.
+
+Two decisions worth keeping:
+
+- **The viewport comes from the `ResolvedView`, not from the target size.** Under
+  a letterboxing aspect policy they differ, and using the target's size produces
+  an image stretched by exactly the letterbox ratio (T0081 warned about this).
+- **`SceneView` does not dispatch.** It returns the texture and the caller
+  publishes, because dispatch belongs to `Application` and an engine class
+  reaching into the layer stack to announce itself inverts that ownership.
+
 ### What is NOT verified, and must not be read as working
 
 **Nothing has been drawn yet.** The GPU test proves pipeline states build, that
@@ -370,7 +411,11 @@ attribs, the draw calls — is written and compiled and **entirely unexercised**
 
 Specifically still open:
 
-- **28.4 offscreen target** and **28.5 frame-rendered event** — not started.
+- **No app publishes a frame yet.** `SceneView::render` returns the texture and
+  `FrameRenderedEvent` carries it, but neither the editor nor the runtime
+  constructs one — so the mechanism is proven and **unused**. That wiring, plus
+  the ~20-line dev present path from the second review pass, is what remains of
+  28.5 in practice.
 - **The traversal itself.** Until a mesh is drawn and looked at, "it renders" is
   not a claim this ticket may make.
 - **Colour-space conversion on material textures.** `GetPBRTextureSRV` is not

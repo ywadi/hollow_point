@@ -6,7 +6,7 @@
 #include <hp/Event.hpp>
 ```
 
-72 public declaration(s), 15 documented.
+80 public declaration(s), 23 documented.
 
 ## `EventType`
 
@@ -28,6 +28,7 @@ enum class EventType
 | `MouseButtonReleased` | 9 |
 | `MouseMoved` | 10 |
 | `MouseScrolled` | 11 |
+| `FrameRendered` | 12 |
 
 *No documentation comment.*
 
@@ -44,6 +45,7 @@ enum class EventCategory
 | `Input` | 2 |
 | `Keyboard` | 4 |
 | `Mouse` | 8 |
+| `Render` | 16 |
 
  Broad grouping, so a layer can say "I care about input" without listing
  every type. A bitmask because an event can belong to several -- a key press
@@ -126,6 +128,88 @@ bool isIn(EventCategory category) const
 ```
 
 *No documentation comment.*
+
+## `FrameRenderedEvent`
+
+```cpp
+class FrameRenderedEvent
+```
+
+ A frame was rendered into an offscreen target, and here is the texture.
+
+ **This event is the only connection between the renderer and whatever
+ displays its output** (T0028). The editor viewport (T0033) draws this texture
+ as an ImGui image; the runtime (T0042) stretches the same texture
+ full-window. Neither is given a pointer to the renderer, and that is the
+ point: handing the viewport a renderer is the coupling the event system
+ exists to avoid, and it is the shortcut that would make the editor
+ undeletable from a shipped build.
+
+ **The view is valid for this dispatch only.** Like every event here it lives
+ on the stack, and the texture behind it is recreated whenever the viewport
+ resizes — so a listener that stores the pointer and uses it next frame has a
+ use-after-free that appears only when someone drags a window edge. Copy what
+ you need, or consume it now.
+
+## `FrameRenderedEvent::FrameRenderedEvent`
+
+```cpp
+FrameRenderedEvent(Diligent::ITextureView * colour, int width, int height)
+```
+
+ @param colour the colour target's shader-resource view. Never null when
+        the event is emitted; the renderer does not publish a frame it
+        failed to produce.
+ @param width the target's width in pixels.
+ @param height the target's height in pixels.
+
+## `FrameRenderedEvent::colour`
+
+```cpp
+Diligent::ITextureView * colour() const
+```
+
+ @returns the colour target, for sampling. Valid for this dispatch only.
+
+## `FrameRenderedEvent::width`
+
+```cpp
+int width() const
+```
+
+ @returns the target width in pixels.
+
+## `FrameRenderedEvent::height`
+
+```cpp
+int height() const
+```
+
+ @returns the target height in pixels.
+
+## `FrameRenderedEvent::type`
+
+```cpp
+EventType type() const
+```
+
+ @returns the event type.
+
+## `FrameRenderedEvent::categories`
+
+```cpp
+EventCategory categories() const
+```
+
+ @returns the categories this event belongs to.
+
+## `FrameRenderedEvent::name`
+
+```cpp
+std::string_view name() const
+```
+
+ @returns a name for logging.
 
 ## `WindowCloseEvent`
 
