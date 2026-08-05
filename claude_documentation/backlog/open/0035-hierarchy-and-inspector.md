@@ -8,7 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 630 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0053 (Blocks this), T0032, T0071, [../completed/0112-string-identity-and-localisation.md](../completed/0112-string-identity-and-localisation.md) |
+| **Refs** | T0053 (Blocks this), T0032, T0071, T0062, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D23, [../../documentation/09-gameplay-authoring.md](../../documentation/09-gameplay-authoring.md), [../completed/0112-string-identity-and-localisation.md](../completed/0112-string-identity-and-localisation.md) |
 
 ## Why
 
@@ -111,3 +111,19 @@ they are writing paste the English literal into the field instead — which
 silently defeats the convention everywhere it matters most. Show the resolved
 string, edit the key, and render a missing key as `[the.key]` exactly as the
 convention specifies.
+
+### From T0062 / D23 (2026-08-05) — there is no separate "Add Behaviour" dropdown
+
+T0062 originally specified one (62.11). D23 removes it: a behaviour **is** a
+reflected component, so **"Add Component" is the attach surface for gameplay
+logic as well as for engine data**, and its fields render through the same
+`PropertyMeta` path (min/max/tooltip/read_only/hidden) already in
+`hp/Reflect.hpp`.
+
+Two consequences for this panel:
+
+- The type list must include behaviour types registered by the **gameplay
+  module**, and must refresh on hot reload (T0048) — the set changes while the
+  editor runs.
+- `hp::Ref<T>` properties (T0071) need a picker, since that is how a switch is
+  wired to its door.

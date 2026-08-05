@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 280 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0062, T0075, T0077 |
+| **Refs** | T0062, T0075, T0077, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D23, [../../documentation/09-gameplay-authoring.md](../../documentation/09-gameplay-authoring.md) |
 
 ## Why
 
@@ -96,3 +96,15 @@ T0021 and T0062, both Phase 3, which is where this now sits.
 - **T0077.1** decides which resident scenes a query sees (its second-pass note
   names 73.6 directly). Do not answer the scope question locally — per-system
   answers are exactly what that decision exists to prevent.
+
+### From T0062 / D23 (2026-08-05) — this ticket owns `after(seconds, fn)`
+
+The worked door in `09-gameplay-authoring.md` calls
+`after(autoCloseDelay, [this]{ close(); })` for its auto-close. Godot has
+`await get_tree().create_timer(3.0).timeout` and gameplay reaches for it
+constantly.
+
+**A one-shot and a repeating timer, cancellable, and safe when the behaviour
+that scheduled it dies first, belong here.** Small, and exactly the kind of
+utility that gets invented five times in five behaviours if nobody owns it —
+which is this ticket's whole reason to exist.

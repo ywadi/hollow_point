@@ -4,11 +4,11 @@
 |---|---|
 | **Status** | 🔜 TODO |
 | **Priority** | High |
-| **Complexity** | Very Complex |
+| **Complexity** | Complex |
 | **Phase** | 3 — Data model |
 | **Order** | 270 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0053 (Blocks this), T0095 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), [../../documentation/09-gameplay-authoring.md](../../documentation/09-gameplay-authoring.md) (owns), [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D23, T0053 (Blocks this), T0095, T0071, T0072, T0073, T0076 |
 
 ## Why
 
@@ -26,33 +26,70 @@ arrays. Naively mixing them gives scattered allocations *and* awkward systems.
 - **Behaviours** for bespoke per-entity logic — the player, a boss, one door.
   Godot's ergonomics, where entity counts are low and logic is unique.
 
+> **Superseded 2026-08-05 by D23.** The tension is *resolved*, not maintained:
+> there is one mechanism — a class whose instances are components in a
+> per-concrete-type pool — plus `HP_SYSTEM` as an escape hatch. See the rescope
+> note at the bottom and
+> [`09-gameplay-authoring.md`](../../documentation/09-gameplay-authoring.md).
+
 ## Done when
 
-- [ ] A `Behaviour` base with `OnCreate` / `OnUpdate` / `OnFixedUpdate` / `OnDestroy`
-- [ ] A behaviour is attachable to an entity from the editor inspector
-- [ ] Reflected properties on a behaviour are editable in the inspector
-- [ ] Behaviour type and property values serialize with the scene, **by name**
-- [ ] **State survives a gameplay module hot reload** (T0048)
+**Rescoped 2026-08-05 against D23. The shape this must produce is
+[`09-gameplay-authoring.md`](../../documentation/09-gameplay-authoring.md),
+which this ticket owns.**
+
+- [ ] `hp::Behaviour` base with `ready` / `process` / `physicsProcess` /
+      `lateProcess` / `destroyed`, mapped onto frame phases 3b, 4 and 8
+- [ ] Instances live in **engine-owned per-concrete-type entt pools**, not in
+      module-allocated objects
+- [ ] `HP_BEHAVIOUR` / `HP_BEHAVIOUR_BASE` register a type with **no plumbing in
+      the gameplay file** — no `adoptMetaContext`, no `forgetType`, no
+      `HP_EXPORT`, no `extern "C"`, no `entt::`
+- [ ] Deregistration is automatic and symmetric with registration; forgetting it
+      is not possible
+- [ ] The safe surface makes the silent traps unreachable — `setPosition` /
+      `setRotation` mark the transform dirty, `get<T>()` for siblings
+- [ ] **State survives a gameplay module hot reload** (T0048) — see 62.6
+- [ ] `hp::each<Base>` finds every registered subclass, via `using Super = X`
 - [ ] Update order is deterministic and controllable
-- [ ] `OnFixedUpdate` runs at the physics rate (T0057), `OnUpdate` per frame
-- [ ] Behaviours can find their entity, its components, and other entities
-- [ ] Guidance written down on when to use a behaviour vs a system
+- [ ] Tiered ticking: no `process()` override costs nothing; an override runs
+      every frame; `setProcess(false)` exists but is **not** in the
+      getting-started path
+- [ ] `HP_SYSTEM` escape hatch — raw component iteration for things you would
+      count rather than name
+- [ ] A behaviour is attachable and editable from the inspector (T0035, Phase 6)
+- [ ] Behaviour properties serialize with the scene **by name** (T0022)
+- [ ] Guidance written down on behaviour vs system, and inherit-vs-compose
 
 ## Subtasks
 
-- [ ] 62.1 `Behaviour` base class and lifecycle
-- [ ] 62.2 **Multiple behaviours per entity**, driven by one system — see notes
-- [ ] 62.3 **Type registry populated by the gameplay module** — see notes
-- [ ] 62.4 Registration macro binding name, factory and reflected properties (T0053)
-- [ ] 62.5 Serialize as `{ type: "PlayerController", properties: {...} }`
-- [ ] 62.6 **Hot-reload cycle**: serialize state → unload → load → recreate →
-      deserialize
+- [ ] 62.1 `hp::Behaviour` base: lifecycle, safe transform/sibling/log surface.
+      **Deletes copy and move** so entt's `in_place_delete` gives instances
+      stable addresses (see notes)
+- [ ] 62.2 **Multiple behaviours per entity** — one component pool per concrete
+      type
+- [ ] 62.3 Registration pushed from the module via an intrusive list walked at
+      `onLoad` and unwound at `onUnload` — **no static needing destruction**
+- [ ] 62.4 `HP_BEHAVIOUR` / `HP_BEHAVIOUR_BASE`: reflection, field list,
+      callback detection, generated per-type dispatch loop (T0053)
+- [ ] 62.5 Serialize as a reflected component, reusing T0022 rather than a
+      parallel by-name path
+- [ ] 62.6 **Hot-reload cycle**: reflected snapshot → unload → load → recreate →
+      restore. **Shared with T0076.8 — one mechanism, not two.** Mandatory, not
+      optional: genuine unload works (T0048/T0105.1), so module-side vtables and
+      pools genuinely dangle
 - [ ] 62.7 Deterministic update order, with an explicit priority
-- [ ] 62.8 Entity/component access helpers, plus `GetBehaviour<T>()` so
-      behaviours on the same entity can find each other
-- [ ] 62.9 Pool-allocate instances per type (`FixedBlockMemoryAllocator`)
-- [ ] 62.10 Enable/disable without destroying, and the matching callbacks
-- [ ] 62.11 Editor: "Add Behaviour" dropdown listing registered types
+- [ ] 62.8 Base-type registry: `using Super = X` → `hp::TypeBuilder::base<Base>()`
+      → `hp::each<Base>` walking each derived pool
+- [ ] 62.9 Tiered ticking and `setProcess(false)`; **`setEnabled(bool)` is a
+      separate, semantic thing** and must not be the same function
+- [ ] 62.10 `HP_SYSTEM` registration into the existing phases
+- [ ] 62.11 `ModuleContext` gains a `Scene*`; `ModuleApi` gains the phase hooks;
+      an app owns a `Scene`. **~30 lines and it blocks every other subtask**
+- [ ] 62.12 Measure: dispatch cost per behaviour, and whether `final`
+      devirtualises under `zig cc`. The "just always tick" default rests on it
+- [ ] 62.13 Editor: "Add Component" surface, not a separate behaviour dropdown
+      (T0035)
 
 ## Notes / findings
 
@@ -198,3 +235,76 @@ Phase 2 prerequisites, and the editor surface (62.11, inspector items) still
 lands with T0035 in Phase 6. The Order field places this after T0071 (entity
 references), since behaviour properties hold `EntityRef`s, and before
 T0072/T0075, whose handlers assume behaviours exist to receive them.
+
+### Rescoped 2026-08-05 — D23, and the ticket gets smaller
+
+The design conversation that produced **D23** and
+[`09-gameplay-authoring.md`](../../documentation/09-gameplay-authoring.md)
+answered the question this ticket opens with — *"how does C++ code get attached
+to an entity"* — and the answer makes the ticket **smaller**, not larger.
+Complexity drops Very Complex → Complex.
+
+**The two-paradigm tension in the Why section is resolved rather than
+maintained.** The ticket originally proposed supporting behaviours *and* systems
+as separate mechanisms. There is now one mechanism — a class whose instances are
+components in a per-concrete-type pool — plus `HP_SYSTEM` as an escape hatch for
+things you would count rather than name. The `Behaviour` versus `System` choice
+becomes a data-layout choice at one call site, not two subsystems.
+
+**What was deleted, and why:**
+
+| Was | Why it went |
+|---|---|
+| 62.9 pool allocation via `FixedBlockMemoryAllocator` | entt pools components contiguously already |
+| a behaviour type registry distinct from the component registry | it *is* the component registry (T0053) |
+| 62.5's parallel `{type, properties}` serialize path | components serialize via T0022 |
+| 62.11's separate "Add Behaviour" dropdown | it is "Add Component" (T0035) |
+
+That parallel infrastructure is why this was Very Complex. What replaces it is
+the declaration layer, which is one header.
+
+**What was added:**
+
+- **62.11 — the plumbing link.** Verified 2026-08-05: `ModuleContext` carries
+  only `generation` and `name`, `ModuleApi` has no phase hooks, and **nothing in
+  `apps/` owns a `Scene`**. So no gameplay code of any shape can be written
+  today. ~30 lines, and it blocks every other subtask here.
+- **62.12 — measurement.** The decision to let every behaviour tick every frame
+  by default rests on an *estimated* ~2–5 ns dispatch. That is arithmetic, not a
+  measurement, and this ticket owns turning it into one — including whether
+  `final` actually devirtualises under `zig cc`.
+
+**The base class earns its place on safety, not just ergonomics.** It is the
+only place to put `setPosition`/`setRotation` wrappers that mark the transform
+dirty. `Scene.hpp` is explicit that a raw write to `Transform` *"is invisible to
+propagation until something marks the entity dirty"* — that is the first silent
+failure a door author hits, and a base class makes it unreachable.
+
+**`hp::Behaviour` must delete copy and move.** Verified against vendored entt
+3.16.0: `component_traits<T>::in_place_delete` (`entity/component.hpp:15`)
+defaults to true for types that are not move-constructible, which gives
+behaviour instances **stable addresses**. Signal connections and `Behaviour*`
+held within a frame depend on that.
+
+**The old performance argument against a base class was weaker than it looked.**
+What makes MonoBehaviour slow is iterating a heterogeneous list of pointers into
+scattered heap objects — not inheritance. One pool per concrete type is
+contiguous whether or not the type has a vtable. The cost is 8 bytes of vptr.
+
+**The cost accepted:** a class with virtuals is not an aggregate, so the
+compile-time field-name reflection used by `glaze`/`reflect-cpp` does not apply
+and exported fields must be listed in `HP_BEHAVIOUR`. Base class or
+annotation-free reflection — not both.
+
+**Still unverified, and recorded rather than assumed:**
+
+- Self-registering statics inside a module. The intrusive-list node should be
+  safe — it is a POD with no destructor, and this toolchain punishes
+  *destruction*, not statics — but it has not been tried. Static-init order
+  across TUs is unspecified, so sort the walk by name if anything depends on it.
+- `hp::each<Base>` per-pool iteration is designed, never built.
+- `06-engine-conventions.md` still says *"unloading a module does not currently
+  work"*, which T0048's completion contradicts (*"genuine unload works"*, 25
+  clean host lifetimes, 1.76 ms reload swap). One of them is stale and it
+  matters here: if unload is genuine, module-side vtables and pools genuinely
+  dangle and 62.6 is **mandatory**. Resolve before building 62.6.

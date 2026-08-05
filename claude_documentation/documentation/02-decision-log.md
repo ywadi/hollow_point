@@ -847,3 +847,142 @@ makes Diligent's interfaces part of the gameplay-facing API surface rather than
 an implementation detail. That is a real cost and it is accepted deliberately:
 D6 already chose Diligent, and an abstraction over an abstraction buys nothing
 until there is a concrete second target.
+
+---
+
+## D23 — Gameplay is authored as C++ classes over component storage, behind a declaration layer
+
+**Decided** 2026-08-05, before any of T0062 or T0076 was built, after the
+question "what does game code actually look like here?" turned out to have no
+answer written down anywhere.
+
+**Decision:** gameplay is authored as ordinary C++ classes deriving from
+`hp::Behaviour` (per entity) or `hp::Service` (per scene, per session). Instances
+are **components in engine-owned per-concrete-type entt pools**. A declaration
+layer — one macro per type — generates registration, reflection, dispatch and
+deregistration, so a gameplay file contains no engine plumbing. Callback
+vocabulary is **Godot's** (`ready`, `process`, `physicsProcess`), composition is
+**Unity's** (many behaviours per entity), storage is **entt's**, and there is a
+`lateProcess` phase that neither Godot nor Unity has.
+
+The shape, the worked examples and the open questions are
+[`09-gameplay-authoring.md`](09-gameplay-authoring.md).
+
+**What this is answering.** Not "which paradigm is nicest". The binding
+constraint is **T0048**: a gameplay module genuinely unloads (proven over 25
+host lifetimes, reload swap measured at **1.76 ms**), so instance state cannot
+live in a module-allocated object and statics in the module image die. State
+must therefore be engine-owned. Once it is a reflected component, the inspector
+(T0035), serialization (T0022) and the reload snapshot come from machinery
+already being built — so most of the design is *forced*, and the only genuinely
+open question was the authoring surface.
+
+**Rejected — a type-keyed autoload registry** (what T0076 originally specified):
+`Autoload::Get<T>()`, a topological sort, a cycle detector, hand-written reverse
+teardown. All of that machinery exists to manage a dependency graph created by
+putting services in a bag. A single root object per scope gets construction
+order from **declaration order** and teardown from **reverse destructor order**,
+both guaranteed by the language, and turns a dependency cycle into a *compile*
+error. It also contradicted `06-engine-conventions.md`'s own rule that stateful
+engine services are *"passed, not reached"*.
+
+**Rejected — `registry.ctx()` as a service container.** Verified against the
+vendored entt 3.16.0: it is a `dense_map<id_type, basic_any<0u>>`, so
+destruction order is **unspecified** and every entry is a separate heap
+allocation. Fine as the storage primitive for *one* root (both objections
+vanish at n=1); wrong for twenty services.
+
+**Rejected — Godot's node model wholesale.** Its `_process`/`_physics_process`
+split is genuinely good and is adopted. The rest is load-bearing on *everything
+being a Node*, which is not true here. T0076 had already written the reason —
+*"Godot makes them nodes; that is a consequence of everything in Godot being a
+node, not a virtue to copy"* — and T0062 had written the other one: one script
+per node forces composition by **child node**, filling the hierarchy with
+entities that are logic wearing a transform.
+
+**Rejected — plain aggregate components plus free functions, with no base
+class.** This was the leading candidate for most of the design conversation and
+it loses on ergonomics. The performance argument for it was weaker than it
+appeared: what makes MonoBehaviour slow is iterating a *heterogeneous list of
+pointers into scattered heap objects*, not inheritance. One pool per concrete
+type is contiguous whether or not the type has a vtable, and `final` on a leaf
+lets the compiler devirtualise the call. The cost of the base class is 8 bytes
+of vptr per instance.
+
+The base class also earns its place on **safety**, which the free-function
+version cannot: it is the only place to put `setPosition()` / `setRotation()`
+wrappers that mark the transform dirty. Writing `Transform::rotation` directly
+is invisible to propagation — `Scene.hpp` says so — and that is the single
+silent failure a door author hits first. A base class makes it unreachable.
+
+**Cost accepted:** a class with virtual functions is not an aggregate, so the
+compile-time field-name reflection used by libraries like `glaze` and
+`reflect-cpp` does not apply, and exported fields must be listed in the macro.
+That is the `@export` tax and it is the price of the base class. The two cannot
+both be had.
+
+**Rejected — a scripting VM (Lua/sol2), reconsidered rather than inherited.**
+**D14** rejected scripting on the grounds that the requirement it satisfies is
+mods and DLC without shipping a binary, *"and that is not a goal here"*. That
+argument does not dispose of the question asked in this conversation, which was
+**authoring ergonomics for non-expert developers** — a requirement D14 never
+weighed. Re-examined on those grounds, Lua is genuinely cleaner for plumbing,
+field registration and hot reload, and it still loses on three things:
+
+- **The per-frame boundary.** A `lua_pcall` is hundreds of ns against ~2–5 ns
+  for a devirtualised C++ call, and *field access crosses the boundary too* —
+  `self.position.x` is a metatable dispatch into C, where the C++ version is a
+  memory offset. That lands directly on T0093 and T0098, the two tickets D14
+  already names as the unit-count drivers.
+- **It relocates the plumbing rather than removing it.** Every engine type a
+  script touches needs a binding. In C++ a developer who needs something
+  unusual reaches for it; in Lua they hit a hard stop and file a ticket against
+  the same programmers whose time the change was meant to protect.
+- **Two of everything, forever** — a C++ API and a Lua binding per feature, and
+  serialization, reflection and the inspector all understanding both.
+
+LuaJIT does not rescue the first point: **D19** already recorded that it
+hard-codes interpreter-only per console target because all three families
+enforce W^X.
+
+**Not revisited here:** runtime-compiled C++ (Cling / `clang-repl` / ORC JIT) is
+**D19**, which measured it and found the front end is the cost a JIT cannot
+avoid. Re-verified 2026-08-05 that the pinned toolchain still ships **zero**
+linkable `libLLVM*`/`libclang*`. A JIT is also strictly *worse* for the problem
+that prompted this conversation — debuggability — since JIT'd code has no
+on-disk image, and D19 already measured that `libhp_engine.so` exports no
+`_Unwind_*` symbols, so a stack trace cannot cross a JIT frame.
+
+**Consequences:**
+
+- **T0062 is rescoped and gets materially smaller.** No pool allocator (entt
+  pools), no behaviour registry parallel to the component registry, no separate
+  serialize-by-name path (T0022 handles components), no "Add Behaviour" dropdown
+  distinct from "Add Component". What replaces them is the declaration layer.
+- **T0076 is rescoped to a single root per scope.** Its ordering, cycle-check
+  and teardown-order subtasks are answered by the language.
+- **The reload snapshot is one mechanism, not two.** T0062.6 and T0076.8 are the
+  same code — reflected data in engine storage — because genuine unload works
+  and therefore genuinely dangles module-side vtables and pools.
+- **`hp::Behaviour` must delete copy and move.** Verified: entt's
+  `component_traits<T>::in_place_delete` defaults to true for types that are not
+  move-constructible, which gives behaviour instances **stable addresses**. That
+  is what makes signal connections and `Behaviour*` safe to hold within a frame.
+- **`using Super = X;` becomes a convention with teeth**, not decoration: it is
+  how the type hierarchy reaches `entt::meta`'s `base<Base>()` — already exposed
+  by `hp::TypeBuilder::base()` — and without it a base-type query will not find
+  the subclass.
+- **The layer may fail at compile time and must never fail silently at
+  runtime.** This is a constraint on how it is written, not a hope. Hiding
+  machinery moves a developer further from the cause when something breaks; an
+  ugly template error is an acceptable price, a door that does not move is not.
+- **`ModuleContext` and `ModuleApi` must grow** — a `Scene*` and the phase
+  hooks. Verified 2026-08-05 that nothing in `apps/` owns a `Scene` today, so
+  no gameplay code of any shape can currently be written. Roughly thirty lines,
+  and it blocks everything else.
+
+**Revisit if** gameplay is going to be written by people who are not C++
+programmers. No declaration layer closes the last gap — a segfault is still a
+segfault, and a compile error still stops the world. That is a studio and hiring
+question, not an engineering one, and it is the one input that would change this
+answer.

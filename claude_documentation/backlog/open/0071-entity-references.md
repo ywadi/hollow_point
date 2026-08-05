@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 260 |
 | **Created** | 2026-08-03 |
-| **Refs** | [../completed/0021-scene-and-ecs.md](../completed/0021-scene-and-ecs.md) |
+| **Refs** | [../completed/0021-scene-and-ecs.md](../completed/0021-scene-and-ecs.md), T0062, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D23, [../../documentation/09-gameplay-authoring.md](../../documentation/09-gameplay-authoring.md) |
 
 ## Why
 
@@ -83,3 +83,16 @@ per-scene, never global** (`Scene::byGuid_` is a member). `CloneIds::Preserve`
 puts the same GUIDs in two live scenes at once, which is exactly what makes
 references keep resolving inside a play-mode clone — and exactly what a global
 map would make ambiguous.
+
+### From T0062 / D23 (2026-08-05) — this is the gameplay-facing reference type
+
+D23 makes `hp::Ref<T>` the type a behaviour property holds when it points at
+another entity or behaviour — `hp::Ref<Door> target;` in a switch, picked in the
+inspector, stored as a GUID. **It must resolve on use and return null for a
+destroyed target, never a dangling pointer.**
+
+That is what makes `06-engine-conventions.md`'s rule — *do not store raw
+pointers to other behaviours or entities across frames* — structural instead of
+advisory, and it is why T0076's teardown-ordering hazard stops being fatal.
+
+Ordered before T0062 (260 vs 270) on purpose: behaviour properties hold these.

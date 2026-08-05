@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 250 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0053 (Blocks this), T0101 |
+| **Refs** | T0053 (Blocks this), T0101, T0062, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D23, [../../documentation/09-gameplay-authoring.md](../../documentation/09-gameplay-authoring.md) |
 
 ## Why
 
@@ -96,3 +96,20 @@ still refuses newer *file* versions; this handles a missing *type*).
   false instead of reinterpreting bytes.
 - **Serialize by name, never by type index.** `entt::type_index` differs per
   module and must never reach a file (T0095, D12).
+
+### From T0062 / D23 (2026-08-05) — behaviours serialize through this, not beside it
+
+T0062 originally specified its own `{ type: "PlayerController", properties: {…} }`
+path. D23 deletes it: a behaviour is a reflected component, so **this ticket's
+component serialization is the only path**, and there must not be a second one
+for gameplay types.
+
+Two requirements that follow:
+
+- **Component types registered by the gameplay module** must round-trip, not
+  just engine-owned ones. Identity is the stable **name** — `entt::type_index`
+  differs across the module boundary (measured, T0095) and can never be
+  persisted.
+- The same property enumeration is reused by T0062.6's in-memory hot-reload
+  snapshot. That snapshot does **not** need the YAML/file layer, but it should
+  not be a second implementation of "walk a reflected type's properties".

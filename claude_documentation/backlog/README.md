@@ -52,7 +52,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 240 | [T0058](open/0058-asset-lifetime-hot-reload.md) | Asset lifetime, reference counting and hot reload | 3 — Data model | 🔜 TODO | Medium | Complex |
 | 250 | [T0022](open/0022-scene-serialization.md) | Scene serialization | 3 — Data model | 🔜 TODO | High | Moderate |
 | 260 | [T0071](open/0071-entity-references.md) | Entity references | 3 — Data model | 🔜 TODO | High | Moderate |
-| 270 | [T0062](open/0062-entity-behaviours.md) | Entity behaviours: attaching C++ logic to entities | 3 — Data model | 🔜 TODO | High | Very Complex |
+| 270 | [T0062](open/0062-entity-behaviours.md) | Entity behaviours: attaching C++ logic to entities | 3 — Data model | 🔜 TODO | High | Complex |
 | 280 | [T0073](open/0073-gameplay-utilities.md) | Gameplay utility library | 3 — Data model | 🔜 TODO | Medium | Moderate |
 | 290 | [T0024](open/0024-project-manager.md) | ProjectManager | 3 — Data model | 🔜 TODO | High | Moderate |
 | 300 | [T0059](open/0059-prefabs.md) | Prefabs and entity templates | 3 — Data model | 🔜 TODO | High | Complex |

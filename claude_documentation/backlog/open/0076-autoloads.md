@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 350 |
 | **Created** | 2026-08-03 |
+| **Refs** | [../../documentation/09-gameplay-authoring.md](../../documentation/09-gameplay-authoring.md), [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D23, T0062 (shares the reload cycle), T0022, T0024, T0037, T0077 |
 
 ## Why
 
@@ -25,28 +26,48 @@ Godot calls these autoloads. Two scopes are needed:
 
 ## Done when
 
-- [ ] User code registers an autoload; the engine constructs it at the right time
-- [ ] Project autoloads survive scene transitions (T0077); scene autoloads do not
-- [ ] Accessible from anywhere by type, cheaply
-- [ ] Lifecycle callbacks: create, update, fixed update, destroy
-- [ ] **Initialisation order is explicit** where autoloads depend on each other
-- [ ] Configured as data — project autoloads in the project file, scene autoloads
-      in the scene
-- [ ] State survives a gameplay hot reload (T0048)
+**Rescoped 2026-08-05 against D23.** These are now `hp::Service` — the same
+type, the same callbacks as a behaviour, differing only in **lifetime** and
+**where configuration lives**. The shape is
+[`09-gameplay-authoring.md`](../../documentation/09-gameplay-authoring.md); the
+name "autoload" survives only in this ticket's title.
+
+- [ ] `hp::Service` shares `hp::Behaviour`'s callbacks (`ready`, `process`,
+      `physicsProcess`, `lateProcess`, `destroyed`) — one concept, three
+      lifetimes
+- [ ] `HP_SERVICE(Type, Scope::Session|Scope::Scene, fields...)` registers with
+      **no plumbing in the gameplay file**
+- [ ] **Session** services live for one play-mode run; **scene** services live
+      from scene load to unload (T0077)
+- [ ] Accessible as `hp::service<T>()`, resolving to a pointer cached at load —
+      no per-access lookup
+- [ ] **Initialisation and teardown order come from the language**, not from a
+      runtime sort — see the rescope note
+- [ ] Configured as data — session services in the project file (T0024), scene
+      services in the scene (T0022)
+- [ ] State survives a gameplay hot reload (T0048) — **the same mechanism as
+      T0062.6**
+- [ ] Teardown runs inward-out: scene services → entities → session services
 - [ ] The runtime (T0042) honours them identically to the editor
 
 ## Subtasks
 
-- [ ] 76.1 `Autoload` base with the lifecycle callbacks
-- [ ] 76.2 Registration from the gameplay module, alongside behaviours (T0062)
-- [ ] 76.3 Project-scope container, created on project open
-- [ ] 76.4 Scene-scope container, created and torn down with the scene
-- [ ] 76.5 Typed access — `Autoload::Get<SaveSystem>()`
-- [ ] 76.6 Explicit ordering, with a cycle check that fails loudly
-- [ ] 76.7 Configuration in `.hpproj` and in the scene file (T0020)
-- [ ] 76.8 Hot-reload survival via the same serialize/restore cycle as behaviours
-- [ ] 76.9 Editor UI to add, remove and reorder autoloads
-- [ ] 76.10 Tests, especially teardown order and scene-scope cleanup
+- [ ] 76.1 `hp::Service` base, sharing `hp::Behaviour`'s callback surface
+- [ ] 76.2 Registration from the gameplay module, through the same intrusive-list
+      mechanism as behaviours (T0062.3)
+- [ ] 76.3 Session scope, created when a **game session** starts — play-mode
+      entry in the editor, process start in the runtime. Not project open
+- [ ] 76.4 Scene scope, created and torn down with the scene
+- [ ] 76.5 `hp::service<T>()`, resolved to a cached pointer
+- [ ] 76.6 ~~Explicit ordering with a cycle check~~ — **deleted.** Members of one
+      root construct in declaration order and destruct in reverse, guaranteed by
+      C++; a dependency cycle is a compile error. See the rescope note
+- [ ] 76.7 Configuration in `.hpproj` and in the scene file (T0020, T0022)
+- [ ] 76.8 Hot-reload survival — **shared implementation with T0062.6**, not a
+      second mechanism
+- [ ] 76.9 Editor UI to add, remove and configure services
+- [ ] 76.10 Tests: teardown order across the two scopes, scene-scope cleanup,
+      and that a session service does **not** leak state between playtests
 
 ## Notes / findings
 
@@ -120,3 +141,58 @@ Two acceptance items still reach further out, deliberately: 76.9 (editor UI) is
 Phase 6 surface, and "the runtime (T0042) honours them identically" is a Phase 8
 verification. Both are the usual phase-spanning-acceptance pattern (compare
 T0062's editor items) — they close late without moving the ticket again.
+
+### Rescoped 2026-08-05 — autoloads become `hp::Service`, and half the ticket dissolves
+
+**D23** and
+[`09-gameplay-authoring.md`](../../documentation/09-gameplay-authoring.md)
+replace the type-keyed registry this ticket specified with **one root object per
+scope**, sharing `hp::Behaviour`'s callback surface. The "autoload" name survives
+only in the title.
+
+**76.6 is deleted outright, and this is the substance of the rescope.** The
+ticket's own Notes call teardown ordering the place where this breaks —
+*"autoloads that reference each other must be destroyed in reverse creation
+order, or a late destructor touches something already gone."* Members of a
+single root **construct in declaration order and destruct in reverse, guaranteed
+by the language**, and a dependency expressed as a constructor argument makes a
+cycle a *compile* error. There is nothing left for a runtime topological sort
+and cycle detector to do.
+
+`hp::Ref<T>` (T0071) softens the related hazard as well: it is GUID-backed and
+resolves on use, so a scene service outliving an entity reference gets null
+rather than a dangling pointer. The inward-out teardown order — scene services →
+entities → session services — still matters; getting it wrong stops being fatal.
+
+**Rejected — `registry.ctx()` as the service container.** Verified against
+vendored entt 3.16.0 (`entity/registry.hpp:159`): it is a
+`dense_map<id_type, basic_any<0u>>`, so **destruction order is unspecified** and
+every entry is a separate heap allocation. It is a fine storage primitive for
+*one* root — both objections vanish at n=1 — and the wrong container for twenty
+services. `emplace_as` takes an explicit id, so a stable name key per D14 is
+available.
+
+**The architecture-review note's worry is answered.** That note flagged
+`Autoload::Get<T>()` as *"exactly the kind of static state T0095 exists to sort
+out"*, and preferred access through a context. `hp::service<T>()` resolves to a
+pointer cached at load rather than a global lookup — fast, and with
+compiler-guaranteed lifetime. It is still **ambient access**, and that
+traceability cost is real and accepted deliberately: *"who touches the score?"*
+is a grep, not a call graph, which is the same cost **D10** records for the
+message bus.
+
+**76.8 is no longer this ticket's own mechanism.** Behaviours and services are
+both reflected data in engine-owned storage, so the reload snapshot is **one
+implementation shared with T0062.6**. Do not build a second.
+
+**"Created at startup" is now settled in the Done-when text**, not just in a
+note: session scope means one **play-mode run**, created on play entry and
+destroyed on stop. 76.10 gains an explicit test for it, because the failure —
+a playtest starting from the previous run's state — only appears on the *second*
+run and is exactly what play mode's scene clone exists to prevent.
+
+**Left open on purpose:** whether a scene service should instead be a behaviour
+on a scene-root entity. As a behaviour it gets the inspector, serialization and
+lifecycle free; as a service it stays out of the hierarchy, which this ticket
+argues for. Godot and Unity make it a node/GameObject, Unreal a world-spawned
+actor. Genuinely balanced, and not decided.

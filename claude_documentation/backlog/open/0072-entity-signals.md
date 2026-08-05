@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 320 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md) |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0062, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D23, [../../documentation/09-gameplay-authoring.md](../../documentation/09-gameplay-authoring.md) |
 
 ## Why
 
@@ -77,3 +77,14 @@ bus's job (T0075), and reading another entity's state needs no messaging at all.
 The three-way split matters: a bus makes "who listens?" unanswerable from the call
 graph, which is an acceptable cost for genuinely broadcast events and an
 unnecessary one for a door and its switch.
+
+### From T0062 / D23 (2026-08-05) — connections must auto-disconnect
+
+D23 uses `hp::Signal<T>` as a member of a behaviour (`Door::opened`,
+`Door::closed`) with other behaviours connecting to it. **A connection keyed to
+an `hp::Behaviour` must be dropped automatically when that behaviour is
+destroyed or its module unloads** — no `disconnect` in gameplay code.
+
+This is not convenience. It is the fix for the dangling-callback hazard T0068's
+review note already records for action callbacks, and it is sharper here because
+T0048 genuinely unloads the module the handler lives in.
