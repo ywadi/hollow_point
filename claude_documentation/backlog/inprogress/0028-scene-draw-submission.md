@@ -32,10 +32,14 @@ editor viewport can display it without the renderer knowing the editor exists.
       path and is tracked under 28.4/28.5, since the parse step deliberately
       takes no camera
 - [ ] 28.2 Default material for meshes without one
-- [ ] 28.3 Resolve mesh/material GUIDs against the asset pool
+- [x] 28.3 Resolve mesh/material GUIDs against the asset pool — mesh resolves
+      through `AssetPool::get<MeshAsset>`; **material GUIDs are not yet resolved**,
+      because there is no material asset type until T0060
 - [ ] 28.4 Render to an offscreen target sized to the viewport
 - [ ] 28.5 Emit the frame-rendered event with the texture handle
-- [ ] 28.6 Profiling zones for parse and submit separately
+- [x] 28.6 Profiling zones for parse and submit separately — `HP_PROFILE_ZONE`
+      in `parseScene`, in `render`, in `drawModel`, and a named zone around the
+      frame-attribs write
 
 ## Notes / findings
 
@@ -309,6 +313,72 @@ un-compensated. Whatever is chosen goes in writing here and on T0134.
 actually build on both backends here, that the traversal draws correctly, and
 that the substituted texture binding produces the right colours. All three need
 `zig build test -Dtest=gpu`, which `all` builds and never runs.
+
+### Built and measured on hardware (2026-08-05) — `SceneRenderer`
+
+`engine/src/SceneRenderer.cpp`, driving `PBR_Renderer` directly. **The line the
+whole design exists to make writable:**
+
+```cpp
+pipeline.DepthStencilDesc.DepthFunc = Diligent::COMPARISON_FUNC_GREATER_EQUAL;
+static_assert(kReverseZ, "the depth comparison above assumes T0130's reverse-Z");
+```
+
+**Verified on a real device**, which is the only thing that could settle it —
+`zig build test -Dtest=gpu`, **5 cases / 233 assertions / SUCCESS**:
+
+```
+[info ] render.scene: scene renderer ready, reverse-Z depth
+```
+
+on **both** backends: Vulkan on an NVIDIA RTX 4070, and OpenGL. So `PBR_Renderer`
+compiles its shaders and builds pipeline states against `GREATER_EQUAL` on both
+— the substitution for `GLTF_PBR_Renderer` works, and reverse-Z is not something
+the backends object to.
+
+*(The OpenGL run came up on llvmpipe, a software rasterizer, rather than the
+NVIDIA GL driver. It is a real GL implementation and it exercised pipeline
+creation, but it is not a hardware GL result and should not be reported as one.)*
+
+Three things worth keeping:
+
+- **Two members had to be inlined**, both on `GLTF_PBR_Renderer` rather than the
+  base, and both trivial once read. `Begin()` only maps the joints buffer, which
+  next-gen backends require before first use each frame — omitting it is a
+  validation error, not a visible bug, so it is easy to miss.
+  `GetMaterialPSOFlags()` collapses to a **constant** under this `CreateInfo`:
+  every optional flag it sets is gated on a setting (`EnableAO`,
+  `EnableEmissive`, clear coat, sheen, anisotropy, iridescence, transmission,
+  volume) and all are off, leaving the three always-on maps. If any is ever
+  enabled, that must go back to consulting the material — T0134's business.
+- **28.2 comes free from `CreateDefaultTextures = true`.** The renderer creates
+  white/black/default-normal textures, which is exactly what a material with
+  nothing assigned samples. Turning it off is what would make an unassigned mesh
+  invisible.
+- **SRBs are cached per mesh GUID and rebuilt when the model behind the GUID
+  changes.** That second half is for T0058: a hot reload is the same identity
+  with different data, and an SRB built against the old model's textures would
+  bind freed views.
+
+### What is NOT verified, and must not be read as working
+
+**Nothing has been drawn yet.** The GPU test proves pipeline states build, that
+an empty list submits nothing, that a missing mesh is counted rather than fatal,
+and that an uncreated renderer is a safe no-op. **No test loads a real mesh and
+issues a draw**, so the traversal — node walk, vertex/index binding, primitive
+attribs, the draw calls — is written and compiled and **entirely unexercised**.
+
+Specifically still open:
+
+- **28.4 offscreen target** and **28.5 frame-rendered event** — not started.
+- **The traversal itself.** Until a mesh is drawn and looked at, "it renders" is
+  not a claim this ticket may make.
+- **Colour-space conversion on material textures.** `GetPBRTextureSRV` is not
+  public, so textures bind through `SetMaterialTexture` with the model's own
+  views and no conversion is applied. Untextured materials are unaffected. This
+  is a real gap next to T0097's sRGB work and is recorded on T0134.
+- **Material GUIDs are parsed and carried but never resolved** — there is no
+  material asset until T0060.
 
 ### Camera
 

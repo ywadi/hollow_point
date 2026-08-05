@@ -55,13 +55,14 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Render.hpp>`](Render.md) | 25 | 25 |
 | [`<hp/RenderStack.hpp>`](RenderStack.md) | 21 | 21 |
 | [`<hp/Scene.hpp>`](Scene.md) | 54 | 54 |
+| [`<hp/SceneRenderer.hpp>`](SceneRenderer.md) | 11 | 11 |
 | [`<hp/Serialize.hpp>`](Serialize.md) | 6 | 6 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Vfs.hpp>`](Vfs.md) | 23 | 23 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
 
-**582 public declarations across 30 headers, 465 documented.**
+**593 public declarations across 31 headers, 476 documented.**
 
 ## Every symbol
 
@@ -535,6 +536,17 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `tryGet` | [`Scene.hpp`](Scene.md) |
 | `remove` | [`Scene.hpp`](Scene.md) |
 | `registerComponent` | [`Scene.hpp`](Scene.md) |
+| `DrawSubmitStats` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `SceneRenderer` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `SceneRenderer::SceneRenderer` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `SceneRenderer::SceneRenderer` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `SceneRenderer::operator=` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `SceneRenderer::SceneRenderer` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `SceneRenderer::operator=` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `SceneRenderer::create` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `SceneRenderer::release` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `SceneRenderer::valid` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `SceneRenderer::render` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `writeReflected` | [`Serialize.hpp`](Serialize.md) |
 | `readReflected` | [`Serialize.hpp`](Serialize.md) |
 | `writeProperties` | [`Serialize.hpp`](Serialize.md) |
