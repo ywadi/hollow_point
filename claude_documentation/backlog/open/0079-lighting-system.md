@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 470 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0085, T0093, [0134-pbr-renderer-adoption.md](0134-pbr-renderer-adoption.md) — **decide whether this ticket configures DiligentFX's lighting or supersedes it**, rather than discovering the overlap mid-implementation; [../completed/0027-render-stack.md](../completed/0027-render-stack.md) — **the engine currently renders every mesh pure black**, measured, and this ticket is what makes shading assertable at all |
+| **Refs** | T0085, T0093, [0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) — **decide whether this ticket configures DiligentFX's lighting or supersedes it**, rather than discovering the overlap mid-implementation; [../completed/0027-render-stack.md](../completed/0027-render-stack.md) — **the engine currently renders every mesh pure black**, measured, and this ticket is what makes shading assertable at all |
 
 ## Why
 
@@ -41,6 +41,50 @@ usable authoring story.
 - [ ] 79.7 Profiling zones for light gathering and selection
 
 ## Notes / findings
+
+### Inherited from T0134 / D24 (2026-08-05) — configure DiligentFX's lights, do not supersede them
+
+**This ticket's Refs asked the question; D24 answers it: configure.** And the
+answer arrives with more already decided than the Done-when above assumes.
+
+**`PBRLightAttribs` already specifies the light model**
+(`Shaders/PBR/public/PBR_Structures.fxh:309`):
+
+```c
+int   Type;            // 1 directional, 2 point, 3 spot
+float PosX, PosY, PosZ;
+float DirectionX, DirectionY, DirectionZ;
+int   ShadowMapIndex;  // -1 if this light casts none
+float IntensityR, IntensityG, IntensityB;
+float Range4;          // point/spot range to the fourth power
+float SpotAngleScale, SpotAngleOffset;
+```
+
+That is the whole of "directional, point, spot, with colour, intensity, range",
+**already fixed as a shader-side representation**. So 79.1 designs ECS
+*components* and how they map onto this — not a new representation. Note
+`Range4` is range to the **fourth power**, and the spot cone is stored as a
+precomputed scale/offset pair, not as angles: those conversions belong in one
+place or they will disagree.
+
+The mechanism, so nothing is re-surveyed:
+
+- `PBR_Renderer::CreateInfo::MaxLightCount` (default 16) sizes the array, and
+  **is currently 0** — which is why nothing is lit.
+- `GLTF_PBR_Renderer::WritePBRLightShaderAttribs` is **`static`**, so it is
+  usable from the engine's own traversal exactly as the material and primitive
+  writers already are.
+- `Renderer.LightCount` in `PBRRendererShaderParameters` is what the shader
+  clamps its loop to. `SceneRenderer` sets it to 0 explicitly today; **this
+  ticket sets it for real.**
+- `PSO_FLAG_USE_LIGHTS` must come out of `kFeatureMask` in `SceneRenderer.cpp`.
+- The frame buffer is sized by
+  `GetPRBFrameAttribsSize(LightCount, ShadowCastingLightCount)`, so raising
+  `MaxLightCount` resizes it — it is not a free constant.
+
+`EnableAO` and `Renderer.OcclusionStrength` are also this ticket's, per D24.
+
+Read [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) first.
 
 **Scope:** this ticket is lights and selection only. **Shadows are T0086** and
 **environment/IBL is T0087** — lighting is a large area and splitting it keeps

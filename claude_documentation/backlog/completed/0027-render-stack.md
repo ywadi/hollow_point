@@ -28,7 +28,7 @@ this `RenderStack`.
 ## Done when
 
 - [x] `IRenderLayer` with a render entry point and explicit ordering — stable sort, so equal orders keep insertion order
-- [x] `RenderStack` composites layers in order into one target — verified rendering on a real device, both backends
+- [x] `RenderStack` composites layers in order into one target — verified rendering on a real device, both backends (a *software* device; see the correction below)
 - [x] Per-layer clear behaviour and camera/projection — clear and per-layer **depth** verified in pixels; **camera/projection is resolved per layer** from its own view slot (27.3), with T0081 owning the resolve and T0130 the vocabulary
 - [x] A world layer and a UI/HUD layer both render, correctly stacked — measured in pixels, both backends; see the evidence block below
 - [x] Layers can be enabled/disabled at runtime without reordering — a three-layer stack with one disabled renders exactly two, in order
@@ -125,7 +125,7 @@ layers prove nothing about ordering.
 `tests/fast/scene_render_layer_test.cpp`,
 `tests/gpu/render_stack_composites_test.cpp`.
 
-**Evidence, from a real GPU, both backends:**
+**Evidence, both backends** — see the correction below on *what device*:
 
 ```
 world only: left (0, 0, 0), right (0, 0, 255)
@@ -142,6 +142,34 @@ would read blue in both rows. The left half staying covered proves the HUD did
 not erase what was beneath it.
 
 Full suites green on both targets: 196 fast, 89 integration, 11 gpu.
+
+#### Correction: "a real GPU" was wrong — this is llvmpipe
+
+Written down because it was claimed first and is wrong, and because the same
+claim sits on T0028 in a stronger form.
+
+The `gpu` bucket here runs on **Mesa's software rasteriser**, on both backends:
+
+```
+[info ] render: Vulkan on 'llvmpipe (LLVM 20.1.2, 256 bits)', 256x256, 3 buffers, vsync off
+[info ] render: OpenGL on 'llvmpipe (LLVM 20.1.2, 256 bits)', 256x256, 2 buffers, vsync off
+```
+
+The machine **does** have an RTX 4070 Laptop GPU and `/dev/dxg` exists, but
+`/usr/share/vulkan/icd.d/` carries no NVIDIA ICD — only `lvp_icd.json`
+(lavapipe). So Vulkan resolves to software and there is no hardware path to
+resolve to.
+
+**What that does and does not weaken.** Lavapipe and llvmpipe are conformant
+implementations, so everything this ticket asserts is genuinely validated: the
+API usage, the pipeline states, the depth comparison, the viewport handling and
+the composite are all real results. What is *not* covered is hardware driver
+behaviour — precision, format support, and the vendor-specific quirks that are
+exactly why "it works on my machine" is a phrase. **No test here has ever run on
+a hardware GPU.**
+
+Worth fixing at the environment level rather than the ticket level, and worth
+knowing before anyone reads a green `gpu` bucket as hardware coverage.
 
 #### The engine renders every mesh pure black, and that is not a T0027 bug
 

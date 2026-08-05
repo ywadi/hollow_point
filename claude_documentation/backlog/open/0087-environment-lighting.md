@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 490 |
 | **Created** | 2026-08-03 |
-| **Refs** | [0134-pbr-renderer-adoption.md](0134-pbr-renderer-adoption.md) — **decide whether this ticket configures DiligentFX's IBL or supersedes it.** T0028 adopted `GLTF_PBR_Renderer`, which ships an IBL path |
+| **Refs** | [0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) — **decide whether this ticket configures DiligentFX's IBL or supersedes it.** T0028 adopted `GLTF_PBR_Renderer`, which ships an IBL path |
 
 ## Why
 
@@ -40,6 +40,27 @@ it is largely provided already by `EnvMapRenderer`.
       IBL -- before scenes are lit (see the 2026-08-03 amendment)
 
 ## Notes / findings
+
+### Inherited from T0134 / D24 (2026-08-05) — configure DiligentFX's IBL, do not supersede it
+
+**D24 answers this ticket's open question: configure.** The mechanism, so it is
+not re-surveyed:
+
+- `PBR_Renderer::CreateInfo::EnableIBL` — currently `false`, which is one of the
+  three reasons every mesh renders black.
+- `PBR_Renderer::PrecomputeCubemaps(ctx, attribs)` takes an environment map SRV
+  and produces the irradiance cube and prefiltered environment map, with
+  `GetIrradianceCubeDesc()` / `GetPrefilteredEnvMapDesc()` describing the targets
+  and `NumDiffuseSamples` / `NumSpecularSamples` controlling quality.
+- `Renderer.IBLScale` (a `float4`) and `Renderer.PrefilteredCubeLastMip` are the
+  frame parameters. **`PrefilteredCubeLastMip` is the one field Diligent wants to
+  own** — `SetInternalShaderParameters(params, prefilteredEnvMapSRV)` sets it, and
+  `SceneRenderer` already calls that with `nullptr`. Passing the real SRV is this
+  ticket's change.
+- `PSO_FLAG_USE_IBL` must come out of `kFeatureMask` in `SceneRenderer.cpp`.
+- `Components/EnvMapRenderer.hpp` draws the skybox itself.
+
+Read [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) first.
 
 **`EnvMapRenderer` and `PBR_Renderer` already implement most of this** — the work
 is asset plumbing and authoring, not writing IBL. Check what prefiltering Diligent

@@ -54,15 +54,27 @@ Diligent::TEXTURE_FORMAT toDiligentFormat(TargetFormat format) {
     return Diligent::TEX_FORMAT_RGBA8_UNORM_SRGB;
 }
 
-/// The features this ticket deliberately does not enable.
+/// The shading features currently enabled, which is the whole of them.
 ///
-/// `RenderInfo::Flags` in DiligentFX is a **mask** — it can only remove flags,
-/// never add one — so this is expressed as what survives rather than what is
-/// switched off. The five excluded are exactly the ones owned by other tickets:
-/// image-based lighting (T0087), punctual lights (T0079), tone mapping (T0096),
-/// shadows (T0086) and motion vectors (T0111/T0096). T0134 decides how much of
-/// that path the engine eventually adopts; until then, enabling any of them here
-/// would be this ticket quietly answering their question.
+/// **This is the adoption boundary from D24, stated in code** — promoted by
+/// T0134 from the stopgap T0028 left here. `RenderInfo::Flags` in DiligentFX is
+/// a **mask**: it can only remove flags, never add one, so the boundary is
+/// expressed as what survives rather than as what is switched off.
+///
+/// Everything excluded belongs to a ticket that has not landed, and **each bit
+/// comes off when its ticket does** rather than being enabled speculatively:
+///
+/// | Flag | Ticket |
+/// |---|---|
+/// | `PSO_FLAG_USE_LIGHTS` | T0079 — also raises `MaxLightCount` and sets `Renderer.LightCount` |
+/// | `PSO_FLAG_USE_IBL` | T0087 — also `EnableIBL` and the precomputed cubemaps |
+/// | `PSO_FLAG_ENABLE_SHADOWS` | T0086 — also `EnableShadows` and `MaxShadowCastingLightCount` |
+/// | `PSO_FLAG_ENABLE_TONE_MAPPING` | T0096 — **and D24 recommends it stays off**; tonemapping belongs in a pass over an HDR target, because the in-shader path tonemaps per draw before blending and leaves bloom nothing to read |
+/// | `PSO_FLAG_COMPUTE_MOTION_VECTORS` | T0111/T0096 — `PrevCamera` is already written every frame, so only the flag is missing |
+///
+/// **Three of these are why every mesh currently renders pure black**: no
+/// lights, no IBL, no emissive. That is measured, not assumed, and it is
+/// recorded on T0079.
 constexpr Diligent::PBR_Renderer::PSO_FLAGS kFeatureMask =
     static_cast<Diligent::PBR_Renderer::PSO_FLAGS>(
         Diligent::PBR_Renderer::PSO_FLAG_VERTEX_ATTRIBS |
@@ -507,6 +519,51 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
 
             // Left-handed, matching the engine's convention (T0056/T0130).
             camera.fHandness = -1.0F;
+
+            // **`Renderer` must be written, and not writing it was a real bug
+            // (T0134).** The buffer is mapped `MAP_FLAG_DISCARD`, so every field
+            // in this struct is undefined until something assigns it -- and
+            // `RenderPBR.psh` reads `Renderer.MipBias` *unconditionally*, on
+            // every texture sample of every draw (`ReadBaseLayerProperties`,
+            // lines 147-148), along with `OcclusionStrength` and
+            // `EmissionScale`.
+            //
+            // It went unnoticed because the only meshes drawn so far have no
+            // textures at all: they sample the renderer's 1x1 defaults, where a
+            // garbage mip bias selects the only mip there is. The first textured
+            // material would have produced randomly blurred surfaces, varying
+            // per frame, with nothing pointing at the cause.
+            //
+            // Value-initialised first so a field added by a Diligent upgrade
+            // starts at zero rather than at whatever was in the buffer.
+            Diligent::HLSL::PBRRendererShaderParameters& params = frame->Renderer;
+            params = Diligent::HLSL::PBRRendererShaderParameters{};
+
+            // Sets `PrefilteredCubeLastMip`, and is the only field Diligent
+            // wants to own. Null env map is correct while IBL is off (T0087).
+            impl.renderer->SetInternalShaderParameters(params, nullptr);
+
+            params.OcclusionStrength = 1.0F;
+            params.EmissionScale = 1.0F;
+            params.IBLScale = float4(1.0F, 1.0F, 1.0F, 1.0F);
+            params.PointSize = 1.0F;
+            // Zero: no mip bias. A negative value sharpens and a positive one
+            // blurs, and T0111's render-scale decision is where a non-zero one
+            // would come from, not here.
+            params.MipBias = 0.0F;
+
+            // **Zero until T0079.** The shader clamps its light loop to this, so
+            // it is what makes "no lights" mean no lights rather than reading
+            // past the end of an array that `MaxLightCount = 0` did not
+            // allocate.
+            params.LightCount = 0;
+
+            // Tonemapping parameters. Unused while `PSO_FLAG_ENABLE_TONE_MAPPING`
+            // is masked off, and set to Diligent's own defaults anyway so that
+            // turning it on in T0096 changes one thing rather than two.
+            params.AverageLogLum = 0.3F;
+            params.MiddleGray = 0.18F;
+            params.WhitePoint = 3.0F;
 
             frame->PrevCamera = camera;
         }

@@ -986,3 +986,67 @@ programmers. No declaration layer closes the last gap — a segfault is still a
 segfault, and a compile error still stops the world. That is a studio and hiring
 question, not an engineering one, and it is the one input that would change this
 answer.
+
+---
+
+## D24 — DiligentFX's `PBR_Renderer` is the engine's shading path, driven directly; its glTF renderer, its USD stack and its extended materials are not
+
+**Decided 2026-08-05 on T0134**, after T0028 had to pick something to turn a
+`Diligent::GLTF::Model*` into pixels and could not answer the broader question
+inside its own scope. Four tickets inherit this — T0060 (materials), T0079
+(lights), T0087 (IBL), T0096 (HDR) — and the point of writing it down is that
+they inherit an argument rather than an accident.
+
+**Adopted:** `PBR_Renderer` — its shaders, pipeline-state creation and caching,
+shader-resource-binding management and material attribs — together with its
+shader-side data model. `PBRFrameAttribs`, `CameraAttribs`, `PBRLightAttribs` and
+`PBRMaterialShaderAttribs` **are the engine's shader vocabulary**; systems
+populate them rather than inventing parallel structures. Its `static` writer
+helpers are used as-is, because they encode the packing rules and reimplementing
+them is how a layout drifts silently.
+
+**Owned here, not by DiligentFX:** the `GraphicsPipelineDesc`, the model
+traversal, and frame-attribs population. The first is forced — reverse-Z (T0130)
+requires `COMPARISON_FUNC_GREATER_EQUAL` and `GLTF_PBR_Renderer` builds its own
+desc with `DepthFunc` left at `LESS`, behind a private PSO cache, which under our
+convention draws **nothing at all**. The second follows from the first, and is
+where T0060's per-entity overrides and T0045's sorting have to live anyway.
+
+**Rejected, and these are the ones worth the ink:**
+
+- **`GLTF_PBR_Renderer`** — the reverse-Z blocker above. Not a preference.
+- **`USD_Renderer`, `Hydrogent`, `Radient`** — whole USD/Hydra scene-description
+  subsystems. The asset model here is glTF through T0023; adopting a USD stage
+  model is a far larger decision than picking a renderer, and nothing has asked.
+- **Extended materials** — clearcoat, sheen, anisotropy, iridescence,
+  transmission, volume. Each widens the PSO permutation space and the material
+  attribs buffer **whether or not any material uses it**. Off until a ticket asks
+  by name.
+- **OIT** — order-independent transparency is a transparency *design*, not a
+  flag, and nothing has designed transparency.
+- **An abstraction over the renderer** — **D22**. One implementation, so an
+  interface buys indirection and nothing else. The modularity is structural: the
+  renderer lives inside one `.cpp` behind an `Impl`, and DiligentFX is linked
+  PRIVATE.
+
+**Tonemapping is a PBR-shader feature, not a pass, and the natural reading of
+the tree is wrong.** `Components/ToneMapping.hpp` declares two functions —
+`ReverseExpToneMap` and `ToneMappingUpdateUI` — and is a UI helper;
+`Shaders/PostProcess/ToneMapping/` is a shader *include*. There is no standalone
+tonemapping stage, so there is no double-apply hazard. The genuine fork is
+in-shader (`PSO_FLAG_ENABLE_TONE_MAPPING`) versus a pass over an HDR target, and
+**T0096 should take the pass**: the in-shader path tonemaps per draw before
+blending, which breaks transparency and leaves DiligentFX's Bloom component with
+no HDR image to read.
+
+**What this decision does not cover, deliberately:** which lights exist and how
+they are selected (T0079), what a material asset is (T0060), the HDR chain
+(T0096), and anti-aliasing (T0111). This decides *whose code shades a pixel*, not
+what the pixel should look like.
+
+**Revisit if** a second rendering target appears — a deferred path, a mobile
+tier, or a stylised non-PBR renderer. That is the "concrete second target" D22
+names as the precondition for an abstraction, and it would reopen this rather
+than being layered on top of it. The seam that would hurt is **not** the draw
+call: it is `MeshAsset::model()` returning `Diligent::GLTF::Model*` from a public
+header, which T0023 committed to and which no renderer interface would touch.

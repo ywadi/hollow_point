@@ -44,6 +44,25 @@ get shadows, at what resolution, and making them look right is ours.
 
 ## Notes / findings
 
+### Inherited from T0134 / D24 (2026-08-05) — the shadow plumbing already exists
+
+Recorded so this ticket does not re-survey what T0134 enumerated. Per D24, the
+engine **configures** DiligentFX here rather than superseding it:
+
+- `PBR_Renderer::CreateInfo::EnableShadows` and `MaxShadowCastingLightCount`
+  (default 8) — both currently off/unused.
+- `PBRShadowMapInfo` occupies a tail region of the frame-attribs buffer, sized by
+  `GetPRBFrameAttribsSize(LightCount, ShadowCastingLightCount)`.
+- `PBRLightAttribs::ShadowMapIndex` is **already in the light struct** T0079 will
+  populate — `-1` for a light that casts none. So the light/shadow linkage is
+  decided; this ticket allocates the maps and fills the indices.
+- `CreateInfo::PCFKernelSize` (default 3) is the filtering knob.
+- `Components/ShadowMapManager.hpp` manages cascade textures.
+- `PSO_FLAG_ENABLE_SHADOWS` must come out of `kFeatureMask` in
+  `SceneRenderer.cpp`.
+
+Read [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) first.
+
 **This machinery is also used for visibility, not only for lighting** (T0093).
 Vision cones render occlusion maps through the same path. Keep shadow map
 rendering and sampling reusable rather than hard-wired to the lighting pass — a

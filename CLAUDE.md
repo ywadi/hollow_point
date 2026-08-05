@@ -24,7 +24,7 @@ you in the first ten minutes.
 | What runs when, in a frame? | [`claude_documentation/documentation/08-frame-anatomy.md`](claude_documentation/documentation/08-frame-anatomy.md) |
 | What does *game* code look like? | [`claude_documentation/documentation/09-gameplay-authoring.md`](claude_documentation/documentation/09-gameplay-authoring.md) |
 
-**The decision log is binding.** Entries D1–D23 record what was rejected and
+**The decision log is binding.** Entries D1–D24 record what was rejected and
 why, usually against a specific failure. If you are about to do something one of
 them forbids, read the entry first and change the decision deliberately — do not
 quietly diverge.

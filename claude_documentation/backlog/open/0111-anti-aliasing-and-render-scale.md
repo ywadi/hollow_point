@@ -9,7 +9,7 @@
 | **Order** | 385 |
 | **Created** | 2026-08-03 |
 | **Blocks** | T0046 |
-| **Refs** | T0033, T0047, T0081, T0096, T0101, T0106, [../../documentation/07-design-gaps.md](../../documentation/07-design-gaps.md) item 2 |
+| **Refs** | T0033, T0047, T0081, T0096, T0101, T0106, [../../documentation/07-design-gaps.md](../../documentation/07-design-gaps.md) item 2, [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) — **DiligentFX ships `TemporalAntiAliasing` and `PrevCamera` is already written every frame**; also records that this ticket's `Blocks: T0046` window has already closed |
 
 ## Why
 
@@ -83,6 +83,34 @@ said now, before the world layer assumes it renders at swap-chain size.
       T0046/T0096/T0101 say the same thing
 
 ## Notes / findings
+
+### Inherited from T0134 (2026-08-05) — TAA ships, and the formats have already frozen
+
+Two facts this ticket should not re-derive:
+
+- **`DiligentFX/PostProcess/TemporalAntiAliasing/` exists and is referenced by
+  nothing.** So does `ScreenSpaceReflection`, which typically wants the same
+  motion vectors. `PSO_FLAG_COMPUTE_MOTION_VECTORS` is the PBR-side switch, and
+  `PBRFrameAttribs::PrevCamera` **is already written every frame** by
+  `SceneRenderer` — the history half of TAA's input is in place and costs nothing
+  today.
+- **This ticket's "decide before the formats freeze" window has closed**, and
+  saying so is more useful than leaving the title implying otherwise. It declares
+  `Blocks: T0046`, and T0046 is **done**. There are now three sites assuming
+  single-sample targets: `FrameTargets::formatFor`, and two pipeline-state
+  descriptions in `SceneRenderer` (the world path and T0027.4's depth-less HUD
+  path). `grep -rniE "samplecount|SampleDesc|msaa|multisample"` over `engine/`
+  returns **zero hits** — MSAA is not deferred here, it is absent and undeclared.
+
+The retrofit is still small and grows monotonically: T0060, T0079 and T0096 each
+add pipeline states, and T0106's soft particles add a depth read, which is where
+MSAA stops being a format change and becomes a per-sample-resolve change.
+
+**Render scale is in better shape than the ticket assumes.** It warns against the
+world layer assuming it renders at swap-chain size — it does not. `SceneView` and
+`FrameTargets` own their own size and the scene renders offscreen (T0028.4), and
+`SceneRenderLayer` takes its viewport from the resolved camera rather than the
+pass (T0027.3). The machinery render scale needs is already the machinery in use.
 
 - This is a *decision* ticket with hooks, not an implementation ticket. The
   danger it exists to prevent is a silent default -- shipping aliased because

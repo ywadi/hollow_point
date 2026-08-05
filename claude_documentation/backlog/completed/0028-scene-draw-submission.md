@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 410 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0120, [../open/0033-viewport-panel.md](../open/0033-viewport-panel.md), [../open/0134-pbr-renderer-adoption.md](../open/0134-pbr-renderer-adoption.md), [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), [../completed/0081-camera-system.md](../completed/0081-camera-system.md), [0027-render-stack.md](0027-render-stack.md), [../open/0079-lighting-system.md](../open/0079-lighting-system.md) — **see the caveat below on what this ticket's pixel evidence actually proves** |
+| **Refs** | T0120, [../open/0033-viewport-panel.md](../open/0033-viewport-panel.md), [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md), [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), [../completed/0081-camera-system.md](../completed/0081-camera-system.md), [0027-render-stack.md](0027-render-stack.md), [../open/0079-lighting-system.md](../open/0079-lighting-system.md) — **see the caveat below on what this ticket's pixel evidence actually proves** |
 
 ## Why
 
@@ -68,7 +68,7 @@ linkage reads both ways:**
   than needing a fix first. The alternative, if T0033 is far off, is a
   fullscreen-triangle blit, which is also what a compositor does and would then
   belong to T0027 rather than being written twice.
-- **Material texture colour-space conversion → [T0134](../open/0134-pbr-renderer-adoption.md).**
+- **Material texture colour-space conversion → [T0134](../completed/0134-pbr-renderer-adoption.md).**
   `GetPBRTextureSRV` is not public, so textures bind through the model's own
   views with no conversion applied. Untextured materials are unaffected, which is
   why this ticket's own tests pass. It sits next to T0097's sRGB work.
@@ -258,7 +258,7 @@ will arrive with the intuition:
 **The broad question is not this ticket's**, and burying it here would make T0060
 inherit a renderer by accident. How far DiligentFX's PBR path is adopted — and
 what T0060, T0079, T0087 and T0096 do about materials, lighting, IBL and
-tonemapping — is [T0134](../open/0134-pbr-renderer-adoption.md), which carries
+tonemapping — is [T0134](../completed/0134-pbr-renderer-adoption.md), which carries
 this survey and references all four both ways. **This ticket leaves an
 unshaded-mode stopgap that T0134.6 resolves.**
 
@@ -370,7 +370,14 @@ static_assert(kReverseZ, "the depth comparison above assumes T0130's reverse-Z")
 [info ] render.scene: scene renderer ready, reverse-Z depth
 ```
 
-on **both** backends: Vulkan on an NVIDIA RTX 4070, and OpenGL. So `PBR_Renderer`
+on **both** backends. **Correction (2026-08-05, from T0134): the device was not
+an NVIDIA RTX 4070**, which this said and which was not checked. Both backends
+resolve to Mesa's software rasteriser here — `Vulkan on 'llvmpipe (LLVM 20.1.2,
+256 bits)'` — because `/usr/share/vulkan/icd.d/` carries only `lvp_icd.json` and
+no NVIDIA ICD, despite the machine having an RTX 4070 and `/dev/dxg`. Lavapipe
+and llvmpipe are conformant, so the result below stands; it is simply not
+hardware coverage, and **nothing in this repository has yet run on a GPU**. So
+`PBR_Renderer`
 compiles its shaders and builds pipeline states against `GREATER_EQUAL` on both
 — the substitution for `GLTF_PBR_Renderer` works, and reverse-Z is not something
 the backends object to.

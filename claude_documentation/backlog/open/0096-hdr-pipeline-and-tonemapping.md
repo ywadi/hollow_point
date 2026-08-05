@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 460 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0027, T0046, T0060, T0087, T0089, T0111, [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), [0134-pbr-renderer-adoption.md](0134-pbr-renderer-adoption.md) — **DiligentFX ships its own `ToneMapping` component; this ticket's policy must say whether it is used** |
+| **Refs** | T0027, T0046, T0060, T0087, T0089, T0111, [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), [0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) — **DiligentFX ships its own `ToneMapping` component; this ticket's policy must say whether it is used** |
 
 ## Why
 
@@ -65,6 +65,47 @@ work here is wiring and policy, not writing a tonemapper.
       settings (T0078) — do not integrate them yet
 
 ## Notes / findings
+
+### Inherited from T0134 / D24 (2026-08-05) — and this ticket's Refs stated a false premise
+
+**Correction first, because it is written into this ticket's own Refs and into
+T0134's Done-when, and it is wrong.** The claim was that DiligentFX ships its own
+`ToneMapping` *component* alongside the in-shader path, so the two could
+double-apply. **There is no such component.**
+
+- `Components/interface/ToneMapping.hpp` declares exactly two functions —
+  `ReverseExpToneMap` and `ToneMappingUpdateUI`. It is a UI helper, which is why
+  **D6** lists it among the ImGui-calling headers.
+- `Shaders/PostProcess/ToneMapping/` contains only `ToneMapping.fxh` and
+  `ToneMappingStructures.fxh` — a shader **include**, shared rather than staged.
+- `PostProcess/` on the C++ side has **no ToneMapping directory**: only `Bloom`,
+  `DepthOfField`, `EpipolarLightScattering`, `ScreenSpaceAmbientOcclusion`,
+  `ScreenSpaceReflection` and `TemporalAntiAliasing`.
+
+**Tonemapping in DiligentFX happens in the PBR pixel shader and nowhere else** —
+`RenderPBR.psh:530-540`, under `#if ENABLE_TONE_MAPPING`, calling
+`ToneMap(OutColor.rgb, TMAttribs, g_Frame.Renderer.AverageLogLum)` with
+`TONE_MAPPING_MODE` as a compile-time define. Twelve modes ship, including AgX
+and PBR-neutral. So there is **no double-apply hazard to design around.**
+
+**The real fork, and D24's recommendation — take the pass:**
+
+- *In-shader* (`PSO_FLAG_ENABLE_TONE_MAPPING`): no extra pass, no HDR target.
+  But it tonemaps **per draw, before blending** — which breaks transparency and
+  leaves DiligentFX's `Bloom` component with no HDR image to read.
+- *A pass over an HDR target*: what `TargetFormat::ColourHDR` (`RGBA16_FLOAT`)
+  already exists for, and the only option compatible with bloom and correct
+  transparency. `Renderer.AverageLogLum` is the auto-exposure hook, and
+  **T0130.4 already decided exposure lives on the camera** — so auto-exposure
+  writes `Camera::exposureEv100` rather than shadowing it.
+
+**Ordering, which T0027 flagged and the current architecture gets right by
+accident:** tonemapping must apply to the world and not to UI composited over it.
+Today that holds because it would happen inside the world layer's own pixel
+shader. **A tonemap pass must preserve it** — it belongs between the world layers
+and the UI layers, which is what `IRenderLayer::order` exists to express.
+
+Read [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) first.
 
 **T0130 put exposure on the camera, and this ticket must not add a second one.**
 `hp::Camera::exposureEv100` is the exposure, as EV100, and the reasoning is that

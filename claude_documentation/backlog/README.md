@@ -75,7 +75,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 420 | [T0081](completed/0081-camera-system.md) | Camera system | 4 — Render layer | ✅ DONE | Medium | Simple |
 | 430 | [T0085](open/0085-layers-and-masks.md) | Object layers and masks | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 440 | [T0045](open/0045-culling-and-render-queues.md) | Culling, sorting and render queues | 4 — Render layer | 🔜 TODO | High | Complex |
-| 445 | [T0134](open/0134-pbr-renderer-adoption.md) | How far DiligentFX's PBR renderer goes, and what inherits it | 4 — Render layer | 🔜 TODO | High | Moderate |
+| 445 | [T0134](completed/0134-pbr-renderer-adoption.md) | How far DiligentFX's PBR renderer goes, and what inherits it | 4 — Render layer | ✅ DONE | High | Moderate |
 | 450 | [T0060](open/0060-material-system.md) | Material assets and custom shader materials | 4 — Render layer | 🔜 TODO | High | Complex |
 | 460 | [T0096](open/0096-hdr-pipeline-and-tonemapping.md) | HDR pipeline, tonemapping and the linear-workflow policy | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 470 | [T0079](open/0079-lighting-system.md) | Lights and per-object light selection | 4 — Render layer | 🔜 TODO | High | Complex |

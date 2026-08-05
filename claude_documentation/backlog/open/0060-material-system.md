@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 450 |
 | **Created** | 2026-08-03 |
-| **Refs** | [0134-pbr-renderer-adoption.md](0134-pbr-renderer-adoption.md) — **must reconcile this ticket's material model with `PBR_Renderer`'s material attribs, or diverge deliberately and say so.** T0028 adopted DiligentFX's PBR renderer; read T0134.1 before designing materials |
+| **Refs** | [0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) — **must reconcile this ticket's material model with `PBR_Renderer`'s material attribs, or diverge deliberately and say so.** T0028 adopted DiligentFX's PBR renderer; read T0134.1 before designing materials |
 
 ## Why
 
@@ -46,6 +46,41 @@ ability to attach a custom shader** for anything else.
 - [ ] 60.9 Sort by material/PSO in the render queue (T0045)
 
 ## Notes / findings
+
+### Inherited from T0134 / D24 (2026-08-05) — materials map onto `PBRMaterialShaderAttribs`
+
+**Decided, not left open**: `PBR_Renderer`'s material attribs are the engine's
+material vocabulary, and a material asset maps onto them rather than defining a
+parallel structure. Read [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md)
+before designing the asset — the survey is done, and redoing it is the waste this
+ticket's Refs exist to prevent.
+
+What that gives you for free: `BaseColorFactor`, `EmissiveFactor`, `NormalScale`,
+`SpecularFactor`, `Workflow`, `AlphaMode`, `AlphaMaskCutoff`, `MetallicFactor`,
+plus 17 texture slots addressed by `TEXTURE_ATTRIB_ID_*`.
+
+Three obligations this ticket picks up:
+
+- **`GetMaterialPSOFlags` is currently inlined and constant-folded** in
+  `SceneRenderer.cpp`, because with every optional feature off it collapses to
+  `USE_COLOR_MAP | USE_NORMAL_MAP | USE_PHYS_DESC_MAP`. It carries a
+  `static_assert` guard. **The moment this ticket enables `EnableEmissive` or any
+  extended-material setting, that must go back to consulting the material** or
+  materials will silently render with the wrong feature set.
+- **Extended materials are off by design** — clearcoat, sheen, anisotropy,
+  iridescence, transmission, volume. Each widens the PSO permutation space and
+  the material attribs buffer *whether or not a material uses it*, so turning one
+  on is this ticket's decision to argue, per D24.
+- **Texture colour-space conversion is unresolved and inherited from T0028.**
+  `GetPBRTextureSRV` is not public, so textures bind through the model's own
+  views with no conversion. Untextured materials are unaffected, which is exactly
+  why no test has caught it. Sits next to T0097's sRGB work.
+
+**The regression test T0134 could not write belongs here.** T0134 fixed an
+unwritten `PBRFrameAttribs::Renderer` whose observable symptom — a garbage
+`MipBias` fed into every texture sample — needs a *textured* material to see. A
+textured mesh rendered with its pixels asserted is the guard, and there is no
+texture path in a test yet.
 
 **Custom shaders must be able to reach engine intermediates, not just material
 parameters.** T0093 (vision-based visibility) needs a per-pixel visibility factor
