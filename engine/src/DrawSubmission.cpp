@@ -38,7 +38,8 @@ DrawList parseScene(const Scene& scene, LayerMask cullingMask, DrawParseStats* s
             continue;
         }
 
-        list.push_back(DrawItem{entity, world.current, renderer.mesh, renderer.material});
+        list.push_back(
+            DrawItem{entity, world.current, renderer.mesh, renderer.material, renderer.layers});
         ++counted.drawn;
     }
 

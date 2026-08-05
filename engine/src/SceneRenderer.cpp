@@ -131,6 +131,10 @@ struct SceneRenderer::Impl {
     /// Scratch, reused across frames so a draw does not allocate.
     Diligent::GLTF::ModelTransforms transforms;
 
+    /// The lights chosen for the current object. Reused across draws, because
+    /// selection runs once per drawable thing in the scene.
+    LightList selected;
+
     /// Creates the per-material SRBs for a model, once.
     ///
     /// @param guid the mesh asset's identity, used as the cache key.
@@ -511,121 +515,127 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
 
     Impl& impl = *impl_;
 
-    // Frame-wide shader data. Written once per call rather than per draw, which
-    // is the only reason the camera is a parameter here and not per item.
-    {
+    // **Written per draw, not per frame, because light selection is per
+    // object** (79.3). The camera half is identical every time and re-uploading
+    // it is the price of the shader having exactly one frame-wide light array
+    // with no per-primitive index list. Measured cost is one more dynamic-buffer
+    // map per draw, alongside the two (primitive and material attribs) already
+    // there -- proportionate, and the thing to attack first if submission ever
+    // becomes the bottleneck. The alternative is clustered forward, which is
+    // T0079's named next step and a different shape of frame.
+    const auto writeFrameAttribs = [&](const LightList& selected) {
         HP_PROFILE_ZONE_NAMED("frame attribs");
-        Diligent::MapHelper<Diligent::HLSL::PBRFrameAttribs> frame{
-            context, impl.frameAttribs, Diligent::MAP_WRITE, Diligent::MAP_FLAG_DISCARD};
-        if (frame) {
-            Diligent::HLSL::CameraAttribs& camera = frame->Camera;
-            camera.mView = view.view;
-            camera.mProj = view.projection;
-            camera.mViewProj = view.viewProjection;
-            camera.mViewInv = view.view.Inverse();
-            camera.mProjInv = view.projection.Inverse();
-            camera.mViewProjInv = view.viewProjection.Inverse();
+            Diligent::MapHelper<Diligent::HLSL::PBRFrameAttribs> frame{
+                context, impl.frameAttribs, Diligent::MAP_WRITE, Diligent::MAP_FLAG_DISCARD};
+            if (frame) {
+                Diligent::HLSL::CameraAttribs& camera = frame->Camera;
+                camera.mView = view.view;
+                camera.mProj = view.projection;
+                camera.mViewProj = view.viewProjection;
+                camera.mViewInv = view.view.Inverse();
+                camera.mProjInv = view.projection.Inverse();
+                camera.mViewProjInv = view.viewProjection.Inverse();
 
-            const float4x4 worldFromView = view.view.Inverse();
-            camera.f4Position =
-                float4(worldFromView.m30, worldFromView.m31, worldFromView.m32, 1.0F);
+                const float4x4 worldFromView = view.view.Inverse();
+                camera.f4Position =
+                    float4(worldFromView.m30, worldFromView.m31, worldFromView.m32, 1.0F);
 
-            const auto width = static_cast<float>(view.viewportWidth);
-            const auto height = static_cast<float>(view.viewportHeight);
-            camera.f4ViewportSize = float4(width, height, 1.0F / width, 1.0F / height);
+                const auto width = static_cast<float>(view.viewportWidth);
+                const auto height = static_cast<float>(view.viewportHeight);
+                camera.f4ViewportSize = float4(width, height, 1.0F / width, 1.0F / height);
 
-            // **Near > far is how Diligent is told the buffer is reversed** --
-            // its own comment on this helper says so. Passing them the usual way
-            // round would leave the shaders reconstructing linear depth
-            // backwards, which the depth test alone would not reveal.
-            camera.SetClipPlanes(view.camera.farPlane, view.camera.nearPlane);
+                // **Near > far is how Diligent is told the buffer is reversed** --
+                // its own comment on this helper says so. Passing them the usual way
+                // round would leave the shaders reconstructing linear depth
+                // backwards, which the depth test alone would not reveal.
+                camera.SetClipPlanes(view.camera.farPlane, view.camera.nearPlane);
 
-            // Left-handed, matching the engine's convention (T0056/T0130).
-            camera.fHandness = -1.0F;
+                // Left-handed, matching the engine's convention (T0056/T0130).
+                camera.fHandness = -1.0F;
 
-            // **`Renderer` must be written, and not writing it was a real bug
-            // (T0134).** The buffer is mapped `MAP_FLAG_DISCARD`, so every field
-            // in this struct is undefined until something assigns it -- and
-            // `RenderPBR.psh` reads `Renderer.MipBias` *unconditionally*, on
-            // every texture sample of every draw (`ReadBaseLayerProperties`,
-            // lines 147-148), along with `OcclusionStrength` and
-            // `EmissionScale`.
-            //
-            // It went unnoticed because the only meshes drawn so far have no
-            // textures at all: they sample the renderer's 1x1 defaults, where a
-            // garbage mip bias selects the only mip there is. The first textured
-            // material would have produced randomly blurred surfaces, varying
-            // per frame, with nothing pointing at the cause.
-            //
-            // Value-initialised first so a field added by a Diligent upgrade
-            // starts at zero rather than at whatever was in the buffer.
-            Diligent::HLSL::PBRRendererShaderParameters& params = frame->Renderer;
-            params = Diligent::HLSL::PBRRendererShaderParameters{};
+                // **`Renderer` must be written, and not writing it was a real bug
+                // (T0134).** The buffer is mapped `MAP_FLAG_DISCARD`, so every field
+                // in this struct is undefined until something assigns it -- and
+                // `RenderPBR.psh` reads `Renderer.MipBias` *unconditionally*, on
+                // every texture sample of every draw (`ReadBaseLayerProperties`,
+                // lines 147-148), along with `OcclusionStrength` and
+                // `EmissionScale`.
+                //
+                // It went unnoticed because the only meshes drawn so far have no
+                // textures at all: they sample the renderer's 1x1 defaults, where a
+                // garbage mip bias selects the only mip there is. The first textured
+                // material would have produced randomly blurred surfaces, varying
+                // per frame, with nothing pointing at the cause.
+                //
+                // Value-initialised first so a field added by a Diligent upgrade
+                // starts at zero rather than at whatever was in the buffer.
+                Diligent::HLSL::PBRRendererShaderParameters& params = frame->Renderer;
+                params = Diligent::HLSL::PBRRendererShaderParameters{};
 
-            // Sets `PrefilteredCubeLastMip`, and is the only field Diligent
-            // wants to own. Null env map is correct while IBL is off (T0087).
-            impl.renderer->SetInternalShaderParameters(params, nullptr);
+                // Sets `PrefilteredCubeLastMip`, and is the only field Diligent
+                // wants to own. Null env map is correct while IBL is off (T0087).
+                impl.renderer->SetInternalShaderParameters(params, nullptr);
 
-            params.OcclusionStrength = 1.0F;
-            params.EmissionScale = 1.0F;
-            params.IBLScale = float4(1.0F, 1.0F, 1.0F, 1.0F);
-            params.PointSize = 1.0F;
-            // Zero: no mip bias. A negative value sharpens and a positive one
-            // blurs, and T0111's render-scale decision is where a non-zero one
-            // would come from, not here.
-            params.MipBias = 0.0F;
+                params.OcclusionStrength = 1.0F;
+                params.EmissionScale = 1.0F;
+                params.IBLScale = float4(1.0F, 1.0F, 1.0F, 1.0F);
+                params.PointSize = 1.0F;
+                // Zero: no mip bias. A negative value sharpens and a positive one
+                // blurs, and T0111's render-scale decision is where a non-zero one
+                // would come from, not here.
+                params.MipBias = 0.0F;
 
-            // **Zero until T0079.** The shader clamps its light loop to this, so
-            // it is what makes "no lights" mean no lights rather than reading
-            // past the end of an array that `MaxLightCount = 0` did not
-            // allocate.
-            // **Light data follows the frame struct in the same buffer** --
-            // `PBRFrameAttribs` deliberately does not declare the array (its
-            // length is a shader define), so the C++ side writes past the end of
-            // the struct into space `GetPRBFrameAttribsSize` reserved. This is
-            // how Diligent's own viewer does it; there is no typed accessor.
-            auto* lightArray = reinterpret_cast<Diligent::HLSL::PBRLightAttribs*>(frame + 1);
-            const std::size_t lightCount = std::min(lights.size(), kMaxLights);
-            for (std::size_t i = 0; i < lightCount; ++i) {
-                const ResolvedLight& source = lights[i];
+                // **Zero until T0079.** The shader clamps its light loop to this, so
+                // it is what makes "no lights" mean no lights rather than reading
+                // past the end of an array that `MaxLightCount = 0` did not
+                // allocate.
+                // **Light data follows the frame struct in the same buffer** --
+                // `PBRFrameAttribs` deliberately does not declare the array (its
+                // length is a shader define), so the C++ side writes past the end of
+                // the struct into space `GetPRBFrameAttribsSize` reserved. This is
+                // how Diligent's own viewer does it; there is no typed accessor.
+                auto* lightArray = reinterpret_cast<Diligent::HLSL::PBRLightAttribs*>(frame + 1);
+                const std::size_t lightCount = std::min(selected.size(), kMaxLights);
+                for (std::size_t i = 0; i < lightCount; ++i) {
+                    const ResolvedLight& source = selected[i];
 
-                // Converted into Diligent's own glTF light rather than packed by
-                // hand, so `Range4` and the spot cone's scale/offset come from
-                // the code that owns the layout (D24). Reimplementing that
-                // packing is how a layout drifts silently.
-                Diligent::GLTF::Light lamp;
-                switch (source.light.type) {
-                case LightType::Directional:
-                    lamp.Type = Diligent::GLTF::Light::TYPE::DIRECTIONAL;
-                    break;
-                case LightType::Point:
-                    lamp.Type = Diligent::GLTF::Light::TYPE::POINT;
-                    break;
-                case LightType::Spot:
-                    lamp.Type = Diligent::GLTF::Light::TYPE::SPOT;
-                    break;
+                    // Converted into Diligent's own glTF light rather than packed by
+                    // hand, so `Range4` and the spot cone's scale/offset come from
+                    // the code that owns the layout (D24). Reimplementing that
+                    // packing is how a layout drifts silently.
+                    Diligent::GLTF::Light lamp;
+                    switch (source.light.type) {
+                    case LightType::Directional:
+                        lamp.Type = Diligent::GLTF::Light::TYPE::DIRECTIONAL;
+                        break;
+                    case LightType::Point:
+                        lamp.Type = Diligent::GLTF::Light::TYPE::POINT;
+                        break;
+                    case LightType::Spot:
+                        lamp.Type = Diligent::GLTF::Light::TYPE::SPOT;
+                        break;
+                    }
+                    lamp.Color = source.light.colour;
+                    lamp.Intensity = source.light.intensity;
+                    lamp.Range = source.light.range;
+                    lamp.InnerConeAngle = source.light.innerConeAngle;
+                    lamp.OuterConeAngle = source.light.outerConeAngle;
+
+                    Diligent::GLTF_PBR_Renderer::WritePBRLightShaderAttribs(
+                        {&lamp, &source.position, &source.direction, 1.0F}, lightArray + i);
                 }
-                lamp.Color = source.light.colour;
-                lamp.Intensity = source.light.intensity;
-                lamp.Range = source.light.range;
-                lamp.InnerConeAngle = source.light.innerConeAngle;
-                lamp.OuterConeAngle = source.light.outerConeAngle;
+                params.LightCount = static_cast<int>(lightCount);
 
-                Diligent::GLTF_PBR_Renderer::WritePBRLightShaderAttribs(
-                    {&lamp, &source.position, &source.direction, 1.0F}, lightArray + i);
+                // Tonemapping parameters. Unused while `PSO_FLAG_ENABLE_TONE_MAPPING`
+                // is masked off, and set to Diligent's own defaults anyway so that
+                // turning it on in T0096 changes one thing rather than two.
+                params.AverageLogLum = 0.3F;
+                params.MiddleGray = 0.18F;
+                params.WhitePoint = 3.0F;
+
+                frame->PrevCamera = camera;
             }
-            params.LightCount = static_cast<int>(lightCount);
-
-            // Tonemapping parameters. Unused while `PSO_FLAG_ENABLE_TONE_MAPPING`
-            // is masked off, and set to Diligent's own defaults anyway so that
-            // turning it on in T0096 changes one thing rather than two.
-            params.AverageLogLum = 0.3F;
-            params.MiddleGray = 0.18F;
-            params.WhitePoint = 3.0F;
-
-            frame->PrevCamera = camera;
-        }
-    }
+    };
 
     // What `GLTF_PBR_Renderer::Begin` does, inlined because it is on the derived
     // class: next-gen backends require a dynamic buffer to be mapped before its
@@ -643,6 +653,12 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
             ++counted.missingMesh;
             continue;
         }
+
+        // The object's world position is the translation row of its transform.
+        const float3 objectPosition{item.world.m30, item.world.m31, item.world.m32};
+        selectLightsFor(lights, objectPosition, item.layers, kMaxLights, impl.selected);
+        writeFrameAttribs(impl.selected);
+
         if (impl.drawModel(context, *mesh->model(), item, item.mesh)) {
             ++counted.submitted;
         }

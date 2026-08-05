@@ -52,6 +52,14 @@ struct DrawItem {
     /// mesh with no material assigned is still visible rather than silently
     /// absent (28.2).
     Guid material;
+
+    /// The object's layers, copied from its `MeshRenderer` (T0085).
+    ///
+    /// Carried here rather than looked up again because **light selection needs
+    /// it per draw** (T0079.3) and the submit step has no scene to ask. Copying
+    /// four bytes at parse time beats re-entering the registry inside the
+    /// hottest loop in the renderer.
+    LayerMask layers = defaultObjectLayers();
 };
 
 /// The parse step's output, in registry order.

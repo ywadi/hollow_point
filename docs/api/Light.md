@@ -6,7 +6,7 @@
 #include <hp/Light.hpp>
 ```
 
-7 public declaration(s), 7 documented.
+8 public declaration(s), 8 documented.
 
 ## `LightType`
 
@@ -110,3 +110,32 @@ int gatherLights(const Scene & scene, std::size_t maxLights)
  @param maxLights the cap, normally `kMaxLights`.
  @returns the lights, empty when the scene has none — which is not an error
           and renders an unlit (black) frame.
+
+## `selectLightsFor`
+
+```cpp
+void selectLightsFor(const int & lights, const float3 & objectPosition, LayerMask objectLayers, std::size_t maxLights, int & out)
+```
+
+ Picks the lights that matter to one object (T0079.3, T0085.4).
+
+ **This is the design decision the ticket names**, and the answer here is
+ deliberately the simple one: filter by layer, then take the nearest N by
+ distance from the light to the object, with directional lights always kept
+ because they have no position to be far from.
+
+ Nearest-N is chosen over tiled or clustered forward because it is the option
+ that can be *measured* against a real scene before a harder one is justified
+ — clustered forward is substantially more work and changes the shape of the
+ frame. **Its known weakness is popping**: when an object moves, the set can
+ change abruptly and the lighting jumps. Sorting by distance alone is exactly
+ what causes that, so this is the line to revisit first when it shows up,
+ rather than the conclusion that nearest-N was wrong.
+
+ @param lights every light in the frame, from `gatherLights`.
+ @param objectPosition the object's world position.
+ @param objectLayers the object's `MeshRenderer::layers`.
+ @param maxLights how many to keep. Clamped to `kMaxLights`.
+ @param out filled with the chosen lights, nearest first. Cleared first, and
+        reused across draws so selection does not allocate per object.
+ @returns nothing.

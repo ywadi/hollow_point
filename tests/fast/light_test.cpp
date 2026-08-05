@@ -221,3 +221,106 @@ TEST_CASE("an out-of-range light type is refused, not cast blindly") {
     CHECK(restored.type == before);
     CHECK(static_cast<int>(restored.type) <= static_cast<int>(hp::LightType::Spot));
 }
+
+// --- per-object selection (79.3) and the illumination mask (79.5) ------------
+
+namespace {
+
+hp::ResolvedLight lampAt(float x, hp::LightType type, float range = 100.0F) {
+    hp::ResolvedLight resolved;
+    resolved.light.type = type;
+    resolved.light.range = range;
+    resolved.position = hp::float3{x, 0.0F, 0.0F};
+    return resolved;
+}
+
+} // namespace
+
+TEST_CASE("selection keeps the nearest lights and drops the rest") {
+    hp::LightList all{lampAt(100.0F, hp::LightType::Point), lampAt(1.0F, hp::LightType::Point),
+                      lampAt(10.0F, hp::LightType::Point)};
+    hp::LightList chosen;
+
+    hp::selectLightsFor(all, hp::float3{0.0F, 0.0F, 0.0F}, hp::LayerMask::all(), 2, chosen);
+
+    REQUIRE(chosen.size() == 2);
+    CHECK(chosen[0].position.x == doctest::Approx(1.0F));   // nearest first
+    CHECK(chosen[1].position.x == doctest::Approx(10.0F));
+}
+
+TEST_CASE("a directional light is never crowded out by a nearer lamp") {
+    // **The selection mistake a player notices immediately**: walk past a candle
+    // and the sun stops lighting the world. A directional light has no position
+    // to be far from, so ranking it by distance is meaningless.
+    hp::LightList all{lampAt(0.0F, hp::LightType::Point), lampAt(0.0F, hp::LightType::Directional)};
+    hp::LightList chosen;
+
+    hp::selectLightsFor(all, hp::float3{500.0F, 0.0F, 0.0F}, hp::LayerMask::all(), 1, chosen);
+
+    REQUIRE(chosen.size() == 1);
+    CHECK(chosen[0].light.type == hp::LightType::Directional);
+}
+
+TEST_CASE("a light past its own range does not occupy a slot") {
+    // Without this a distant lamp crowds out a reaching one and the object goes
+    // dark for no visible reason.
+    hp::LightList all{lampAt(50.0F, hp::LightType::Point, 5.0F),
+                      lampAt(3.0F, hp::LightType::Point, 100.0F)};
+    hp::LightList chosen;
+
+    hp::selectLightsFor(all, hp::float3{0.0F, 0.0F, 0.0F}, hp::LayerMask::all(), 4, chosen);
+
+    REQUIRE(chosen.size() == 1);
+    CHECK(chosen[0].position.x == doctest::Approx(3.0F));
+}
+
+TEST_CASE("the illumination mask excludes objects a light must not touch") {
+    // T0085.4: put the player on its own layer and a light on a mask excluding
+    // it, and that light does not affect the player.
+    hp::ResolvedLight worldLamp = lampAt(1.0F, hp::LightType::Point);
+    worldLamp.light.layers = hp::LayerMask::layer(0);
+    hp::ResolvedLight playerLamp = lampAt(2.0F, hp::LightType::Point);
+    playerLamp.light.layers = hp::LayerMask::layer(1);
+
+    const hp::LightList all{worldLamp, playerLamp};
+    hp::LightList chosen;
+
+    hp::selectLightsFor(all, hp::float3{0.0F, 0.0F, 0.0F}, hp::LayerMask::layer(1), 4, chosen);
+    REQUIRE(chosen.size() == 1);
+    CHECK(chosen[0].position.x == doctest::Approx(2.0F));
+
+    // And an object on a layer no light reaches is simply unlit -- legitimate,
+    // not an error.
+    hp::selectLightsFor(all, hp::float3{0.0F, 0.0F, 0.0F}, hp::LayerMask::layer(5), 4, chosen);
+    CHECK(chosen.empty());
+}
+
+TEST_CASE("selection is bounded by the shader's light limit") {
+    hp::LightList all;
+    for (int i = 0; i < 40; ++i) {
+        all.push_back(lampAt(static_cast<float>(i), hp::LightType::Point));
+    }
+    hp::LightList chosen;
+
+    // Asking for more than the shader can hold is clamped, not honoured -- the
+    // frame buffer is sized for `kMaxLights` and writing past it corrupts
+    // whatever follows.
+    hp::selectLightsFor(all, hp::float3{}, hp::LayerMask::all(), 1000, chosen);
+    CHECK(chosen.size() == hp::kMaxLights);
+
+    hp::selectLightsFor(all, hp::float3{}, hp::LayerMask::all(), 0, chosen);
+    CHECK(chosen.empty());
+}
+
+TEST_CASE("selection reuses its output buffer without leaking earlier results") {
+    // It is called once per drawable object per frame, so the caller passes the
+    // same vector every time. A stale entry would light an object with a lamp
+    // that was chosen for a different one.
+    hp::LightList all{lampAt(1.0F, hp::LightType::Point)};
+    hp::LightList chosen;
+    hp::selectLightsFor(all, hp::float3{}, hp::LayerMask::all(), 4, chosen);
+    REQUIRE(chosen.size() == 1);
+
+    hp::selectLightsFor({}, hp::float3{}, hp::LayerMask::all(), 4, chosen);
+    CHECK(chosen.empty());
+}
