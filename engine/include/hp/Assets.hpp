@@ -34,8 +34,12 @@
 
 namespace Diligent {
 struct IRenderDevice;
+struct IDeviceContext;
 struct ITexture;
 struct ITextureView;
+namespace GLTF {
+struct Model;
+} // namespace GLTF
 } // namespace Diligent
 
 namespace hp {
@@ -323,6 +327,89 @@ struct AssetTraits<TextureAsset> {
 [[nodiscard]] HP_API std::shared_ptr<TextureAsset> makePlaceholderTexture(
     Diligent::IRenderDevice* device);
 
+/// A loaded glTF model.
+///
+/// **Owns Diligent's `GLTF::Model` and hands it out raw** (D22), because that is
+/// what T0028 will submit draws from and a wrapper around it would be a second
+/// scene graph to keep in step with the first.
+///
+/// The summary accessors exist for the inspector and for tests; they are not the
+/// rendering interface.
+class HP_API MeshAsset {
+public:
+    /// Constructs an empty asset that holds no model.
+    MeshAsset();
+
+    /// Releases the model and its GPU buffers.
+    ~MeshAsset();
+
+    /// Not copyable: two owners of one set of GPU buffers would double-release.
+    MeshAsset(const MeshAsset&) = delete;
+
+    /// Not copyable; see the copy constructor.
+    /// @returns nothing -- deleted.
+    MeshAsset& operator=(const MeshAsset&) = delete;
+
+    /// Moves the asset.
+    /// @param other the asset to move from.
+    MeshAsset(MeshAsset&& other) noexcept;
+
+    /// Moves the asset.
+    /// @param other the asset to move from.
+    /// @returns this asset.
+    MeshAsset& operator=(MeshAsset&& other) noexcept;
+
+    /// @returns whether a model was loaded.
+    [[nodiscard]] bool valid() const;
+
+    /// @returns the model, or nullptr when empty. Owned by this asset; **valid
+    ///          only while this asset lives**, so a caller that keeps the
+    ///          pointer must keep the `shared_ptr` too.
+    [[nodiscard]] Diligent::GLTF::Model* model() const;
+
+    /// @returns how many meshes the model holds, or 0 when empty.
+    [[nodiscard]] std::size_t meshCount() const;
+
+    /// @returns how many materials the model holds, or 0 when empty.
+    [[nodiscard]] std::size_t materialCount() const;
+
+    /// @returns how many nodes the model holds, or 0 when empty.
+    [[nodiscard]] std::size_t nodeCount() const;
+
+private:
+    friend HP_API std::shared_ptr<MeshAsset> loadMesh(Diligent::IRenderDevice* device,
+                                                      Diligent::IDeviceContext* context,
+                                                      std::string_view virtualPath);
+
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+/// The stable pool name for a mesh.
+template <>
+struct AssetTraits<MeshAsset> {
+    /// Matches `assetKindName(AssetKind::Mesh)`.
+    static constexpr const char* name = "Mesh";
+};
+
+/// Loads a glTF model through the VFS (23.3).
+///
+/// **Every file the loader needs comes from the VFS**, not just the `.gltf`
+/// itself: Diligent calls back for the `.bin` buffers and each referenced image
+/// too, and those callbacks read through `hp::Vfs`. Relative paths inside the
+/// document resolve against the mount tree like anything else, which is what
+/// makes a model inside a pack behave identically to one on disk.
+///
+/// @param device the device to create buffers and textures on.
+/// @param context the immediate context, which the loader needs to upload.
+/// @param virtualPath the model's path in the mount tree.
+/// @returns the model, or nullptr when the file is missing or is not a model
+///          this build can read. **Not fatal** — the caller decides what to show
+///          instead.
+[[nodiscard]] HP_API std::shared_ptr<MeshAsset> loadMesh(Diligent::IRenderDevice* device,
+                                                         Diligent::IDeviceContext* context,
+                                                         std::string_view virtualPath);
+
 /// What an import produced.
 struct ImportResult {
     /// The asset's identity, from its metafile or newly minted.
@@ -353,7 +440,10 @@ struct ImportResult {
 /// @returns what happened. Check `loaded`; `guid` is valid either way, because a
 ///          scene's reference has to resolve to *something* even when the source
 ///          is missing.
-[[nodiscard]] HP_API ImportResult importAsset(Diligent::IRenderDevice* device, AssetPool& pool,
+/// @param context the immediate context, which the glTF loader needs in order
+///        to upload buffers. May be nullptr when only textures are expected.
+[[nodiscard]] HP_API ImportResult importAsset(Diligent::IRenderDevice* device,
+                                              Diligent::IDeviceContext* context, AssetPool& pool,
                                               std::string_view virtualPath);
 
 } // namespace hp

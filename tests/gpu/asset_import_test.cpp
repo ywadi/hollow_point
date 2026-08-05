@@ -94,6 +94,73 @@ void writeTga(const std::filesystem::path& path, int width, int height) {
                static_cast<std::streamsize>(out.size()));
 }
 
+/// Writes a minimal but valid glTF 2.0 model: one triangle, one material.
+///
+/// **The buffer is a separate `.bin` file, deliberately.** Embedding it as a
+/// data URI would prove only that the `.gltf` itself came from the VFS; a
+/// separate buffer is what forces Diligent to call back for a *second* file, and
+/// that callback is the whole mechanism 23.3 depends on.
+void writeGltf(const std::filesystem::path& directory) {
+    std::error_code ec;
+    std::filesystem::create_directories(directory, ec);
+
+    // Three vertices: position (vec3) then normal (vec3), tightly packed.
+    const float vertices[] = {
+        0.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F,
+        1.0F, 0.0F, 0.0F, 0.0F, 0.0F, 1.0F,
+        0.0F, 1.0F, 0.0F, 0.0F, 0.0F, 1.0F,
+    };
+    const std::uint16_t indices[] = {0, 1, 2};
+
+    std::vector<unsigned char> bin;
+    const auto* vbytes = reinterpret_cast<const unsigned char*>(vertices);
+    bin.insert(bin.end(), vbytes, vbytes + sizeof vertices);
+    const auto* ibytes = reinterpret_cast<const unsigned char*>(indices);
+    bin.insert(bin.end(), ibytes, ibytes + sizeof indices);
+    // Pad to a 4-byte boundary, which glTF requires of buffer views.
+    while (bin.size() % 4 != 0) {
+        bin.push_back(0);
+    }
+
+    {
+        std::ofstream file(directory / "tri.bin", std::ios::binary);
+        file.write(reinterpret_cast<const char*>(bin.data()),
+                   static_cast<std::streamsize>(bin.size()));
+    }
+
+    const std::string json = R"({
+  "asset": { "version": "2.0" },
+  "scene": 0,
+  "scenes": [ { "nodes": [ 0 ] } ],
+  "nodes": [ { "mesh": 0 } ],
+  "meshes": [ { "primitives": [ {
+      "attributes": { "POSITION": 0, "NORMAL": 1 },
+      "indices": 2,
+      "material": 0
+  } ] } ],
+  "materials": [ { "pbrMetallicRoughness": {
+      "baseColorFactor": [ 1.0, 0.5, 0.25, 1.0 ],
+      "metallicFactor": 0.0,
+      "roughnessFactor": 1.0
+  } } ],
+  "buffers": [ { "uri": "tri.bin", "byteLength": )"
+                             + std::to_string(bin.size()) + R"( } ],
+  "bufferViews": [
+    { "buffer": 0, "byteOffset": 0,  "byteLength": 72, "byteStride": 24 },
+    { "buffer": 0, "byteOffset": 72, "byteLength": 6 }
+  ],
+  "accessors": [
+    { "bufferView": 0, "byteOffset": 0,  "componentType": 5126, "count": 3, "type": "VEC3",
+      "min": [0.0, 0.0, 0.0], "max": [1.0, 1.0, 0.0] },
+    { "bufferView": 0, "byteOffset": 12, "componentType": 5126, "count": 3, "type": "VEC3" },
+    { "bufferView": 1, "byteOffset": 0,  "componentType": 5123, "count": 3, "type": "SCALAR" }
+  ]
+})";
+
+    std::ofstream file(directory / "tri.gltf", std::ios::binary);
+    file << json;
+}
+
 /// A scratch directory mounted into the VFS.
 class MountedScratch {
 public:
@@ -163,7 +230,7 @@ TEST_CASE("a texture imports through the VFS onto a real device" * doctest::test
     SUBCASE("importing stores it in the pool under its metafile GUID") {
         hp::AssetPool pool;
         const hp::ImportResult result =
-            hp::importAsset(device.render->device(), pool, "textures/checks.tga");
+            hp::importAsset(device.render->device(), device.render->context(), pool, "textures/checks.tga");
 
         CHECK(result.kind == hp::AssetKind::Texture);
         CHECK(result.loaded);
@@ -179,7 +246,7 @@ TEST_CASE("a texture imports through the VFS onto a real device" * doctest::test
         CHECK(hp::Vfs::exists(hp::metaPathFor("textures/checks.tga")));
 
         const hp::ImportResult again =
-            hp::importAsset(device.render->device(), pool, "textures/checks.tga");
+            hp::importAsset(device.render->device(), device.render->context(), pool, "textures/checks.tga");
         CHECK(again.guid == result.guid);
     }
 
@@ -188,7 +255,7 @@ TEST_CASE("a texture imports through the VFS onto a real device" * doctest::test
         // that ships; loud magenta checks are a bug someone fixes.
         hp::AssetPool pool;
         const hp::ImportResult result =
-            hp::importAsset(device.render->device(), pool, "textures/does-not-exist.png");
+            hp::importAsset(device.render->device(), device.render->context(), pool, "textures/does-not-exist.png");
 
         CHECK(result.kind == hp::AssetKind::Texture);
         CHECK_FALSE(result.loaded);
@@ -211,7 +278,7 @@ TEST_CASE("a texture imports through the VFS onto a real device" * doctest::test
 
         hp::AssetPool pool;
         const hp::ImportResult result =
-            hp::importAsset(device.render->device(), pool, "textures/lies.png");
+            hp::importAsset(device.render->device(), device.render->context(), pool, "textures/lies.png");
         CHECK_FALSE(result.loaded);
         CHECK(result.placeholder);
     }
@@ -219,7 +286,7 @@ TEST_CASE("a texture imports through the VFS onto a real device" * doctest::test
     SUBCASE("an unimportable extension is skipped without touching the pool") {
         hp::AssetPool pool;
         const hp::ImportResult result =
-            hp::importAsset(device.render->device(), pool, "notes/readme.txt");
+            hp::importAsset(device.render->device(), device.render->context(), pool, "notes/readme.txt");
         CHECK(result.kind == hp::AssetKind::Unknown);
         CHECK_FALSE(result.loaded);
         CHECK_FALSE(result.placeholder);
@@ -233,6 +300,76 @@ TEST_CASE("a texture imports through the VFS onto a real device" * doctest::test
         CHECK(placeholder->width() == 16);
         CHECK(placeholder->height() == 16);
         CHECK(placeholder->shaderResource() != nullptr);
+    }
+
+    SUBCASE("a glTF model loads, with its buffer fetched through the VFS") {
+        // **The case 23.3 exists for.** Diligent parses the document and we
+        // parse nothing; every file it needs -- the .gltf *and* the separate
+        // .bin -- arrives through `hp::Vfs`, so a model inside a pack behaves
+        // exactly like one on disk.
+        writeGltf(scratch / "models");
+
+        auto mesh = hp::loadMesh(device.render->device(), device.render->context(),
+                                 "models/tri.gltf");
+        REQUIRE(mesh != nullptr);
+        CHECK(mesh->valid());
+        CHECK(mesh->model() != nullptr);
+        CHECK(mesh->meshCount() == 1);
+        CHECK(mesh->materialCount() >= 1);
+        CHECK(mesh->nodeCount() >= 1);
+    }
+
+    SUBCASE("importing a model stores it under its metafile GUID") {
+        writeGltf(scratch / "models");
+
+        hp::AssetPool pool;
+        const hp::ImportResult result = hp::importAsset(
+            device.render->device(), device.render->context(), pool, "models/tri.gltf");
+
+        CHECK(result.kind == hp::AssetKind::Mesh);
+        CHECK(result.loaded);
+        CHECK(result.guid != hp::Guid{});
+
+        auto stored = pool.get<hp::MeshAsset>(result.guid);
+        REQUIRE(stored != nullptr);
+        CHECK(stored->meshCount() == 1);
+
+        // A mesh and a texture are different types, so the same GUID must not
+        // resolve across them.
+        CHECK(pool.get<hp::TextureAsset>(result.guid) == nullptr);
+    }
+
+    SUBCASE("a model whose buffer is missing fails without crashing") {
+        // The callback reports the miss and Diligent gives up. What must not
+        // happen is a throw escaping into the caller -- T0127 measured that a
+        // typed exception does not survive the module boundary on ELF.
+        writeGltf(scratch / "broken");
+        std::error_code ec;
+        std::filesystem::remove(scratch / "broken/tri.bin", ec);
+
+        auto mesh = hp::loadMesh(device.render->device(), device.render->context(),
+                                 "broken/tri.gltf");
+        CHECK(mesh == nullptr);
+    }
+
+    SUBCASE("a file that is not a model at all fails without crashing") {
+        // Each SUBCASE re-runs the enclosing body, so this one never called
+        // writeGltf and the directory does not exist yet.
+        REQUIRE(hp::Vfs::createDirectory("models"));
+        REQUIRE(hp::Vfs::writeText("models/lies.gltf", "{ this is not glTF"));
+        auto mesh = hp::loadMesh(device.render->device(), device.render->context(),
+                                 "models/lies.gltf");
+        CHECK(mesh == nullptr);
+
+        // And a missing model stores nothing rather than inventing geometry: a
+        // stand-in cube would put shapes in the world no artist authored, which
+        // is worse than an empty space and a loud error.
+        hp::AssetPool pool;
+        const hp::ImportResult result = hp::importAsset(
+            device.render->device(), device.render->context(), pool, "models/lies.gltf");
+        CHECK_FALSE(result.loaded);
+        CHECK_FALSE(result.placeholder);
+        CHECK(pool.size() == 0);
     }
 
     tearDown(device);

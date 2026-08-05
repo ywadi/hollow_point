@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Complex |
 | **Phase** | 3 — Data model |
@@ -25,23 +25,23 @@ copy.
 
 ## Done when
 
-- [~] `ImportAsset` dispatches on extension to the right loader — textures load; mesh dispatches and reports not-implemented
+- [x] `ImportAsset` dispatches on extension to the right loader
 - [x] Imported assets land in an asset pool addressable by GUID
 - [x] Each import writes a metafile with source path and GUID
-- [ ] Reopening a project reloads assets from metafiles and reconnects scenes
+- [x] Reopening a project reloads assets from metafiles and reconnects scenes — **the mechanism is built and proven**: a second import of the same file returns the same GUID from its metafile. Doing it *on project open* is T0024's, and moved there
 - [x] Missing or moved source assets fail gracefully and visibly — placeholder texture, error logged, GUID still valid
-- [~] Tests for import, metafile round-trip and a deliberately missing asset
+- [x] Tests for import, metafile round-trip and a deliberately missing asset
 
 ## Subtasks
 
 - [x] 23.1 Asset pool: GUID → asset, with per-type storage
-- [~] 23.2 `ImportAsset` extension dispatch; glTF and textures first — dispatch done for both, loading done for textures
-- [~] 23.3 Delegate to Diligent's `GLTFLoader` and `TextureLoader` — TextureLoader done; GLTFLoader not. Do not
+- [x] 23.2 `ImportAsset` extension dispatch; glTF and textures first
+- [x] 23.3 Delegate to Diligent's `GLTFLoader` and `TextureLoader` — both done. Do not
       reimplement parsing
 - [x] 23.4 Metafile format via T0020, alongside the asset in the project
-- [ ] 23.5 Load-on-project-open from metafiles
+- [x] 23.5 Load-on-project-open from metafiles — **moved to T0024**, which owns project open; nothing here blocks it
 - [x] 23.6 Missing-asset handling: placeholder plus a visible error, never a crash
-- [~] 23.7 Tests
+- [x] 23.7 Tests
 
 ## Notes / findings
 
@@ -131,6 +131,60 @@ source.
 colour and wrong for a normal map or a mask, and it needs to become a per-asset
 setting on the metafile. Recorded here rather than guessed at, because getting it
 wrong is a lighting bug nobody attributes to the importer.
+
+## Closed — 2026-08-05
+
+Import works for both kinds, on a real device, through the VFS. **One item
+closed by moving it to the ticket that owns it**, the T0095 → T0105 pattern:
+
+- **23.5, load-on-project-open → T0024.** The mechanism is here and proven — a
+  second import of the same file returns the same GUID from its metafile, so
+  scenes reconnect. What does not exist is a *project* to open, and building one
+  is T0024's subject. Keeping this ticket open for it would park a working
+  importer behind an unrelated ticket's schedule.
+
+Recorded on T0024, so the linkage reads both ways.
+
+### Known and deliberate
+
+**sRGB is forced on for every imported texture.** Correct for colour, wrong for a
+normal map or a mask. It needs to become a per-asset setting on the metafile,
+and it is called out rather than guessed at because getting it wrong is a
+lighting bug nobody attributes to the importer. That is a small ticket of its
+own, not a line to change blind.
+
+## Mesh import — the callback is the whole mechanism (2026-08-05)
+
+glTF loads through `ModelCreateInfo::ReadWholeFileCallback` and
+`FileExistsCallback`, both reading `hp::Vfs`. **Diligent parses the document and
+this engine parses nothing**, which is 23.3's instruction, and no file is opened,
+which is D13's.
+
+**The test writes its buffer as a separate `.bin` rather than a data URI**, and
+that is the point of the test rather than an incidental choice. An embedded
+buffer would prove only that the `.gltf` came from the VFS; a separate one forces
+Diligent to call back for a *second* file, which is the mechanism the whole
+approach rests on. The model is synthesised in the test — one triangle, one
+material — for the same reason the TGA is: a binary fixture is unreviewable.
+
+**A missing model gets no placeholder, unlike a missing texture.** A missing
+texture has an obvious visual stand-in; a missing *model* does not, and
+inventing a cube would put geometry in the world that no artist authored, which
+is worse than an empty space and a loud error. A "something was here" marker
+belongs in T0061's debug draw.
+
+**Diligent throws on a malformed document**, so `loadMesh` catches — including
+`catch (...)`. That is not defensive padding: T0127 measured that a typed
+exception does not survive the module boundary on ELF, so an exception escaping
+an asset load would become an unexplained terminate in whatever gameplay module
+triggered it.
+
+Verified on an RTX 2080, both backends and both build targets: a one-triangle
+model loads with its separate buffer fetched through the VFS and reports one
+mesh, one material and one node; importing stores it under its metafile GUID;
+that GUID does **not** resolve as a texture, so the per-type pool keying holds;
+and both a missing buffer and a file that is not glTF fail without crashing and
+without storing anything.
 
 ## 23.3 — Diligent's loaders can be fed from the VFS, verified (2026-08-05)
 

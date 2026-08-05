@@ -21,6 +21,7 @@
 #include <cctype>
 #include <string>
 
+#include <GLTFLoader.hpp>
 #include <RefCntAutoPtr.hpp>
 #include <RenderDevice.h>
 #include <Texture.h>
@@ -229,8 +230,110 @@ std::shared_ptr<TextureAsset> makePlaceholderTexture(Diligent::IRenderDevice* de
     return asset;
 }
 
-ImportResult importAsset(Diligent::IRenderDevice* device, AssetPool& pool,
-                         std::string_view virtualPath) {
+struct MeshAsset::Impl {
+    std::unique_ptr<Diligent::GLTF::Model> model;
+};
+
+MeshAsset::MeshAsset() : impl_(std::make_unique<Impl>()) {}
+
+MeshAsset::~MeshAsset() = default;
+
+MeshAsset::MeshAsset(MeshAsset&& other) noexcept = default;
+
+MeshAsset& MeshAsset::operator=(MeshAsset&& other) noexcept = default;
+
+bool MeshAsset::valid() const {
+    return impl_ && impl_->model != nullptr;
+}
+
+Diligent::GLTF::Model* MeshAsset::model() const {
+    return impl_ ? impl_->model.get() : nullptr;
+}
+
+std::size_t MeshAsset::meshCount() const {
+    return valid() ? impl_->model->Meshes.size() : 0;
+}
+
+std::size_t MeshAsset::materialCount() const {
+    return valid() ? impl_->model->Materials.size() : 0;
+}
+
+std::size_t MeshAsset::nodeCount() const {
+    return valid() ? impl_->model->Nodes.size() : 0;
+}
+
+std::shared_ptr<MeshAsset> loadMesh(Diligent::IRenderDevice* device,
+                                    Diligent::IDeviceContext* context,
+                                    std::string_view virtualPath) {
+    HP_PROFILE_ZONE();
+
+    if (device == nullptr || context == nullptr) {
+        HP_LOG_ERROR(kLog, "loadMesh('{}') needs both a device and a context", virtualPath);
+        return nullptr;
+    }
+
+    const std::string path(virtualPath);
+    if (!Vfs::exists(path)) {
+        HP_LOG_ERROR(kLog, "model '{}' is not in the mount tree", path);
+        return nullptr;
+    }
+
+    Diligent::GLTF::ModelCreateInfo createInfo;
+    createInfo.FileName = path.c_str();
+
+    // **This is what makes D13 survive reusing Diligent's parser.** The loader
+    // calls back for every file it needs -- the .gltf itself, its .bin buffers
+    // and each referenced image -- so all of them come from the VFS, and a
+    // relative path inside the document resolves against the mount tree exactly
+    // like any other asset path. A model inside a pack therefore behaves
+    // identically to one on disk, which is the whole point of T0103.
+    createInfo.FileExistsCallback = [](const char* filePath) -> bool {
+        return filePath != nullptr && Vfs::exists(filePath);
+    };
+    createInfo.ReadWholeFileCallback = [](const char* filePath, std::vector<unsigned char>& data,
+                                          std::string& error) -> bool {
+        if (filePath == nullptr) {
+            error = "null path";
+            return false;
+        }
+        const auto bytes = Vfs::read(filePath);
+        if (!bytes) {
+            error = std::string("not found in the mount tree: ") + filePath;
+            return false;
+        }
+        data.resize(bytes->size());
+        if (!bytes->empty()) {
+            std::memcpy(data.data(), bytes->data(), bytes->size());
+        }
+        return true;
+    };
+
+    auto asset = std::make_shared<MeshAsset>();
+    try {
+        asset->impl_->model = std::make_unique<Diligent::GLTF::Model>(device, context, createInfo);
+    } catch (const std::exception& error) {
+        // Diligent throws on a malformed document. A model file is *data*, so
+        // that must not escape into the caller as an exception -- especially
+        // not across the module boundary, where T0127 measured that a typed
+        // throw does not survive on ELF.
+        HP_LOG_ERROR(kLog, "'{}' could not be loaded as a glTF model: {}", path, error.what());
+        return nullptr;
+    } catch (...) {
+        HP_LOG_ERROR(kLog, "'{}' could not be loaded as a glTF model", path);
+        return nullptr;
+    }
+
+    if (!asset->impl_->model) {
+        return nullptr;
+    }
+
+    HP_LOG_INFO(kLog, "loaded model '{}' ({} meshes, {} materials, {} nodes)", path,
+                asset->meshCount(), asset->materialCount(), asset->nodeCount());
+    return asset;
+}
+
+ImportResult importAsset(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context,
+                         AssetPool& pool, std::string_view virtualPath) {
     HP_PROFILE_ZONE();
 
     ImportResult result;
@@ -275,10 +378,20 @@ ImportResult importAsset(Diligent::IRenderDevice* device, AssetPool& pool,
         }
         return result;
     }
-    case AssetKind::Mesh:
-        // Not built. Recorded on the ticket rather than half-implemented here.
-        HP_LOG_WARN(kLog, "mesh import is not implemented yet; '{}' was not loaded", virtualPath);
+    case AssetKind::Mesh: {
+        if (auto mesh = loadMesh(device, context, virtualPath)) {
+            pool.store(result.guid, std::move(mesh));
+            result.loaded = true;
+        } else {
+            // No placeholder mesh. A missing *texture* has an obvious visual
+            // stand-in; a missing *model* does not, and inventing a cube would
+            // put geometry in the world that no artist authored -- which is
+            // worse than an empty space plus a loud error. T0061's debug draw
+            // is where a "something was here" marker belongs.
+            HP_LOG_ERROR(kLog, "'{}' failed to load; nothing was stored for it", virtualPath);
+        }
         return result;
+    }
     case AssetKind::Unknown:
         break;
     }

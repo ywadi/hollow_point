@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 290 |
 | **Created** | 2026-08-02 |
+| **Refs** | [../completed/0023-asset-manager.md](../completed/0023-asset-manager.md) |
 
 ## Why
 
@@ -37,6 +38,28 @@ exported game free of editor code.
 - [ ] 24.7 Tests
 
 ## Notes / findings
+
+### From T0023 (2026-08-05) — load-on-project-open lands here
+
+T0023 closed with "reopening a project reloads assets from metafiles and
+reconnects scenes" **moved to this ticket**. The mechanism is built and proven;
+what does not exist is a *project* to open.
+
+What is ready to use:
+
+- `hp::importAsset(device, context, pool, virtualPath)` dispatches on extension,
+  resolves the GUID through the asset's `.hpmeta`, **writes that metafile when
+  absent**, loads through the VFS and stores in the pool.
+- A second import of the same file returns the **same GUID**, which is exactly
+  what makes a scene's references reconnect across a reopen. Verified on device.
+- A failed load still yields a valid GUID, so a scene referencing a broken asset
+  resolves to a placeholder rather than silently detaching every entity.
+
+What this ticket has to add is the *sweep*: walk the project's asset directories
+through the VFS, import each, and do it in an order that does not stall the
+editor on a large project. T0026's job system is the obvious lever and does not
+exist yet either.
+
 
 **`Close` is where state leaks show up.** Anything cached outside the scene and
 asset managers — GPU resources, editor selection, undo history — has to be reset,

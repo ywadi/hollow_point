@@ -6,7 +6,7 @@
 #include <hp/Assets.hpp>
 ```
 
-43 public declaration(s), 43 documented.
+57 public declaration(s), 57 documented.
 
 ## `AssetTraits`
 
@@ -450,6 +450,157 @@ std::shared_ptr<TextureAsset> makePlaceholderTexture(Diligent::IRenderDevice * d
  @param device the device to create on.
  @returns the placeholder, or nullptr when the device refuses it.
 
+## `MeshAsset`
+
+```cpp
+class MeshAsset
+```
+
+ A loaded glTF model.
+
+ **Owns Diligent's `GLTF::Model` and hands it out raw** (D22), because that is
+ what T0028 will submit draws from and a wrapper around it would be a second
+ scene graph to keep in step with the first.
+
+ The summary accessors exist for the inspector and for tests; they are not the
+ rendering interface.
+
+## `MeshAsset::MeshAsset`
+
+```cpp
+MeshAsset()
+```
+
+ Constructs an empty asset that holds no model.
+
+## `MeshAsset::MeshAsset`
+
+```cpp
+MeshAsset(const MeshAsset &)
+```
+
+ Not copyable: two owners of one set of GPU buffers would double-release.
+
+## `MeshAsset::operator=`
+
+```cpp
+MeshAsset & operator=(const MeshAsset &)
+```
+
+ Not copyable; see the copy constructor.
+ @returns nothing -- deleted.
+
+## `MeshAsset::MeshAsset`
+
+```cpp
+MeshAsset(MeshAsset && other)
+```
+
+ Moves the asset.
+ @param other the asset to move from.
+
+## `MeshAsset::operator=`
+
+```cpp
+MeshAsset & operator=(MeshAsset && other)
+```
+
+ Moves the asset.
+ @param other the asset to move from.
+ @returns this asset.
+
+## `MeshAsset::valid`
+
+```cpp
+bool valid() const
+```
+
+ @returns whether a model was loaded.
+
+## `MeshAsset::model`
+
+```cpp
+Diligent::GLTF::Model * model() const
+```
+
+ @returns the model, or nullptr when empty. Owned by this asset; **valid
+          only while this asset lives**, so a caller that keeps the
+          pointer must keep the `shared_ptr` too.
+
+## `MeshAsset::meshCount`
+
+```cpp
+std::size_t meshCount() const
+```
+
+ @returns how many meshes the model holds, or 0 when empty.
+
+## `MeshAsset::materialCount`
+
+```cpp
+std::size_t materialCount() const
+```
+
+ @returns how many materials the model holds, or 0 when empty.
+
+## `MeshAsset::nodeCount`
+
+```cpp
+std::size_t nodeCount() const
+```
+
+ @returns how many nodes the model holds, or 0 when empty.
+
+## `MeshAsset::loadMesh`
+
+```cpp
+std::shared_ptr<MeshAsset> loadMesh(Diligent::IRenderDevice * device, Diligent::IDeviceContext * context, std::string_view virtualPath)
+```
+
+ Loads a glTF model through the VFS (23.3).
+
+ **Every file the loader needs comes from the VFS**, not just the `.gltf`
+ itself: Diligent calls back for the `.bin` buffers and each referenced image
+ too, and those callbacks read through `hp::Vfs`. Relative paths inside the
+ document resolve against the mount tree like anything else, which is what
+ makes a model inside a pack behave identically to one on disk.
+
+ @param device the device to create buffers and textures on.
+ @param context the immediate context, which the loader needs to upload.
+ @param virtualPath the model's path in the mount tree.
+ @returns the model, or nullptr when the file is missing or is not a model
+          this build can read. **Not fatal** — the caller decides what to show
+          instead.
+
+## `AssetTraits`
+
+```cpp
+struct AssetTraits
+```
+
+ The stable pool name for a mesh.
+
+## `loadMesh`
+
+```cpp
+std::shared_ptr<MeshAsset> loadMesh(Diligent::IRenderDevice * device, Diligent::IDeviceContext * context, std::string_view virtualPath)
+```
+
+ Loads a glTF model through the VFS (23.3).
+
+ **Every file the loader needs comes from the VFS**, not just the `.gltf`
+ itself: Diligent calls back for the `.bin` buffers and each referenced image
+ too, and those callbacks read through `hp::Vfs`. Relative paths inside the
+ document resolve against the mount tree like anything else, which is what
+ makes a model inside a pack behave identically to one on disk.
+
+ @param device the device to create buffers and textures on.
+ @param context the immediate context, which the loader needs to upload.
+ @param virtualPath the model's path in the mount tree.
+ @returns the model, or nullptr when the file is missing or is not a model
+          this build can read. **Not fatal** — the caller decides what to show
+          instead.
+
 ## `ImportResult`
 
 ```cpp
@@ -461,7 +612,7 @@ struct ImportResult
 ## `importAsset`
 
 ```cpp
-ImportResult importAsset(Diligent::IRenderDevice * device, AssetPool & pool, std::string_view virtualPath)
+ImportResult importAsset(Diligent::IRenderDevice * device, Diligent::IDeviceContext * context, AssetPool & pool, std::string_view virtualPath)
 ```
 
  Imports an asset: identity, load, and into the pool (23.2, 23.3, 23.6).
@@ -476,3 +627,5 @@ ImportResult importAsset(Diligent::IRenderDevice * device, AssetPool & pool, std
  @returns what happened. Check `loaded`; `guid` is valid either way, because a
           scene's reference has to resolve to *something* even when the source
           is missing.
+ @param context the immediate context, which the glTF loader needs in order
+        to upload buffers. May be nullptr when only textures are expected.

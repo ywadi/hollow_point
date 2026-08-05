@@ -284,4 +284,5 @@ endif()
 # for images, and glTF's read-whole-file callback for models -- so D13's rule
 # that every read goes through `hp::Vfs` survives reusing them.
 target_link_libraries(hp_engine PRIVATE
-    Diligent-TextureLoader)
+    Diligent-TextureLoader
+    Diligent-AssetLoader)
