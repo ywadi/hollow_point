@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 400 |
 | **Created** | 2026-08-02 |
-| **Refs** | [../completed/0113-device-loss.md](../completed/0113-device-loss.md), [../completed/0028-scene-draw-submission.md](../completed/0028-scene-draw-submission.md), [../open/0045-culling-and-render-queues.md](../open/0045-culling-and-render-queues.md), [../inprogress/0079-lighting-system.md](../inprogress/0079-lighting-system.md), [../open/0069-game-ui.md](../open/0069-game-ui.md), [../open/0094-gameplay-extensible-rendering.md](../open/0094-gameplay-extensible-rendering.md) |
+| **Refs** | [../completed/0113-device-loss.md](../completed/0113-device-loss.md), [../completed/0028-scene-draw-submission.md](../completed/0028-scene-draw-submission.md), [../open/0045-culling-and-render-queues.md](../open/0045-culling-and-render-queues.md), [../completed/0079-lighting-system.md](../completed/0079-lighting-system.md), [../open/0069-game-ui.md](../open/0069-game-ui.md), [../open/0094-gameplay-extensible-rendering.md](../open/0094-gameplay-extensible-rendering.md) |
 
 ## Why
 

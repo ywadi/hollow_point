@@ -45,6 +45,27 @@ closing early because the whole renderer's shape depends on it.
 
 ## Notes / findings
 
+### Inherited from T0079 (2026-08-05) — lights need culling too
+
+**79.2's other half moved here.** `gatherLights` collects every enabled light,
+caps at `kMaxLights` (16) and **warns** when it drops any — but *which* it drops
+is registry order, which is not a stable guarantee. That is a placeholder, not a
+policy.
+
+Two things to fold in rather than bolt on:
+
+- **Cull lights against the frustum** in the same pass as geometry. A light that
+  cannot affect anything visible should never reach selection.
+- **Per-object selection already exists** (`hp::selectLightsFor`, nearest-N with
+  the layer mask) and runs per draw. If this ticket sorts or batches draws, that
+  selection runs per item in the new order — worth checking it is not being done
+  redundantly for objects sharing a light set.
+
+Note the layer test T0085 put at the top of `parseScene` is **deliberately
+first**: it is one AND, where a frustum test is arithmetic. Keep that ordering
+when culling joins it. See [../completed/0079-lighting-system.md](../completed/0079-lighting-system.md).
+
+
 ### Discharged by T0085 (2026-08-05) — the mask filter is done; frustum culling is not
 
 **The obligation this ticket was given by T0027 is met, and it was met

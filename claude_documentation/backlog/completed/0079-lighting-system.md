@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Complex |
 | **Phase** | 4 — Render layer |
@@ -24,21 +24,34 @@ usable authoring story.
 ## Done when
 
 - [x] Light components: directional, point, spot, with colour, intensity, range — `hp::Light`, all three verified in pixels on hardware
-- [ ] Lights are authored in the editor and serialized with the scene
-- [ ] Per-object light selection — the most relevant lights within the shader limit
-- [ ] Lights respect the illumination layer mask (T0085)
-- [ ] Lights are frustum-culled like geometry (T0045)
+- [~] Lights are **serialized with the scene**; authoring is in code, not in an editor — there is no inspector until T0032
+- [x] Per-object light selection — nearest-N, with directional lights always kept and out-of-range lights skipped
+- [x] Lights respect the illumination layer mask (T0085) — `Light::layers`, applied during selection
 - [~] Exceeding the light limit degrades gracefully — it **caps and warns** rather than failing, but *which* lights survive is registry order, which is arbitrary. Graceful requires selection (79.3)
 
 ## Subtasks
 
-- [~] 79.1 Light components — built; **not yet reflected** (`Scene.cpp` registration), so they do not serialise
-- [~] 79.2 Light gathering — built (`gatherLights`), with the placement resolve split out for T0093; **no frustum culling**, which needs T0045
-- [ ] 79.3 Per-object light selection — see notes, this is the design decision
+- [x] 79.1 Light components and their reflected properties — registered with `entt::meta`, round-tripping through YAML and binary
+- [x] 79.2 Light gathering — `gatherLights`, with the placement resolve split out so T0093's projectors reuse it rather than forking it
+- [x] 79.3 Per-object light selection — **nearest-N**, chosen because it can be measured before a harder one is justified; the popping weakness is named where it will be revisited
 - [x] 79.4 Feed lights into `PBR_Renderer`'s frame attribs — written after the frame struct, with `Renderer.LightCount` set
-- [ ] 79.5 Illumination layer mask applied during selection (T0085)
-- [ ] 79.6 Debug visualisation of light bounds and affected objects (T0061)
-- [ ] 79.7 Profiling zones for light gathering and selection
+- [x] 79.5 Illumination layer mask applied during selection — the layer test runs *first*, being one AND against arithmetic
+- [x] 79.7 Profiling zones — `HP_PROFILE_ZONE` in `gatherLights` and in `selectLightsFor`
+
+## Descoped 2026-08-05 — what left this ticket, and where it went
+
+Removed from the checklist rather than left unticked, per the convention in the
+backlog README: moving the remainder means the item **leaves**. Both are already
+written onto the receiving ticket, so the linkage reads both ways.
+
+| Was | Went to | Because |
+|---|---|---|
+| Lights are frustum-culled like geometry (79.2's other half) | **T0045** | There is no frustum culling of anything yet. `gatherLights` caps and warns; culling belongs in the pass T0045 owns, beside the layer test T0085 already put in `parseScene` |
+| Debug visualisation of light bounds and affected objects (79.6) | **T0061** | There is no debug draw. It is also how the *selection* here gets verified by eye, which is why it belongs with a renderer that can draw lines |
+
+**What this ticket kept is what it could finish**: the components, the gathering,
+the placement resolve, per-object selection, the illumination mask, the frame
+attribs, serialisation, and the profiling zones.
 
 ## Built and measured 2026-08-05 — the engine renders lit surfaces
 

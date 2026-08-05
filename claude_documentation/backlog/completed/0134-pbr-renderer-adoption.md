@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 445 |
 | **Created** | 2026-08-05 |
-| **Refs** | [../completed/0028-scene-draw-submission.md](../completed/0028-scene-draw-submission.md), [../open/0060-material-system.md](../open/0060-material-system.md), [../inprogress/0079-lighting-system.md](../inprogress/0079-lighting-system.md), [../open/0086-shadows.md](../open/0086-shadows.md), [../open/0087-environment-lighting.md](../open/0087-environment-lighting.md), [../open/0096-hdr-pipeline-and-tonemapping.md](../open/0096-hdr-pipeline-and-tonemapping.md), [../completed/0111-anti-aliasing-and-render-scale.md](../completed/0111-anti-aliasing-and-render-scale.md), [../completed/0023-asset-manager.md](../completed/0023-asset-manager.md), [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) (D6, D21, D22, **D24 — this ticket**) |
+| **Refs** | [../completed/0028-scene-draw-submission.md](../completed/0028-scene-draw-submission.md), [../open/0060-material-system.md](../open/0060-material-system.md), [../completed/0079-lighting-system.md](../completed/0079-lighting-system.md), [../open/0086-shadows.md](../open/0086-shadows.md), [../open/0087-environment-lighting.md](../open/0087-environment-lighting.md), [../open/0096-hdr-pipeline-and-tonemapping.md](../open/0096-hdr-pipeline-and-tonemapping.md), [../completed/0111-anti-aliasing-and-render-scale.md](../completed/0111-anti-aliasing-and-render-scale.md), [../completed/0023-asset-manager.md](../completed/0023-asset-manager.md), [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) (D6, D21, D22, **D24 — this ticket**) |
 
 ## Why
 

@@ -53,6 +53,25 @@ wants skeletons, and the editor wants selection outlines and grids.
 
 ## Notes / findings
 
+### Inherited from T0079 (2026-08-05) — light bounds, and what a light actually reaches
+
+**79.6 moved here.** Two visualisations, and the second matters more than it
+sounds:
+
+- **Light bounds** — a point or spot light's `range` as a sphere or cone. Cheap,
+  and it makes "why is this object dark" answerable by looking.
+- **What a given light actually affects.** Selection is nearest-N with an
+  illumination layer mask (`hp::selectLightsFor`), so an object can be unlit for
+  three different reasons that look identical: out of range, crowded out by
+  nearer lights, or excluded by the mask. Only the third is a mistake, and none
+  is visible.
+
+That pairs with T0085's 85.8, already here: the same question for a camera's
+culling mask, where `DrawParseStats::culledByLayer` counts what nobody can see.
+**Both are the same widget** — "show me what this viewer reaches" — and should
+not become two. See [../completed/0079-lighting-system.md](../completed/0079-lighting-system.md).
+
+
 ### Inherited from T0085 (2026-08-05) — visualising what a camera or light actually affects
 
 **85.8 moved here.** With layer masks honoured, "why is this object not
