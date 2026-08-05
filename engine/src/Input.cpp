@@ -261,3 +261,37 @@ void InputSystem::reset() {
 }
 
 } // namespace hp
+
+namespace hp {
+
+void InputMap::bindKeyNamed(std::string_view action, KeyCode key) {
+    nameAction(action);
+    bindKey(ActionId{action}, key);
+}
+
+void InputMap::bindMouseButtonNamed(std::string_view action, MouseButton button) {
+    nameAction(action);
+    bindMouseButton(ActionId{action}, button);
+}
+
+void InputMap::bindAxis2DNamed(std::string_view action, KeyCode negativeX, KeyCode positiveX,
+                               KeyCode negativeY, KeyCode positiveY, AxisTuning tuning) {
+    nameAction(action);
+    bindAxis2D(ActionId{action}, negativeX, positiveX, negativeY, positiveY, tuning);
+}
+
+void InputMap::nameAction(std::string_view action) {
+    if (action.empty()) {
+        return;
+    }
+    // Keyed by the same hash the bindings use, so a name registered through any
+    // route is found by all of them.
+    actionNames_.insert_or_assign(ActionId{action}.value(), std::string(action));
+}
+
+std::string_view InputMap::actionName(ActionId action) const {
+    const auto found = actionNames_.find(action.value());
+    return found != actionNames_.end() ? std::string_view{found->second} : std::string_view{};
+}
+
+} // namespace hp

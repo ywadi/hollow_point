@@ -2,12 +2,12 @@
 
 | | |
 |---|---|
-| **Status** | ⏸ BLOCKED |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | Medium |
 | **Complexity** | Moderate |
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 170 |
-| **Blocked by** | T0020 (68.7), T0110 (cursor, focus loss) — plus 68.5, which is not blocked, see below |
+| **Blocked by** | Nothing. T0020 and T0110 are both closed; only 68.5 (gamepad) remains, and it needs *hardware*, not a ticket |
 | **Created** | 2026-08-03 |
 | **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0110, T0112 , [../completed/0129-display-modes-and-window-control.md](../completed/0129-display-modes-and-window-control.md) |
 
@@ -16,19 +16,68 @@
 **The action layer is built and working** (see "Built", below). What remains
 splits three ways, and only two of them are genuinely blocked:
 
-- **68.7 — T0020.** Bindings are deliberately data, so serializing them is a
-  loader rather than a design; there is no serializer to write it against.
-  Recorded on T0020, with the two properties a binding format has to honour.
-- **Cursor control and focus loss — T0110.** `InputSystem::reset()` exists as
-  the focus-loss hook with no policy attached, because *what focus loss means*
-  is T0110's decision. Relative-mouse capture has the same owner. Recorded
-  there.
+- **68.7 — done (2026-08-05).** T0020 closed, so the loader it was waiting for
+  could be written. See "Binding files", below.
+- **Cursor control and focus loss — T0110 is closed**, so this is no longer
+  blocked either; it is simply not built. `InputSystem::reset()` still exists as
+  the focus-loss hook with nothing calling it.
 - **68.5, gamepad — not blocked by a ticket.** SDL3 supplies the devices (D16),
   so the platform work is gone; what is missing is engine event types, pump
   translation and stick/button bindings. It was not done because **there is no
   controller on this machine to verify against**, and shipping input handling
   that has never seen a device is worse than shipping it absent. This one needs
   hardware and an afternoon, not another ticket.
+
+## Binding files — 68.7, done 2026-08-05
+
+`writeInputMap` / `parseInputMap`, YAML through T0020.
+
+**The format stores names for everything, and that was the whole design
+constraint.** An action is written as `Jump`, not as its FNV-1a hash and not as
+an index. The hash would work perfectly and produce a file nobody can read or
+repair; an index would break the moment somebody inserts an action. Since 68.7
+exists so a *player* can rebind, and a rebinding file has to survive being
+edited, readability is a requirement rather than a nicety.
+
+```yaml
+version: 1
+keys:
+  - action: Jump
+    key: Space
+axes:
+  - action: Move
+    negativeX: A
+    positiveX: D
+    negativeY: S
+    positiveY: W
+```
+
+**`InputMap` was discarding the name it needed.** `ActionId{"Jump"}` hashes at
+the call site and the string is gone, so the map physically could not be written
+by name. Fixed with `bindKeyNamed` / `bindMouseButtonNamed` / `bindAxis2DNamed`,
+which record the name alongside the id, plus `nameAction` as an escape hatch for
+code that already holds an id. **The `ActionId` overloads still work and are
+still the fast path** — what they cannot do is be saved, and `writeInputMap`
+skips such a binding and logs it loudly rather than emitting a hash nobody can
+act on.
+
+Key identifiers (`"Space"`, `"F10"`) are **a data format and must never
+change** — changing one silently invalidates that binding in every file a player
+has saved, and the symptom is a control that stopped working with no error
+anywhere. A test round-trips every named key through its own name to catch a
+typo or a duplicate in the table. What a rebinding UI *displays* is a different,
+localised string and remains T0112's.
+
+**Reading is deliberately forgiving.** One unusable line — an unknown key, a
+missing action — is skipped and the rest of the file loads, because a binding
+file is user-editable and refusing it whole would throw away every other
+binding the player set. A file with no version, or a future one, *is* refused
+whole: that is not a bad line, it is not a file this build should guess at.
+
+Proven rather than asserted: a test loads a map from text, pushes it, checks the
+action fires, then rebinds by parsing a second file and pushing that — which is
+exactly what a settings screen does. A format that round-tripped but produced a
+map the input system ignored would have passed every other test.
 
 ## Why
 
@@ -42,7 +91,7 @@ through gameplay code and rebinding becomes impossible without touching all of i
 - [x] Digital actions report pressed / released / held distinctly
 - [x] Analog actions produce a normalised axis or vector — for keyboard composition; a *device* analog axis needs 68.5
 - [ ] Gamepad supported alongside keyboard and mouse — **not done**, see below
-- [ ] Bindings are serialized (T0020) and user-rebindable — **blocked on T0020.** The map is data so a loader is all that is missing, but there is no serializer to write one against
+- [x] Bindings are serialized (T0020) and user-rebindable — YAML binding files, and a test that loads one, rebinds and proves the new key drives the action
 - [x] **Input contexts** so editor and game bindings do not collide
 - [x] Gameplay never reads a raw key code — there is no API that would let it
 
@@ -54,7 +103,7 @@ through gameplay code and rebinding becomes impossible without touching all of i
 - [x] 68.4 Analog axes, including composing WASD into a 2D vector
 - [ ] 68.5 Gamepad support, with hot-plug handling — **not done.** SDL3 supplies it (D16), but no engine event type carries gamepad input yet and there is no controller here to verify against
 - [x] 68.6 Input contexts with priority, and consumption between them
-- [ ] 68.7 Serialize bindings; support rebinding at runtime — **blocked on T0020**
+- [x] 68.7 Serialize bindings; support rebinding at runtime
 - [x] 68.8 Dead zones and sensitivity for analog input
 
 ## Notes / findings

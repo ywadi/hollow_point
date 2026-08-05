@@ -33,7 +33,7 @@ this `RenderStack`.
 - [ ] A world layer and a UI/HUD layer both render, correctly stacked — **not done.** The mechanism exists; no concrete layer does
 - [x] Layers can be enabled/disabled at runtime without reordering — a three-layer stack with one disabled renders exactly two, in order
 - [~] **Gameplay code can implement and insert its own layer** (T0094) — the API allows it and D22 measured that the calls link with no Diligent library; **no gameplay layer has been written**, so this is proven in principle and not in fact
-- [ ] Each layer emits its own profiling zone (T0019)
+- [x] Each layer emits its own profiling zone (T0019) — `HP_PROFILE_ZONE_NAMED(layer->name())` in `RenderStack::render`, one per enabled layer
 
 ## Subtasks
 

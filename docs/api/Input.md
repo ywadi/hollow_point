@@ -6,7 +6,7 @@
 #include <hp/Input.hpp>
 ```
 
-26 public declaration(s), 26 documented.
+39 public declaration(s), 39 documented.
 
 ## `ActionId`
 
@@ -102,6 +102,16 @@ struct AxisTuning
 
  Analog shaping applied to an axis before gameplay sees it.
 
+## `writeInputMap`
+
+```cpp
+std::string writeInputMap(const InputMap & map)
+```
+
+ Serializes a binding map to YAML. Declared here so `InputMap` can befriend it.
+ @param map the bindings to write.
+ @returns the YAML text.
+
 ## `InputMap`
 
 ```cpp
@@ -157,6 +167,142 @@ bool binds(ActionId action) const
 
  @param action the action to look for.
  @returns whether this map binds anything to `action`.
+
+## `InputMap::bindKeyNamed`
+
+```cpp
+void bindKeyNamed(std::string_view action, KeyCode key)
+```
+
+ Binds a key, remembering the action's name so the map can be saved.
+ @param action the action's name, e.g. "Jump".
+ @param key the key that triggers it.
+ @returns nothing.
+
+## `InputMap::bindMouseButtonNamed`
+
+```cpp
+void bindMouseButtonNamed(std::string_view action, MouseButton button)
+```
+
+ Binds a mouse button, remembering the action's name.
+ @param action the action's name.
+ @param button the button that triggers it.
+ @returns nothing.
+
+## `InputMap::bindAxis2DNamed`
+
+```cpp
+void bindAxis2DNamed(std::string_view action, KeyCode negativeX, KeyCode positiveX, KeyCode negativeY, KeyCode positiveY, AxisTuning tuning)
+```
+
+ Binds a 2D axis, remembering the action's name.
+ @param action the action's name.
+ @param negativeX key driving -x.
+ @param positiveX key driving +x.
+ @param negativeY key driving -y.
+ @param positiveY key driving +y.
+ @param tuning dead zone, sensitivity and normalisation.
+ @returns nothing.
+
+## `InputMap::nameAction`
+
+```cpp
+void nameAction(std::string_view action)
+```
+
+ Records a name for an action bound through the `ActionId` overloads.
+
+ The escape hatch for code that already holds an id: name it once and the
+ map becomes saveable.
+ @param action the action's name.
+ @returns nothing.
+
+## `InputMap::actionName`
+
+```cpp
+std::string_view actionName(ActionId action) const
+```
+
+ @param action the action to name.
+ @returns the registered name, or empty when the action was bound by id
+          and never named — in which case it cannot be serialized.
+
+## `InputMap::writeInputMap`
+
+```cpp
+std::string writeInputMap(const InputMap & map)
+```
+
+ Serializes a binding map to YAML. Declared here so `InputMap` can befriend it.
+ @param map the bindings to write.
+ @returns the YAML text.
+
+## `keyCodeName`
+
+```cpp
+std::string_view keyCodeName(KeyCode key)
+```
+
+ @param key a key code.
+ @returns its stable identifier for a binding file, e.g. "Space" or "W".
+          Empty for `KeyCode::Unknown`.
+
+ **A stable identifier, not a display name.** What a rebinding UI *shows* a
+ player is T0112's concern and is localised; this is what goes in the file and
+ must never change, because changing it silently breaks every saved binding.
+
+## `keyCodeFromName`
+
+```cpp
+KeyCode keyCodeFromName(std::string_view name)
+```
+
+ @param name a stable key identifier from `keyCodeName`.
+ @returns the key, or `KeyCode::Unknown` when the name is not recognised.
+
+## `mouseButtonName`
+
+```cpp
+std::string_view mouseButtonName(MouseButton button)
+```
+
+ @param button a mouse button.
+ @returns its stable identifier, e.g. "Left". Empty for `Unknown`.
+
+## `mouseButtonFromName`
+
+```cpp
+MouseButton mouseButtonFromName(std::string_view name)
+```
+
+ @param name a stable button identifier from `mouseButtonName`.
+ @returns the button, or `MouseButton::Unknown` when unrecognised.
+
+## `kInputMapVersion`
+
+```cpp
+inline constexpr std :: uint32_t kInputMapVersion = 1
+```
+
+ The schema version written into a binding file.
+
+## `parseInputMap`
+
+```cpp
+std::optional<InputMap> parseInputMap(std::string_view yaml, std::string_view name)
+```
+
+ Parses a binding map.
+
+ **Unknown keys and actions are skipped, not fatal.** A binding file is
+ user-editable and may name a key this build does not have, or an action that
+ was removed; refusing the whole file over one bad line would lose every other
+ binding the player set.
+ @param yaml the file contents.
+ @param name a name for error messages, usually the virtual path.
+ @returns the map, or nothing when the text is not valid YAML or its version
+          is unreadable.
 
 ## `InputContextConfig`
 

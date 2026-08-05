@@ -32,7 +32,10 @@
 #include <hp/Event.hpp>
 
 #include <cstdint>
+#include <optional>
+#include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace hp {
@@ -118,6 +121,13 @@ struct AxisTuning {
     bool normalise = true;
 };
 
+class InputMap;
+
+/// Serializes a binding map to YAML. Declared here so `InputMap` can befriend it.
+/// @param map the bindings to write.
+/// @returns the YAML text.
+[[nodiscard]] HP_API std::string writeInputMap(const InputMap& map);
+
 /// A set of actions and the physical inputs bound to them.
 ///
 /// Data, deliberately: a map is built by binding calls and could equally be
@@ -150,8 +160,59 @@ public:
     /// @returns whether this map binds anything to `action`.
     bool binds(ActionId action) const;
 
+    // --- named binding (68.7) ----------------------------------------------
+    //
+    // **A binding file must store the action's *name*.** An `ActionId` is an
+    // FNV-1a hash, so writing it would produce a file nobody can read or repair
+    // by hand -- and an index would break the moment someone inserts an action.
+    // The name is available at every call site (`ActionId{"Jump"}`) and was
+    // simply being discarded, so these overloads keep it.
+    //
+    // The `ActionId` overloads above still work and are still the fast path;
+    // what they cannot do is be written to a file, and `writeInputMap` says so
+    // rather than emitting a hash.
+
+    /// Binds a key, remembering the action's name so the map can be saved.
+    /// @param action the action's name, e.g. "Jump".
+    /// @param key the key that triggers it.
+    /// @returns nothing.
+    void bindKeyNamed(std::string_view action, KeyCode key);
+
+    /// Binds a mouse button, remembering the action's name.
+    /// @param action the action's name.
+    /// @param button the button that triggers it.
+    /// @returns nothing.
+    void bindMouseButtonNamed(std::string_view action, MouseButton button);
+
+    /// Binds a 2D axis, remembering the action's name.
+    /// @param action the action's name.
+    /// @param negativeX key driving -x.
+    /// @param positiveX key driving +x.
+    /// @param negativeY key driving -y.
+    /// @param positiveY key driving +y.
+    /// @param tuning dead zone, sensitivity and normalisation.
+    /// @returns nothing.
+    void bindAxis2DNamed(std::string_view action, KeyCode negativeX, KeyCode positiveX,
+                         KeyCode negativeY, KeyCode positiveY, AxisTuning tuning = {});
+
+    /// Records a name for an action bound through the `ActionId` overloads.
+    ///
+    /// The escape hatch for code that already holds an id: name it once and the
+    /// map becomes saveable.
+    /// @param action the action's name.
+    /// @returns nothing.
+    void nameAction(std::string_view action);
+
+    /// @param action the action to name.
+    /// @returns the registered name, or empty when the action was bound by id
+    ///          and never named — in which case it cannot be serialized.
+    [[nodiscard]] std::string_view actionName(ActionId action) const;
+
 private:
     friend class InputSystem;
+    // The writer needs the binding lists themselves. A public accessor would
+    // expose the storage layout to everyone to serve one function.
+    friend HP_API std::string writeInputMap(const InputMap& map);
 
     struct KeyBinding {
         ActionId action;
@@ -175,7 +236,48 @@ private:
     std::vector<KeyBinding> keys_;
     std::vector<ButtonBinding> buttons_;
     std::vector<Axis2DBinding> axes_;
+
+    /// Hash to name, for the actions that were bound by name. Only what is in
+    /// here can be written to a file.
+    std::unordered_map<std::uint64_t, std::string> actionNames_;
 };
+
+/// @param key a key code.
+/// @returns its stable identifier for a binding file, e.g. "Space" or "W".
+///          Empty for `KeyCode::Unknown`.
+///
+/// **A stable identifier, not a display name.** What a rebinding UI *shows* a
+/// player is T0112's concern and is localised; this is what goes in the file and
+/// must never change, because changing it silently breaks every saved binding.
+[[nodiscard]] HP_API std::string_view keyCodeName(KeyCode key);
+
+/// @param name a stable key identifier from `keyCodeName`.
+/// @returns the key, or `KeyCode::Unknown` when the name is not recognised.
+[[nodiscard]] HP_API KeyCode keyCodeFromName(std::string_view name);
+
+/// @param button a mouse button.
+/// @returns its stable identifier, e.g. "Left". Empty for `Unknown`.
+[[nodiscard]] HP_API std::string_view mouseButtonName(MouseButton button);
+
+/// @param name a stable button identifier from `mouseButtonName`.
+/// @returns the button, or `MouseButton::Unknown` when unrecognised.
+[[nodiscard]] HP_API MouseButton mouseButtonFromName(std::string_view name);
+
+/// The schema version written into a binding file.
+inline constexpr std::uint32_t kInputMapVersion = 1;
+
+/// Parses a binding map.
+///
+/// **Unknown keys and actions are skipped, not fatal.** A binding file is
+/// user-editable and may name a key this build does not have, or an action that
+/// was removed; refusing the whole file over one bad line would lose every other
+/// binding the player set.
+/// @param yaml the file contents.
+/// @param name a name for error messages, usually the virtual path.
+/// @returns the map, or nothing when the text is not valid YAML or its version
+///          is unreadable.
+[[nodiscard]] HP_API std::optional<InputMap> parseInputMap(std::string_view yaml,
+                                                           std::string_view name = "<memory>");
 
 /// Where a set of bindings sits in the stack, and whether it blocks the ones
 /// below it.

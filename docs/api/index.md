@@ -42,7 +42,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Event.hpp>`](Event.md) | 72 | 15 |
 | [`<hp/FrameTargets.hpp>`](FrameTargets.md) | 20 | 20 |
 | [`<hp/Guid.hpp>`](Guid.md) | 13 | 5 |
-| [`<hp/Input.hpp>`](Input.md) | 26 | 26 |
+| [`<hp/Input.hpp>`](Input.md) | 39 | 39 |
 | [`<hp/Layer.hpp>`](Layer.md) | 28 | 16 |
 | [`<hp/Log.hpp>`](Log.md) | 22 | 12 |
 | [`<hp/Math.hpp>`](Math.md) | 6 | 6 |
@@ -60,7 +60,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
 
-**526 public declarations across 29 headers, 409 documented.**
+**539 public declarations across 29 headers, 422 documented.**
 
 ## Every symbol
 
@@ -265,11 +265,24 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `DigitalAction` | [`Input.hpp`](Input.md) |
 | `Axis2D` | [`Input.hpp`](Input.md) |
 | `AxisTuning` | [`Input.hpp`](Input.md) |
+| `writeInputMap` | [`Input.hpp`](Input.md) |
 | `InputMap` | [`Input.hpp`](Input.md) |
 | `InputMap::bindKey` | [`Input.hpp`](Input.md) |
 | `InputMap::bindMouseButton` | [`Input.hpp`](Input.md) |
 | `InputMap::bindAxis2D` | [`Input.hpp`](Input.md) |
 | `InputMap::binds` | [`Input.hpp`](Input.md) |
+| `InputMap::bindKeyNamed` | [`Input.hpp`](Input.md) |
+| `InputMap::bindMouseButtonNamed` | [`Input.hpp`](Input.md) |
+| `InputMap::bindAxis2DNamed` | [`Input.hpp`](Input.md) |
+| `InputMap::nameAction` | [`Input.hpp`](Input.md) |
+| `InputMap::actionName` | [`Input.hpp`](Input.md) |
+| `InputMap::writeInputMap` | [`Input.hpp`](Input.md) |
+| `keyCodeName` | [`Input.hpp`](Input.md) |
+| `keyCodeFromName` | [`Input.hpp`](Input.md) |
+| `mouseButtonName` | [`Input.hpp`](Input.md) |
+| `mouseButtonFromName` | [`Input.hpp`](Input.md) |
+| `kInputMapVersion` | [`Input.hpp`](Input.md) |
+| `parseInputMap` | [`Input.hpp`](Input.md) |
 | `InputContextConfig` | [`Input.hpp`](Input.md) |
 | `InputSystem` | [`Input.hpp`](Input.md) |
 | `InputSystem::InputSystem` | [`Input.hpp`](Input.md) |

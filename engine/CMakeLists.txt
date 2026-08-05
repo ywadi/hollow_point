@@ -73,6 +73,7 @@ add_library(hp_engine SHARED
     src/Engine.cpp
     src/Guid.cpp
     src/Input.cpp
+    src/InputBindings.cpp
     src/Paths.cpp
     src/FrameTargets.cpp
     src/Render.cpp
