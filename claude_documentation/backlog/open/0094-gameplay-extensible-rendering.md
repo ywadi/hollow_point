@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 510 |
 | **Created** | 2026-08-03 |
-| **Refs** | [../completed/0046-frame-render-targets.md](../completed/0046-frame-render-targets.md) |
+| **Refs** | [../completed/0046-frame-render-targets.md](../completed/0046-frame-render-targets.md), [../completed/0027-render-stack.md](../completed/0027-render-stack.md) — **`hp::SceneRenderLayer` is the worked example of the interface this ticket must prove from a module**, and `RenderPassContext` now carries `ClipSpace` because a gameplay layer building a projection has no other way to get it |
 
 ## Why
 

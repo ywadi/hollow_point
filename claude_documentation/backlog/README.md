@@ -69,7 +69,7 @@ This is the work. For what is already proven to work — and what only appears t
 | — | [T0113](completed/0113-device-loss.md) | Device loss: decide the policy, fail distinguishably | 4 — Render layer | ✅ DONE | Medium | Simple |
 | 385 | [T0111](open/0111-anti-aliasing-and-render-scale.md) | Anti-aliasing and render scale: decide before the formats freeze | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 390 | [T0046](completed/0046-frame-render-targets.md) | Frame render target management | 4 — Render layer | ✅ DONE | Medium | Simple |
-| 400 | [T0027](inprogress/0027-render-stack.md) | RenderStack: composited visual layers | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
+| 400 | [T0027](completed/0027-render-stack.md) | RenderStack: composited visual layers | 4 — Render layer | ✅ DONE | High | Moderate |
 | 410 | [T0028](completed/0028-scene-draw-submission.md) | Scene draw submission and the frame-rendered event | 4 — Render layer | ✅ DONE | High | Moderate |
 | 415 | [T0130](completed/0130-camera-lens-model.md) | Camera lens model: decide what a camera describes | 4 — Render layer | ✅ DONE | High | Simple |
 | 420 | [T0081](completed/0081-camera-system.md) | Camera system | 4 — Render layer | ✅ DONE | Medium | Simple |

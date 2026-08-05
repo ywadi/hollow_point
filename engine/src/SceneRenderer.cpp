@@ -350,7 +350,7 @@ SceneRenderer::SceneRenderer(SceneRenderer&&) noexcept = default;
 SceneRenderer& SceneRenderer::operator=(SceneRenderer&&) noexcept = default;
 
 bool SceneRenderer::create(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context,
-                           TargetFormat colour, TargetFormat depth) {
+                           TargetFormat colour, std::optional<TargetFormat> depth) {
     HP_PROFILE_ZONE();
 
     if (device == nullptr || context == nullptr) {
@@ -420,7 +420,13 @@ bool SceneRenderer::create(Diligent::IRenderDevice* device, Diligent::IDeviceCon
     Diligent::GraphicsPipelineDesc pipeline;
     pipeline.NumRenderTargets = 1;
     pipeline.RTVFormats[0] = toDiligentFormat(colour);
-    pipeline.DSVFormat = toDiligentFormat(depth);
+    // `TEX_FORMAT_UNKNOWN` is how a pipeline state says "no depth target", and it
+    // has to match what the caller actually binds. A state declaring a DSV format
+    // while nothing is bound -- or the reverse -- is a render-pass
+    // incompatibility on Vulkan, which is a validation error rather than a
+    // slightly wrong image (T0027.4).
+    pipeline.DSVFormat =
+        depth ? toDiligentFormat(*depth) : Diligent::TEX_FORMAT_UNKNOWN;
     pipeline.PrimitiveTopology = Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
     // **T0130, and the line this whole class exists to be able to write.**
@@ -430,15 +436,20 @@ bool SceneRenderer::create(Diligent::IRenderDevice* device, Diligent::IDeviceCon
     // so nothing would draw at all -- a black frame rather than inverted
     // geometry. `GLTF_PBR_Renderer` hardcodes exactly that default and keeps its
     // PSO cache private, which is why it is not used.
-    pipeline.DepthStencilDesc.DepthEnable = true;
-    pipeline.DepthStencilDesc.DepthWriteEnable = true;
+    //
+    // A depth-less pass turns both off rather than keeping the comparison
+    // against a buffer that is not there: with no depth attachment, draw order
+    // within the pass is submission order, which is what an overlay wants.
+    pipeline.DepthStencilDesc.DepthEnable = depth.has_value();
+    pipeline.DepthStencilDesc.DepthWriteEnable = depth.has_value();
     pipeline.DepthStencilDesc.DepthFunc = Diligent::COMPARISON_FUNC_GREATER_EQUAL;
     static_assert(kReverseZ, "the depth comparison above assumes T0130's reverse-Z");
 
     impl->psoCache = impl->renderer->GetPsoCacheAccessor(pipeline);
 
     impl_ = std::move(impl);
-    HP_LOG_INFO(kLog, "scene renderer ready, reverse-Z depth");
+    HP_LOG_INFO(kLog, "scene renderer ready, {}",
+                depth ? "reverse-Z depth" : "no depth attachment");
     return true;
 }
 

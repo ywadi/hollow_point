@@ -81,6 +81,15 @@ struct RenderPassContext {
 
     /// Target height in pixels.
     int height = 0;
+
+    /// The device's clip-space convention, for a layer that builds its own
+    /// projection.
+    ///
+    /// **Carried here rather than looked up**, because there is no other way for
+    /// a gameplay-authored layer to obtain it, and a projection built on the
+    /// wrong convention is right on Vulkan and mirrored on OpenGL — a bug that
+    /// only ever appears on the backend nobody develops against.
+    ClipSpace clip{};
 };
 
 /// What a layer clears before it draws.
@@ -240,11 +249,15 @@ public:
     /// @param targets the shared frame targets, or nullptr.
     /// @param width target width in pixels.
     /// @param height target height in pixels.
+    /// @param clip the device's clip-space convention, from
+    ///        `RenderLayer::clipSpace()`. Required rather than defaulted: a
+    ///        default-constructed `ClipSpace` looks plausible and silently
+    ///        mirrors every projection a layer builds on OpenGL.
     /// @returns how many layers actually rendered, which is what a test asserts
     ///          on to prove `enabled` is honoured.
     std::size_t render(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context,
                        Diligent::ITextureView* colour, Diligent::ITextureView* depth,
-                       FrameTargets* targets, int width, int height);
+                       FrameTargets* targets, int width, int height, ClipSpace clip);
 
 private:
     struct Impl;

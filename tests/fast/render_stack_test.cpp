@@ -149,6 +149,6 @@ TEST_CASE("render does nothing without a context, rather than crashing") {
     ProbeLayer layer("layer");
     stack.add(&layer);
 
-    CHECK(stack.render(nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0) == 0);
+    CHECK(stack.render(nullptr, nullptr, nullptr, nullptr, nullptr, 0, 0, hp::ClipSpace{}) == 0);
     CHECK(layer.calls == 0);
 }

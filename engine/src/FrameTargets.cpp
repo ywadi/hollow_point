@@ -4,8 +4,10 @@
 #include <hp/Profiling.hpp>
 
 #include <algorithm>
+#include <cstring>
 #include <utility>
 
+#include <DeviceContext.h>
 #include <RefCntAutoPtr.hpp>
 #include <RenderDevice.h>
 #include <Texture.h>
@@ -248,6 +250,84 @@ Diligent::ITextureView* FrameTargets::shaderResource(std::string_view name) cons
         return nullptr;
     }
     return target->texture->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+}
+
+bool FrameTargets::readback(Diligent::IDeviceContext* context, std::string_view name,
+                            std::vector<std::uint8_t>& outRgba) const {
+    HP_PROFILE_ZONE();
+
+    outRgba.clear();
+    if (context == nullptr || impl_->device == nullptr) {
+        return false;
+    }
+    const auto* target = impl_->find(name);
+    if (target == nullptr || !target->texture) {
+        HP_LOG_ERROR(kLog, "readback: no target named '{}'", name);
+        return false;
+    }
+    if (isDepth(target->desc.format)) {
+        // Refused rather than reinterpreted: D32_FLOAT is not four bytes of
+        // RGBA, and copying it into one would produce a plausible-looking image
+        // of nothing.
+        HP_LOG_ERROR(kLog, "readback: '{}' is a depth target", name);
+        return false;
+    }
+
+    Diligent::ITexture* source = target->texture;
+    const Diligent::TextureDesc& sourceDesc = source->GetDesc();
+
+    Diligent::TextureDesc desc;
+    desc.Name = "hp frame target readback";
+    desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
+    desc.Width = sourceDesc.Width;
+    desc.Height = sourceDesc.Height;
+    desc.Format = sourceDesc.Format;
+    desc.Usage = Diligent::USAGE_STAGING;
+    desc.CPUAccessFlags = Diligent::CPU_ACCESS_READ;
+    desc.BindFlags = Diligent::BIND_NONE;
+
+    Diligent::RefCntAutoPtr<Diligent::ITexture> staging;
+    impl_->device->CreateTexture(desc, nullptr, &staging);
+    if (!staging) {
+        HP_LOG_ERROR(kLog, "readback: could not create a staging texture");
+        return false;
+    }
+
+    Diligent::CopyTextureAttribs copy;
+    copy.pSrcTexture = source;
+    copy.pDstTexture = staging;
+    copy.SrcTextureTransitionMode = Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+    copy.DstTextureTransitionMode = Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+    context->CopyTexture(copy);
+
+    // **Both, and in this order.** `Flush` submits the copy; `WaitForIdle` waits
+    // for it to finish. Mapping without the wait returns whatever the staging
+    // texture happened to contain, which is usually zeroes -- a readback that
+    // silently reports a black image is exactly the failure that makes a working
+    // renderer look broken.
+    context->Flush();
+    context->WaitForIdle();
+
+    Diligent::MappedTextureSubresource mapped;
+    context->MapTextureSubresource(staging, 0, 0, Diligent::MAP_READ, Diligent::MAP_FLAG_NONE,
+                                   nullptr, mapped);
+    if (mapped.pData == nullptr) {
+        HP_LOG_ERROR(kLog, "readback: could not map the staging texture");
+        return false;
+    }
+
+    const auto width = static_cast<std::size_t>(sourceDesc.Width);
+    const auto height = static_cast<std::size_t>(sourceDesc.Height);
+    outRgba.resize(width * height * 4);
+    // Row by row: the mapped stride is the driver's, not width * 4, and assuming
+    // they are equal produces a sheared image on any width the driver pads.
+    const auto* src = static_cast<const std::uint8_t*>(mapped.pData);
+    for (std::size_t y = 0; y < height; ++y) {
+        std::memcpy(outRgba.data() + y * width * 4, src + y * mapped.Stride, width * 4);
+    }
+
+    context->UnmapTextureSubresource(staging, 0, 0);
+    return true;
 }
 
 bool FrameTargets::ready() const {

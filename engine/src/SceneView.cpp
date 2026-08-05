@@ -109,71 +109,16 @@ Diligent::ITexture* SceneView::colourTexture() const {
 
 bool SceneView::readback(Diligent::IDeviceContext* context,
                          std::vector<std::uint8_t>& outRgba) const {
-    HP_PROFILE_ZONE();
-
+    // Delegated rather than reimplemented. This used to be a copy of the staging
+    // texture, the flush-and-wait and the row-by-row stride walk; a second
+    // consumer (T0027's composite test) needed the same on a target this class
+    // does not own, and two copies of a readback is how one of them keeps the
+    // stride bug the other fixed.
     outRgba.clear();
-    if (!valid() || context == nullptr) {
+    if (!valid()) {
         return false;
     }
-    Diligent::ITexture* source = colourTexture();
-    if (source == nullptr) {
-        return false;
-    }
-
-    const Diligent::TextureDesc& sourceDesc = source->GetDesc();
-
-    Diligent::TextureDesc desc;
-    desc.Name = "hp scene view readback";
-    desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
-    desc.Width = sourceDesc.Width;
-    desc.Height = sourceDesc.Height;
-    desc.Format = sourceDesc.Format;
-    desc.Usage = Diligent::USAGE_STAGING;
-    desc.CPUAccessFlags = Diligent::CPU_ACCESS_READ;
-    desc.BindFlags = Diligent::BIND_NONE;
-
-    Diligent::RefCntAutoPtr<Diligent::ITexture> staging;
-    impl_->device->CreateTexture(desc, nullptr, &staging);
-    if (!staging) {
-        HP_LOG_ERROR(kLog, "could not create a staging texture for readback");
-        return false;
-    }
-
-    Diligent::CopyTextureAttribs copy;
-    copy.pSrcTexture = source;
-    copy.pDstTexture = staging;
-    copy.SrcTextureTransitionMode = Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
-    copy.DstTextureTransitionMode = Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
-    context->CopyTexture(copy);
-
-    // **Both, and in this order.** `Flush` submits the copy; `WaitForIdle` waits
-    // for it to finish. Mapping without the wait returns whatever the staging
-    // texture happened to contain, which is usually zeroes -- a readback that
-    // silently reports a black image is exactly the failure that makes a working
-    // renderer look broken.
-    context->Flush();
-    context->WaitForIdle();
-
-    Diligent::MappedTextureSubresource mapped;
-    context->MapTextureSubresource(staging, 0, 0, Diligent::MAP_READ, Diligent::MAP_FLAG_NONE,
-                                   nullptr, mapped);
-    if (mapped.pData == nullptr) {
-        HP_LOG_ERROR(kLog, "could not map the staging texture");
-        return false;
-    }
-
-    const auto width = static_cast<std::size_t>(sourceDesc.Width);
-    const auto height = static_cast<std::size_t>(sourceDesc.Height);
-    outRgba.resize(width * height * 4);
-    // Row by row: the mapped stride is the driver's, not width * 4, and assuming
-    // they are equal produces a sheared image on any width the driver pads.
-    const auto* src = static_cast<const std::uint8_t*>(mapped.pData);
-    for (std::size_t y = 0; y < height; ++y) {
-        std::memcpy(outRgba.data() + y * width * 4, src + y * mapped.Stride, width * 4);
-    }
-
-    context->UnmapTextureSubresource(staging, 0, 0);
-    return true;
+    return impl_->targets.readback(context, kColourTarget, outRgba);
 }
 
 int SceneView::width() const {

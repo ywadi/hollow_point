@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 410 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0120, [../open/0033-viewport-panel.md](../open/0033-viewport-panel.md), [../open/0134-pbr-renderer-adoption.md](../open/0134-pbr-renderer-adoption.md), [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), [../completed/0081-camera-system.md](../completed/0081-camera-system.md) |
+| **Refs** | T0120, [../open/0033-viewport-panel.md](../open/0033-viewport-panel.md), [../open/0134-pbr-renderer-adoption.md](../open/0134-pbr-renderer-adoption.md), [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), [../completed/0081-camera-system.md](../completed/0081-camera-system.md), [0027-render-stack.md](0027-render-stack.md), [../open/0079-lighting-system.md](../open/0079-lighting-system.md) — **see the caveat below on what this ticket's pixel evidence actually proves** |
 
 ## Why
 
@@ -522,6 +522,34 @@ view-projection gave NDC (0, 0, 0.033) with w = +3, which eliminated the camera.
 And `PSOKey` was *suspected* and turned out fine: it has a three-argument
 overload defaulting alpha to opaque, so the construction was already correct and
 "fixing" it would have been a change for nothing.
+
+### Amendment (2026-08-05, from T0027): what the pixel evidence actually proves
+
+T0027.4 needed two layers to be distinguishable by colour, tried to give them
+different materials, and measured this instead:
+
+```
+sampled colour of the quad: (0, 0, 0, 255)   -- whatever the material says
+```
+
+**Every mesh this engine renders is pure black**, and `baseColorFactor`,
+`emissiveFactor` and alpha make no difference. `SceneRenderer` sets
+`MaxLightCount = 0`, `EnableIBL = false` and `EnableEmissive = false`, so the
+shading result is zero. Nothing here is broken — there is no light in the world
+until T0079.
+
+So this ticket's decisive assertion — *"65,536 of 65,536 pixels differ from the
+clear colour"* — is true, and it proves less than it reads. It proves **geometry
+reached the target**: the VFS, the asset load, the traversal, the vertex layout,
+the matrices and the reverse-Z depth comparison all work, which is exactly the
+class of bug that cost an afternoon here. It does **not** prove anything about
+shading, and would pass identically if shading were completely broken, because
+the pixels differ from blue by being black.
+
+Left standing rather than rewritten: the test is still the right test for what
+this ticket owns. **T0079 carries the obligation** to assert that a lit surface
+is the colour it was authored as, which is the first point at which that is
+answerable at all.
 
 ### What is NOT verified, and must not be read as working
 

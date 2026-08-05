@@ -6,7 +6,7 @@
 #include <hp/Render.hpp>
 ```
 
-26 public declaration(s), 26 documented.
+24 public declaration(s), 24 documented.
 
 ## `RenderBackend`
 
@@ -25,32 +25,6 @@ enum class RenderBackend
  No Direct3D, and that is deliberate rather than missing: zig targets Windows
  through the MinGW ABI, MinGW has no `atlbase.h`, and DiligentCore gates
  D3D11/D3D12 on ATL. Both targets get Vulkan and OpenGL.
-
-## `ClipSpace`
-
-```cpp
-struct ClipSpace
-```
-
- The device's clip-space convention (T0130.3).
-
- **This is a property of the device, not of the engine, and the two backends
- disagree by default.** Vulkan clips Z to [0, 1]; OpenGL clips it to [-1, 1]
- unless `glClipControl` says otherwise, and Diligent gates that on an opt-in
- flag that defaults to off. The engine turns it on and refuses a device that
- cannot honour it, so in practice `minZ` is always 0 here — but the value is
- still read from the device rather than assumed, because "assumed" is how a
- projection matrix ends up right on one backend and mirrored on the other.
-
-## `ClipSpace::negativeOneToOneZ`
-
-```cpp
-bool negativeOneToOneZ() const
-```
-
- @returns whether clip-space Z runs [-1, 1] rather than [0, 1]. This is
-          the argument every Diligent projection helper takes, so it is
-          spelled the way they spell it.
 
 ## `RenderConfig`
 

@@ -91,7 +91,7 @@ std::size_t RenderStack::size() const {
 std::size_t RenderStack::render(Diligent::IRenderDevice* device,
                                 Diligent::IDeviceContext* context,
                                 Diligent::ITextureView* colour, Diligent::ITextureView* depth,
-                                FrameTargets* targets, int width, int height) {
+                                FrameTargets* targets, int width, int height, ClipSpace clip) {
     HP_PROFILE_ZONE();
 
     if (context == nullptr || colour == nullptr) {
@@ -130,6 +130,7 @@ std::size_t RenderStack::render(Diligent::IRenderDevice* device,
         pass.depth = boundDepth;
         pass.width = width;
         pass.height = height;
+        pass.clip = clip;
 
         layer->onRenderLayer(pass);
         ++rendered;

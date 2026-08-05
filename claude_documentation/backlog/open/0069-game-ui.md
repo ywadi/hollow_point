@@ -8,9 +8,17 @@
 | **Phase** | 12 — Game UI |
 | **Order** | 880 |
 | **Created** | 2026-08-03 |
+| **Refs** | [../completed/0027-render-stack.md](../completed/0027-render-stack.md) — **the layer to draw into now exists and is empty**; `hp::configureAsHud` sets up an orthographic camera on its own view slot with no depth test, and deliberately chose no library |
 
 > **Placeholder epic.** The library is not chosen. Recorded because it is a real
 > gap with no owner, not because it is ready to start.
+>
+> **Unblocked on the rendering side (2026-08-05).** T0027.4 built the HUD layer
+> and proved 2D-over-3D compositing in pixels without picking a UI library —
+> choosing one there would have been that ticket answering this one's question.
+> So what remains here is genuinely the library and the widget model, not the
+> plumbing. Note **D6**: Dear ImGui ships in the runtime binary regardless, so
+> "it is already linked" is not an argument for it.
 
 ## Why
 

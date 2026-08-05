@@ -220,7 +220,7 @@ std::size_t size() const
 ## `RenderStack::render`
 
 ```cpp
-std::size_t render(Diligent::IRenderDevice * device, Diligent::IDeviceContext * context, Diligent::ITextureView * colour, Diligent::ITextureView * depth, FrameTargets * targets, int width, int height)
+std::size_t render(Diligent::IRenderDevice * device, Diligent::IDeviceContext * context, Diligent::ITextureView * colour, Diligent::ITextureView * depth, FrameTargets * targets, int width, int height, ClipSpace clip)
 ```
 
  Renders every enabled layer, in order, into `colour`.
@@ -236,5 +236,9 @@ std::size_t render(Diligent::IRenderDevice * device, Diligent::IDeviceContext * 
  @param targets the shared frame targets, or nullptr.
  @param width target width in pixels.
  @param height target height in pixels.
+ @param clip the device's clip-space convention, from
+        `RenderLayer::clipSpace()`. Required rather than defaulted: a
+        default-constructed `ClipSpace` looks plausible and silently
+        mirrors every projection a layer builds on OpenGL.
  @returns how many layers actually rendered, which is what a test asserts
           on to prove `enabled` is honoured.

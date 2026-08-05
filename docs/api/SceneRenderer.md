@@ -77,7 +77,7 @@ SceneRenderer & operator=(SceneRenderer && other)
 ## `SceneRenderer::create`
 
 ```cpp
-bool create(Diligent::IRenderDevice * device, Diligent::IDeviceContext * context, TargetFormat colour, TargetFormat depth)
+bool create(Diligent::IRenderDevice * device, Diligent::IDeviceContext * context, TargetFormat colour, std::optional<TargetFormat> depth)
 ```
 
  Creates the pipeline states and shaders.
@@ -89,7 +89,13 @@ bool create(Diligent::IRenderDevice * device, Diligent::IDeviceContext * context
  @param context the immediate context, needed for one-off setup uploads.
         Must not be null.
  @param colour the colour target's format.
- @param depth the depth target's format.
+ @param depth the depth target's format, or **nothing for a pass that
+        renders without depth at all** — a HUD or an overlay (T0027.4).
+        This is not a convenience: a pipeline state declares whether it has
+        a depth target, and drawing with no depth bound through a state
+        that declares one is a render-pass incompatibility, not a
+        harmless mismatch. Absent, depth test and depth write are both off
+        and draw order within the pass is submission order.
  @returns whether creation succeeded. False leaves this renderer empty and
           logs why; it is never a partial state.
 

@@ -6,7 +6,7 @@
 #include <hp/FrameTargets.hpp>
 ```
 
-24 public declaration(s), 24 documented.
+25 public declaration(s), 25 documented.
 
 ## `TargetFormat`
 
@@ -226,6 +226,32 @@ bool hasPingPong(std::string_view name) const
 
  @param name the pair's name.
  @returns whether a ping-pong pair was declared under that name.
+
+## `FrameTargets::readback`
+
+```cpp
+bool readback(Diligent::IDeviceContext * context, std::string_view name, std::vector<std::uint8_t> & outRgba) const
+```
+
+ Copies a colour target back to CPU memory.
+
+ **Slow, and deliberately so** — it flushes and waits for the GPU to go
+ idle. This is for tests, screenshots and thumbnail generation (T0120.2),
+ never for a per-frame path.
+
+ It lives here rather than in each consumer because Diligent is linked
+ PRIVATE: nothing outside the engine can reach the RHI to do it, so a test
+ that wants to assert on pixels has no other way to get them. `SceneView`
+ delegates to this rather than carrying a second copy.
+ @param context the immediate context. Must not be null.
+ @param name the declared name of a colour target. A depth target is
+        refused — its format is not four bytes of RGBA and pretending
+        otherwise would return plausible nonsense.
+ @param outRgba filled with `width() * height() * 4` bytes, row-major from
+        the top-left, 8 bits per channel **in the target's own encoding**
+        — which is sRGB for `TargetFormat::Colour`, so these are not
+        linear values. Cleared on failure.
+ @returns whether the readback succeeded.
 
 ## `FrameTargets::ready`
 

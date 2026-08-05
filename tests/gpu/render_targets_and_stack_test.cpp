@@ -272,7 +272,7 @@ void exerciseTargetsAndStack(hp::RenderBackend backend, const char* backendName)
         const std::size_t rendered =
             stack.render(device.render->device(), device.render->context(),
                          targets.renderTarget("scene"), targets.depthStencil("depth"), &targets,
-                         320, 240);
+                         320, 240, device.render->clipSpace());
 
         CHECK(rendered == 2);
         CHECK(order == "worldhud");

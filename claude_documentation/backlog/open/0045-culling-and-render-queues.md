@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 440 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0050, T0085, T0086, T0089, T0120, [../completed/0081-camera-system.md](../completed/0081-camera-system.md) |
+| **Refs** | T0050, T0085, T0086, T0089, T0120, [../completed/0081-camera-system.md](../completed/0081-camera-system.md), [../completed/0027-render-stack.md](../completed/0027-render-stack.md) — **this ticket must honour `Camera::cullingMask`**; until it does, a world layer and a HUD layer cannot share a `Scene` |
 
 ## Why
 

@@ -2,13 +2,13 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
 | **Order** | 400 |
 | **Created** | 2026-08-02 |
-| **Refs** | [../completed/0113-device-loss.md](../completed/0113-device-loss.md) |
+| **Refs** | [../completed/0113-device-loss.md](../completed/0113-device-loss.md), [../completed/0028-scene-draw-submission.md](../completed/0028-scene-draw-submission.md), [../open/0045-culling-and-render-queues.md](../open/0045-culling-and-render-queues.md), [../open/0079-lighting-system.md](../open/0079-lighting-system.md), [../open/0069-game-ui.md](../open/0069-game-ui.md), [../open/0094-gameplay-extensible-rendering.md](../open/0094-gameplay-extensible-rendering.md) |
 
 ## Why
 
@@ -29,18 +29,18 @@ this `RenderStack`.
 
 - [x] `IRenderLayer` with a render entry point and explicit ordering — stable sort, so equal orders keep insertion order
 - [x] `RenderStack` composites layers in order into one target — verified rendering on a real device, both backends
-- [~] Per-layer clear behaviour and camera/projection — clear and per-layer **depth** done; **camera/projection is not here**, it is T0081's with T0130 deciding the vocabulary
-- [ ] A world layer and a UI/HUD layer both render, correctly stacked — **not done.** The mechanism exists; no concrete layer does
+- [x] Per-layer clear behaviour and camera/projection — clear and per-layer **depth** verified in pixels; **camera/projection is resolved per layer** from its own view slot (27.3), with T0081 owning the resolve and T0130 the vocabulary
+- [x] A world layer and a UI/HUD layer both render, correctly stacked — measured in pixels, both backends; see the evidence block below
 - [x] Layers can be enabled/disabled at runtime without reordering — a three-layer stack with one disabled renders exactly two, in order
-- [~] **Gameplay code can implement and insert its own layer** (T0094) — the API allows it and D22 measured that the calls link with no Diligent library; **no gameplay layer has been written**, so this is proven in principle and not in fact
+- [~] **Gameplay code can implement and insert its own layer** (T0094) — the API allows it, D22 measured that the calls link with no Diligent library, and `SceneRenderLayer` is now a worked example of the interface; **no layer has been written in an actual gameplay module**, so this stays proven in principle and not in fact
 - [x] Each layer emits its own profiling zone (T0019) — `HP_PROFILE_ZONE_NAMED(layer->name())` in `RenderStack::render`, one per enabled layer
 
 ## Subtasks
 
 - [x] 27.1 `IRenderLayer` — order, enabled flag, clear policy, per-layer depth. Camera deliberately excluded; see notes
 - [x] 27.2 `RenderStack` owning an ordered list — **non-owning**, see notes
-- [ ] 27.3 World layer drawing the scene (T0028) — **not done**, and needs T0023's assets
-- [~] 27.4 A HUD/UI layer proving 2D-over-3D works, including depth handling — the depth *policy* is built (`useDepth`); nothing proves it yet
+- [x] 27.3 World layer drawing the scene (T0028) — `hp::SceneRenderLayer`, sharing `SceneRenderer` with `SceneView` rather than growing a second resolve
+- [x] 27.4 A HUD/UI layer proving 2D-over-3D works, including depth handling — `configureAsHud`; the depth-less pipeline is built and exercised, and the overlay is asserted in pixels
 - [x] 27.5 Decide compositing — **single target**, decided and recorded below
 - [x] 27.6 Per-layer profiling zones — `HP_PROFILE_ZONE_NAMED(layer->name())`
 
@@ -118,6 +118,95 @@ they overlap.
 **Assert pixels, not statistics.** T0028 spent an afternoon on a frame where
 every counter said a draw was issued and nothing was on screen; two submitted
 layers prove nothing about ordering.
+
+### Built and measured 2026-08-05 — 27.3 and 27.4 close the ticket
+
+`engine/include/hp/SceneRenderLayer.hpp`, `engine/src/SceneRenderLayer.cpp`,
+`tests/fast/scene_render_layer_test.cpp`,
+`tests/gpu/render_stack_composites_test.cpp`.
+
+**Evidence, from a real GPU, both backends:**
+
+```
+world only: left (0, 0, 0), right (0, 0, 255)
+stacked:    left (0, 0, 0), right (0, 0, 0)
+[doctest] test cases:  11 |  11 passed | 0 failed   (gpu bucket)
+[doctest] assertions: 477 | 477 passed | 0 failed
+```
+
+The world layer's camera takes the left half of the target, the HUD's the right.
+Alone, the world leaves the right half at the clear colour; stacked, it is
+covered. **That is the ordering proof**, and it works because the world layer
+clears colour: a HUD that ran first would have been erased and the right half
+would read blue in both rows. The left half staying covered proves the HUD did
+not erase what was beneath it.
+
+Full suites green on both targets: 196 fast, 89 integration, 11 gpu.
+
+#### The engine renders every mesh pure black, and that is not a T0027 bug
+
+**Measured, not assumed** — `(0, 0, 0, 255)` regardless of `baseColorFactor`,
+`emissiveFactor` or alpha. `SceneRenderer` runs `PBR_Renderer` with
+`MaxLightCount = 0`, `EnableIBL = false` and `EnableEmissive = false`, so the
+shading result is zero. Nothing is wrong with this ticket's code; there is simply
+no light in the world yet (**T0079**).
+
+It matters twice over:
+
+- **It changed this ticket's test design.** The first version distinguished the
+  two layers by material colour — red world, green HUD — and could not, because
+  both are black. The clear colour is a better discriminator anyway, for the
+  reason above, but it was found by measuring rather than by reasoning.
+- **T0028's "a mesh is drawn" evidence is weaker than it reads.** That test
+  asserts pixels differ from a blue clear colour, and they differ *because they
+  are black*. It is still a true and useful assertion — geometry reached the
+  target through the whole VFS-to-raster path — but it would pass identically if
+  shading were completely broken. Recorded on T0079, which is what makes it
+  assertable.
+
+#### A view slot picks a camera; it does not filter objects
+
+The two layers in the test draw **two separate scenes**, and that is forced
+rather than stylistic. `SceneRenderLayer` runs `parseScene` over whatever scene
+it holds, so a world layer and a HUD layer sharing one scene each draw the
+other's geometry. Per-layer object filtering is `Camera::cullingMask`, which is
+stored on the camera and honoured nowhere — **T0045**.
+
+Until that lands, a HUD's content lives in its own `Scene`. That works and is not
+absurd — a HUD genuinely is a separate little world — but it is not what the
+"a HUD is just a camera on another slot" framing implies, and someone will be
+surprised by it.
+
+#### Two API changes this needed, and why they are not incidental
+
+- **`RenderPassContext` now carries `ClipSpace`**, and `RenderStack::render`
+  takes one. A layer that builds a projection cannot get it right without the
+  device's clip convention, and a gameplay-authored layer (T0094) has no other
+  way to obtain it. Required rather than defaulted: a default-constructed
+  `ClipSpace` looks plausible and silently mirrors every projection on OpenGL.
+  `ClipSpace` moved from `hp/Render.hpp` to `hp/DepthConvention.hpp` so this
+  costs no swap-chain include — which is the argument that header already makes
+  for itself.
+- **`SceneRenderer::create` takes `std::optional<TargetFormat>` for depth.** A
+  HUD binds no depth target, so its pipeline state must declare none. A state
+  carrying a DSV format with nothing bound is a **render-pass incompatibility**,
+  not a slightly wrong image. `SceneRenderLayer` derives this from its own
+  `useDepth` so there is one place that decides, and guards the residual case —
+  `useDepth` is public data and can be flipped after `create` — with a named
+  error rather than leaving it to the validation layers. The gpu test flips it
+  deliberately and asserts the layer refuses.
+
+Also: `FrameTargets::readback` now exists and `SceneView::readback` delegates to
+it. The staging copy, the flush-and-wait and the row-by-row stride walk were
+about to be duplicated for this ticket's test, and two copies of a readback is
+how one of them keeps the stride bug the other fixed.
+
+#### Still not done here
+
+- **T0113.5 remains parked** and is no closer: this stack still cannot compile or
+  dispatch a compute shader, so the device-loss abort has still never run.
+- **`configureAsHud` is configuration, not a widget system.** T0069 still owns
+  what draws HUD *content*; nothing here chose a UI library, which was the point.
 
 ## Notes / findings
 

@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 470 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0085, T0093, [0134-pbr-renderer-adoption.md](0134-pbr-renderer-adoption.md) — **decide whether this ticket configures DiligentFX's lighting or supersedes it**, rather than discovering the overlap mid-implementation |
+| **Refs** | T0085, T0093, [0134-pbr-renderer-adoption.md](0134-pbr-renderer-adoption.md) — **decide whether this ticket configures DiligentFX's lighting or supersedes it**, rather than discovering the overlap mid-implementation; [../completed/0027-render-stack.md](../completed/0027-render-stack.md) — **the engine currently renders every mesh pure black**, measured, and this ticket is what makes shading assertable at all |
 
 ## Why
 
@@ -57,6 +57,34 @@ is exactly what causes visible popping.
 
 The old `terrain_lab` app used `EpipolarLightScattering`, so atmospheric
 scattering is available in DiligentFX if outdoor scenes matter.
+
+### Measured 2026-08-05 (T0027) — the engine renders every mesh pure black
+
+Not a prediction; read back off a real GPU on both backends, and it changed the
+design of another ticket's test:
+
+```
+sampled colour of a lit-material quad: (0, 0, 0, 255)
+```
+
+`baseColorFactor`, `emissiveFactor` and alpha make no difference.
+`SceneRenderer` creates `PBR_Renderer` with `MaxLightCount = 0`,
+`EnableIBL = false` and `EnableEmissive = false` — each off because it belongs to
+a later ticket and needs resources nothing supplies yet — so the shading result
+is zero everywhere. Nothing is broken; there is no light in the world.
+
+**Two things follow for this ticket:**
+
+- **It is the first ticket able to assert that shading is correct at all.** Every
+  pixel test written so far can only ask "did geometry reach the target", because
+  black-on-clear-colour is the only signal available. Turning on one directional
+  light makes material colour observable, and the first test worth writing here
+  is the one that asserts a lit surface is the colour it was authored as.
+- **T0028's "a mesh is drawn" evidence is weaker than it reads**, and should be
+  strengthened here rather than left. That test asserts pixels differ from a blue
+  clear colour, and they differ *because they are black* — it would pass
+  identically with shading completely broken. The geometry path it proves is
+  real; the shading it appears to imply is not tested by anything yet.
 
 ### Cross-ticket obligations (2026-08-04, T0124 backfill)
 

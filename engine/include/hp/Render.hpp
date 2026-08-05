@@ -34,6 +34,7 @@
 #pragma once
 
 #include <hp/Api.hpp>
+#include <hp/DepthConvention.hpp>
 #include <hp/Layer.hpp>
 #include <hp/Window.hpp>
 
@@ -60,31 +61,6 @@ enum class RenderBackend : std::uint8_t {
     Default,
     Vulkan,
     OpenGL,
-};
-
-/// The device's clip-space convention (T0130.3).
-///
-/// **This is a property of the device, not of the engine, and the two backends
-/// disagree by default.** Vulkan clips Z to [0, 1]; OpenGL clips it to [-1, 1]
-/// unless `glClipControl` says otherwise, and Diligent gates that on an opt-in
-/// flag that defaults to off. The engine turns it on and refuses a device that
-/// cannot honour it, so in practice `minZ` is always 0 here — but the value is
-/// still read from the device rather than assumed, because "assumed" is how a
-/// projection matrix ends up right on one backend and mirrored on the other.
-struct ClipSpace {
-    /// Minimum clip-space Z. 0 on Vulkan, and on OpenGL with clip control.
-    float minZ = 0.0F;
-
-    /// Scale taking an NDC Y coordinate to a texture V coordinate. **Positive
-    /// on OpenGL and negative on Vulkan** — the two disagree about which way
-    /// texture space runs, which is why a render-to-texture pass that ignores
-    /// this comes out vertically flipped on exactly one of them.
-    float yToV = 0.0F;
-
-    /// @returns whether clip-space Z runs [-1, 1] rather than [0, 1]. This is
-    ///          the argument every Diligent projection helper takes, so it is
-    ///          spelled the way they spell it.
-    [[nodiscard]] constexpr bool negativeOneToOneZ() const { return minZ < 0.0F; }
 };
 
 /// How the render layer comes up.

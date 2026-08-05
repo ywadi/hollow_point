@@ -36,12 +36,12 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Camera.hpp>`](Camera.md) | 10 | 10 |
 | [`<hp/CameraSystem.hpp>`](CameraSystem.md) | 11 | 11 |
 | [`<hp/Cook.hpp>`](Cook.md) | 14 | 14 |
-| [`<hp/DepthConvention.hpp>`](DepthConvention.md) | 2 | 2 |
+| [`<hp/DepthConvention.hpp>`](DepthConvention.md) | 4 | 4 |
 | [`<hp/DrawSubmission.hpp>`](DrawSubmission.md) | 3 | 3 |
 | [`<hp/Engine.hpp>`](Engine.md) | 4 | 4 |
 | [`<hp/EntryPoint.hpp>`](EntryPoint.md) | 1 | 0 |
 | [`<hp/Event.hpp>`](Event.md) | 80 | 23 |
-| [`<hp/FrameTargets.hpp>`](FrameTargets.md) | 24 | 24 |
+| [`<hp/FrameTargets.hpp>`](FrameTargets.md) | 25 | 25 |
 | [`<hp/Guid.hpp>`](Guid.md) | 13 | 5 |
 | [`<hp/Input.hpp>`](Input.md) | 39 | 39 |
 | [`<hp/Layer.hpp>`](Layer.md) | 28 | 16 |
@@ -52,9 +52,10 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Paths.hpp>`](Paths.md) | 1 | 1 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
-| [`<hp/Render.hpp>`](Render.md) | 26 | 26 |
+| [`<hp/Render.hpp>`](Render.md) | 24 | 24 |
 | [`<hp/RenderStack.hpp>`](RenderStack.md) | 21 | 21 |
 | [`<hp/Scene.hpp>`](Scene.md) | 54 | 54 |
+| [`<hp/SceneRenderLayer.hpp>`](SceneRenderLayer.md) | 10 | 10 |
 | [`<hp/SceneRenderer.hpp>`](SceneRenderer.md) | 11 | 11 |
 | [`<hp/SceneView.hpp>`](SceneView.md) | 18 | 18 |
 | [`<hp/Serialize.hpp>`](Serialize.md) | 6 | 6 |
@@ -63,7 +64,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
 
-**620 public declarations across 32 headers, 503 documented.**
+**631 public declarations across 33 headers, 514 documented.**
 
 ## Every symbol
 
@@ -185,6 +186,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `readString` | [`Cook.hpp`](Cook.md) |
 | `kReverseZ` | [`DepthConvention.hpp`](DepthConvention.md) |
 | `kDepthClearValue` | [`DepthConvention.hpp`](DepthConvention.md) |
+| `ClipSpace` | [`DepthConvention.hpp`](DepthConvention.md) |
+| `ClipSpace::negativeOneToOneZ` | [`DepthConvention.hpp`](DepthConvention.md) |
 | `DrawItem` | [`DrawSubmission.hpp`](DrawSubmission.md) |
 | `DrawParseStats` | [`DrawSubmission.hpp`](DrawSubmission.md) |
 | `parseScene` | [`DrawSubmission.hpp`](DrawSubmission.md) |
@@ -292,6 +295,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `FrameTargets::pingPongTarget` | [`FrameTargets.hpp`](FrameTargets.md) |
 | `FrameTargets::pingPongSource` | [`FrameTargets.hpp`](FrameTargets.md) |
 | `FrameTargets::hasPingPong` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::readback` | [`FrameTargets.hpp`](FrameTargets.md) |
 | `FrameTargets::ready` | [`FrameTargets.hpp`](FrameTargets.md) |
 | `FrameTargets::width` | [`FrameTargets.hpp`](FrameTargets.md) |
 | `FrameTargets::height` | [`FrameTargets.hpp`](FrameTargets.md) |
@@ -446,8 +450,6 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `resolveType` | [`Reflect.hpp`](Reflect.md) |
 | `forgetType` | [`Reflect.hpp`](Reflect.md) |
 | `RenderBackend` | [`Render.hpp`](Render.md) |
-| `ClipSpace` | [`Render.hpp`](Render.md) |
-| `ClipSpace::negativeOneToOneZ` | [`Render.hpp`](Render.md) |
 | `RenderConfig` | [`Render.hpp`](Render.md) |
 | `RenderLayer` | [`Render.hpp`](Render.md) |
 | `RenderLayer::RenderLayer` | [`Render.hpp`](Render.md) |
@@ -546,6 +548,16 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `tryGet` | [`Scene.hpp`](Scene.md) |
 | `remove` | [`Scene.hpp`](Scene.md) |
 | `registerComponent` | [`Scene.hpp`](Scene.md) |
+| `SceneRenderLayer` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
+| `SceneRenderLayer::SceneRenderLayer` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
+| `SceneRenderLayer::create` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
+| `SceneRenderLayer::release` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
+| `SceneRenderLayer::valid` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
+| `SceneRenderLayer::setScene` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
+| `SceneRenderLayer::scene` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
+| `SceneRenderLayer::onRenderLayer` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
+| `SceneRenderLayer::name` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
+| `configureAsHud` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
 | `DrawSubmitStats` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `SceneRenderer` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `SceneRenderer::SceneRenderer` | [`SceneRenderer.hpp`](SceneRenderer.md) |
