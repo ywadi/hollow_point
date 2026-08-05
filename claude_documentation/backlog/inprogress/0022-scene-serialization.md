@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 3 — Data model |
@@ -34,6 +34,89 @@ schema is still small.
 - [ ] 22.4 Load: recreate entities preserving GUIDs, then components
 - [ ] 22.5 Wire binary cook/load through T0020
 - [ ] 22.6 Round-trip tests, including an empty scene and a large one
+
+## Design worked out 2026-08-05, before writing any code
+
+Recorded rather than re-derived. Three of the six subtasks turn out to be wiring
+existing pieces; the fourth has a trap that a naive implementation walks into.
+
+### 22.2 is already answered — extend the registry that exists
+
+`Scene.cpp` already keeps a **component registry keyed by stable name**, built by
+`registerComponent<T>` and held in `componentClones()`. It carries one function
+pointer today (`copy`, for scene cloning) and it is exactly the right shape for
+this ticket: name-keyed, populated as a side effect of the one reflection
+declaration, and **replacing on re-registration** — which is what a gameplay
+module reload needs, and which is already handled with the reason written down.
+
+So 22.2 is *"add two function pointers"*, not *"design a mechanism"*:
+
+- `bool get(const entt::registry&, entt::entity, entt::meta_any& out)`
+- `bool set(entt::registry&, entt::entity, const entt::meta_any&)`
+
+**Do not build a second registry.** This ticket's own note warns that a central
+`if/else` over component types rots fastest; a parallel table is the same
+mistake wearing a different hat. The name is the identity — `entt::type_index`
+differs across the module boundary (measured, T0095) and must never reach a file.
+
+### The trap: three registered components must NOT be serialized generically
+
+Eight components are registered today: `Id`, `Tag`, `Transform`, `Hierarchy`,
+`WorldTransform`, `MeshRenderer`, `Camera`, `Light`. **A loop that writes all of
+them produces a corrupt file**, and it will look fine:
+
+| Component | Why it cannot go through the generic path |
+|---|---|
+| **`Hierarchy`** | Its fields are `entt::entity parent` and `std::vector<entt::entity> children` — **runtime handles**, indices into one registry's slots. Persisted, they are meaningless on load and will silently address *different* entities, because a destroyed entity's slot is reused. Must be written as **GUIDs and fixed up on load**, which is T0101.1's representation decision to consume, not to reinvent |
+| **`WorldTransform`** | Derived from `Transform` by propagation (T0101). Writing it stores the same truth twice and lets the two disagree; a hand-edited file with a stale world matrix would render at the wrong place for one frame |
+| **`Id`** | Holds the entity's `Guid`, which the **entity** already carries in the schema (22.1). Writing it as a component too means two places to disagree about identity |
+
+`Id`, `Hierarchy` and `WorldTransform` are all registered **with no reflected
+properties**, so today they would silently write an empty map — which is
+harmless but also proves nothing, and would start writing garbage the moment
+someone "helpfully" adds `.property<&Hierarchy::parent>`. **Mark them
+non-serialized explicitly** rather than relying on the absence of properties.
+
+### 22.5 is wiring
+
+`writeProperties` / `readProperties` (YAML) and `cookProperties` /
+`readCookedProperties` (binary) all exist and are tested, with the leaf types
+hand-written in `Serialize.cpp`. The binary path needs no new machinery.
+
+**`adoptMetaContext()` must be called before any of it** in a consumer that is
+not the engine — the registry looks empty otherwise and `writeProperties`
+returns false **with no diagnostic at all**, which reads exactly like a broken
+serializer. That cost twenty minutes on T0079.
+
+### 22.6 should turn today's luck into a test
+
+Two reflection gaps were found by accident on 2026-08-05: `Light` was not
+registered at all, and `MeshRenderer::layers` was added as a field and never
+reflected — so a scene would have reloaded with every object back on the default
+layer, visible to cameras explicitly told to exclude it. Both were caught by
+writing an unrelated round-trip test.
+
+**The test this ticket owes is the systematic version**: walk the component
+registry, and for every registered type assert a round trip. That converts "did
+someone remember" into "the suite fails". It is also the only thing that will
+catch the next component added without a `.property<>` line.
+
+### 22.4's GUID preservation is supported
+
+`Scene::createWithGuid(guid, name)` already exists, and `Scene::find(guid)`
+resolves one — which is also the hierarchy fix-up primitive. So load is:
+create every entity with its GUID first, then attach components, then resolve
+parent links by GUID. Two passes, and the second is what makes forward
+references work.
+
+### Unknown components — the blob, and where it has to live
+
+The policy is decided (see the second review pass below): **preserve the raw
+subtree**. Note it has to survive on a `Scene`, not in the file layer, because
+the round trip is *load → edit → save* and the blob must still be there at save
+time. That means a component-shaped store of `name -> raw YAML` on entities that
+had unknown types, which the save path re-emits verbatim. Worth designing before
+22.3 rather than bolted on after.
 
 ## Notes / findings
 
