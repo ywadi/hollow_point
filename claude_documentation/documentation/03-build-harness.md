@@ -226,3 +226,81 @@ hour as a missed one.
 so globbing and copying behave identically on both hosts and so `dist` works
 without the harness. Produces `dist/<target>/{bin,lib}`; on Windows the DLLs go
 next to the exe, since that is the only place Windows will find them.
+
+---
+
+## Named targets, `POST_BUILD`, and the stale library that ran the tests
+
+Three facts that compose into one silent, expensive failure. Recorded on
+2026-08-05 after it cost two wrong diagnoses in a single session.
+
+### 1. The harness builds named targets, not `all`
+
+`build.zig` invokes `cmake --build <dir> --target hp_tests_fast`, deliberately:
+Ninja then resolves just that executable's dependencies, so running the fast
+suite does not build ~1100 engine targets. The same is true of the apps.
+
+**The consequence is that `add_custom_target(… ALL …)` never runs.** `ALL` puts
+a target in the `all` target; nothing ever asks for `all`. A copy step written
+that way configures cleanly, builds cleanly, and does nothing — which is exactly
+what happened on the first attempt at fixing the bug below, and the only reason
+it was caught was a test that compared file timestamps rather than trusting the
+build output.
+
+**The dependency has to run from the consumer to the step**, not the reverse:
+
+```cmake
+add_dependencies(hp_tests_fast my_copy_step)   # right: asking for the binary asks for the step
+add_dependencies(my_copy_step hp_tests_fast)   # wrong: nothing ever asks for my_copy_step
+```
+
+### 2. `OUTPUT` accepts only a restricted set of generator expressions
+
+`$<TARGET_FILE_NAME:hp_engine>` in an `add_custom_command(OUTPUT …)` fails at
+generate time with **`No target "hp_engine"`**, which is a thoroughly misleading
+message — the target exists. `COMMAND` has no such restriction. Use a **stamp
+file** as the output and put the generator expression in the command:
+
+```cmake
+add_custom_command(
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/hp_engine_copy.stamp"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "$<TARGET_FILE:hp_engine>" "${CMAKE_CURRENT_BINARY_DIR}"
+    COMMAND "${CMAKE_COMMAND}" -E touch "${CMAKE_CURRENT_BINARY_DIR}/hp_engine_copy.stamp"
+    DEPENDS hp_engine
+    VERBATIM)
+```
+
+### 3. `POST_BUILD` does not fire when the target is up to date
+
+This is the one that did the damage. `add_custom_command(TARGET … POST_BUILD)`
+runs only when the target is **rebuilt**.
+
+On Windows an executable links against the **import library**, and recompiling
+an engine `.cpp` without changing the exported symbol set leaves the import
+library untouched. So the `.exe` is up to date, nothing relinks, the POST_BUILD
+copy never runs, and the binary executes against the **previous**
+`libhp_engine.dll` sitting beside it. Linux happened to escape only because a
+`.so` is a direct link input, so the executable relinks — luck, not a guarantee,
+and it is fixed the same way.
+
+**The symptom is a test result that is silently about the wrong code.** It was
+seen in both directions in one session:
+
+- a **green** Windows suite while the identical source **segfaulted** on Linux;
+- **two Windows failures** for a bug that had already been fixed, which sent the
+  investigation after a phantom platform difference in `entt`'s container
+  support that did not exist.
+
+**If a result differs between the two targets and you cannot explain why, check
+the timestamp of the library beside the binary before you debug the code:**
+
+```sh
+ls -l build/windows-x86_64-release/{engine,tests}/libhp_engine.dll
+```
+
+The fix in `tests/CMakeLists.txt` and both `apps/*/CMakeLists.txt` is a stamped
+copy rule the binary depends on, so the engine beside it is refreshed on every
+build whether or not anything relinks. The full transitive DLL set still rides
+on `POST_BUILD`, which is correct for it: a *new* dependency changes the import
+library, so the executable does relink.

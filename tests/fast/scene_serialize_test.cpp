@@ -55,7 +55,7 @@ hp::Scene makePopulated() {
 
     hp::MeshRenderer renderer;
     renderer.mesh = hp::Guid::generate();
-    renderer.material = hp::Guid::generate();
+    renderer.materials = {hp::Guid::generate(), hp::Guid{}, hp::Guid::generate()};
     renderer.layers = hp::LayerMask::layer(7);
     child.add<hp::MeshRenderer>(renderer);
 

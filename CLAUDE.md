@@ -277,7 +277,27 @@ push.
   succeed only on your machine. Every backend must be chosen explicitly.
 - **Windows has no RPATH.** A `.exe` finds DLLs in its own directory and on
   `PATH`, nowhere else. A missing DLL is silent: the process produces no output
-  at all.
+  at all. Worse, a **stale** one is silent too — see the next two traps, which
+  are the same bug from either end.
+- **`build.zig` builds *named* targets, never `all`.** It runs
+  `cmake --build … --target hp_tests_fast` so the fast suite does not drag in
+  ~1100 engine targets. So **`add_custom_target(… ALL …)` never runs**, and a
+  dependency written `add_dependencies(my_copy_step the_exe)` is backwards —
+  nothing asks for `my_copy_step`. Point it the other way:
+  `add_dependencies(the_exe my_copy_step)`, so asking for the binary asks for
+  the step. Also: **`OUTPUT` accepts only a restricted set of generator
+  expressions** — `$<TARGET_FILE_NAME:…>` fails there with a baffling
+  "No target hp_engine". Use a stamp file and put the genex in `COMMAND`.
+- **`POST_BUILD` does not fire when the target is already up to date**, and on
+  Windows that is most of the time: an `.exe` links against the **import
+  library**, which does not change when an engine `.cpp` is recompiled without
+  altering exported symbols. So an engine-only change leaves the *previous*
+  `libhp_engine.dll` beside the binary and **the suite runs stale code with no
+  diagnostic at all** — measured twice in one session on 2026-08-05, in both
+  directions: a green Windows suite while the same source segfaulted on Linux,
+  and two Windows failures for a bug already fixed. If a result differs between
+  the two targets for no reason you can explain, check the DLL's timestamp
+  before you debug the code.
 - **`dist` must be tested with the build tree gone**, not merely moved. An
   absolute build-tree path baked into RUNPATH passes both "run it in place" and
   "copy the folder elsewhere" on the machine that built it.

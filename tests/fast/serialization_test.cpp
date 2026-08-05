@@ -649,7 +649,7 @@ TEST_CASE("a component with a GUID round-trips, and the GUID stays readable") {
 
     hp::MeshRenderer original;
     original.mesh = hp::Guid::generate();
-    original.material = hp::Guid::generate();
+    original.materials = {hp::Guid::generate(), hp::Guid{}, hp::Guid::generate()};
 
     hp::YamlDocument doc;
     REQUIRE(hp::writeProperties(doc.root(), entt::forward_as_meta(original)));
@@ -666,7 +666,72 @@ TEST_CASE("a component with a GUID round-trips, and the GUID stays readable") {
     REQUIRE(hp::readProperties(const_cast<hp::YamlDocument&>(*parsed).root(),
                                entt::forward_as_meta(restored)));
     CHECK(restored.mesh == original.mesh);
-    CHECK(restored.material == original.material);
+    REQUIRE(restored.materials.size() == original.materials.size());
+    for (std::size_t i = 0; i < original.materials.size(); ++i) {
+        CHECK(restored.materials[i] == original.materials[i]);
+    }
+}
+
+TEST_CASE("a sequence of leaves is a flat list, not a list of single-key maps") {
+    // It used to write `- 0: <guid>` per element, because the leaf writer could
+    // only set a key. That is unreadable in a diff and miserable to hand-author,
+    // which is the whole point of the format — so the leaf writer gained a
+    // destination rather than the file gaining a shape.
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    hp::MeshRenderer original;
+    original.mesh = hp::Guid{0x11};
+    original.materials = {hp::Guid{0xAA}, hp::Guid{0xBB}};
+
+    hp::YamlDocument doc;
+    REQUIRE(hp::writeProperties(doc.root(), entt::forward_as_meta(original)));
+    const std::string text = doc.emit();
+
+    CHECK(text.find("- " + hp::Guid{0xAA}.toString()) != std::string::npos);
+    CHECK(text.find("0: ") == std::string::npos);
+}
+
+TEST_CASE("an empty sequence round-trips as empty, not as one default element") {
+    // The distinction carries meaning: empty means "every surface uses what the
+    // model imported", and a single default entry would mean "surface 0 does,
+    // and there is only one surface".
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    hp::MeshRenderer original;
+    original.mesh = hp::Guid{0x22};
+
+    hp::YamlDocument doc;
+    REQUIRE(hp::writeProperties(doc.root(), entt::forward_as_meta(original)));
+    const auto parsed = hp::YamlDocument::parse(doc.emit());
+    REQUIRE(parsed.has_value());
+
+    hp::MeshRenderer restored;
+    restored.materials = {hp::Guid{0xFF}};  // must be cleared, not appended to
+    REQUIRE(hp::readProperties(const_cast<hp::YamlDocument&>(*parsed).root(),
+                               entt::forward_as_meta(restored)));
+    CHECK(restored.materials.empty());
+}
+
+TEST_CASE("a sequence of leaves survives the cook") {
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    hp::MeshRenderer original;
+    original.mesh = hp::Guid{0x33};
+    original.materials = {hp::Guid{0xAA}, hp::Guid{}, hp::Guid{0xCC}};
+
+    std::vector<std::byte> payload;
+    REQUIRE(hp::cookProperties(entt::forward_as_meta(original), payload));
+
+    hp::MeshRenderer restored;
+    std::size_t cursor = 0;
+    REQUIRE(hp::readCookedProperties(payload, cursor, entt::forward_as_meta(restored)));
+    REQUIRE(restored.materials.size() == 3);
+    CHECK(restored.materials[0] == hp::Guid{0xAA});
+    CHECK_FALSE(restored.materials[1].isValid());
+    CHECK(restored.materials[2] == hp::Guid{0xCC});
 }
 
 TEST_CASE("a camera round-trips every field it gained from T0130") {

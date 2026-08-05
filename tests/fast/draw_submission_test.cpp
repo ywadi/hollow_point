@@ -6,6 +6,8 @@
 
 #include <doctest/doctest.h>
 
+#include <vector>
+
 #include <hp/DrawSubmission.hpp>
 #include <hp/Scene.hpp>
 
@@ -19,11 +21,12 @@ namespace {
 /// `WorldTransform` directly, because that is the only write guaranteed to reach
 /// the world transform -- and a test that bypassed it would pass while the real
 /// path was broken.
-hp::Entity makeDrawable(hp::Scene& scene, const char* name, hp::Guid mesh, hp::Guid material = {}) {
+hp::Entity makeDrawable(hp::Scene& scene, const char* name, hp::Guid mesh,
+                        std::vector<hp::Guid> materials = {}) {
     hp::Entity entity = scene.create(name);
     hp::MeshRenderer renderer;
     renderer.mesh = mesh;
-    renderer.material = material;
+    renderer.materials = std::move(materials);
     entity.add<hp::MeshRenderer>(renderer);
     return entity;
 }
@@ -89,14 +92,36 @@ TEST_CASE("an unset material is kept, because default means the fallback materia
     // material must still be visible rather than silently absent, so a default
     // material GUID is carried through instead of dropping the item.
     hp::Scene scene;
-    makeDrawable(scene, "no material", meshGuid(3), hp::Guid{});
+    makeDrawable(scene, "no material", meshGuid(3), {});
     scene.propagateTransforms();
 
     const hp::DrawList list = hp::parseScene(scene);
 
     REQUIRE(list.size() == 1);
     CHECK(list[0].mesh == meshGuid(3));
-    CHECK_FALSE(list[0].material.isValid());
+    // **Empty is the common case, not an error** (T0060.6): every surface uses
+    // the material the model imported. An untouched import carries no slots at
+    // all rather than a list of default GUIDs.
+    CHECK(list[0].materials.empty());
+}
+
+TEST_CASE("per-surface material slots reach the draw list in order") {
+    // The index is `primitive.MaterialId`, which the renderer already carries,
+    // so the slot vector's order *is* the model's material order. A test that
+    // only checked the count would pass on a reversed copy.
+    hp::Scene scene;
+    const std::vector<hp::Guid> slots{hp::Guid{0xAA}, hp::Guid{}, hp::Guid{0xCC}};
+    makeDrawable(scene, "three surfaces", meshGuid(9), slots);
+    scene.propagateTransforms();
+
+    const hp::DrawList list = hp::parseScene(scene);
+    REQUIRE(list.size() == 1);
+    REQUIRE(list[0].materials.size() == 3);
+    CHECK(list[0].materials[0] == hp::Guid{0xAA});
+    // A default entry in the middle means "surface 1 keeps what the model
+    // imported" — it is a hole in the overrides, not a terminator.
+    CHECK_FALSE(list[0].materials[1].isValid());
+    CHECK(list[0].materials[2] == hp::Guid{0xCC});
 }
 
 TEST_CASE("the world matrix is copied, not the local one") {

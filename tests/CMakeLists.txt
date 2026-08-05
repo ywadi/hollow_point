@@ -54,7 +54,56 @@ function(hp_add_test_bucket bucket)
     # -- handled below, the same way the apps do it.
     target_link_libraries(${_target} PRIVATE enkiTS meshoptimizer hp_engine)
 
+    # --- the engine copy that has to be fresh on EVERY build ------------------
+    #
+    # **This was a POST_BUILD on the test binary, and it silently ran the wrong
+    # engine.** POST_BUILD fires only when the target is *rebuilt*. On Windows a
+    # test executable links against the **import library**, which does not change
+    # when an engine `.cpp` is recompiled without altering the exported symbol
+    # set -- so the `.exe` is up to date, nothing relinks, the copy never runs,
+    # and the suite executes against the **previous** `libhp_engine.dll` beside
+    # it.
+    #
+    # The failure mode is the worst kind: the suite passes or fails on stale code
+    # with no diagnostic. Measured on 2026-08-05, twice in one session and in
+    # both directions -- once a green Windows suite while the same source
+    # segfaulted on Linux, and once two Windows failures for a bug already fixed.
+    # Both were the harness, not the code.
+    #
+    # **An `ALL` custom target does not fix it**, which was the first attempt and
+    # was measured not to work: `build.zig` builds named targets
+    # (`cmake --build --target hp_tests_fast`) so that the fast suite does not
+    # drag in ~1100 engine targets, and a target in `all` is simply not reached.
+    # The dependency has to run the other way -- the test binary depends on the
+    # copy -- so that asking for the binary asks for a fresh engine beside it.
+    #
+    # One rule for the whole directory, because every bucket shares this output
+    # directory and two custom commands writing one path is a configure error.
+    # A **stamp** is the output, not the copied library itself: `OUTPUT` accepts
+    # only a restricted set of generator expressions and `TARGET_FILE_NAME` is
+    # not among them, so naming the destination there fails at generate time
+    # with "No target hp_engine" -- measured, and the reason this indirection
+    # exists rather than the obvious spelling. `COMMAND` has no such limit.
+    if (NOT TARGET hp_tests_engine_copy)
+        set(_engine_stamp "${CMAKE_CURRENT_BINARY_DIR}/hp_engine_copy.stamp")
+        add_custom_command(
+            OUTPUT "${_engine_stamp}"
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    "$<TARGET_FILE:hp_engine>" "${CMAKE_CURRENT_BINARY_DIR}"
+            COMMAND "${CMAKE_COMMAND}" -E touch "${_engine_stamp}"
+            DEPENDS hp_engine
+            COMMENT "Refreshing hp_engine beside the test binaries"
+            VERBATIM)
+        add_custom_target(hp_tests_engine_copy DEPENDS "${_engine_stamp}")
+    endif()
+    add_dependencies(${_target} hp_tests_engine_copy)
+
     if (WIN32)
+        # The **transitive** set -- SDL3 and anything else the engine grows --
+        # still rides on the relink, which is correct for it: a new dependency
+        # changes the import library, so the exe does relink and this fires. It
+        # is only `hp_engine` itself that changes on almost every build without
+        # touching its exports, which is why that one gets the rule above.
         add_custom_command(TARGET ${_target} POST_BUILD
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                     "$<TARGET_RUNTIME_DLLS:${_target}>" "$<TARGET_FILE_DIR:${_target}>"
@@ -64,10 +113,6 @@ function(hp_add_test_bucket bucket)
         set_target_properties(${_target} PROPERTIES
             BUILD_WITH_INSTALL_RPATH ON
             INSTALL_RPATH "$ORIGIN")
-        add_custom_command(TARGET ${_target} POST_BUILD
-            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                    "$<TARGET_FILE:hp_engine>" "$<TARGET_FILE_DIR:${_target}>"
-            VERBATIM)
     endif()
 
     # The engine's public headers, so tests can exercise engine-facing surfaces

@@ -144,10 +144,27 @@ struct MeshRenderer {
     /// exist before its asset is assigned.
     Guid mesh;
 
-    /// GUID of the material asset. Default means the renderer's fallback
-    /// material, so a mesh with no material assigned is still visible rather
-    /// than silently absent.
-    Guid material;
+    /// Material overrides, **one per surface**, indexed to match the model's
+    /// own material list (`primitive.MaterialId`).
+    ///
+    /// **A vector rather than one override, because a glTF with five materials
+    /// is the normal case, not the exotic one** — a character whose body, eyes
+    /// and hair differ is one mesh with three surfaces. A single override can
+    /// only replace *all* of them or none, which is wrong for most real assets
+    /// (T0060.6, decided with the owner).
+    ///
+    /// Three states, and the first two must never be conflated:
+    ///
+    /// - **A default GUID, or an index past the end** — nothing assigned. Common
+    ///   and legitimate: the model's imported material is used. So an untouched
+    ///   import carries an **empty** vector, not a list of zeros.
+    /// - **A GUID naming an asset that will not load** — an error, and it
+    ///   renders the missing-material pattern (T0060.10).
+    /// - **A GUID naming a loaded material** — that material is used.
+    ///
+    /// The index is the one the renderer already carries, so a slot vector costs
+    /// no extra lookup at draw time.
+    std::vector<Guid> materials;
 
     /// Which object layers this renderer is on (T0085).
     ///

@@ -45,13 +45,17 @@ struct DrawItem {
     /// later stage has to check.
     Guid mesh;
 
-    /// GUID of the material, or default for the fallback material.
+    /// Per-surface material overrides, copied from the `MeshRenderer`.
     ///
-    /// Default is **not** an error and is not dropped: `MeshRenderer` documents
-    /// a default material GUID as meaning the renderer's fallback, so that a
-    /// mesh with no material assigned is still visible rather than silently
-    /// absent (28.2).
-    Guid material;
+    /// **Copied, not pointed at**, for the same reason `world` is: the parse
+    /// output outlives the walk, and a pointer into component storage dangles
+    /// the moment anything creates an entity.
+    ///
+    /// **Empty is the common case and is not an error** — it means every
+    /// surface uses the material the model imported. An index past the end
+    /// means the same thing for that surface, so the renderer does not have to
+    /// check the length against the model's material count before indexing.
+    std::vector<Guid> materials;
 
     /// The object's layers, copied from its `MeshRenderer` (T0085).
     ///

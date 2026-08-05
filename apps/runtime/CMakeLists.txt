@@ -57,6 +57,31 @@ if (WIN32)
     # $<TARGET_RUNTIME_DLLS> resolves the transitive set rather than naming
     # libhp_engine.dll here, so this keeps working when the engine grows
     # dependencies of its own.
+    # **The engine copy must be fresh even when the exe does not relink.**
+    # A Windows exe links against the import library, which does not change when
+    # an engine `.cpp` is recompiled without altering the exported symbols -- so
+    # POST_BUILD never fires and the app runs the previous DLL with no
+    # diagnostic. Measured against the test harness on 2026-08-05; the full
+    # account is in tests/CMakeLists.txt.
+    #
+    # The dependency runs exe -> copy, not copy -> exe: `build.zig` builds named
+    # targets, so a custom target in `all` is never reached.
+    # A stamp is the output: `OUTPUT` accepts only a restricted set of generator
+    # expressions and `TARGET_FILE_NAME` is not one of them. `COMMAND` is fine.
+    set(_engine_stamp "${CMAKE_CURRENT_BINARY_DIR}/hp_engine_copy.stamp")
+    add_custom_command(
+        OUTPUT "${_engine_stamp}"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                "$<TARGET_FILE:hp_engine>" "$<TARGET_FILE_DIR:hp_runtime>"
+        COMMAND "${CMAKE_COMMAND}" -E touch "${_engine_stamp}"
+        DEPENDS hp_engine
+        COMMENT "Refreshing hp_engine beside hp_runtime"
+        VERBATIM)
+    add_custom_target(hp_runtime_engine_copy DEPENDS "${_engine_stamp}")
+    add_dependencies(hp_runtime hp_runtime_engine_copy)
+
+    # The transitive set still rides on the relink, which is correct for it: a
+    # new dependency changes the import library, so the exe does relink.
     add_custom_command(TARGET hp_runtime POST_BUILD
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                 "$<TARGET_RUNTIME_DLLS:hp_runtime>" "$<TARGET_FILE_DIR:hp_runtime>"

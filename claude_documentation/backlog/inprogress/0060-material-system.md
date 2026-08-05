@@ -38,7 +38,7 @@ standard material shader included — is T0141's, for the reason recorded under
 
 - [x] 60.1 Material asset: the parameter block, mapped onto
       `PBRMaterialShaderAttribs`, plus room for a shader reference T0141 fills
-- [ ] 60.6 Material assignment on the mesh component, overriding import defaults
+- [x] 60.6 Material assignment on the mesh component, overriding import defaults
 - [ ] 60.10 The fallback **convention** for missing or unloadable assets — the
       three-state table, and a default-GUID slot never being treated as an error
 
@@ -190,6 +190,68 @@ parameter is one line and no format change. Format documented in
 
 **A material owns no GPU resources**, deliberately — the textures it names are
 separate assets — which is what puts the whole of 60.1 in the fast bucket.
+
+### 60.6 landed 2026-08-05 — per-surface slots, and a harness bug that invalidated Windows results
+
+`MeshRenderer::material` (one `Guid`) is now `materials` (`std::vector<Guid>`),
+through `DrawItem`, `DrawSubmission.cpp` and the scene schema. Empty means every
+surface uses what the model imported, which is what an untouched import writes.
+
+Two things had to be built underneath it, both of which were **gaps nothing had
+exercised** because no serialized type had a sequence property before this one:
+
+- **The YAML sequence shape.** A sequence of leaves was written as a list of
+  single-key maps — `- 0: <guid>` — because the leaf writer could only `set` a
+  key. Fixed by giving the writer a *destination* (`LeafSink`) rather than
+  giving the file a second shape, so there is still one type list. Now
+  `materials: [a, b, c]`.
+- **The binary path had no sequence support at all.** `cookProperties` simply
+  returned false for a type with a sequence property, so the whole component
+  failed to cook — surfacing as a cooked scene that silently differed from the
+  YAML beside it rather than as an error where the omission was. The YAML path
+  had handled sequences since T0020; the two had drifted exactly the way
+  `Serialize.cpp`'s own comments warn about, and only a type exercising both
+  caught it. The uncook is bounded by the remaining byte count **before** any
+  resize, so a corrupt length cannot become a multi-gigabyte allocation.
+
+#### Finding 5: the Windows suite was running a stale DLL, and had been
+
+**This is the important one, because it means Windows test results could not be
+trusted.** Found while chasing what looked like an `entt` platform difference
+and was not.
+
+`add_custom_command(TARGET … POST_BUILD)` fires only when the target is
+*rebuilt*. A Windows `.exe` links against the **import library**, which does not
+change when an engine `.cpp` is recompiled without altering the exported symbol
+set — so the exe is up to date, nothing relinks, the DLL copy never runs, and
+the suite executes against the **previous** `libhp_engine.dll` beside it.
+
+Seen in both directions in one session: a **green** Windows suite while the same
+source **segfaulted** on Linux (the enum work, 60.1), and **two Windows failures
+for a bug already fixed** (this ticket), which sent the investigation after a
+phantom `as_sequence_container` platform difference that did not exist.
+
+Fixed with a stamped copy rule the binary depends on, in `tests/CMakeLists.txt`
+and both `apps/*/CMakeLists.txt`. **Two earlier attempts configured cleanly and
+did nothing**, which is the part worth remembering:
+
+- `add_custom_target(… ALL …)` never runs, because `build.zig` builds *named*
+  targets (`cmake --build --target hp_tests_fast`) so the fast suite does not
+  drag in ~1100 engine targets. Nothing asks for `all`.
+- `add_dependencies(copy_step the_exe)` is backwards; it has to be
+  `add_dependencies(the_exe copy_step)`.
+- `$<TARGET_FILE_NAME:…>` is not in the restricted set `OUTPUT` allows, and
+  fails with the misleading `No target "hp_engine"`. Hence the stamp file.
+
+**Proved by content, not by timestamps**, and that matters: the first proof
+appended a comment to a `.cpp`, which produces a byte-identical library, so
+`copy_if_different` correctly skipped it and the test reported a false failure.
+The real proof inserts a function, rebuilds only `hp_tests_fast`, confirms the
+Windows exe did **not** relink, and `cmp`s the library beside the binary against
+the freshly built one.
+
+Now documented in `CLAUDE.md`'s traps and in `03-build-harness.md`, because it
+was written down nowhere and is not guessable.
 
 #### Finding 1: the texture lineup is five slots, and displacement does not exist
 

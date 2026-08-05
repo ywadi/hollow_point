@@ -21,10 +21,72 @@ namespace {
 
 const LogCategory kLog("serialize");
 
+/// Where a leaf value is written: under a key in a mapping, or appended to a
+/// sequence.
+///
+/// **One type list, two destinations, and that is the entire reason this exists.**
+/// A sequence of leaves has to read as `materials: [a, b, c]`, not as a list of
+/// single-key maps — which is what it was, because `writeLeaf` could only
+/// `set(key, ...)`. The obvious fix is a second leaf list that appends instead,
+/// and a second list is exactly the drift this file's own comments warn about:
+/// the two would disagree the first time a type was added to one of them.
+///
+/// So the destination becomes a parameter and the list stays singular.
+///
+/// Passed and held **by value**, like `YamlNode` itself is everywhere in this
+/// file: the node is a handle -- a pointer and an index -- and its mutating
+/// methods are non-const, so a `const LeafSink&` cannot write through one.
+class LeafSink {
+public:
+    /// @param parent the mapping to write into.
+    /// @param key the key to write under.
+    /// @returns a sink that writes `key: value` into @p parent.
+    static LeafSink keyed(YamlNode parent, std::string_view key) {
+        return LeafSink{parent, key, true};
+    }
+
+    /// @param sequence the sequence to append to.
+    /// @returns a sink that appends a bare value, with no key.
+    static LeafSink appended(YamlNode sequence) { return LeafSink{sequence, {}, false}; }
+
+    /// @param value the value to write. @returns nothing.
+    void write(bool value) { keyed_ ? node_.set(key_, value) : node_.append(value); }
+
+    /// @param value the value to write. @returns nothing.
+    void write(std::int64_t value) { keyed_ ? node_.set(key_, value) : node_.append(value); }
+
+    /// @param value the value to write. @returns nothing.
+    void write(std::uint64_t value) { keyed_ ? node_.set(key_, value) : node_.append(value); }
+
+    /// @param value the value to write. @returns nothing.
+    void write(double value) { keyed_ ? node_.set(key_, value) : node_.append(value); }
+
+    /// @param value the value to write. @returns nothing.
+    void write(std::string_view value) {
+        keyed_ ? node_.set(key_, value) : node_.append(value);
+    }
+
+    /// @returns a new sequence at this sink's position, for the maths types.
+    [[nodiscard]] YamlNode sequence() {
+        return keyed_ ? node_.addSequence(key_) : node_.appendSequence();
+    }
+
+    /// @returns a new mapping at this sink's position, for a nested object.
+    [[nodiscard]] YamlNode map() { return keyed_ ? node_.addMap(key_) : node_.appendMap(); }
+
+private:
+    LeafSink(YamlNode node, std::string_view key, bool keyed)
+        : node_(node), key_(key), keyed_(keyed) {}
+
+    YamlNode node_;
+    std::string_view key_;
+    bool keyed_;
+};
+
 /// Writes a fixed-length sequence of floats, which is how every maths type is
 /// represented: `[1, 2, 3]` reads well in a diff and survives hand-editing.
-void writeFloats(YamlNode parent, std::string_view key, const float* values, std::size_t count) {
-    YamlNode sequence = parent.addSequence(key);
+void writeFloats(LeafSink out, const float* values, std::size_t count) {
+    YamlNode sequence = out.sequence();
     for (std::size_t i = 0; i < count; ++i) {
         sequence.append(static_cast<double>(values[i]));
     }
@@ -191,19 +253,19 @@ bool uncookFloats(const std::vector<std::byte>& bytes, std::size_t& cursor, floa
 /// The whole hand-written surface of this layer. Everything else is derived from
 /// reflection, so this list is what "the leaf types reflection bottoms out in"
 /// actually means -- and it is deliberately short.
-bool writeLeaf(YamlNode parent, std::string_view key, const entt::meta_any& value) {
+bool writeLeaf(LeafSink out, const entt::meta_any& value) {
     if (const auto* v = value.try_cast<bool>()) {
-        parent.set(key, *v);
+        out.write(*v);
         return true;
     }
     if (const auto* v = value.try_cast<std::string>()) {
-        parent.set(key, std::string_view{*v});
+        out.write(std::string_view{*v});
         return true;
     }
     if (const auto* v = value.try_cast<Guid>()) {
         // As its canonical string, not as a raw integer: a GUID in a diff is
         // something a person has to be able to match against another file.
-        parent.set(key, v->toString());
+        out.write(v->toString());
         return true;
     }
     if (const entt::meta_type type = value.type(); type && type.is_enum()) {
@@ -211,11 +273,11 @@ bool writeLeaf(YamlNode parent, std::string_view key, const entt::meta_any& valu
         // see the block above `writeFloat`. Every enum takes this path; there
         // is deliberately no per-enum case to forget to add.
         if (const char* name = enumeratorName(value)) {
-            parent.set(key, std::string_view{name});
+            out.write(std::string_view{name});
             return true;
         }
         if (const entt::meta_any asInteger = value.allow_cast<std::int64_t>(); asInteger) {
-            parent.set(key, asInteger.cast<std::int64_t>());
+            out.write(asInteger.cast<std::int64_t>());
             return true;
         }
         return false;
@@ -227,73 +289,73 @@ bool writeLeaf(YamlNode parent, std::string_view key, const entt::meta_any& valu
         // puts layer names in project settings, and that is the point at which
         // this should write a sequence of names instead. Recorded here because
         // this is the line that would have to change.
-        parent.set(key, static_cast<std::uint64_t>(v->bits));
+        out.write(static_cast<std::uint64_t>(v->bits));
         return true;
     }
     if (const auto* v = value.try_cast<float>()) {
-        parent.set(key, static_cast<double>(*v));
+        out.write(static_cast<double>(*v));
         return true;
     }
     if (const auto* v = value.try_cast<double>()) {
-        parent.set(key, *v);
+        out.write(*v);
         return true;
     }
     if (const auto* v = value.try_cast<float2>()) {
-        writeFloats(parent, key, &v->x, 2);
+        writeFloats(out, &v->x, 2);
         return true;
     }
     if (const auto* v = value.try_cast<float3>()) {
-        writeFloats(parent, key, &v->x, 3);
+        writeFloats(out, &v->x, 3);
         return true;
     }
     if (const auto* v = value.try_cast<float4>()) {
-        writeFloats(parent, key, &v->x, 4);
+        writeFloats(out, &v->x, 4);
         return true;
     }
     if (const auto* v = value.try_cast<Quaternion>()) {
         // x, y, z, w -- the order Diligent stores them in, so what is written
         // matches what a debugger shows.
         const float parts[4] = {v->q.x, v->q.y, v->q.z, v->q.w};
-        writeFloats(parent, key, parts, 4);
+        writeFloats(out, parts, 4);
         return true;
     }
     if (const auto* v = value.try_cast<float4x4>()) {
-        writeFloats(parent, key, &v->_11, 16);
+        writeFloats(out, &v->_11, 16);
         return true;
     }
 
     // Integers last: bool and the floating types are matched above, so anything
     // reaching here that converts to an integer really is one.
     if (const auto* v = value.try_cast<std::int8_t>()) {
-        parent.set(key, static_cast<std::int64_t>(*v));
+        out.write(static_cast<std::int64_t>(*v));
         return true;
     }
     if (const auto* v = value.try_cast<std::int16_t>()) {
-        parent.set(key, static_cast<std::int64_t>(*v));
+        out.write(static_cast<std::int64_t>(*v));
         return true;
     }
     if (const auto* v = value.try_cast<std::int32_t>()) {
-        parent.set(key, static_cast<std::int64_t>(*v));
+        out.write(static_cast<std::int64_t>(*v));
         return true;
     }
     if (const auto* v = value.try_cast<std::int64_t>()) {
-        parent.set(key, *v);
+        out.write(*v);
         return true;
     }
     if (const auto* v = value.try_cast<std::uint8_t>()) {
-        parent.set(key, static_cast<std::uint64_t>(*v));
+        out.write(static_cast<std::uint64_t>(*v));
         return true;
     }
     if (const auto* v = value.try_cast<std::uint16_t>()) {
-        parent.set(key, static_cast<std::uint64_t>(*v));
+        out.write(static_cast<std::uint64_t>(*v));
         return true;
     }
     if (const auto* v = value.try_cast<std::uint32_t>()) {
-        parent.set(key, static_cast<std::uint64_t>(*v));
+        out.write(static_cast<std::uint64_t>(*v));
         return true;
     }
     if (const auto* v = value.try_cast<std::uint64_t>()) {
-        parent.set(key, *v);
+        out.write(*v);
         return true;
     }
     return false;
@@ -447,7 +509,7 @@ bool writeReflected(YamlNode parent, std::string_view key, const entt::meta_any&
     if (!value || !parent.valid()) {
         return false;
     }
-    if (writeLeaf(parent, key, value)) {
+    if (writeLeaf(LeafSink::keyed(parent, key), value)) {
         return true;
     }
 
@@ -456,16 +518,21 @@ bool writeReflected(YamlNode parent, std::string_view key, const entt::meta_any&
     // without the type having to say so (53.6).
     if (auto sequence = value.as_sequence_container()) {
         YamlNode out = parent.addSequence(key);
-        std::size_t index = 0;
         for (auto element : sequence) {
-            // Elements are written through the same path, so a vector of
-            // structs nests correctly rather than needing its own case.
-            const std::string elementKey = std::to_string(index);
+            // **A leaf is appended bare**, so a vector of GUIDs reads as
+            // `materials: [a, b, c]`. It used to be written as a list of
+            // single-key maps -- `- 0: a` -- because the leaf writer could only
+            // set a key, and that is unreadable in a diff and worse to
+            // hand-author, which is what the whole format is for.
+            if (writeLeaf(LeafSink::appended(out), element)) {
+                continue;
+            }
+            // Anything else becomes a map in the sequence, which is what a
+            // vector of structs should look like.
             YamlNode holder = out.appendMap();
-            if (!writeReflected(holder, elementKey, element)) {
+            if (!writeProperties(holder, element)) {
                 return false;
             }
-            ++index;
         }
         return true;
     }
@@ -525,9 +592,13 @@ bool readInto(YamlNode node, entt::meta_any& value) {
                 return false;
             }
             auto element = sequence[sequence.size() - 1];
-            YamlNode holder = node.at(i);
+            YamlNode item = node.at(i);
             entt::meta_any elementRef = element.as_ref();
-            if (!readInto(holder[std::to_string(i)], elementRef)) {
+            // Mirrors the write: a bare leaf first, a nested map second.
+            if (readLeaf(item, elementRef)) {
+                continue;
+            }
+            if (!readPropsInto(item, elementRef)) {
                 return false;
             }
         }
@@ -856,6 +927,25 @@ bool cookValue(const entt::meta_any& value, std::vector<std::byte>& out) {
     if (cookLeaf(value, out)) {
         return true;
     }
+
+    // **Sequences, which the binary path did not handle at all until T0060.6.**
+    // Nothing reflected had a sequence property before `MeshRenderer::materials`,
+    // so `cookProperties` simply returned false for one and the whole component
+    // failed to cook -- which surfaced as a cooked scene that silently differed
+    // from the YAML beside it, not as an error at the point of the omission.
+    // The YAML path had handled sequences since T0020; the two lists had drifted
+    // exactly the way this file's comments warn about, and only a type that
+    // exercised both caught it.
+    if (auto sequence = value.as_sequence_container()) {
+        writeU64(out, static_cast<std::uint64_t>(sequence.size()));
+        for (auto element : sequence) {
+            if (!cookValue(element, out)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     const entt::meta_type type = value.type();
     if (type && type.data().begin() != type.data().end()) {
         return cookProperties(value, out);
@@ -868,6 +958,34 @@ bool uncookValue(const std::vector<std::byte>& bytes, std::size_t& cursor,
     if (uncookLeaf(bytes, cursor, value)) {
         return true;
     }
+
+    if (auto sequence = value.as_sequence_container()) {
+        std::uint64_t count = 0;
+        if (!readU64(bytes, cursor, count)) {
+            return false;
+        }
+        // **Bounded by what remains**, before a single element is read. A
+        // corrupt or truncated payload claiming four billion elements must not
+        // become a four-billion-element resize; a cook is a cache and every way
+        // it can be wrong has to mean "re-cook" rather than an allocation the
+        // process does not survive.
+        if (count > bytes.size() - cursor) {
+            return false;
+        }
+        sequence.clear();
+        for (std::uint64_t i = 0; i < count; ++i) {
+            if (!sequence.resize(sequence.size() + 1)) {
+                return false;
+            }
+            auto element = sequence[sequence.size() - 1];
+            entt::meta_any elementRef = element.as_ref();
+            if (!uncookValue(bytes, cursor, elementRef)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     const entt::meta_type type = value.type();
     if (type && type.data().begin() != type.data().end()) {
         return readCookedProperties(bytes, cursor, value.as_ref());

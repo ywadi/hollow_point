@@ -94,7 +94,7 @@ void registerCoreComponents() {
     registerComponent<WorldTransform>("WorldTransform");
     registerComponent<MeshRenderer>("MeshRenderer")
         .property<&MeshRenderer::mesh>("mesh")
-        .property<&MeshRenderer::material>("material")
+        .property<&MeshRenderer::materials>("materials")
         // Added with the field in T0085 -- an object's layers must survive a
         // save, or a scene reloads with everything back on the default layer
         // and visible to cameras that were told to exclude it.
