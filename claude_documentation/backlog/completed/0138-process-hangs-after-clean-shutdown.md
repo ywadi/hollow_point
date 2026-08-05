@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | ❌ DROPPED |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 2 — Engine skeleton |
@@ -85,3 +85,23 @@ and nothing else.
 symptom, because the process is killed anyway — which is why this survived to be
 found by hand. Whatever test closes 138.4 has to assert the process *exits on its
 own*, not that it can be killed.
+
+## Dropped 2026-08-05 — not reproducible, and the evidence is kept rather than the ticket
+
+**The owner has not seen it again**, across normal editor use since it was filed,
+and called it a false scenario. Nothing was changed that would explain a fix:
+neither the present path (already ruled out here by logs captured *before* any
+renderer change) nor the module host has been touched since.
+
+So the honest state is **"observed once, never reproduced"**, and that does not
+justify a High-priority ticket sitting near the top of the queue implying somebody
+should go and fix it. Dropped rather than deleted, because everything above — the
+log showing `sandbox module unloading` as the last line ever printed, the proof
+that it is not the renderer, and the `ptrace_scope` obstacle to attaching a
+debugger — is exactly what a second sighting would need, and it costs nothing to
+leave where a search will find it.
+
+**If it happens again, open a new ticket** and link back to this one. Do not
+reopen this: a ticket that goes TODO → dropped → TODO records nothing useful,
+whereas a new one with a second data point and this one attached says precisely
+what is known.

@@ -43,7 +43,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 172 | [T0132](open/0132-gamepad-and-rumble.md) | Gamepad, rumble and hot-plug | 2 — Engine skeleton | ⏸ BLOCKED | Medium | Moderate |
 | 174 | [T0133](open/0133-cursor-control-and-pointer-input.md) | Cursor control and pointer input as actions | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
 | 176 | [T0136](open/0136-module-hot-copy-fails-under-wsl-interop.md) | Module hot-reload staging fails when the Windows suite runs via WSL interop | 2 — Engine skeleton | 🔜 TODO | High | Simple |
-| 178 | [T0138](open/0138-process-hangs-after-clean-shutdown.md) | The process hangs after a clean shutdown, so closing the window force-quits | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
+| 178 | [T0138](completed/0138-process-hangs-after-clean-shutdown.md) | The process hangs after a clean shutdown, so closing the window force-quits | 2 — Engine skeleton | ❌ DROPPED | High | Moderate |
 | 180 | [T0103](completed/0103-virtual-filesystem-and-packs.md) | Virtual filesystem and content packs | 3 — Data model | ✅ DONE | High | Moderate |
 | 185 | [T0112](completed/0112-string-identity-and-localisation.md) | String identity: keys before literals | 3 — Data model | ✅ DONE | Medium | Simple |
 | 190 | [T0020](completed/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | ✅ DONE | High | Complex |
