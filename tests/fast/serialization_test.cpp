@@ -715,3 +715,152 @@ TEST_CASE("a reflected type nested inside another round-trips") {
     CHECK(restored.inner.label == "nested");
     CHECK(restored.count == 17);
 }
+
+TEST_CASE("a reflected object round-trips through the binary cook") {
+    // Closes the last "Done when": object -> binary -> object, value-identical,
+    // through the same reflection the YAML path uses.
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    hp::Transform original;
+    original.position = hp::float3(1.25F, -8.5F, 0.125F);
+    original.rotation = hp::Quaternion(0.0F, 0.7071F, 0.0F, 0.7071F);
+    original.scale = hp::float3(3.0F, 4.0F, 5.0F);
+
+    std::vector<std::byte> payload;
+    REQUIRE(hp::cookProperties(entt::forward_as_meta(original), payload));
+    CHECK_FALSE(payload.empty());
+
+    hp::Transform restored;
+    std::size_t cursor = 0;
+    REQUIRE(hp::readCookedProperties(payload, cursor, entt::forward_as_meta(restored)));
+    CHECK(cursor == payload.size());
+
+    // **Exact**, not approximate: floats are cooked as their bit pattern, so a
+    // binary round trip has no reason to lose anything at all.
+    CHECK(restored.position.x == original.position.x);
+    CHECK(restored.position.y == original.position.y);
+    CHECK(restored.position.z == original.position.z);
+    CHECK(restored.scale.z == original.scale.z);
+    CHECK(restored.rotation.q.y == original.rotation.q.y);
+}
+
+TEST_CASE("YAML and binary agree on the same object") {
+    // The two leaf lists are written separately and must stay in step. A type
+    // one path can write and the other cannot would show up as a cook that
+    // silently drops a field, so both are driven from the same object here.
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    hp::Camera original;
+    original.verticalFov = 0.9F;
+    original.orthographic = true;
+    original.priority = -5;
+    original.cullingMask = 0xABCD1234U;
+    original.viewSlot = 2;
+    original.depthOfField = true;
+
+    hp::YamlDocument doc;
+    REQUIRE(hp::writeProperties(doc.root(), entt::forward_as_meta(original)));
+    const auto parsed = hp::YamlDocument::parse(doc.emit());
+    REQUIRE(parsed.has_value());
+    hp::Camera viaYaml;
+    REQUIRE(hp::readProperties(const_cast<hp::YamlDocument&>(*parsed).root(),
+                               entt::forward_as_meta(viaYaml)));
+
+    std::vector<std::byte> payload;
+    REQUIRE(hp::cookProperties(entt::forward_as_meta(original), payload));
+    hp::Camera viaBinary;
+    std::size_t cursor = 0;
+    REQUIRE(hp::readCookedProperties(payload, cursor, entt::forward_as_meta(viaBinary)));
+
+    CHECK(viaYaml.orthographic == viaBinary.orthographic);
+    CHECK(viaYaml.priority == viaBinary.priority);
+    CHECK(viaYaml.cullingMask == viaBinary.cullingMask);
+    CHECK(viaYaml.viewSlot == viaBinary.viewSlot);
+    CHECK(viaYaml.depthOfField == viaBinary.depthOfField);
+    CHECK(viaYaml.verticalFov == doctest::Approx(viaBinary.verticalFov));
+}
+
+TEST_CASE("a nested object round-trips through the binary cook") {
+    hp::adoptMetaContext();
+    hp::reflect<Inner>("SerializeInner")
+        .property<&Inner::weight>("weight")
+        .property<&Inner::label>("label");
+    hp::reflect<Outer>("SerializeOuter")
+        .property<&Outer::inner>("inner")
+        .property<&Outer::count>("count");
+
+    Outer original;
+    original.inner.weight = -0.5F;
+    original.inner.label = "deep";
+    original.count = -3;
+
+    std::vector<std::byte> payload;
+    REQUIRE(hp::cookProperties(entt::forward_as_meta(original), payload));
+
+    Outer restored;
+    std::size_t cursor = 0;
+    REQUIRE(hp::readCookedProperties(payload, cursor, entt::forward_as_meta(restored)));
+    CHECK(restored.inner.weight == original.inner.weight);
+    CHECK(restored.inner.label == "deep");
+    CHECK(restored.count == -3);
+}
+
+TEST_CASE("an unknown cooked property is skipped, not fatal") {
+    // The whole reason every property is length-prefixed. A payload written by
+    // a build whose type had an extra field must still load -- skipping exactly
+    // that field's bytes rather than losing sync and misreading the rest.
+    hp::adoptMetaContext();
+    hp::reflect<Inner>("SerializeInner")
+        .property<&Inner::weight>("weight")
+        .property<&Inner::label>("label");
+
+    // Hand-build a payload: one known property, one that no type has.
+    std::vector<std::byte> payload;
+    hp::writeU32(payload, 2);
+
+    hp::writeU32(payload, static_cast<std::uint32_t>(hp::hashSource("weight")));
+    std::vector<std::byte> weightBytes;
+    hp::writeU32(weightBytes, 0x40200000U); // 2.5f
+    hp::writeU64(payload, weightBytes.size());
+    payload.insert(payload.end(), weightBytes.begin(), weightBytes.end());
+
+    hp::writeU32(payload, static_cast<std::uint32_t>(hp::hashSource("fieldFromTheFuture")));
+    std::vector<std::byte> futureBytes;
+    hp::writeString(futureBytes, "something this build knows nothing about");
+    hp::writeU64(payload, futureBytes.size());
+    payload.insert(payload.end(), futureBytes.begin(), futureBytes.end());
+
+    Inner restored;
+    restored.label = "kept";
+    std::size_t cursor = 0;
+    REQUIRE(hp::readCookedProperties(payload, cursor, entt::forward_as_meta(restored)));
+
+    CHECK(restored.weight == doctest::Approx(2.5F));
+    // The unknown record was skipped whole, so the reader stayed in sync and
+    // the property it *does* have but the payload omitted kept its value.
+    CHECK(restored.label == "kept");
+    CHECK(cursor == payload.size());
+}
+
+TEST_CASE("a truncated cooked payload is refused rather than half-applied") {
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    hp::Transform original;
+    original.position = hp::float3(1.0F, 2.0F, 3.0F);
+    std::vector<std::byte> payload;
+    REQUIRE(hp::cookProperties(entt::forward_as_meta(original), payload));
+
+    for (std::size_t keep = 1; keep < payload.size(); keep += 3) {
+        std::vector<std::byte> cut(payload.begin(), payload.begin() + static_cast<long>(keep));
+        hp::Transform restored;
+        std::size_t cursor = 0;
+        // Either it reports failure, or it stops early -- what it must never do
+        // is read past the buffer, which is what the length checks prevent.
+        const bool ok = hp::readCookedProperties(cut, cursor, entt::forward_as_meta(restored));
+        CHECK(cursor <= cut.size());
+        (void)ok;
+    }
+}

@@ -5,7 +5,10 @@
 #include <hp/Math.hpp>
 #include <hp/Profiling.hpp>
 
+#include <hp/Cook.hpp>
+
 #include <cstdint>
+#include <cstring>
 #include <string>
 
 namespace hp {
@@ -37,6 +40,43 @@ bool readFloats(YamlNode node, float* values, std::size_t count) {
             return false;
         }
         values[i] = static_cast<float>(value);
+    }
+    return true;
+}
+
+/// Floats are cooked as their exact bit pattern, not as text.
+///
+/// The YAML path spends 17 significant digits to survive a round trip; the
+/// binary path does not have to, and a bit pattern is both smaller and exactly
+/// reversible by construction.
+void writeFloat(std::vector<std::byte>& out, float value) {
+    std::uint32_t bits = 0;
+    std::memcpy(&bits, &value, sizeof bits);
+    writeU32(out, bits);
+}
+
+bool readFloat(const std::vector<std::byte>& bytes, std::size_t& cursor, float& out) {
+    std::uint32_t bits = 0;
+    if (!readU32(bytes, cursor, bits)) {
+        return false;
+    }
+    std::memcpy(&out, &bits, sizeof bits);
+    return true;
+}
+
+bool cookFloats(const float* values, std::size_t count, std::vector<std::byte>& out) {
+    for (std::size_t i = 0; i < count; ++i) {
+        writeFloat(out, values[i]);
+    }
+    return true;
+}
+
+bool uncookFloats(const std::vector<std::byte>& bytes, std::size_t& cursor, float* values,
+                  std::size_t count) {
+    for (std::size_t i = 0; i < count; ++i) {
+        if (!readFloat(bytes, cursor, values[i])) {
+            return false;
+        }
     }
     return true;
 }
@@ -417,6 +457,323 @@ bool readPropsInto(YamlNode node, entt::meta_any& value) {
 }
 
 } // namespace
+
+namespace {
+
+/// Cooks one leaf value, or reports that it is not a leaf.
+///
+/// Mirrors `writeLeaf` exactly. The two lists must stay in step, and the tests
+/// round-trip the same components through both paths for that reason -- a type
+/// that YAML can write and binary cannot would show up as a cook that silently
+/// drops a field.
+bool cookLeaf(const entt::meta_any& value, std::vector<std::byte>& out) {
+    if (const auto* v = value.try_cast<bool>()) {
+        out.push_back(static_cast<std::byte>(*v ? 1 : 0));
+        return true;
+    }
+    if (const auto* v = value.try_cast<std::string>()) {
+        writeString(out, *v);
+        return true;
+    }
+    if (const auto* v = value.try_cast<Guid>()) {
+        writeU64(out, v->value());
+        return true;
+    }
+    if (const auto* v = value.try_cast<float>()) {
+        writeFloat(out, *v);
+        return true;
+    }
+    if (const auto* v = value.try_cast<double>()) {
+        std::uint64_t bits = 0;
+        std::memcpy(&bits, v, sizeof bits);
+        writeU64(out, bits);
+        return true;
+    }
+    if (const auto* v = value.try_cast<float3>()) {
+        return cookFloats(&v->x, 3, out);
+    }
+    if (const auto* v = value.try_cast<float4>()) {
+        return cookFloats(&v->x, 4, out);
+    }
+    if (const auto* v = value.try_cast<Quaternion>()) {
+        const float parts[4] = {v->q.x, v->q.y, v->q.z, v->q.w};
+        return cookFloats(parts, 4, out);
+    }
+    if (const auto* v = value.try_cast<float4x4>()) {
+        return cookFloats(&v->_11, 16, out);
+    }
+    if (const auto* v = value.try_cast<std::int8_t>()) {
+        writeU64(out, static_cast<std::uint64_t>(static_cast<std::int64_t>(*v)));
+        return true;
+    }
+    if (const auto* v = value.try_cast<std::int16_t>()) {
+        writeU64(out, static_cast<std::uint64_t>(static_cast<std::int64_t>(*v)));
+        return true;
+    }
+    if (const auto* v = value.try_cast<std::int32_t>()) {
+        writeU64(out, static_cast<std::uint64_t>(static_cast<std::int64_t>(*v)));
+        return true;
+    }
+    if (const auto* v = value.try_cast<std::int64_t>()) {
+        writeU64(out, static_cast<std::uint64_t>(*v));
+        return true;
+    }
+    if (const auto* v = value.try_cast<std::uint8_t>()) {
+        writeU64(out, static_cast<std::uint64_t>(*v));
+        return true;
+    }
+    if (const auto* v = value.try_cast<std::uint16_t>()) {
+        writeU64(out, static_cast<std::uint64_t>(*v));
+        return true;
+    }
+    if (const auto* v = value.try_cast<std::uint32_t>()) {
+        writeU64(out, static_cast<std::uint64_t>(*v));
+        return true;
+    }
+    if (const auto* v = value.try_cast<std::uint64_t>()) {
+        writeU64(out, *v);
+        return true;
+    }
+    return false;
+}
+
+/// Reads one leaf value in place, or reports that it is not a leaf.
+bool uncookLeaf(const std::vector<std::byte>& bytes, std::size_t& cursor, entt::meta_any& value) {
+    if (auto* v = value.try_cast<bool>()) {
+        if (cursor >= bytes.size()) {
+            return false;
+        }
+        *v = static_cast<unsigned char>(bytes[cursor++]) != 0;
+        return true;
+    }
+    if (auto* v = value.try_cast<std::string>()) {
+        return readString(bytes, cursor, *v);
+    }
+    if (auto* v = value.try_cast<Guid>()) {
+        std::uint64_t raw = 0;
+        if (!readU64(bytes, cursor, raw)) {
+            return false;
+        }
+        *v = Guid{raw};
+        return true;
+    }
+    if (auto* v = value.try_cast<float>()) {
+        return readFloat(bytes, cursor, *v);
+    }
+    if (auto* v = value.try_cast<double>()) {
+        std::uint64_t bits = 0;
+        if (!readU64(bytes, cursor, bits)) {
+            return false;
+        }
+        std::memcpy(v, &bits, sizeof bits);
+        return true;
+    }
+    if (auto* v = value.try_cast<float3>()) {
+        return uncookFloats(bytes, cursor, &v->x, 3);
+    }
+    if (auto* v = value.try_cast<float4>()) {
+        return uncookFloats(bytes, cursor, &v->x, 4);
+    }
+    if (auto* v = value.try_cast<Quaternion>()) {
+        float parts[4] = {0.0F, 0.0F, 0.0F, 1.0F};
+        if (!uncookFloats(bytes, cursor, parts, 4)) {
+            return false;
+        }
+        v->q = float4(parts[0], parts[1], parts[2], parts[3]);
+        return true;
+    }
+    if (auto* v = value.try_cast<float4x4>()) {
+        return uncookFloats(bytes, cursor, &v->_11, 16);
+    }
+
+    std::uint64_t raw = 0;
+    if (auto* v = value.try_cast<std::int8_t>()) {
+        if (!readU64(bytes, cursor, raw)) {
+            return false;
+        }
+        *v = static_cast<std::int8_t>(static_cast<std::int64_t>(raw));
+        return true;
+    }
+    if (auto* v = value.try_cast<std::int16_t>()) {
+        if (!readU64(bytes, cursor, raw)) {
+            return false;
+        }
+        *v = static_cast<std::int16_t>(static_cast<std::int64_t>(raw));
+        return true;
+    }
+    if (auto* v = value.try_cast<std::int32_t>()) {
+        if (!readU64(bytes, cursor, raw)) {
+            return false;
+        }
+        *v = static_cast<std::int32_t>(static_cast<std::int64_t>(raw));
+        return true;
+    }
+    if (auto* v = value.try_cast<std::int64_t>()) {
+        if (!readU64(bytes, cursor, raw)) {
+            return false;
+        }
+        *v = static_cast<std::int64_t>(raw);
+        return true;
+    }
+    if (auto* v = value.try_cast<std::uint8_t>()) {
+        if (!readU64(bytes, cursor, raw)) {
+            return false;
+        }
+        *v = static_cast<std::uint8_t>(raw);
+        return true;
+    }
+    if (auto* v = value.try_cast<std::uint16_t>()) {
+        if (!readU64(bytes, cursor, raw)) {
+            return false;
+        }
+        *v = static_cast<std::uint16_t>(raw);
+        return true;
+    }
+    if (auto* v = value.try_cast<std::uint32_t>()) {
+        if (!readU64(bytes, cursor, raw)) {
+            return false;
+        }
+        *v = static_cast<std::uint32_t>(raw);
+        return true;
+    }
+    if (auto* v = value.try_cast<std::uint64_t>()) {
+        return readU64(bytes, cursor, *v);
+    }
+    return false;
+}
+
+bool cookValue(const entt::meta_any& value, std::vector<std::byte>& out) {
+    if (cookLeaf(value, out)) {
+        return true;
+    }
+    const entt::meta_type type = value.type();
+    if (type && type.data().begin() != type.data().end()) {
+        return cookProperties(value, out);
+    }
+    return false;
+}
+
+bool uncookValue(const std::vector<std::byte>& bytes, std::size_t& cursor,
+                 entt::meta_any& value) {
+    if (uncookLeaf(bytes, cursor, value)) {
+        return true;
+    }
+    const entt::meta_type type = value.type();
+    if (type && type.data().begin() != type.data().end()) {
+        return readCookedProperties(bytes, cursor, value.as_ref());
+    }
+    return false;
+}
+
+} // namespace
+
+bool cookProperties(const entt::meta_any& value, std::vector<std::byte>& out) {
+    HP_PROFILE_ZONE();
+
+    if (!value) {
+        return false;
+    }
+    const entt::meta_type type = value.type();
+    if (!type || type.data().begin() == type.data().end()) {
+        return false;
+    }
+
+    // Count first, so the reader knows how many records follow without needing
+    // a terminator it could mistake for data.
+    std::uint32_t count = 0;
+    for (auto&& [id, data] : type.data()) {
+        if (data.name() != nullptr) {
+            ++count;
+        }
+    }
+    writeU32(out, count);
+
+    for (auto&& [id, data] : type.data()) {
+        if (data.name() == nullptr) {
+            continue;
+        }
+        entt::meta_any field = data.get(value);
+        if (!field) {
+            return false;
+        }
+
+        // Hash, not position: reordering a type's registrations must not
+        // invalidate already-cooked data.
+        writeU32(out, static_cast<std::uint32_t>(hashSource(data.name())));
+
+        // The length goes in as a placeholder and is patched once the value is
+        // written, because a nested object's size is not known in advance. It
+        // is what lets a reader skip a property it does not recognise instead
+        // of losing sync and misreading everything after it.
+        const std::size_t lengthAt = out.size();
+        writeU64(out, 0);
+        const std::size_t valueAt = out.size();
+        if (!cookValue(field, out)) {
+            return false;
+        }
+        const std::uint64_t length = static_cast<std::uint64_t>(out.size() - valueAt);
+        for (int i = 0; i < 8; ++i) {
+            out[lengthAt + static_cast<std::size_t>(i)] =
+                static_cast<std::byte>((length >> (i * 8)) & 0xFFU);
+        }
+    }
+    return true;
+}
+
+bool readCookedProperties(const std::vector<std::byte>& bytes, std::size_t& cursor,
+                          entt::meta_any value) {
+    HP_PROFILE_ZONE();
+
+    if (!value) {
+        return false;
+    }
+    const entt::meta_type type = value.type();
+    if (!type) {
+        return false;
+    }
+
+    std::uint32_t count = 0;
+    if (!readU32(bytes, cursor, count)) {
+        return false;
+    }
+
+    for (std::uint32_t i = 0; i < count; ++i) {
+        std::uint32_t nameHash = 0;
+        std::uint64_t length = 0;
+        if (!readU32(bytes, cursor, nameHash) || !readU64(bytes, cursor, length)) {
+            return false;
+        }
+        if (length > bytes.size() - cursor) {
+            return false;
+        }
+        const std::size_t next = cursor + static_cast<std::size_t>(length);
+
+        // Find the property this record names. A record for a property the type
+        // no longer has is skipped by its length -- backward compatibility, and
+        // the reason the length is there at all.
+        bool handled = false;
+        for (auto&& [id, data] : type.data()) {
+            if (data.name() == nullptr
+                || static_cast<std::uint32_t>(hashSource(data.name())) != nameHash) {
+                continue;
+            }
+            entt::meta_any field = data.get(value);
+            if (!field) {
+                break;
+            }
+            entt::meta_any fieldRef = field.as_ref();
+            std::size_t inner = cursor;
+            if (uncookValue(bytes, inner, fieldRef)) {
+                (void)data.set(value, field);
+            }
+            handled = true;
+            break;
+        }
+        (void)handled;
+        cursor = next;
+    }
+    return true;
+}
 
 bool readReflected(YamlNode node, entt::meta_any value) {
     return readInto(node, value);

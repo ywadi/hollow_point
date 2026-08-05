@@ -42,7 +42,7 @@ This is the work. For what is already proven to work — and what only appears t
 | ▶ | [T0068](inprogress/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | ⏸ BLOCKED | Medium | Moderate |
 | 180 | [T0103](completed/0103-virtual-filesystem-and-packs.md) | Virtual filesystem and content packs | 3 — Data model | ✅ DONE | High | Moderate |
 | 185 | [T0112](completed/0112-string-identity-and-localisation.md) | String identity: keys before literals | 3 — Data model | ✅ DONE | Medium | Simple |
-| 190 | [T0020](inprogress/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | 🚧 IN PROGRESS | High | Complex |
+| 190 | [T0020](completed/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | ✅ DONE | High | Complex |
 | 200 | [T0021](completed/0021-scene-and-ecs.md) | Scene and entity-component system | 3 — Data model | ✅ DONE | High | Moderate |
 | 210 | [T0101](completed/0101-transform-hierarchy-and-world-transforms.md) | Transform hierarchy propagation and world transforms | 3 — Data model | ✅ DONE | High | Moderate |
 | 220 | [T0023](inprogress/0023-asset-manager.md) | AssetManager, asset pool and metafiles | 3 — Data model | 🚧 IN PROGRESS | High | Complex |

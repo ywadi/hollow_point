@@ -37,7 +37,9 @@
 
 #include <entt/meta/meta.hpp>
 
+#include <cstddef>
 #include <string_view>
+#include <vector>
 
 namespace hp {
 
@@ -89,5 +91,35 @@ namespace hp {
 /// @param value a reference to the target, from `entt::forward_as_meta`.
 /// @returns false when the type has no registered properties.
 [[nodiscard]] HP_API bool readProperties(YamlNode node, entt::meta_any value);
+
+/// Cooks a reflected object into binary payload bytes (T0020.4).
+///
+/// **Every property is length-prefixed**, and that is the whole compatibility
+/// story. A reader that meets a property it does not recognise — because the
+/// type lost that field, or gained others since — skips exactly its bytes and
+/// carries on, rather than losing sync and misreading everything after it. The
+/// YAML path gets that for free from the format; binary has to build it in.
+///
+/// Properties are identified by the **hash of their name**, not by position, so
+/// reordering a type's registrations does not invalidate cooked data.
+///
+/// @param value the object, from `entt::forward_as_meta`.
+/// @param out receives the payload, appended to whatever is already there.
+/// @returns false when the type has no registered properties, or a property has
+///          a type this layer cannot write.
+[[nodiscard]] HP_API bool cookProperties(const entt::meta_any& value,
+                                         std::vector<std::byte>& out);
+
+/// Reads a cooked payload back into a reflected object.
+///
+/// Same leniency as the YAML path: an unknown property is skipped, and a
+/// property the payload does not mention keeps its current value.
+/// @param bytes the payload, as produced by `cookProperties`.
+/// @param cursor the read position, advanced past the object.
+/// @param value a reference to the target, from `entt::forward_as_meta`.
+/// @returns false when the payload is truncated or structurally invalid — which
+///          means "re-cook", exactly as every other cook failure does.
+[[nodiscard]] HP_API bool readCookedProperties(const std::vector<std::byte>& bytes,
+                                               std::size_t& cursor, entt::meta_any value);
 
 } // namespace hp

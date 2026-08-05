@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Complex |
 | **Phase** | 3 — Data model |
@@ -26,9 +26,9 @@ authoring ergonomics and load speed without choosing between them.
 - [x] rapidyaml vendored as a submodule and cross-compiling to both targets
 - [x] A wrapper API that engine code uses, so rapidyaml is swappable
 - [x] Round-trip: object → YAML → object, value-identical
-- [~] Cook: YAML → binary, and load binary → object, value-identical
+- [x] Cook: YAML → binary, and load binary → object, value-identical
 - [x] Staleness detection — binary is rebuilt when its YAML changes
-- [~] Tests round-trip every supported type through both paths
+- [x] Tests round-trip every supported type through both paths
 
 ## Subtasks
 
@@ -210,6 +210,29 @@ fields, unknown fields, malformed fields, exact float round-tripping, and an
 unregistered type being refused rather than silently skipped.
 
 Both targets: fast 155, integration 89, gpu 2. Docs pass.
+
+## The binary object path — length-prefixed, hash-keyed
+
+`cookProperties` / `readCookedProperties` complete "object → binary → object".
+Two decisions carry the whole compatibility story:
+
+- **Every property is length-prefixed.** A reader meeting a record it does not
+  recognise skips exactly that many bytes and carries on. Without it, one
+  unknown field desynchronises the stream and everything after it is misread as
+  something else — a corruption that looks like data rather than an error. YAML
+  gets this free from its format; binary has to build it in.
+- **Properties are keyed by the hash of their name, not by position**, so
+  reordering a type's `property()` calls does not invalidate cooked data.
+
+Floats are cooked as their exact bit pattern rather than as text. The YAML path
+spends 17 significant digits to survive a round trip; binary has no reason to,
+and a bit pattern is smaller and exactly reversible by construction. The binary
+round-trip test therefore asserts **equality**, not `Approx`.
+
+**The two leaf lists are written separately and must stay in step**, so a test
+drives the same `Camera` through both paths and compares the results. A type one
+path can write and the other cannot would otherwise show up as a cook that
+silently drops a field.
 
 ## Not done
 
