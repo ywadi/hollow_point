@@ -307,6 +307,15 @@ T0060 already says it must not foreclose and does not.
       deliberately. Must cover at least UVs, world position, normal, view
       direction, depth, and **T0093's per-pixel visibility**, which is the one
       most likely to be forgotten and most expensive to retrofit
+- [ ] 141.15 **Unshaded as a game-facing option** — `#define HP_UNSHADED 1`,
+      Godot's `render_mode unshaded`. Requested by the owner 2026-08-05 and
+      declared in `HpMaterial.fxh` already, so the contract does not have to
+      change to add it. **Compile-time, never a runtime branch**: an `if` still
+      pays for the lighting code in registers and compile time, which is the
+      entire thing unshaded exists to avoid. Costs one PSO permutation bit, and
+      that is why it is decided now — variant count is what grows without limit
+      here. Distinct from `Material::unlit`, which says the same for a
+      *standard* material as data; both end in the same place
 - [ ] 141.14 **Generate the shader contract's reference from `HpMaterial.fxh`,
       and gate it in CI** — the same mechanism `tools/gen_api_docs.py` and the
       "API reference is up to date" job give `engine/include/hp/`. Scoped to
@@ -510,6 +519,43 @@ convenience would erode a boundary the engine keeps on purpose — so the device
 pointer passes straight through `compileEngineShader` without being dereferenced
 on the test's side. That is why the API is shaped as it is rather than handing
 back an `IShader*`.
+
+### 141.10's mechanism works end to end, 2026-08-05 — a real pipeline from our shader
+
+**The device accepts a pipeline built from the engine's own pixel shader.**
+That is a strictly stronger claim than the compile check the previous increment
+made, and it is the one D26 actually rests on: a shader can compile in isolation
+and still be refused once it has to agree with a vertex layout, a resource
+signature and a render-pass format — which is exactly the seam between our pixel
+shader and DiligentFX's vertex shader.
+
+`SurfacePipeline` subclasses `PBR_Renderer` to reach the plumbing that is
+`protected` and would be miserable to reimplement: `DefineMacros` (**without
+which `PBR_Shading.fxh` does not compile at all**), the generated VS input/output
+and PS output structs, `m_ResourceSignatures`, and the frame/primitive/material
+buffers. `CreatePSO` is *private*, so this is not an override — the subclass
+reuses the machinery and builds its own pipelines beside it, and deliberately
+does **not** use `GetPsoCacheAccessor`, whose cache builds pipelines from *their*
+shaders.
+
+**The vertex shader is still DiligentFX's, deliberately.** The surface stage is a
+pixel-shader concept — parallax, triplanar and blending are all per fragment — and
+`RenderPBR.vsh` already produces exactly the `VSOutput` our pixel shader
+consumes. **141.7's vertex displacement is the only thing that should change
+that**, and the file name is a named constant so it is a one-line change.
+
+**A test was retired rather than weakened.** The standalone-compile case proved
+our source reached the compiler; `HpSurface.psh` is no longer standalone, since
+it consumes the per-pipeline generated structs, so compiling it alone now fails
+*correctly*. Keeping it alive by pointing it at a different shader would have
+been testing scaffolding. The pipeline case exercises the same includes and then
+requires the device to accept the result.
+
+**Still to do in 141.10, and the shader says so in place of pretending:** it
+writes the missing-material magenta rather than reading the material attribs and
+calling `ApplyPunctualLight`. That is deliberate — loud rather than plausible, so
+a half-wired pipeline cannot be mistaken for a working one, and it is why nothing
+in `SceneRenderer` has been switched over to it yet.
 
 ### Build wiring worth knowing
 

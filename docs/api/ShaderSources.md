@@ -6,7 +6,7 @@
 #include <hp/ShaderSources.hpp>
 ```
 
-4 public declaration(s), 4 documented.
+5 public declaration(s), 5 documented.
 
 ## `ShaderStage`
 
@@ -83,3 +83,27 @@ bool compileEngineShader(Diligent::IRenderDevice * device, std::string_view name
  @returns whether it compiled. **False is not fatal** — the caller decides,
           and for a material shader that decision is the checkerboard
           (T0141.4).
+
+## `buildEngineSurfacePipeline`
+
+```cpp
+bool buildEngineSurfacePipeline(Diligent::IRenderDevice * device, Diligent::IDeviceContext * context)
+```
+
+ Builds one pipeline state from the engine's own shaders and reports whether
+ the device accepted it (T0141.10).
+
+ **Compiling a shader and building a pipeline are different questions**, and
+ only the second one is the claim D26 rests on. A shader can compile in
+ isolation and still be refused by the device once it has to agree with a
+ vertex layout, a resource signature and a render-pass format — which is
+ exactly the seam between our pixel shader and DiligentFX's vertex shader.
+
+ Nothing is kept: the pipeline is released before returning. This is the same
+ kind of validation `compileEngineShader` is, one level up, and the same seed
+ of T0141.3's warm-up.
+
+ @param device the device to build on.
+ @param context the immediate context, which `PBR_Renderer` needs to
+        initialise its buffers and default textures.
+ @returns whether the device accepted the pipeline.

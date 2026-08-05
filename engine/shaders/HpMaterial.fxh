@@ -57,6 +57,32 @@
 #ifndef _HP_MATERIAL_FXH_
 #define _HP_MATERIAL_FXH_
 
+// ## Unshaded
+//
+// **A game shader can opt out of lighting entirely**, which is Godot's
+// `render_mode unshaded;` and is requested often enough to be part of the
+// contract rather than a workaround:
+//
+//   #define HP_UNSHADED 1
+//   #include "HpMaterial.fxh"
+//
+// `Out.BaseColor` is then written straight to the target with no BRDF, no light
+// loop and no IBL. UI, sprites, holograms, debug overlays and most VFX want
+// exactly this.
+//
+// **It is a compile-time switch and must stay one.** A runtime `if` would still
+// pay for the lighting code in registers and in shader compilation, and the
+// entire point of unshaded is not paying for it. So it becomes a PSO
+// permutation, which is one bit and is why it is worth deciding now rather than
+// bolting on: variant count is the thing that grows without limit here.
+//
+// Distinct from `Material::unlit` (T0060.1), which says the same thing for a
+// *standard* material as data. Both end at the same place; one is authored in a
+// `.hpmat` and the other in the shader.
+#ifndef HP_UNSHADED
+#   define HP_UNSHADED 0
+#endif
+
 /// What the engine hands a surface function.
 ///
 /// Read-only. Everything here is in **world space** unless the field says

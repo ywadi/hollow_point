@@ -21,6 +21,7 @@
 namespace Diligent {
 struct IShaderSourceInputStreamFactory;
 struct IRenderDevice;
+struct IDeviceContext;
 } // namespace Diligent
 
 namespace hp {
@@ -83,5 +84,25 @@ HP_API void createEngineShaderFactory(Diligent::IShaderSourceInputStreamFactory*
 ///          (T0141.4).
 [[nodiscard]] HP_API bool compileEngineShader(Diligent::IRenderDevice* device,
                                               std::string_view name, ShaderStage stage);
+
+/// Builds one pipeline state from the engine's own shaders and reports whether
+/// the device accepted it (T0141.10).
+///
+/// **Compiling a shader and building a pipeline are different questions**, and
+/// only the second one is the claim D26 rests on. A shader can compile in
+/// isolation and still be refused by the device once it has to agree with a
+/// vertex layout, a resource signature and a render-pass format — which is
+/// exactly the seam between our pixel shader and DiligentFX's vertex shader.
+///
+/// Nothing is kept: the pipeline is released before returning. This is the same
+/// kind of validation `compileEngineShader` is, one level up, and the same seed
+/// of T0141.3's warm-up.
+///
+/// @param device the device to build on.
+/// @param context the immediate context, which `PBR_Renderer` needs to
+///        initialise its buffers and default textures.
+/// @returns whether the device accepted the pipeline.
+[[nodiscard]] HP_API bool buildEngineSurfacePipeline(Diligent::IRenderDevice* device,
+                                                     Diligent::IDeviceContext* context);
 
 } // namespace hp

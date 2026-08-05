@@ -2,6 +2,8 @@
 
 #include <hp/ShaderSources.hpp>
 
+#include "SurfacePipeline.hpp"
+
 #include <hp/Log.hpp>
 
 #include <string>
@@ -10,6 +12,8 @@
 #include <GraphicsTypes.h>
 #include <RenderDevice.h>
 #include <Shader.h>
+#include <GLTFLoader.hpp>
+#include <GraphicsTypesX.hpp>
 #include <RefCntAutoPtr.hpp>
 #include <ShaderSourceFactoryUtils.h>
 
@@ -110,6 +114,54 @@ bool compileEngineShader(Diligent::IRenderDevice* device, std::string_view name,
         return false;
     }
     return true;
+}
+
+bool buildEngineSurfacePipeline(Diligent::IRenderDevice* device,
+                                Diligent::IDeviceContext* context) {
+    if (device == nullptr || context == nullptr) {
+        return false;
+    }
+
+    // The engine's real settings, because a pipeline that only builds under
+    // convenient ones proves nothing. Row-major especially: getting it wrong is
+    // invisible until geometry lands off screen (T0028).
+    Diligent::PBR_Renderer::CreateInfo info;
+    info.EnableIBL = false;
+    info.EnableAO = false;
+    info.EnableEmissive = false;
+    info.EnableShadows = false;
+    info.MaxLightCount = 16;
+    info.CreateDefaultTextures = true;
+    info.PackMatrixRowMajor = true;
+
+    const Diligent::InputLayoutDescX inputLayout = Diligent::GLTF::VertexAttributesToInputLayout(
+        Diligent::GLTF::DefaultVertexAttributes.data(),
+        static_cast<Diligent::Uint32>(Diligent::GLTF::DefaultVertexAttributes.size()));
+    info.InputLayout = inputLayout;
+
+    SurfacePipeline pipeline{device, nullptr, context, info};
+
+    Diligent::GraphicsPipelineDesc graphics;
+    graphics.NumRenderTargets = 1;
+    graphics.RTVFormats[0] = Diligent::TEX_FORMAT_RGBA8_UNORM_SRGB;
+    graphics.DSVFormat = Diligent::TEX_FORMAT_D32_FLOAT;
+    graphics.PrimitiveTopology = Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    graphics.DepthStencilDesc.DepthEnable = true;
+    graphics.DepthStencilDesc.DepthWriteEnable = true;
+    // Reverse-Z, per T0130 — the engine's convention, not Diligent's default.
+    graphics.DepthStencilDesc.DepthFunc = Diligent::COMPARISON_FUNC_GREATER_EQUAL;
+
+    const Diligent::PBR_Renderer::PSOKey key{
+        Diligent::PBR_Renderer::RenderPassType::Main,
+        static_cast<Diligent::PBR_Renderer::PSO_FLAGS>(
+            Diligent::PBR_Renderer::PSO_FLAG_VERTEX_ATTRIBS |
+            Diligent::PBR_Renderer::PSO_FLAG_USE_VERTEX_NORMALS |
+            Diligent::PBR_Renderer::PSO_FLAG_USE_TEXCOORD0 |
+            Diligent::PBR_Renderer::PSO_FLAG_DEFAULT_TEXTURES |
+            Diligent::PBR_Renderer::PSO_FLAG_USE_LIGHTS),
+        Diligent::CULL_MODE_BACK};
+
+    return pipeline.pipeline(graphics, key) != nullptr;
 }
 
 } // namespace hp

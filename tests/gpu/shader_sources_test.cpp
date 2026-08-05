@@ -80,24 +80,16 @@ TEST_CASE("the engine's shaders are embedded in the binary") {
     CHECK(hp::embeddedShaderCount() > 0);
 }
 
-TEST_CASE("an engine shader compiles, and includes a DiligentFX public header") {
-    Device device = bringUp();
-    if (!device.ok()) {
-        MESSAGE("no graphics device; skipping");
-        tearDown(device);
-        return;
-    }
-
-    // **This is D26's load-bearing assumption, measured.** `HpSurface.psh` lives
-    // in our tree and `#include`s `PBR_Structures.fxh` from DiligentFX. Neither
-    // side is modified: the name resolves to a string embedded in this binary,
-    // and the include resolves out of DiligentFX's own embedded set through the
-    // compound factory.
-    CHECK(hp::compileEngineShader(device.render->device(), "HpSurface.psh",
-                                  hp::ShaderStage::Pixel));
-
-    tearDown(device);
-}
+// **The standalone-compile case that used to sit here has been retired, not
+// weakened.** It compiled `HpSurface.psh` on its own to prove our source reached
+// the compiler and could include a DiligentFX header. That shader is no longer
+// standalone: it consumes the per-pipeline `VSOutputStruct.generated` that
+// `SurfacePipeline` supplies, so compiling it alone now fails *correctly*.
+//
+// The pipeline case at the bottom of this file is a strictly stronger claim --
+// it exercises the same includes and then requires the device to accept the
+// result -- so keeping a weaker test alive by feeding it a different shader
+// would be testing scaffolding rather than the engine.
 
 TEST_CASE("a shader neither side has fails, rather than resolving to something else") {
     // The compound factory asks ours first and DiligentFX's second. A miss in
@@ -118,4 +110,23 @@ TEST_CASE("a shader neither side has fails, rather than resolving to something e
 
 TEST_CASE("a null device is refused rather than crashing") {
     CHECK_FALSE(hp::compileEngineShader(nullptr, "HpSurface.psh", hp::ShaderStage::Pixel));
+}
+
+TEST_CASE("a pipeline state is built from the engine's own shaders") {
+    // **Compiling and pipelining are different questions**, and only the second
+    // is the claim D26 rests on. A shader can compile in isolation and still be
+    // refused once it has to agree with a vertex layout, a resource signature
+    // and a render-pass format — which is exactly the seam between our pixel
+    // shader and DiligentFX's vertex shader, and exactly where "own the surface
+    // stage" would fail if it were going to.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    CHECK(hp::buildEngineSurfacePipeline(device.render->device(), device.render->context()));
+
+    tearDown(device);
 }
