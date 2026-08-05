@@ -1122,3 +1122,79 @@ DiligentCore gates those on ATL. Unlocking them means giving up the
 single-toolchain hermetic cross-compile the harness is built around, which is a
 real price. It is written down here so it can be weighed, rather than discovered
 later as "the engine does not support DLSS".
+
+---
+
+## D26 — The engine owns the **surface stage**; DiligentFX supplies the lighting. Diligent's source is never modified
+
+**Decided 2026-08-05 on T0141.0, by the owner**, in their words: *"i dont want to
+modify dilligent"*. That constraint alone settles a question this ticket had been
+carrying as three options.
+
+**Amends D24, which did not survive contact with a real requirement.** D24 made
+DiligentFX's `PBR_Renderer` the shading path and its `RenderPBR.psh` the material
+shader. That was right for what T0028 and T0134 needed. It has a ceiling, and the
+owner hit it within a day of materials existing: **height mapping, parallax
+occlusion, triplanar and tessellation are unreachable at any setting**, because
+`RenderPBR.psh` is private and has no hook before texture sampling.
+`CreateInfo::GetPSMainSource` reaches only the pixel shader's output struct and a
+footer, so it can change what the shader *emits* and never how it *samples*. And
+`CreatePSO` sets `pVS` and `pPS` only — there is no hull or domain stage anywhere
+in the PBR pipeline.
+
+### What was rejected, and why the obvious option was the wrong one
+
+| | | Verdict |
+|---|---|---|
+| **Keep `RenderPBR.psh` as the material shader** | Cheapest. Custom shaders bolted alongside | **Rejected.** It is the ceiling itself. Nothing can be added to the standard path, and a custom shader would inherit none of the PBR lighting |
+| **Patch DiligentFX's shaders** (a hook before sampling) | Looked like a few lines | **Rejected on the *vendoring*, not the diff.** `third_party/DiligentEngine` is a **git submodule pointing at upstream** and this tree has **no patch mechanism at all**. So it costs either a fork of a large engine, owned indefinitely by a small studio, or new build machinery that must run before configure everywhere — and CI's build-tree cache is keyed on `git submodule status --recursive` (T0121), so a patch would have to enter that key or a changed patch silently reuses a tree compiled without it. It also **cannot reach tessellation**, because there the missing piece is C++ PSO construction rather than shader text |
+| **Write our own uber-shader outright** | Total control | **Rejected.** Reimplements split-sum IBL, punctual lighting, shadow filtering, tonemapping, every alpha mode and the glTF extensions — precisely the body of work D24 declined to write |
+
+### What was adopted
+
+**Our vertex and pixel shader mains, our PSO creation, their lighting library.**
+The split every modern engine draws, and it needs no modification to Diligent
+because all three pieces are already public:
+
+- `Shaders/PBR/public/PBR_Shading.fxh` — `GetSurfaceReflectanceMR`,
+  `PerturbNormal`, `ApplyPunctualLight`, `ApplyIBL`, `GetBaseLayerLighting`, and
+  the sheen and clearcoat equivalents. Surface properties in, radiance out.
+- `DiligentFXShaderSourceStreamFactory` — a public interface, so a shader in
+  *our* tree can `#include "PBR_Shading.fxh"` through a compound factory.
+- `CreateCompoundShaderSourceFactory` — public in `GraphicsTools`, and how
+  `PBR_Renderer` builds its own factory internally.
+
+`PBR_Renderer` is still **subclassed for the plumbing** — `DefineMacros`, the VS
+input/output structs, `CreateSignature`, `CreateCustomSignature` are all
+protected, and that permutation and resource-signature machinery is the part that
+would be genuinely unpleasant to rewrite. `CreatePSO` is *private*, so this is
+not an override: the subclass reuses the plumbing and creates its own shaders and
+pipeline states beside it.
+
+The struct layouts stay Diligent's — `PBRFrameAttribs`,
+`PBRMaterialShaderAttribs`, `PBRLightAttribs` — so their lighting functions are
+callable with no translation, and D24's "materials map onto
+`PBRMaterialShaderAttribs`" survives intact. **That half of D24 is unchanged**;
+what changes is only which shader consumes them.
+
+### The cost, stated rather than discovered later
+
+**We stop inheriting improvements to `RenderPBR.psh`.** When upstream adds a glTF
+extension or wires OIT differently, we port it rather than getting it free. That
+is the real price and it was weighed against a fork; it was accepted because it
+fails as **our code not compiling** on an upgrade, which is loud, rather than as
+a patch silently mis-applying, which is not.
+
+**Offering the hook upstream remains worth doing** even though the patch route
+was rejected as a dependency. If it ever lands, the trade can be revisited from a
+better position at no cost.
+
+### What this unlocks, and what it still does not
+
+Parallax occlusion, height mapping, triplanar, detail maps, vertex displacement,
+dissolve, and T0093's per-pixel visibility all become ordinary surface-stage code
+(T0141.7/141.8). **Tessellation becomes reachable** — we own the PSO, so we can
+add hull and domain stages — but is **deliberately deferred with a named
+trigger: when a silhouette must change** (141.9). Parallax is an illusion in the
+pixel shader: convincing head-on, and a POM brick wall still has a straight edge
+against the sky.

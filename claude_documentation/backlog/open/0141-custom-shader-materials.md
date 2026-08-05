@@ -9,7 +9,7 @@
 | **Order** | 455 |
 | **Created** | 2026-08-05 |
 | **Blocked by** | T0060.1 + T0060.6 only — the material *asset* and per-surface assignment. **Not** the rest of T0060, which was re-cut into this ticket on 2026-08-05 |
-| **Blocks** | **T0086** (shadow sampling is built on `RenderPBR.psh`; 141.0 must land first or shadows are built twice). Height mapping, parallax occlusion, triplanar and vertex displacement — 141.7/141.8 — which no material parameter can express |
+| **Blocks** | **T0086** — shadow sampling must be written against *our* pixel shader, not `RenderPBR.psh` (141.0 is decided; 141.10 is what T0086 now waits on). Height mapping, parallax occlusion, triplanar and vertex displacement — 141.7/141.8 — which no material parameter can express |
 | **Refs** | [../completed/0060-material-system.md](../completed/0060-material-system.md) (split from it), [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md), T0093, T0053, T0094, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D24 |
 
 ## Why
@@ -216,6 +216,64 @@ So option C splits into three, and they differ by more than taste:
 hook as a patch, use it, and offer it upstream. If it lands, the patch
 disappears; if it does not, we were carrying it anyway.
 
+### Second correction — "a few lines" was wrong, because Diligent is a submodule
+
+Checked when the owner asked whether T0141 means customising Diligent. It does
+for C1 and C3, and **not at all for C2**, and the cost table above understated
+C1 badly enough to change the recommendation.
+
+`third_party/DiligentEngine` is a **git submodule pointing at upstream**
+(`DiligentGraphics/DiligentEngine`), and **there is no patch mechanism in this
+tree** — no `patches/` directory, nothing that applies a diff at configure time.
+So "a few lines" is not what C1 costs. C1 costs one of:
+
+- **a fork** — repoint the submodule at `ywadi/DiligentEngine` and rebase our
+  hook on every upstream bump, which is a fork of a large engine owned by a small
+  studio, indefinitely; or
+- **new build machinery** — a patch-apply step that must run before configure on
+  every machine and in CI. Note that CI's build-tree cache key is
+  `git submodule status --recursive` (T0121), so the patch content would have to
+  enter that key too, or a changed patch silently reuses a build tree compiled
+  without it.
+
+C2 needs **neither**. It touches no Diligent source at all.
+
+### And a precision about C2: `CreatePSO` is private, so this is not a plain override
+
+Earlier this ticket said "subclass `PBR_Renderer` and own PSO creation" as if the
+subclass substitutes shader creation. It cannot: `CreatePSO` is **private**, and
+the protected `GetPSO` calls it. What a subclass actually reaches is the
+*plumbing* — `DefineMacros`, `GetVSInputStructAndLayout`, `GetVSOutputStruct`,
+`GetPSOutputStruct`, `CreateSignature`, `CreateCustomSignature` — which is the
+permutation and resource-signature machinery, and is the genuinely unpleasant
+part to rewrite.
+
+So C2 is: **subclass for the plumbing and the buffers, create our own shaders and
+PSOs beside it, `#include` their public `PBR_Shading.fxh` for the lighting.**
+More work than an override; far less than reimplementing PBR; and no fork.
+
+### Decided: C2, and the owner's constraint is what settled it — see D26
+
+The earlier "C1 first" rested on C1 being nearly free, which the submodule makes
+false. On the corrected costing:
+
+- C2 is the only option that requires **no modification to a vendored
+  dependency**, which is the ongoing cost `CLAUDE.md`'s library rule cares about;
+- C2 is the only route to **tessellation**, so choosing C1 buys a second decision
+  later;
+- the price is that our PS/VS main must be kept in step with DiligentFX's
+  structures across upgrades — real, but bounded, and it is *our* code failing to
+  compile rather than a patch silently mis-applying.
+
+The argument that survives for C1/C3 is inheritance: with their `RenderPBR.psh`
+we get upstream improvements — OIT, new glTF extensions — for free, and with our
+own main we do not. **That is the trade to put to the owner**, and it is why this
+stays a decision rather than being settled here.
+
+Offering the hook upstream (C3) is worth doing **regardless of which is chosen**:
+if it lands, C1 becomes genuinely cheap and the choice can be revisited from a
+better position.
+
 **Sequencing consequence, and it is the reason this matters now.** T0086 builds
 shadow sampling on `RenderPBR.psh`'s shadow path. Moving to our own PS main later
 moves shadow sampling with it. **The decision is materially cheaper before T0086
@@ -249,10 +307,11 @@ T0060 already says it must not foreclose and does not.
       texture sampling. Raised from T0060 on 2026-08-05
 - [ ] 141.8 **Triplanar projection** — same reason: a surface-stage technique,
       not a material parameter. Raised from T0060 on 2026-08-05
-- [ ] 141.0 **Decide C1/C2/C3 and record it** — time-boxed spike, and it comes
-      first because everything else here depends on the answer. **Do it before
-      T0086**: shadows build on `RenderPBR.psh`'s shadow path, and moving to our
-      own PS main afterwards moves shadow sampling with it
+- [x] 141.0 **Decide C1/C2/C3 and record it** — **C2, decided 2026-08-05 by the
+      owner**: *"i dont want to modify dilligent"*. Recorded as **D26**, which
+      amends D24. Diligent's source is never modified; we own the vertex and
+      pixel shader mains and PSO creation, subclass `PBR_Renderer` for the
+      plumbing, and `#include` its public `PBR_Shading.fxh` for the lighting
 - [ ] 141.10 **The standard material shader**, written against the surface stage
       (was 60.2). Includes the two obligations T0060 inherited from T0134:
       un-inline `GetMaterialPSOFlags` in `SceneRenderer.cpp` the moment any

@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 480 |
 | **Created** | 2026-08-03 |
-| **Blocked by** | [../open/0141-custom-shader-materials.md](../open/0141-custom-shader-materials.md) **141.0** — the surface-stage decision. Shadow sampling is built on `RenderPBR.psh`; if the standard material later moves onto our own pixel shader, shadow sampling moves with it. **Materially cheaper decided before this ticket than after**, which is why the block exists |
+| **Blocked by** | [../open/0141-custom-shader-materials.md](../open/0141-custom-shader-materials.md) **141.10** — the standard material shader. **141.0 is decided (D26): the engine owns the surface stage and Diligent is never modified**, so shadow sampling must be written against *our* pixel shader rather than `RenderPBR.psh`. Waiting is what stops it being built twice |
 | **Refs** | T0078, T0085, T0091, T0092, T0093, [../completed/0060-material-system.md](../completed/0060-material-system.md) — needs **cutout** materials (`AlphaMode::Mask`) for alpha-tested shadow casters, delivered by 60.1 |
 
 ## Why
