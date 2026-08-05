@@ -8,7 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 670 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0054, T0114 |
+| **Refs** | T0054, T0114, [0140-in-editor-code-editing.md](0140-in-editor-code-editing.md) |
 
 ## Why
 
@@ -96,3 +96,12 @@ viewer.
   names — in or beside this panel. Design the panel so an input row can
   attach; a pure viewer that cannot host one forces T0114 to build a second
   console window.
+
+### From T0140 (2026-08-05) — a compile error should be clickable
+
+T0140 adds an `openInEditor(path, line)` seam and names this panel as one of
+its call sites. **A console line carrying a file and a line number should be
+able to open there**, so keep whatever parses build output into `(file, line)`
+reachable rather than formatting it straight into a string. The seam returns
+false when no editor is configured, which the panel treats as "nothing
+happened" — never as an error worth a dialog.

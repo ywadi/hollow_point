@@ -111,6 +111,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 660 | [T0036](open/0036-assets-panel.md) | Assets panel | 6 — Editor | 🔜 TODO | Medium | Moderate |
 | 665 | [T0115](open/0115-editor-content-operations.md) | Editor content operations at scale | 6 — Editor | 🔜 TODO | Medium | Moderate |
 | 670 | [T0066](open/0066-console-panel.md) | Console panel | 6 — Editor | 🔜 TODO | Medium | Simple |
+| 672 | [T0140](open/0140-in-editor-code-editing.md) | Editing game code from the editor, with Ned as an option | 6 — Editor | 🔜 TODO | Medium | Moderate |
 | 675 | [T0114](open/0114-developer-console-and-cvars.md) | Runtime developer console and cvars | 6 — Editor | 🔜 TODO | Low | Moderate |
 | 680 | [T0037](open/0037-play-mode.md) | Play / simulation mode | 6 — Editor | 🔜 TODO | Medium | Moderate |
 | 690 | [T0067](open/0067-launcher.md) | Project launcher | 6 — Editor | 🔜 TODO | Medium | Simple |

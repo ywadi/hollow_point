@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 360 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0082, T0085, T0110, T0114 , [../completed/0129-display-modes-and-window-control.md](../completed/0129-display-modes-and-window-control.md) , [../completed/0110-presentation-and-frame-pacing.md](../completed/0110-presentation-and-frame-pacing.md) |
+| **Refs** | T0082, T0085, T0110, T0114, [../open/0140-in-editor-code-editing.md](../open/0140-in-editor-code-editing.md), [../completed/0129-display-modes-and-window-control.md](../completed/0129-display-modes-and-window-control.md) , [../completed/0110-presentation-and-frame-pacing.md](../completed/0110-presentation-and-frame-pacing.md) |
 
 ## Why
 
@@ -233,3 +233,11 @@ the background cap is a second value (T0110 defaults it to 10 Hz).
 
 `resolution` in this ticket's list is **T0129**'s mechanism, now built — see the
 separate obligation above.
+
+### From T0140 (2026-08-05) — the code-editor preference is per-user
+
+T0140 lets a developer choose which editor opens game source. **That choice
+must be per-user and must not live in the project file**: a teammate's editor
+is not project data, and committing it means two people fighting over one
+line. This ticket owns the distinction between per-user and per-project
+settings, so it needs to exist before T0140 can persist anything.
