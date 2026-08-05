@@ -21,6 +21,8 @@ const path = require('path');
 const PORT = Number(process.argv[2] || process.env.PORT || 8071);
 const BOARD_DIR = __dirname;
 const BACKLOG_DIR = path.join(BOARD_DIR, '..', 'backlog');
+const REPO_DIR = path.join(BOARD_DIR, '..', '..');
+const BACKLOG_README = path.join(BACKLOG_DIR, 'README.md');
 const DECISION_LOG = path.join(BOARD_DIR, '..', 'documentation', '02-decision-log.md');
 
 const COLUMNS = [
@@ -92,6 +94,121 @@ function readBoard() {
     return { ...c, tasks };
   });
   return { generated: new Date().toISOString(), columns };
+}
+
+
+// --- current ticket sequence ---------------------------------------------------
+//
+// The board answers "what is there" for every ticket. It does not answer "what
+// is happening now", and the folders cannot: a sequence is an ordering *across*
+// tickets, so it lives in exactly one place a folder cannot express -- the
+// `## Current ticket sequence` section at the top of backlog/README.md.
+//
+// It is parsed out of that prose rather than restated here, and that is the
+// whole design. A copy in this file would be a second source that drifts the
+// first time someone edits the README and not this, and the section's own
+// "Keeping it true" rule is that a stale sequence is worse than none because it
+// is trusted. A board that could disagree with the document would be exactly
+// that failure, wearing the authority of a rendered page.
+//
+// So the parser bends to the prose, not the other way round: the section is
+// written for people first, and the only thing this depends on is the shape it
+// already had -- a `**Set <date>` line and a numbered table whose second cell is
+// a link to the ticket.
+//
+// Parse failure is reported in the payload rather than thrown, the same way
+// readCI() reports a GitHub outage. An endpoint that 500s leaves the client
+// with nothing to say, and "nothing to say" renders as an empty panel, which
+// reads as "nothing planned" -- the one meaning this must never accidentally
+// have.
+
+const SEQUENCE_HEADING = '## Current ticket sequence';
+// "| 1 | [T0060.6](inprogress/0060-material-system.md) | code | why... |"
+const SEQ_LINK = /^\[(T\d{4})(\.\d+)?\]\((open|inprogress|completed)\/(.+\.md)\)$/;
+
+function readSequence() {
+  const source = path.relative(REPO_DIR, BACKLOG_README);
+  const out = {
+    generated: new Date().toISOString(),
+    source, heading: SEQUENCE_HEADING,
+    ok: false, error: null, problems: [], setDate: null, items: [],
+  };
+
+  let md;
+  try {
+    md = fs.readFileSync(BACKLOG_README, 'utf8');
+  } catch (err) {
+    out.error = `cannot read ${source} — ${err.message}`;
+    return out;
+  }
+
+  const start = md.indexOf(SEQUENCE_HEADING);
+  if (start < 0) {
+    out.error = `${source} has no "${SEQUENCE_HEADING}" section. It is what a session `
+              + `reads first after a context reset — restore it rather than deleting it.`;
+    return out;
+  }
+  let section = md.slice(start + SEQUENCE_HEADING.length);
+  const end = section.indexOf('\n## ');
+  if (end >= 0) section = section.slice(0, end);
+
+  const date = section.match(/^\*\*Set (\d{4}-\d{2}-\d{2})/m);
+  if (date) out.setDate = date[1];
+  else out.problems.push('No "**Set YYYY-MM-DD" line, so there is no way to tell how stale this is.');
+
+  for (const line of section.split('\n')) {
+    if (!line.trim().startsWith('|')) continue;
+    const cells = line.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+    // The header row and the `|---|` separator both fail this, which is what
+    // keeps them out without having to recognise them.
+    if (cells.length < 4 || !/^\d+$/.test(cells[0])) continue;
+
+    const m = cells[1].match(SEQ_LINK);
+    if (!m) {
+      out.problems.push(`Row ${cells[0]}: "${cells[1]}" is not a [T####](folder/file.md) link, so it cannot be linked to its ticket.`);
+      continue;
+    }
+    const [, base, sub, folder, fname] = m;
+    const label = base + (sub || '');
+
+    // Not a duplicate of tools/check_backlog.py so much as the visible half of
+    // it: that script is the gate and runs when somebody runs it, this is what
+    // a person staring at the board sees without being told. check_backlog.py
+    // stays authoritative -- if the two ever disagree, believe it.
+    if (!fs.existsSync(path.join(BACKLOG_DIR, folder, fname))) {
+      out.problems.push(`${label}: points at ${folder}/${fname}, which does not exist.`);
+    } else if (folder === 'completed') {
+      out.problems.push(`${label}: listed as upcoming, but it sits in completed/. Drop the row and re-date the sequence.`);
+    }
+
+    const kindLabel = cells[2].replace(/\*\*/g, '').replace(/^\*|\*$/g, '').trim();
+    out.items.push({
+      position: Number(cells[0]),
+      // What the row calls it ("T0060.6") and what the board can open ("T0060")
+      // are different strings, and the card only exists for the second.
+      id: label,
+      ticket: base,
+      kind: /decision/i.test(kindLabel) ? 'decision' : 'code',
+      kindLabel,
+      href: `${folder}/${fname}`,
+      file: path.relative(REPO_DIR, path.join(BACKLOG_DIR, folder, fname)),
+      // Cells cannot contain an unescaped pipe in markdown, but rejoining
+      // rather than taking cells[3] means a stray one truncates nothing.
+      why: cells.slice(3).join(' | '),
+    });
+  }
+
+  out.items.sort((a, b) => a.position - b.position);
+
+  if (!out.items.length) {
+    out.error = `The "${SEQUENCE_HEADING}" section in ${source} lists no tickets. `
+              + `If there genuinely is no sequence, say so there in a sentence — `
+              + `an empty table reads as an oversight rather than a state.`;
+    return out;
+  }
+
+  out.ok = true;
+  return out;
 }
 
 
@@ -489,6 +606,14 @@ const server = http.createServer((req, res) => {
       return res.end(body);
     }
 
+    // Always 200, even when the section is missing or malformed: the failure is
+    // in the payload (see readSequence). The client has to be able to render
+    // "this is broken" prominently, and it cannot do that from a 500.
+    if (url === '/api/sequence') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+      return res.end(JSON.stringify(readSequence()));
+    }
+
     if (url === '/api/architecture') {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end(JSON.stringify(readArchitecture()));
@@ -559,11 +684,17 @@ if (require.main === module) {
   server.listen(PORT, () => {
     const b = readBoard();
     const counts = b.columns.map((c) => `${c.title} ${c.tasks.length}`).join(' | ');
+    const s = readSequence();
     console.log(`backlog board -> http://localhost:${PORT}`);
     console.log(`watching       ${path.resolve(BACKLOG_DIR)}`);
     console.log(`current        ${counts}`);
+    // Printed at startup because a sequence that failed to parse is invisible
+    // until someone opens the page, and the person starting the server is the
+    // one who can fix it.
+    console.log(`sequence       ${s.ok ? `${s.items.length} items, set ${s.setDate || '(undated)'}` : `NOT PARSED — ${s.error}`}`);
+    for (const p of s.problems) console.log(`  sequence !    ${p}`);
     console.log(`ci status      ${GH_REPO}@${GH_BRANCH} (${ghToken ? 'authenticated' : 'anonymous'})`);
   });
 } else {
-  module.exports = { runState, summarizeRuns, readBoard, readArchitecture };
+  module.exports = { runState, summarizeRuns, readBoard, readArchitecture, readSequence };
 }

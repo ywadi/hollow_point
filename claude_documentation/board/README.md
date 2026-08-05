@@ -45,6 +45,50 @@ number) and survives both page reloads and the 10-second poll's repaints.
 
 A red dot in the header means the server is unreachable; the page keeps retrying.
 
+## The current ticket sequence, at the top
+
+The board answers *what is there*. It cannot answer *what is happening now*,
+because a sequence is an ordering **across** tickets and the folders have no way
+to express one. That lives in the `## Current ticket sequence` section at the top
+of [`../backlog/README.md`](../backlog/README.md), and the panel above the
+columns is that section rendered.
+
+**It is parsed out of the README, never restated here**, and that is the whole
+design rather than an implementation detail. A copy in `server.js` or
+`index.html` would be a second source that drifts the first time somebody edits
+the document and not the board — and the section's own rule is that a stale
+sequence is worse than none, *because it is trusted*. A rendered page is the
+most trusted copy there is, so it is the worst possible place to keep a copy.
+The panel header prints the source path for the same reason: it tells you where
+to go and edit, instead of leaving you to guess that a wrong row is a board bug.
+
+The parser bends to the prose, not the other way round. It needs only the shape
+that section already had — a `**Set <date>` line, and a numbered table whose
+second cell links the ticket. `/api/sequence` returns the date, and per row the
+position, ticket id, kind, link and the "why" text.
+
+**The `decision` row is styled to be impossible to skim past.** One item in the
+sequence is a question for the owner rather than work to pick up, and an agent
+that reads it as a queue item and implements a branch does damage that is
+expensive to undo. So it gets its own colour — used nowhere else on this board,
+because amber already means "in progress" and red already means "blocked" — a
+solid `DECISION` badge, and a line of text saying so in words. Colour alone was
+not judged enough.
+
+**A parse failure is loud, never blank.** `/api/sequence` answers `200` with the
+failure in the payload (the same way `/api/ci` reports a GitHub outage), and the
+panel renders the error where the rows would be. An empty panel would read as
+"nothing planned", which is the one meaning this must never accidentally have.
+Two kinds are distinguished: a *hard* failure — no section, or a section listing
+no tickets — replaces the rows, while *staleness* — no `Set` date, a row whose
+ticket file is missing, a row pointing into `completed/` — shows a banner above
+rows that still render. The problems are also printed by `server.js` at startup,
+since the person launching it is the one who can fix them.
+
+`tools/check_backlog.py` enforces the same rules as a gate and stays
+authoritative; this is the visible half, for whoever is looking at the board
+rather than running the checker.
+
 ## Moving a task
 
 ```sh
