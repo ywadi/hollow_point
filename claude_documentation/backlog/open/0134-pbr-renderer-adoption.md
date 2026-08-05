@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 445 |
 | **Created** | 2026-08-05 |
-| **Refs** | [../inprogress/0028-scene-draw-submission.md](../inprogress/0028-scene-draw-submission.md), T0060, T0079, T0087, T0096, [../completed/0023-asset-manager.md](../completed/0023-asset-manager.md), [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) (D6, D21, D22) |
+| **Refs** | [../completed/0028-scene-draw-submission.md](../completed/0028-scene-draw-submission.md), T0060, T0079, T0087, T0096, [../completed/0023-asset-manager.md](../completed/0023-asset-manager.md), [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) (D6, D21, D22) |
 
 ## Why
 

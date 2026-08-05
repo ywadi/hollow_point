@@ -2,13 +2,13 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
 | **Order** | 410 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0120, [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), [../inprogress/0081-camera-system.md](../inprogress/0081-camera-system.md) |
+| **Refs** | T0120, [../open/0033-viewport-panel.md](../open/0033-viewport-panel.md), [../open/0134-pbr-renderer-adoption.md](../open/0134-pbr-renderer-adoption.md), [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), [../inprogress/0081-camera-system.md](../inprogress/0081-camera-system.md) |
 
 ## Why
 
@@ -48,6 +48,37 @@ editor viewport can display it without the renderer knowing the editor exists.
 - [x] 28.6 Profiling zones for parse and submit separately — `HP_PROFILE_ZONE`
       in `parseScene`, in `render`, in `drawModel`, and a named zone around the
       frame-attribs write
+
+## Closed — 2026-08-05
+
+**All six "Done when" clauses met and all six subtasks done**, with a mesh
+rendered to a target and the pixels asserted, on both backends.
+
+Two remainders moved to the tickets that own them rather than being left here,
+the T0095 → T0105 pattern. **Both are recorded on the receiving ticket, so the
+linkage reads both ways:**
+
+- **The dev present path cannot show a frame on Vulkan → [T0033](../open/0033-viewport-panel.md).**
+  `RenderLayer::setPresentSource` is a plain `CopyTexture` and needs an exact
+  format match; Vulkan's surface here is `BGRA8_UNORM_SRGB` against the scene
+  target's `RGBA8_UNORM_SRGB`. It shows a clear colour rather than copying
+  regardless, because a red/blue-swapped image reads as a shader bug. **T0033
+  deletes this path entirely** — an ImGui image samples the texture in a shader,
+  which converts formats as a matter of course — so the gap closes there rather
+  than needing a fix first. The alternative, if T0033 is far off, is a
+  fullscreen-triangle blit, which is also what a compositor does and would then
+  belong to T0027 rather than being written twice.
+- **Material texture colour-space conversion → [T0134](../open/0134-pbr-renderer-adoption.md).**
+  `GetPBRTextureSRV` is not public, so textures bind through the model's own
+  views with no conversion applied. Untextured materials are unaffected, which is
+  why this ticket's own tests pass. It sits next to T0097's sRGB work.
+
+**Not moved, because they were never this ticket's:** the runtime publishing a
+frame is T0042's (it can now copy the editor's `SceneLayer` verbatim), material
+*asset* resolution waits on T0060 for a material type to exist, and sorting,
+culling and instancing were out of scope by design — the parse step's output is
+an explicit list precisely so T0045 can insert a pass without restructuring
+anything.
 
 ## Notes / findings
 

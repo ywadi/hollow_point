@@ -44,6 +44,24 @@ this `RenderStack`.
 - [x] 27.5 Decide compositing — **single target**, decided and recorded below
 - [x] 27.6 Per-layer profiling zones — `HP_PROFILE_ZONE_NAMED(layer->name())`
 
+## Unblocked 2026-08-05 — T0028 closed
+
+T0028 built the thing this stack had nothing to composite: `hp::SceneView`
+renders a scene into an offscreen colour and depth pair and publishes it. Two
+things it leaves for this ticket:
+
+- **The scene is drawn without going through `RenderStack`.** `SceneView` binds
+  its targets and submits directly, because a stack with one layer would have
+  been ceremony. Turning that into an `IRenderLayer` is this ticket's job, and
+  the seam is already the right shape — `SceneRenderer::render` takes the draw
+  list, the resolved view and a context, and binds no targets itself.
+- **A format-converting blit may belong here.** T0028's dev present path is a
+  plain `CopyTexture` and cannot show a frame on Vulkan, whose surface is BGRA
+  against the scene target's RGBA. T0033 makes that moot by sampling the texture
+  in a shader; if this stack grows a fullscreen-triangle composite first, it
+  solves the same problem and T0033 should use it rather than either being
+  written twice. See T0033's notes.
+
 ## Notes / findings
 
 **The stack must accept layers implemented outside the engine** (T0094). Fog of

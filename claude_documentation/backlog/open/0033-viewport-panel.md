@@ -8,6 +8,32 @@
 | **Phase** | 6 — Editor |
 | **Order** | 610 |
 | **Created** | 2026-08-02 |
+| **Refs** | [../completed/0028-scene-draw-submission.md](../completed/0028-scene-draw-submission.md) — **consumes `FrameRenderedEvent`, and deletes the dev present path this panel replaces.** T0028 left that path unable to show a frame on Vulkan; see below |
+
+## Inherited from T0028 (2026-08-05)
+
+**The frame already exists and is already published.** `hp::SceneView` renders
+the scene into an offscreen colour target and the editor dispatches a
+`hp::FrameRenderedEvent` carrying its shader-resource view every frame. This
+panel is the first real consumer: draw that view as an ImGui image. **Do not
+reach for a renderer pointer** — the event exists precisely so the viewport does
+not need one, and that is what keeps the editor deletable from a shipped build.
+
+**This ticket also deletes the dev present path, and that fixes a known gap.**
+`RenderLayer::setPresentSource` blits the frame to the back buffer with a plain
+`CopyTexture`, which needs an exact format match. It has one on OpenGL and not on
+Vulkan, whose surface here is `BGRA8_UNORM_SRGB` against the scene target's
+`RGBA8_UNORM_SRGB` — so **a Vulkan editor currently shows a clear colour rather
+than the scene**, deliberately, because copying regardless would put a
+red/blue-swapped image on screen and that reads as a shader bug.
+
+Sampling the texture in a shader — which is what an ImGui image does — converts
+formats as a matter of course, so this problem disappears here rather than
+needing a fix first. **If this panel is going to be a while**, the alternative is
+a fullscreen-triangle blit with a trivial shader, which is also what a compositor
+does and would then belong to T0027 rather than being written twice. Recorded so
+whoever gets here first can decide, rather than discovering a black Vulkan
+window and assuming the renderer is broken.
 
 ## Why
 

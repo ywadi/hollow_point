@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 420 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0111, T0120, [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), **blocked on** [../inprogress/0028-scene-draw-submission.md](../inprogress/0028-scene-draw-submission.md) and [../open/0061-debug-draw.md](../open/0061-debug-draw.md), [../open/0045-culling-and-render-queues.md](../open/0045-culling-and-render-queues.md), [../open/0085-layers-and-masks.md](../open/0085-layers-and-masks.md) |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0111, T0120, [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), **blocked on** [../open/0061-debug-draw.md](../open/0061-debug-draw.md) only — T0028 cleared 2026-08-05, [../open/0045-culling-and-render-queues.md](../open/0045-culling-and-render-queues.md), [../open/0085-layers-and-masks.md](../open/0085-layers-and-masks.md) |
 
 ## Why
 
@@ -54,7 +54,7 @@ do**. Both blockers are tickets that do not exist yet:
 
 | Blocker | What it unblocks here |
 |---|---|
-| [T0028](../inprogress/0028-scene-draw-submission.md) — scene draw submission | 81.2's "resolved each frame". `resolveCamera` and `buildView` are built and tested; nothing calls them in a frame because nothing draws. `RenderStack` deliberately does not depend on `Scene`, so the resolve belongs where draws are submitted. |
+| ~~[T0028](../completed/0028-scene-draw-submission.md) — scene draw submission~~ **CLEARED 2026-08-05.** | `hp::SceneView::render` calls `resolveCamera` and `buildView` every frame, per view slot, and uses `ResolvedView::viewport*` rather than the target size — which is the letterboxing trap this ticket warned about. 81.2 is satisfied. |
 | [T0061](../open/0061-debug-draw.md) — debug draw service | 81.8 entirely. `extractFrustum` already returns the six planes; only the ability to draw lines is missing. |
 
 Two further items are stored-but-unconsumed by design, and are *not* blockers on
