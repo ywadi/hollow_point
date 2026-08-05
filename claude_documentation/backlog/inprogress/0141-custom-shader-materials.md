@@ -307,6 +307,13 @@ T0060 already says it must not foreclose and does not.
       deliberately. Must cover at least UVs, world position, normal, view
       direction, depth, and **T0093's per-pixel visibility**, which is the one
       most likely to be forgotten and most expensive to retrofit
+- [ ] 141.14 **Generate the shader contract's reference from `HpMaterial.fxh`,
+      and gate it in CI** — the same mechanism `tools/gen_api_docs.py` and the
+      "API reference is up to date" job give `engine/include/hp/`. Scoped to
+      **public shader headers only**, mirroring the include/src split the C++
+      side already has: `HpSurface.psh` is no more public than `engine/src/*.cpp`.
+      **Not before 141.6 settles** — a generator written against a contract that
+      is still moving is work done twice
 - [ ] 141.13 **A VFS-backed shader source**, so a game's shader is content like
       any other (D13). Resolution order is **engine, then game, then DiligentFX**
       — a project must not be able to shadow `HpMaterial.fxh` and redefine the

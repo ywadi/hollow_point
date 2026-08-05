@@ -11,31 +11,82 @@
 //   surface stage (ours)  ->  read textures, displace UVs, blend layers
 //   lighting     (theirs) ->  BRDF, punctual lights, IBL, shadows
 //
-// Included from DiligentFX, all public, none of it modified:
-//   PBR_Structures.fxh   the shared constant-buffer layouts
-//   PBR_Shading.fxh      the lighting functions (T0141.10)
-//   Shadows.fxh, PCF.fxh shadow sampling and filtering (T0086)
+// **The subset is D24's, not a simplification.** DiligentFX's own material
+// shader is 656 lines because it covers clearcoat, sheen, anisotropy,
+// iridescence, transmission and volume. D24 keeps every one of those off, so
+// reimplementing them here would be carrying code for features the engine
+// deliberately does not enable. When one is turned on, it is turned on here.
+//
+// ---
+//
+// **Considered and rejected: shadowing `PBR_Textures.fxh`.** The engine's source
+// factory resolves our files before DiligentFX's, so shipping a file with that
+// name would make *their* `RenderPBR.psh` include *ours*, and the parallax hook
+// could go there with no PSO work and no shader of our own. It was rejected
+// because it is the worse coupling, not the better one: we would be
+// reimplementing a **private** header against a caller we do not control, and a
+// semantic change upstream would land as a subtly wrong image rather than a
+// compile error. Owning our own `main` couples us to their *public* library
+// instead, which is the thing they have promised to keep stable.
 
 #include "PBR_Structures.fxh"
+#include "HpMaterial.fxh"
 
-// Grown deliberately rather than written whole: this compiles and renders
-// before it does anything interesting, so that the *plumbing* -- our source
-// reaching the compiler, and a DiligentFX public header resolving from it --
-// is proven separately from the shading. A shader that compiles and draws the
-// wrong thing is the failure T0134 spent a ticket on, and the two are much
-// easier to tell apart when they land in different commits.
+// Grown deliberately rather than written whole: this compiles and renders before
+// it does anything interesting, so that the *plumbing* -- our source reaching the
+// compiler, and a DiligentFX public header resolving from it -- is proven
+// separately from the shading. A shader that compiles and draws the wrong thing
+// is the failure T0134 spent a ticket on, and the two are much easier to tell
+// apart when they land in different commits.
+//
+// Still absent, and named so the gap is visible: the generated VS output struct,
+// `PBR_Shading.fxh`, and the lighting call. Those need the macro set
+// `PBR_Renderer::DefineMacros` produces, which arrives with the PSO work in
+// 141.10 proper.
 
 struct HpSurfaceProbeVSOutput
 {
     float4 Pos : SV_POSITION;
 };
 
+/// The standard material's surface function.
+///
+/// **The engine's own material is written against the same contract a game's is**
+/// (D27), which is the check that keeps the contract honest: if `HpSurfaceInput`
+/// is missing something, the standard material notices first.
+void HpSurface(in HpSurfaceInput In, inout HpSurfaceOutput Out)
+{
+    // Nothing yet -- everything is pre-filled from the material, so leaving it
+    // alone is exactly "the standard PBR material" (141.10).
+}
+
 /// Writes the missing-material colour (T0060.10): magenta, unlit.
 ///
-/// Deliberately the *fallback* colour rather than an arbitrary one, so that the
-/// first thing this shader ever draws is a value the engine already gives a
-/// meaning to, and a test asserting it is asserting something real.
+/// Deliberately the *fallback* colour rather than an arbitrary one, so the first
+/// thing this shader ever draws is a value the engine already gives a meaning
+/// to, and a test asserting it is asserting something real.
 float4 main(in HpSurfaceProbeVSOutput In) : SV_TARGET
 {
-    return float4(1.0, 0.0, 1.0, 1.0);
+    HpSurfaceInput surfaceIn;
+    surfaceIn.UV0 = float2(0.0, 0.0);
+    surfaceIn.UV1 = float2(0.0, 0.0);
+    surfaceIn.WorldPos = float3(0.0, 0.0, 0.0);
+    surfaceIn.Normal = float3(0.0, 1.0, 0.0);
+    surfaceIn.Tangent = float4(1.0, 0.0, 0.0, 1.0);
+    surfaceIn.ViewDir = float3(0.0, 0.0, 1.0);
+    surfaceIn.VertexColor = float4(1.0, 1.0, 1.0, 1.0);
+    surfaceIn.ScreenPos = In.Pos;
+    surfaceIn.CameraPos = float3(0.0, 0.0, 0.0);
+
+    HpSurfaceOutput surfaceOut;
+    surfaceOut.BaseColor = float4(1.0, 0.0, 1.0, 1.0);
+    surfaceOut.Normal = surfaceIn.Normal;
+    surfaceOut.Metallic = 0.0;
+    surfaceOut.Roughness = 1.0;
+    surfaceOut.Emissive = float3(0.0, 0.0, 0.0);
+    surfaceOut.Occlusion = 1.0;
+
+    HpSurface(surfaceIn, surfaceOut);
+
+    return surfaceOut.BaseColor;
 }
