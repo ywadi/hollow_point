@@ -65,8 +65,50 @@ layouts. Until that is decided, the glob keeps making the decision by accident.
 - [ ] 128.3 Orphan test: a stale artifact in the build tree must not stage
 - [ ] 128.4 Decide `.pdb` and static/import library inclusion per output kind
 - [ ] 128.5 Extend `tests/harness/dist_test.zig`
+- [ ] 128.6 Decide whether ELF debug info is stripped or split on staging — see
+      "92% of the Linux engine is debug info" below. `.pdb` is named in 128.4;
+      the Linux equivalent was not named anywhere
 
 ## Notes / findings
+
+### 92% of the Linux engine is debug info, and `dist` ships all of it (2026-08-05, from T0028)
+
+Measured while linking DiligentFX for T0028, and recorded here rather than fixed
+there, because staging policy is this ticket's:
+
+| | |
+|---|---|
+| `libhp_engine.so` unstripped | **203.0 MiB** |
+| the same file stripped | **16.7 MiB** |
+| debug info | **186.3 MiB — 92% of the file** |
+| `hp_engine.dll` (Windows) | 16.5 MiB |
+
+**It is not our compiler flags.** `CMAKE_BUILD_TYPE=Release`,
+`CMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG`, and the engine's own translation units
+compile with `-O3` and no `-g` — checked in `compile_commands.json`, not assumed.
+The debug info arrives from **Diligent's static archives**, which carry it
+regardless of build type: `libDiligent-GraphicsEngineVk-static.a` is 41 MB,
+`libDiligent-AssetLoader.a` 16 MB, `libDiligentFX.a` 25 MB, `libDiligent-Imgui.a`
+8.6 MB, and every one of them has `.debug_*` sections.
+
+The stripped Linux size matching the Windows DLL almost exactly — 16.7 against
+16.5 MiB — is the evidence that the *code* is the expected size and only the
+symbols are not.
+
+**`cmake/dist.cmake` performs no stripping**, so a staged build carries all
+186 MB. 128.4 already decides `.pdb` inclusion for Windows; **the ELF side was
+not named anywhere in this ticket**, which is why it is added as 128.6 rather
+than assumed to be covered.
+
+Worth deciding rather than reflexively stripping: separate `.debug` files with
+`objcopy --only-keep-debug` keep a shipped artifact small *and* keep crash
+symbolication possible, which matters more here than raw size.
+
+**Not a regression, and specifically not DiligentFX's doing.** Measured by
+relinking with the `DiligentFX` line removed: byte-identical at 212,847,352.
+A static archive contributes only the objects something references, and no engine
+code calls into FX yet — so it will grow when T0028's renderer lands, and this
+baseline is what that growth should be measured against.
 
 **The exclusion added by T0105.4 is a patch, not the fix.** `_never_stage`
 excludes `/CMakeFiles/` and `/tests/`. It is correct and tested, and it is still

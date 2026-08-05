@@ -93,11 +93,100 @@ It does not. `PBR_Renderer::GetPsoCacheAccessor(const GraphicsPipelineDesc&)`
 takes the **caller's** pipeline desc, and grepping every depth write in
 `PBR_Renderer.cpp` shows it touches only `DepthEnable` and `DepthWriteEnable` —
 for the env-map and OIT passes — and **never `DepthFunc`**. The depth comparison
-is the caller's throughout, so reverse-Z survives adoption.
+is the caller's throughout.
+
+**That conclusion does not carry to `GLTF_PBR_Renderer`, and the next section is
+the correction.** It is left standing rather than deleted because it is correct
+about the base class, and because the mistake was reasoning from the base to the
+derived without checking the derived.
+
+### Correction, and it is the important one: `GLTF_PBR_Renderer` **cannot** do reverse-Z (2026-08-05)
+
+The reverse-Z finding above is **true of `PBR_Renderer` and false of
+`GLTF_PBR_Renderer`**, and the difference decides the design. Recorded in full
+because the earlier, wrong conclusion was written down first and acted on.
+
+`PBR_Renderer::GetPsoCacheAccessor(const GraphicsPipelineDesc&)` is public and
+does take the caller's desc — that part was verified correctly. But
+`GLTF_PBR_Renderer` never lets a caller near it. Its constructor
+(`GLTF_PBR_Renderer.cpp:108-130`) builds the desc itself:
+
+```cpp
+GraphicsPipelineDesc GraphicsDesc;
+GraphicsDesc.NumRenderTargets = CI.NumRenderTargets;
+GraphicsDesc.RTVFormats[i]    = CI.RTVFormats[i];
+GraphicsDesc.DSVFormat        = CI.DSVFormat;
+GraphicsDesc.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+GraphicsDesc.RasterizerDesc.FrontCounterClockwise = CI.FrontCounterClockwise;
+m_PbrPSOCache = GetPsoCacheAccessor(GraphicsDesc);   // DepthStencilDesc untouched
+```
+
+`DepthStencilDesc` is never assigned, so it takes Diligent's default —
+`DepthFunc = COMPARISON_FUNC_LESS` (`DepthStencilState.h:173`). Neither
+`GLTF_PBR_Renderer::CreateInfo` nor `PBR_Renderer::CreateInfo` carries **any**
+depth-state field; the only depth-adjacent members are the formats. And
+`m_PbrPSOCache` is **private** (`GLTF_PBR_Renderer.hpp:285`, under the `private:`
+at 269), so a subclass cannot re-seed it either.
+
+**What that produces under T0130's convention is worth stating precisely**, since
+it is not the failure the ticket warns about. Reverse-Z clears depth to 0 and maps
+the near plane to 1. With `LESS`, a fragment passes only if its depth is *less
+than* the stored 0 — so **nothing draws at all**. A black screen, not inverted
+geometry. Louder than the classic reverse-Z bug, and quicker to diagnose, but a
+hard blocker.
+
+**Decided 2026-08-05: drive `PBR_Renderer` directly** and supply our own
+`GraphicsPipelineDesc` with `COMPARISON_FUNC_GREATER_EQUAL`.
+
+This keeps the reuse that actually mattered — the shaders, PSO creation and
+caching, SRB management, material attribs — and writes only the model traversal
+that `GLTF_PBR_Renderer::Render` performs. Rejected alternatives, with reasons:
+
+- **Patch the vendored Diligent** to expose depth state. Surgical, and genuinely
+  worth upstreaming since reverse-Z is standard practice — but it ends the
+  unpatched-tree property D6 deliberately preserved, and every upgrade carries
+  the patch until it merges.
+- **Revisit T0130.** Cheapest today and wrong: its measurement is 135,604
+  distinct depth values against 2 over 900–901m with a 0.1m near plane, and the
+  whole point of settling the convention early is that changing it later means
+  touching every pipeline state in the engine.
+- **A minimal hand-written pipeline.** This finding is real evidence for it, but
+  it discards the shaders and material handling too, which is far more than the
+  traversal.
+
+**The traversal is not pure loss.** It is the seam where per-entity material
+overrides (T0060) and per-draw sorting (T0045) have to live anyway, so owning it
+was likely on the cards regardless.
 
 ### Decided (2026-08-05): adopt it, no wrapper, and file the rest
 
-**Adopt `GLTF_PBR_Renderer`, driven in unshaded mode**, behind the pimpl.
+**Adopt `GLTF_PBR_Renderer`**, behind the pimpl, configured to touch none of
+T0079/T0087/T0096's territory.
+
+> **Correction (2026-08-05).** This first said "driven in unshaded mode", and
+> that is **wrong** — recorded rather than quietly edited, because the wrong
+> version is the one a reader would naturally assume.
+>
+> `PSO_FLAG_UNSHADED` is not reachable the way it looks. In
+> `GLTF_PBR_Renderer::Render` (`GLTF_PBR_Renderer.cpp:617-635`) the flags are
+> accumulated, then `PSOFlags &= RenderParams.Flags` — **the caller's flags are a
+> mask that can only remove, never add** — and `PSO_FLAG_UNSHADED` is OR'd in
+> afterwards **only** when `RenderParams.Wireframe` is true. So "unshaded" is
+> reachable only *as wireframe*, which is not what this ticket wants.
+>
+> The working lever is different: `CreateInfo::EnableIBL = false`, plus a
+> `RenderInfo::Flags` mask that excludes `PSO_FLAG_USE_IBL`,
+> `PSO_FLAG_USE_LIGHTS`, `PSO_FLAG_ENABLE_TONE_MAPPING`,
+> `PSO_FLAG_ENABLE_SHADOWS` and `PSO_FLAG_COMPUTE_MOTION_VECTORS`. Those five are
+> precisely the features owned by T0079, T0087 and T0096, and masking them off is
+> what keeps this ticket out of their way.
+>
+> Worth knowing for whoever picks up T0134: `PSO_FLAG_DEFAULT` **includes**
+> `USE_IBL | USE_LIGHTS | ENABLE_TONE_MAPPING` (`PBR_Renderer.hpp:606`), so the
+> default is the opposite of minimal. And when `PSO_FLAG_UNSHADED` *is* set,
+> `PBR_Renderer.cpp:123-131` masks the flags down to
+> `USE_JOINTS | ALL_USER_DEFINED | UNSHADED` — the renderer enforces the
+> stripping itself rather than merely permitting it.
 
 **No abstraction is built over it, and D22 is why:** "an abstraction over an
 abstraction buys nothing until there is a concrete second target." An
