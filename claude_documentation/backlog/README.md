@@ -39,7 +39,7 @@ been a choice.
 
 | # | Ticket | Kind | Why it sits here |
 |---|---|---|---|
-| 1 | [T0141](open/0141-custom-shader-materials.md) | code | The surface stage: the standard material shader (141.10), the textured-render regression test (141.11), fallback rendering (141.12), parallax and height (141.7), triplanar (141.8). Every one of them is shaped by item 3's answer, so none of it starts before that |
+| 1 | [T0141](inprogress/0141-custom-shader-materials.md) | code | The surface stage: the standard material shader (141.10), the textured-render regression test (141.11), fallback rendering (141.12), parallax and height (141.7), triplanar (141.8). Every one of them is shaped by item 3's answer, so none of it starts before that |
 | 2 | [T0045](open/0045-culling-and-render-queues.md) | code | Culling, sorting and render queues. **Shader-independent**, so it may slot anywhere after item 1 — see below |
 | 3 | [T0086](open/0086-shadows.md) | code | Shadows. Last because it is **blocked by item 3**, not because it matters least |
 
@@ -161,7 +161,7 @@ wrong in the confident voice of a document that is normally right.
 | 440 | [T0045](open/0045-culling-and-render-queues.md) | Culling, sorting and render queues | 4 — Render layer | 🔜 TODO | High | Complex |
 | 445 | [T0134](completed/0134-pbr-renderer-adoption.md) | How far DiligentFX's PBR renderer goes, and what inherits it | 4 — Render layer | ✅ DONE | High | Moderate |
 | 450 | [T0060](completed/0060-material-system.md) | Material assets | 4 — Render layer | ✅ DONE | High | Moderate |
-| 455 | [T0141](open/0141-custom-shader-materials.md) | The surface stage: standard and custom material shaders | 4 — Render layer | 🔜 TODO | High | Complex |
+| 455 | [T0141](inprogress/0141-custom-shader-materials.md) | The surface stage: standard and custom material shaders | 4 — Render layer | 🚧 IN PROGRESS | High | Complex |
 | 460 | [T0096](open/0096-hdr-pipeline-and-tonemapping.md) | HDR pipeline, tonemapping and the linear-workflow policy | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 470 | [T0079](completed/0079-lighting-system.md) | Lights and per-object light selection | 4 — Render layer | ✅ DONE | High | Complex |
 | 480 | [T0086](open/0086-shadows.md) | Shadow rendering | 4 — Render layer | 🔜 TODO | High | Complex |

@@ -8,7 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 670 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0054, T0114, [0141-custom-shader-materials.md](0141-custom-shader-materials.md), [0140-in-editor-code-editing.md](0140-in-editor-code-editing.md) |
+| **Refs** | T0054, T0114, [../inprogress/0141-custom-shader-materials.md](../inprogress/0141-custom-shader-materials.md), [0140-in-editor-code-editing.md](0140-in-editor-code-editing.md) |
 
 ## Why
 
