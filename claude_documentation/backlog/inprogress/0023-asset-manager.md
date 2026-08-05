@@ -25,22 +25,22 @@ copy.
 
 ## Done when
 
-- [ ] `ImportAsset` dispatches on extension to the right loader
-- [~] Imported assets land in an asset pool addressable by GUID
-- [~] Each import writes a metafile with source path and GUID
+- [~] `ImportAsset` dispatches on extension to the right loader — textures load; mesh dispatches and reports not-implemented
+- [x] Imported assets land in an asset pool addressable by GUID
+- [x] Each import writes a metafile with source path and GUID
 - [ ] Reopening a project reloads assets from metafiles and reconnects scenes
-- [~] Missing or moved source assets fail gracefully and visibly
+- [x] Missing or moved source assets fail gracefully and visibly — placeholder texture, error logged, GUID still valid
 - [~] Tests for import, metafile round-trip and a deliberately missing asset
 
 ## Subtasks
 
 - [x] 23.1 Asset pool: GUID → asset, with per-type storage
-- [ ] 23.2 `ImportAsset` extension dispatch; glTF and textures first
-- [ ] 23.3 Delegate to Diligent's `GLTFLoader` and `TextureLoader` — do not
+- [~] 23.2 `ImportAsset` extension dispatch; glTF and textures first — dispatch done for both, loading done for textures
+- [~] 23.3 Delegate to Diligent's `GLTFLoader` and `TextureLoader` — TextureLoader done; GLTFLoader not. Do not
       reimplement parsing
 - [x] 23.4 Metafile format via T0020, alongside the asset in the project
 - [ ] 23.5 Load-on-project-open from metafiles
-- [~] 23.6 Missing-asset handling: placeholder plus a visible error, never a crash
+- [x] 23.6 Missing-asset handling: placeholder plus a visible error, never a crash
 - [~] 23.7 Tests
 
 ## Notes / findings
@@ -96,6 +96,41 @@ every shipped build.
 
 `tests/integration/assets_test.cpp`, 16 cases. Integration suite 89/89 (515
 assertions) on Linux; full both-target run recorded on the commit.
+
+## Texture import — built and device-verified (2026-08-05)
+
+**D13 and 23.3 are both satisfied, with no parser of our own.**
+`CreateTextureLoaderFromMemory` takes the bytes `hp::Vfs::read` returns, so a
+texture in a pack and one on disk are the same code path — which is exactly what
+T0103 had to land first for.
+
+- **`assetKindForPath`** decides on the extension, case-insensitively, and
+  rejects on the *name* before reading bytes: a stray 400 MB video in an asset
+  folder should not be decoded to find out it is not an image. A dot inside a
+  directory name (`v1.2/model`) is correctly not an extension.
+- **`importAsset`** resolves identity through the metafile, **writes it when
+  absent** so the next open reconnects to the same GUID, loads, and stores in the
+  pool. The GUID is valid **even when the load fails**, because a scene's
+  reference has to resolve to something or a broken asset silently detaches every
+  entity using it.
+- **23.6's placeholder is 16x16 magenta and black checks.** A missing texture
+  that renders white, or not at all, is a bug that ships; loud checks are a bug
+  someone fixes before lunch.
+- `MakeCopy: true` on the loader, so no call site has to remember a lifetime rule
+  to save one copy of a file that is about to become a GPU texture anyway.
+
+Verified on an RTX 2080: a synthesised TGA read through a VFS mount becomes a
+64x32 texture with a shader-resource view; a missing file and a file that lies
+about its extension both produce the placeholder and a logged error; an
+unimportable extension touches the pool not at all. The test **synthesises the
+TGA** rather than checking one in — a binary fixture is something nobody reviews
+and nobody updates, and 18 bytes of header plus raw pixels is visible in the
+source.
+
+**sRGB is currently forced on** for every imported texture. That is right for
+colour and wrong for a normal map or a mask, and it needs to become a per-asset
+setting on the metafile. Recorded here rather than guessed at, because getting it
+wrong is a lighting bug nobody attributes to the importer.
 
 ## 23.3 — Diligent's loaders can be fed from the VFS, verified (2026-08-05)
 

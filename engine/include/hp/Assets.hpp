@@ -32,6 +32,12 @@
 #include <string_view>
 #include <vector>
 
+namespace Diligent {
+struct IRenderDevice;
+struct ITexture;
+struct ITextureView;
+} // namespace Diligent
+
 namespace hp {
 
 /// Declares the stable name under which a type is stored in an `AssetPool`.
@@ -205,5 +211,149 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
+
+/// What kind of asset a file holds, decided by its extension (23.2).
+enum class AssetKind : std::uint8_t {
+    /// Nothing this build knows how to import.
+    Unknown,
+
+    /// An image: PNG, JPEG, TGA, DDS, KTX, HDR, TIFF, SGI.
+    Texture,
+
+    /// A glTF model, text or binary.
+    Mesh,
+};
+
+/// @param path a virtual path, or any path with an extension.
+/// @returns what the extension says it is. Case-insensitive, because a file
+///          named `.PNG` is the same file.
+[[nodiscard]] HP_API AssetKind assetKindForPath(std::string_view path);
+
+/// @param kind an asset kind.
+/// @returns its stable name, matching the `AssetTraits` of the type it loads
+///          into — so a metafile's `type` field and the pool agree.
+[[nodiscard]] HP_API std::string_view assetKindName(AssetKind kind);
+
+/// A texture on the GPU.
+///
+/// **Owns the Diligent texture and releases it on destruction.** The pool holds
+/// these by `shared_ptr`, so a texture stays alive exactly as long as something
+/// references it — which is the shape T0058's reference counting will need.
+///
+/// The raw views are handed out per D22: gameplay and passes bind them directly,
+/// because a wrapper around every RHI call would buy nothing.
+class HP_API TextureAsset {
+public:
+    /// Constructs an empty asset that holds no texture.
+    TextureAsset();
+
+    /// Releases the texture.
+    ~TextureAsset();
+
+    /// Not copyable: two owners of one GPU texture would double-release it.
+    TextureAsset(const TextureAsset&) = delete;
+
+    /// Not copyable; see the copy constructor.
+    /// @returns nothing -- deleted.
+    TextureAsset& operator=(const TextureAsset&) = delete;
+
+    /// Moves the asset.
+    /// @param other the asset to move from.
+    TextureAsset(TextureAsset&& other) noexcept;
+
+    /// Moves the asset.
+    /// @param other the asset to move from.
+    /// @returns this asset.
+    TextureAsset& operator=(TextureAsset&& other) noexcept;
+
+    /// @returns whether a texture was loaded.
+    [[nodiscard]] bool valid() const;
+
+    /// @returns the texture, or nullptr when empty. Owned by this asset.
+    [[nodiscard]] Diligent::ITexture* texture() const;
+
+    /// @returns the shader-resource view for binding, or nullptr when empty.
+    [[nodiscard]] Diligent::ITextureView* shaderResource() const;
+
+    /// @returns width in pixels, or 0 when empty.
+    [[nodiscard]] std::uint32_t width() const;
+
+    /// @returns height in pixels, or 0 when empty.
+    [[nodiscard]] std::uint32_t height() const;
+
+    /// @returns how many mip levels were created, or 0 when empty.
+    [[nodiscard]] std::uint32_t mipLevels() const;
+
+private:
+    friend HP_API std::shared_ptr<TextureAsset> loadTexture(Diligent::IRenderDevice* device,
+                                                            std::string_view virtualPath);
+    friend HP_API std::shared_ptr<TextureAsset> makePlaceholderTexture(
+        Diligent::IRenderDevice* device);
+
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+/// The stable pool name for a texture.
+template <>
+struct AssetTraits<TextureAsset> {
+    /// Matches `assetKindName(AssetKind::Texture)`.
+    static constexpr const char* name = "Texture";
+};
+
+/// Loads a texture through the VFS (23.3).
+///
+/// **Reads with `hp::Vfs` and hands the bytes to Diligent's `TextureLoader`.**
+/// No file access, no parser of our own — which is how D13's "every read goes
+/// through the VFS" and 23.3's "do not reimplement parsing" are both satisfied.
+/// @param device the device to create on.
+/// @param virtualPath the asset's path in the mount tree.
+/// @returns the texture, or nullptr when the file is missing or unreadable as an
+///          image. **Not fatal**: the caller substitutes a placeholder.
+[[nodiscard]] HP_API std::shared_ptr<TextureAsset> loadTexture(Diligent::IRenderDevice* device,
+                                                               std::string_view virtualPath);
+
+/// Builds the "this asset is missing" texture (23.6).
+///
+/// **Magenta and black checks, deliberately.** A missing texture that renders as
+/// white or as nothing is a bug someone ships; one that renders as loud checks
+/// is a bug someone fixes before lunch. Costs 16x16 pixels.
+/// @param device the device to create on.
+/// @returns the placeholder, or nullptr when the device refuses it.
+[[nodiscard]] HP_API std::shared_ptr<TextureAsset> makePlaceholderTexture(
+    Diligent::IRenderDevice* device);
+
+/// What an import produced.
+struct ImportResult {
+    /// The asset's identity, from its metafile or newly minted.
+    Guid guid;
+
+    /// What the extension said it was.
+    AssetKind kind = AssetKind::Unknown;
+
+    /// Whether the asset actually loaded. **False is survivable** — the pool
+    /// holds a placeholder when one applies, so a scene referencing this GUID
+    /// renders something visibly wrong rather than crashing or silently
+    /// disappearing.
+    bool loaded = false;
+
+    /// Whether a placeholder was substituted.
+    bool placeholder = false;
+};
+
+/// Imports an asset: identity, load, and into the pool (23.2, 23.3, 23.6).
+///
+/// Dispatches on extension, resolves the GUID through the metafile — minting and
+/// **writing** one when absent, so the identity survives the next open — loads
+/// through the VFS, and stores the result in `pool` under that GUID.
+///
+/// @param device the device to create GPU resources on.
+/// @param pool the pool to store into.
+/// @param virtualPath the asset's path in the mount tree.
+/// @returns what happened. Check `loaded`; `guid` is valid either way, because a
+///          scene's reference has to resolve to *something* even when the source
+///          is missing.
+[[nodiscard]] HP_API ImportResult importAsset(Diligent::IRenderDevice* device, AssetPool& pool,
+                                              std::string_view virtualPath);
 
 } // namespace hp

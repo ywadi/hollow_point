@@ -234,6 +234,48 @@ drives the same `Camera` through both paths and compares the results. A type one
 path can write and the other cannot would otherwise show up as a cook that
 silently drops a field.
 
+## Unresolved — an intermittent dropped key on Windows (2026-08-05)
+
+**Recorded because it is unresolved, not because it is fixed.** Found while
+working on T0023, in a cross-target run rather than by this ticket's own tests.
+
+The symptom, with values captured: a `Camera` round-tripped through both paths
+in one test, and on Windows only — roughly one run in four — the YAML path
+returned `cullingMask` as its **default** while the binary path returned the
+correct `0xABCD1234`. Instrumenting the read showed it never failed; the key was
+simply **not in the emitted document**. So the *write* dropped a `key: value`
+pair, silently, and the read could not distinguish that from a field an older
+build never wrote — so it kept the default and nothing reported anything.
+
+It never reproduced on Linux, and never when the failing case ran alone: it
+needed the rest of the suite to have run first.
+
+The suspect was `YamlNode::set`, which built both spans inline:
+
+```cpp
+tree->to_keyval(child, own(tree, key), own(tree, value));
+```
+
+`to_arena` may reallocate, so whichever call runs first can have its `csubstr`
+invalidated by the second — and C++ does not specify which runs first. That is a
+genuine latent defect and it is fixed (reserve, then copy into locals).
+
+**It is not proven to be the cause.** After the fix the failure stopped
+reproducing — and so did it with the fix reverted: 0 in 40 either way, having
+been 7 in 25 and 8 in 40 beforehand. Something outside the source moved between
+those measurements. Claiming the fix as the cure would be exactly the kind of
+overstatement this project's documents exist to avoid.
+
+What is in place instead:
+
+- The arena hazard is gone on its own merits, with the reasoning in `Yaml.cpp`.
+- The round-trip test now **asserts every registered property appears in the
+  emitted text**, so a silent drop becomes a caught failure rather than a
+  default that looks plausible.
+
+If a key ever goes missing from an emitted document again, start at
+`YamlNode::set` and at this note.
+
 ## Not done
 
 - **20.3 is not started, and it is the largest remaining piece.** The

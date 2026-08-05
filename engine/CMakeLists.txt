@@ -66,6 +66,7 @@ add_library(hp_engine SHARED
     src/ModuleHost.cpp
     src/Reflect.cpp
     src/Application.cpp
+    src/AssetImport.cpp
     src/Assets.cpp
     src/Camera.cpp
     src/Cook.cpp
@@ -273,3 +274,14 @@ else()
         Diligent-GraphicsEngineOpenGL-shared
         Diligent-Common)
 endif()
+
+# Diligent's asset parsers (T0023.3). STATIC and PRIVATE, so exactly one copy
+# lives inside libhp_engine and no consumer sees their headers.
+#
+# **These do the file parsing and we do none of it**, which is 23.3's
+# instruction. They are reached only from `src/AssetImport.cpp`, which feeds
+# them bytes from the VFS rather than paths -- `CreateTextureLoaderFromMemory`
+# for images, and glTF's read-whole-file callback for models -- so D13's rule
+# that every read goes through `hp::Vfs` survives reusing them.
+target_link_libraries(hp_engine PRIVATE
+    Diligent-TextureLoader)

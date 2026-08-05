@@ -762,7 +762,23 @@ TEST_CASE("YAML and binary agree on the same object") {
 
     hp::YamlDocument doc;
     REQUIRE(hp::writeProperties(doc.root(), entt::forward_as_meta(original)));
-    const auto parsed = hp::YamlDocument::parse(doc.emit());
+
+    // **Every registered property must appear in the emitted text.** This
+    // exists because a key once went missing from a document intermittently, on
+    // Windows only, and the read side cannot tell that from a field an older
+    // build never wrote -- so it kept the default and nothing reported
+    // anything. Asserting on the emitted text turns that silent drop into a
+    // caught failure. See T0020's note and the comment in `Yaml.cpp`.
+    const std::string emitted = doc.emit();
+    const entt::meta_type cameraType = entt::resolve(entt::type_id<hp::Camera>());
+    REQUIRE(static_cast<bool>(cameraType));
+    for (auto&& [id, data] : cameraType.data()) {
+        REQUIRE(data.name() != nullptr);
+        INFO("property ", data.name(), " missing from:\n", emitted);
+        CHECK(emitted.find(std::string(data.name()) + ":") != std::string::npos);
+    }
+
+    const auto parsed = hp::YamlDocument::parse(emitted);
     REQUIRE(parsed.has_value());
     hp::Camera viaYaml;
     REQUIRE(hp::readProperties(const_cast<hp::YamlDocument&>(*parsed).root(),

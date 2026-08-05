@@ -355,7 +355,34 @@ void setScalar(ryml::Tree* tree, std::size_t id, std::string_view key, std::stri
     if (child == ryml::NONE) {
         child = tree->append_child(id);
     }
-    tree->to_keyval(child, own(tree, key), own(tree, value));
+
+    // **Reserve before copying, and copy into locals.** This line used to read
+    //
+    //     tree->to_keyval(child, own(tree, key), own(tree, value));
+    //
+    // which is a dangling span waiting to happen: `to_arena` may reallocate the
+    // arena, so whichever of the two calls runs first can have its `csubstr`
+    // invalidated by the second -- and C++ does not specify which runs first.
+    //
+    // **This is a latent hazard fixed on its own merits, not a confirmed cause.**
+    // While working on T0023 an intermittent Windows-only failure was captured
+    // -- roughly one run in four, a `key: value` pair missing from an emitted
+    // document, so a field saved absent and loaded at its default. Values were
+    // recorded: the binary path round-tripped 0xABCD1234 correctly while the
+    // YAML path returned the field's default, and the read never reported a
+    // failure, which means the key was simply not in the document.
+    //
+    // That points here. It was **not** proven: after this change the failure
+    // stopped reproducing, and so did it with the change reverted -- 0 in 40
+    // either way, having been 7 in 25 and 8 in 40 before. Something outside the
+    // source moved. So the honest claim is that the double-`to_arena` was a real
+    // defect and is gone; whether it was *the* defect is unresolved, and if a
+    // key ever goes missing from an emitted document again, start here and read
+    // T0020's ticket note.
+    tree->reserve_arena(tree->arena_size() + key.size() + value.size() + 2);
+    const c4::csubstr ownedKey = own(tree, key);
+    const c4::csubstr ownedValue = own(tree, value);
+    tree->to_keyval(child, ownedKey, ownedValue);
 }
 
 std::string toText(bool value) {

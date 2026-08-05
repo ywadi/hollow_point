@@ -32,7 +32,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 |---|---|---|
 | [`<hp/Api.hpp>`](Api.md) | 0 | 0 |
 | [`<hp/Application.hpp>`](Application.md) | 22 | 12 |
-| [`<hp/Assets.hpp>`](Assets.md) | 21 | 21 |
+| [`<hp/Assets.hpp>`](Assets.md) | 43 | 43 |
 | [`<hp/Camera.hpp>`](Camera.md) | 10 | 10 |
 | [`<hp/CameraSystem.hpp>`](CameraSystem.md) | 11 | 11 |
 | [`<hp/Cook.hpp>`](Cook.md) | 14 | 14 |
@@ -60,7 +60,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
 
-**543 public declarations across 29 headers, 426 documented.**
+**565 public declarations across 29 headers, 448 documented.**
 
 ## Every symbol
 
@@ -109,6 +109,28 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `AssetPool::size` | [`Assets.hpp`](Assets.md) |
 | `AssetPool::clear` | [`Assets.hpp`](Assets.md) |
 | `AssetPool::guidsOfType` | [`Assets.hpp`](Assets.md) |
+| `AssetKind` | [`Assets.hpp`](Assets.md) |
+| `assetKindForPath` | [`Assets.hpp`](Assets.md) |
+| `assetKindName` | [`Assets.hpp`](Assets.md) |
+| `TextureAsset` | [`Assets.hpp`](Assets.md) |
+| `TextureAsset::TextureAsset` | [`Assets.hpp`](Assets.md) |
+| `TextureAsset::TextureAsset` | [`Assets.hpp`](Assets.md) |
+| `TextureAsset::operator=` | [`Assets.hpp`](Assets.md) |
+| `TextureAsset::TextureAsset` | [`Assets.hpp`](Assets.md) |
+| `TextureAsset::operator=` | [`Assets.hpp`](Assets.md) |
+| `TextureAsset::valid` | [`Assets.hpp`](Assets.md) |
+| `TextureAsset::texture` | [`Assets.hpp`](Assets.md) |
+| `TextureAsset::shaderResource` | [`Assets.hpp`](Assets.md) |
+| `TextureAsset::width` | [`Assets.hpp`](Assets.md) |
+| `TextureAsset::height` | [`Assets.hpp`](Assets.md) |
+| `TextureAsset::mipLevels` | [`Assets.hpp`](Assets.md) |
+| `TextureAsset::loadTexture` | [`Assets.hpp`](Assets.md) |
+| `TextureAsset::makePlaceholderTexture` | [`Assets.hpp`](Assets.md) |
+| `AssetTraits` | [`Assets.hpp`](Assets.md) |
+| `loadTexture` | [`Assets.hpp`](Assets.md) |
+| `makePlaceholderTexture` | [`Assets.hpp`](Assets.md) |
+| `ImportResult` | [`Assets.hpp`](Assets.md) |
+| `importAsset` | [`Assets.hpp`](Assets.md) |
 | `kDefaultSensorHeightMm` | [`Camera.hpp`](Camera.md) |
 | `AspectPolicy` | [`Camera.hpp`](Camera.md) |
 | `ViewportRect` | [`Camera.hpp`](Camera.md) |
