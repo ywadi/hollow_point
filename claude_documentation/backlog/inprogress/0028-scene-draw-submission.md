@@ -22,8 +22,8 @@ editor viewport can display it without the renderer knowing the editor exists.
 - [x] A scene with no camera renders nothing and says so, rather than crashing
 - [ ] Entities with no material get a visible default
 - [x] Output goes to an offscreen target, not straight to the swap chain
-- [x] A "new frame rendered" event carries that texture to any listener — the
-      mechanism; no app publishes one yet
+- [x] A "new frame rendered" event carries that texture to any listener — and
+      the editor publishes one every frame
 - [ ] Assets resolve from the pool by GUID (T0023)
 
 ## Subtasks
@@ -39,8 +39,8 @@ editor viewport can display it without the renderer knowing the editor exists.
 - [x] 28.4 Render to an offscreen target sized to the viewport — `SceneView`,
       GPU-verified on both backends
 - [x] 28.5 Emit the frame-rendered event with the texture handle — the event
-      type, its dispatch and its consumption semantics are built and tested.
-      **Nothing in an app emits it yet**; see "what is left" below
+      type, its dispatch and its consumption semantics are built and tested, and
+      the editor's `SceneLayer` publishes one per frame
 - [x] 28.6 Profiling zones for parse and submit separately — `HP_PROFILE_ZONE`
       in `parseScene`, in `render`, in `drawModel`, and a named zone around the
       frame-attribs write
