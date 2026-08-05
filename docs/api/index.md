@@ -54,7 +54,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Paths.hpp>`](Paths.md) | 1 | 1 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
-| [`<hp/Render.hpp>`](Render.md) | 24 | 24 |
+| [`<hp/Render.hpp>`](Render.md) | 25 | 25 |
 | [`<hp/RenderStack.hpp>`](RenderStack.md) | 21 | 21 |
 | [`<hp/Scene.hpp>`](Scene.md) | 54 | 54 |
 | [`<hp/SceneRenderLayer.hpp>`](SceneRenderLayer.md) | 10 | 10 |
@@ -67,7 +67,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
 
-**682 public declarations across 36 headers, 565 documented.**
+**683 public declarations across 36 headers, 566 documented.**
 
 ## Every symbol
 
@@ -499,6 +499,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `RenderLayer::swapChain` | [`Render.hpp`](Render.md) |
 | `RenderLayer::clipSpace` | [`Render.hpp`](Render.md) |
 | `RenderLayer::setPresentSource` | [`Render.hpp`](Render.md) |
+| `RenderLayer::blitTexture` | [`Render.hpp`](Render.md) |
 | `RenderPassContext` | [`RenderStack.hpp`](RenderStack.md) |
 | `LayerClear` | [`RenderStack.hpp`](RenderStack.md) |
 | `IRenderLayer` | [`RenderStack.hpp`](RenderStack.md) |

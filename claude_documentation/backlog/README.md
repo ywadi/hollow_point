@@ -43,6 +43,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 172 | [T0132](open/0132-gamepad-and-rumble.md) | Gamepad, rumble and hot-plug | 2 — Engine skeleton | ⏸ BLOCKED | Medium | Moderate |
 | 174 | [T0133](open/0133-cursor-control-and-pointer-input.md) | Cursor control and pointer input as actions | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
 | 176 | [T0136](open/0136-module-hot-copy-fails-under-wsl-interop.md) | Module hot-reload staging fails when the Windows suite runs via WSL interop | 2 — Engine skeleton | 🔜 TODO | High | Simple |
+| 178 | [T0138](open/0138-process-hangs-after-clean-shutdown.md) | The process hangs after a clean shutdown, so closing the window force-quits | 2 — Engine skeleton | 🔜 TODO | High | Moderate |
 | 180 | [T0103](completed/0103-virtual-filesystem-and-packs.md) | Virtual filesystem and content packs | 3 — Data model | ✅ DONE | High | Moderate |
 | 185 | [T0112](completed/0112-string-identity-and-localisation.md) | String identity: keys before literals | 3 — Data model | ✅ DONE | Medium | Simple |
 | 190 | [T0020](completed/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | ✅ DONE | High | Complex |
@@ -70,6 +71,7 @@ This is the work. For what is already proven to work — and what only appears t
 | — | [T0113](completed/0113-device-loss.md) | Device loss: decide the policy, fail distinguishably | 4 — Render layer | ✅ DONE | Medium | Simple |
 | 385 | [T0111](completed/0111-anti-aliasing-and-render-scale.md) | Anti-aliasing and render scale: decide before the formats freeze | 4 — Render layer | ✅ DONE | High | Moderate |
 | 386 | [T0135](completed/0135-gpu-tests-on-real-hardware.md) | The gpu bucket must run on real hardware, and say which device it used | 4 — Render layer | ✅ DONE | High | Simple |
+| 388 | [T0137](completed/0137-present-on-vulkan.md) | The engine cannot present its own frame on its default backend | 4 — Render layer | ✅ DONE | High | Moderate |
 | 390 | [T0046](completed/0046-frame-render-targets.md) | Frame render target management | 4 — Render layer | ✅ DONE | Medium | Simple |
 | 400 | [T0027](completed/0027-render-stack.md) | RenderStack: composited visual layers | 4 — Render layer | ✅ DONE | High | Moderate |
 | 410 | [T0028](completed/0028-scene-draw-submission.md) | Scene draw submission and the frame-rendered event | 4 — Render layer | ✅ DONE | High | Moderate |

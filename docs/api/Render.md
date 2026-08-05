@@ -6,7 +6,7 @@
 #include <hp/Render.hpp>
 ```
 
-24 public declaration(s), 24 documented.
+25 public declaration(s), 25 documented.
 
 ## `RenderBackend`
 
@@ -278,13 +278,38 @@ void setPresentSource(Diligent::ITexture * texture)
  eye. This is what makes a frame visible in the meantime, and T0033
  replaces it rather than building on it.
 
- It is a straight `CopyTexture`, so **the source must match the back
- buffer in format and size** — no scaling, no conversion, no shader. A
- mismatch is reported once and skipped rather than guessed at, because a
- silently letterboxed or stretched dev view is worse than none: it is the
- kind of thing that gets mistaken for a projection bug.
+ It is a **sampled fullscreen pass** (T0137), not a copy, so the source
+ need not match the back buffer in format or size. It used to be a
+ `CopyTexture`, which requires an exact format match — and never had one
+ on Vulkan, whose surface here is BGRA against the scene target's RGBA, so
+ the engine's own default backend showed a clear colour and looked broken.
 
- @param texture the texture to copy, or nullptr to stop copying. Not
-        retained beyond the next frame's use — the caller owns it, and a
-        caller that releases it must clear this first.
+ @param texture the texture to present, or nullptr to stop. Must be
+        created with `BIND_SHADER_RESOURCE`. Not retained beyond the next
+        frame's use — the caller owns it, and a caller that releases it
+        must clear this first.
  @returns nothing.
+
+## `RenderLayer::blitTexture`
+
+```cpp
+bool blitTexture(Diligent::ITexture * source, Diligent::ITextureView * destination)
+```
+
+ Draws `source` over the whole of `destination`, sampling it.
+
+ **The engine's fullscreen-pass primitive**, exposed because it is not
+ only the present path's: T0096's tonemapping is a fullscreen pass over an
+ HDR target and T0120's render-to-texture needs the same draw, and a
+ second implementation of it is how two of them come to disagree about the
+ V flip. Pipelines are cached per destination format.
+
+ Handles format conversion, colour space and a size difference in
+ hardware. Binds `destination` as the only render target, with no
+ depth-stencil view, and leaves it bound.
+
+ @param source the texture to sample. Must have `BIND_SHADER_RESOURCE`.
+ @param destination the render-target view to fill.
+ @returns whether the draw was issued. False means the pipeline could not
+          be created or the source has no shader-resource view, and the
+          reason is logged.
