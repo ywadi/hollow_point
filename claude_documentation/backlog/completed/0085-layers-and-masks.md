@@ -41,23 +41,36 @@ flags into each subsystem — exactly the situation to avoid.
 
 - [x] Every renderable entity has a layer — `MeshRenderer::layers`, defaulting to layer 0
 - [x] Cameras carry a culling mask; objects outside it are rejected during culling — in `parseScene`, **before any other check**, and counted as `culledByLayer`
-- [ ] Lights carry a mask for illumination, and separately for shadow casting — **moved to T0079 (illumination) and T0086 (shadow casting)**, which own the components; the `LayerMask` type they use exists
 - [x] Masks are applied during culling, not per-pixel — one AND in `parseScene`, and it runs first so an excluded object costs nothing further
 - [x] Layers are **named in project settings** (T0078), not bare numbers — `hp::LayerNames`, stored under `layers` in a `SettingsStore`. Code says `names.indexOf("Player")`, not `7`
-- [ ] The inspector shows names and a multi-select mask editor, never a raw integer — **moved to T0032/T0053**; there is no inspector yet
-- [ ] Physics collision layers use the same definitions (T0051) — **moved to T0051**; `hp::LayerMask` is the shared definition it must use
-- [ ] Debug view showing what a given camera or light actually affects — **moved to T0061** (debug draw)
 
 ## Subtasks
 
 - [x] 85.1 Layer definition in project settings — the set (`kMaxLayers`, `kDefaultLayer`) **and the names** (`hp::LayerNames`, round-tripping through `SettingsStore`)
 - [x] 85.2 Layer field on the renderable component — `MeshRenderer::layers`
 - [x] 85.3 Camera culling mask — applied in **`parseScene`**, which is what this ticket's own preamble specified; T0045 inserts frustum culling around it later
-- [ ] 85.4 Light illumination mask, applied during per-object light selection — **T0079's**, with the type ready
-- [ ] 85.5 Separate shadow-casting mask — **T0086's**
-- [ ] 85.6 Mask editor widget in the inspector — **T0032's**; `LayerMask` is reflected and serialises as an integer already
-- [ ] 85.7 Physics collision matrix using the same layers — **T0051's**
-- [ ] 85.8 Debug visualisation — **T0061's**
+
+## Descoped 2026-08-05 — what left this ticket, and where it went
+
+**These are no longer this ticket's checklist**, which is the point: a closed
+ticket whose boxes are half unticked claims less than it did and reads as
+abandoned. They were removed here and **written onto the receiving ticket**, so
+the linkage reads both ways and nothing is lost.
+
+Each left because it needs a subsystem that does not exist — not because it was
+hard or skipped.
+
+| Was | Went to | Because |
+|---|---|---|
+| Lights carry an illumination mask (85.4) | **T0079** | There are no lights. `hp::LayerMask` is ready for it |
+| Separate shadow-casting mask (85.5) | **T0086** | There are no shadows. "Lit but does not cast" needs two masks, not one |
+| Mask editor widget (85.6) | **T0032** | There is no inspector or panel framework |
+| Physics collision matrix (85.7) | **T0051** | There is no physics. Jolt's own `ObjectLayer` must map onto `hp::LayerMask` in one place |
+| Debug view of what a camera or light affects (85.8) | **T0061** | There is no debug draw. `DrawParseStats::culledByLayer` already counts it |
+
+**What this ticket kept is what it could finish**: the type, the field, the
+filter, and the names. Those are ticked because they are done and verified, not
+because the rest was quietly dropped.
 
 ## Unblocked and closed 2026-08-05 — T0078 was worked rather than used as a parking space
 
