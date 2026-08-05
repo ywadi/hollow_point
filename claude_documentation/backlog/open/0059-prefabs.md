@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 300 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0053, T0107 |
+| **Refs** | T0053, T0107, [../inprogress/0060-material-system.md](../inprogress/0060-material-system.md) — raised 59.10; material slots are per *model*, so a node-level entity must decide deliberately what it overrides |
 
 ## Why
 
@@ -42,8 +42,53 @@ source propagate to instances and per-instance overrides are preserved.
 - [ ] 59.9 **Persist the per-instance GUID map in the scene file** — see the
       second-pass note; without it every scene load breaks references into
       prefab instances
+- [ ] 59.10 **Import a glTF/glb node tree as an entity hierarchy** — see
+      "Importing a model is what a prefab is for" below. Raised from T0060 on
+      2026-08-05
 
 ## Notes / findings
+
+### Importing a model is what a prefab is for (raised 2026-08-05, from T0060)
+
+**Measured, not assumed: a `.glb` with a tree of objects imports as exactly one
+asset and draws from exactly one entity.** `loadMesh` produces one
+`Diligent::GLTF::Model` under one GUID; a `MeshRenderer` names that GUID; and
+`SceneRenderer::drawModel` walks `model.Scenes[0].LinearNodes` and draws every
+node's primitives at `transforms.NodeGlobalMatrices[node->Index]`, which
+`Model::ComputeTransforms` fills from the glTF hierarchy.
+
+So the node tree **is** honoured — for rendering. What does not happen is any
+entity being created for it: nothing in `AssetImport.cpp` touches `Hierarchy`,
+and there is no path that turns glTF nodes into entities. The consequence is
+concrete and will be hit by the first artist who tries it: **a sub-object of an
+imported model cannot be moved, hidden, parented to, or given a component**,
+because no entity exists for it.
+
+**That capability is this ticket's, not the importer's**, and the reason is the
+whole argument for prefabs: what you want from "import this tree as objects" is a
+saved entity hierarchy you can instantiate, override per instance, and re-import
+without losing your edits. Building it in the importer instead produces a second,
+worse override model — a re-import either clobbers the artist's changes or
+silently stops tracking the source, which is precisely the failure 59.4 and 59.5
+exist to prevent.
+
+Three things to get right when 59.10 is done, all of which the current shape
+already allows:
+
+- **One `MeshAsset` stays one asset.** Splitting a model into an asset per node
+  would multiply GUIDs, metafiles and GPU buffers for no gain — the entities
+  reference sub-ranges of the one model rather than owning pieces of it.
+- **`MeshRenderer` needs to name a node**, not just the model, or every entity in
+  the tree draws the whole thing. That field does not exist yet and is this
+  ticket's to add.
+- **Material slots are per *model*, not per node** (T0060). `primitive.MaterialId`
+  indexes the model's shared material table, so a slot vector on a node-level
+  entity would still be indexing the model's list. Decide deliberately whether a
+  node entity overrides the whole model's slots or only the ones its primitives
+  use.
+
+Until then, the honest statement is the one above: a model's hierarchy renders
+correctly and is not addressable.
 
 **The override model is the hard part, and it depends on reflection (T0053).**
 An override is "this property, on this entity within the instance, differs from

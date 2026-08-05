@@ -12,6 +12,7 @@
 
 #include <hp/Cook.hpp>
 #include <hp/Guid.hpp>
+#include <hp/Light.hpp>
 #include <hp/Scene.hpp>
 #include <hp/Serialize.hpp>
 #include <hp/Yaml.hpp>
@@ -1019,4 +1020,124 @@ TEST_CASE("a truncated cooked payload is refused rather than half-applied") {
         CHECK(cursor <= cut.size());
         (void)ok;
     }
+}
+
+// --- enums (T0060, and a defect T0139 left behind) ---------------------------
+//
+// Enums are written by **name**, generically, for every reflected enum rather
+// than one hand-written case per type. What this replaced was not merely
+// unreadable: `readLeaf` parsed only an integer, so a hand-authored
+// `Light: {type: Spot}` — which is the whole point of T0139's authoring mode —
+// failed to read, hit the lenient rule that leaves an unreadable field alone,
+// and produced a **directional** light with no warning at all.
+//
+// The fixture in `scene_serialize_test.cpp` had `type: Directional` in it and
+// passed throughout, because Directional is the default. That is why these
+// cases use Spot and Point: a test whose expected value is the default cannot
+// tell "read correctly" from "never read".
+
+TEST_CASE("an enum is written by its name, not its number") {
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    hp::Light light;
+    light.type = hp::LightType::Spot;
+
+    hp::YamlDocument doc;
+    REQUIRE(hp::writeProperties(doc.root(), entt::forward_as_meta(light)));
+    const std::string text = doc.emit();
+    CHECK(text.find("type: Spot") != std::string::npos);
+    // `type: 2` survives nobody inserting a value into the middle of the enum,
+    // and that is exactly the edit an engine makes between releases.
+    CHECK(text.find("type: 2") == std::string::npos);
+}
+
+TEST_CASE("an enum reads back from its name") {
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    const auto doc = hp::YamlDocument::parse("type: Spot\n");
+    REQUIRE(doc);
+    hp::Light restored;
+    REQUIRE(restored.type == hp::LightType::Directional); // the default it must move off
+    CHECK(hp::readProperties(const_cast<hp::YamlDocument&>(*doc).root(),
+                             entt::forward_as_meta(restored)));
+    CHECK(restored.type == hp::LightType::Spot);
+}
+
+TEST_CASE("an enum still reads from its number, because files already say that") {
+    // Every scene written before enums had names carries integers. Reading them
+    // is not legacy support to delete later: it is what makes writing names a
+    // representation change rather than a schema break.
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    const auto doc = hp::YamlDocument::parse("type: 1\n");
+    REQUIRE(doc);
+    hp::Light restored;
+    CHECK(hp::readProperties(const_cast<hp::YamlDocument&>(*doc).root(),
+                             entt::forward_as_meta(restored)));
+    CHECK(restored.type == hp::LightType::Point);
+}
+
+TEST_CASE("a name this build does not have leaves the field alone") {
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    const auto doc = hp::YamlDocument::parse("type: Volumetric\n");
+    REQUIRE(doc);
+    hp::Light restored;
+    restored.type = hp::LightType::Point;
+    (void)hp::readProperties(const_cast<hp::YamlDocument&>(*doc).root(),
+                             entt::forward_as_meta(restored));
+    // Not Directional-by-reset and not garbage: whatever it already held.
+    CHECK(restored.type == hp::LightType::Point);
+}
+
+TEST_CASE("an enum round-trips through the cook, which stores its number") {
+    // The cook is a cache keyed on a hash of its source, so it is never read by
+    // a person and an enumerator rename invalidates it rather than being
+    // misread from it. What matters is that the two paths agree on the value.
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    hp::Light original;
+    original.type = hp::LightType::Spot;
+    original.intensity = 2.5F;
+
+    std::vector<std::byte> payload;
+    REQUIRE(hp::cookProperties(entt::forward_as_meta(original), payload));
+
+    hp::Light restored;
+    std::size_t cursor = 0;
+    REQUIRE(hp::readCookedProperties(payload, cursor, entt::forward_as_meta(restored)));
+    CHECK(restored.type == hp::LightType::Spot);
+    CHECK(restored.intensity == doctest::Approx(2.5F));
+}
+
+TEST_CASE("an out-of-range number is refused by the cook path too") {
+    // The YAML path has covered this since T0079 (`light_test.cpp`). The binary
+    // path had the same guard hand-written and it moved into the generic code
+    // with everything else, so it is worth pinning on both sides -- an enum with
+    // no matching enumerator must never reach a switch that has no default case.
+    hp::adoptMetaContext();
+    hp::registerCoreComponents();
+
+    hp::Light original;
+    original.type = hp::LightType::Point;
+    std::vector<std::byte> payload;
+    REQUIRE(hp::cookProperties(entt::forward_as_meta(original), payload));
+
+    // Rewrite the cooked `type` record's value to 99. It is the first property
+    // registered on `Light`, so its 8-byte value sits after the u32 count, the
+    // u32 name hash and the u64 length.
+    constexpr std::size_t kValueAt = 4 + 4 + 8;
+    REQUIRE(payload.size() > kValueAt);
+    payload[kValueAt] = static_cast<std::byte>(99);
+
+    hp::Light restored;
+    restored.type = hp::LightType::Spot;
+    std::size_t cursor = 0;
+    (void)hp::readCookedProperties(payload, cursor, entt::forward_as_meta(restored));
+    CHECK(restored.type == hp::LightType::Spot);
 }

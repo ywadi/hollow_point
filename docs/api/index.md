@@ -48,6 +48,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Layers.hpp>`](Layers.md) | 15 | 15 |
 | [`<hp/Light.hpp>`](Light.md) | 8 | 8 |
 | [`<hp/Log.hpp>`](Log.md) | 22 | 12 |
+| [`<hp/Material.hpp>`](Material.md) | 9 | 9 |
 | [`<hp/Math.hpp>`](Math.md) | 6 | 6 |
 | [`<hp/Module.hpp>`](Module.md) | 6 | 6 |
 | [`<hp/ModuleHost.hpp>`](ModuleHost.md) | 20 | 20 |
@@ -68,7 +69,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 47 | 47 |
 
-**699 public declarations across 37 headers, 582 documented.**
+**708 public declarations across 38 headers, 591 documented.**
 
 ## Every symbol
 
@@ -430,6 +431,15 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `logCategoryAt` | [`Log.hpp`](Log.md) |
 | `logWrite` | [`Log.hpp`](Log.md) |
 | `logEnabled` | [`Log.hpp`](Log.md) |
+| `AlphaMode` | [`Material.hpp`](Material.md) |
+| `Material` | [`Material.hpp`](Material.md) |
+| `AssetTraits` | [`Material.hpp`](Material.md) |
+| `kMaterialSchemaVersion` | [`Material.hpp`](Material.md) |
+| `kMaterialExtension` | [`Material.hpp`](Material.md) |
+| `registerMaterialTypes` | [`Material.hpp`](Material.md) |
+| `writeMaterial` | [`Material.hpp`](Material.md) |
+| `parseMaterial` | [`Material.hpp`](Material.md) |
+| `loadMaterial` | [`Material.hpp`](Material.md) |
 | `float2` | [`Math.hpp`](Math.md) |
 | `float3` | [`Math.hpp`](Math.md) |
 | `float4` | [`Math.hpp`](Math.md) |

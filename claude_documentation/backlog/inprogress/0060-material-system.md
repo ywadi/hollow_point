@@ -34,7 +34,7 @@ ability to attach a custom shader** for anything else.
 
 ## Subtasks
 
-- [ ] 60.1 Material asset: the parameter block, mapped onto
+- [x] 60.1 Material asset: the parameter block, mapped onto
       `PBRMaterialShaderAttribs`, plus room for a shader reference T0141 fills
 - [ ] 60.2 Standard PBR material mapping onto `PBR_Renderer`
 - [ ] 60.6 Material assignment on the mesh component, overriding import defaults
@@ -137,6 +137,97 @@ Two properties it must have, and the second is the one that gets missed:
   is a much harder bug to find than an ugly one.
 
 ## Notes / findings
+
+### 60.1 landed 2026-08-05 — the asset, and three things found on the way
+
+`hp::Material` is plain reflected data in `engine/include/hp/Material.hpp`, with
+`AssetKind::Material`, a `.hpmat` extension and `AssetTraits<Material>`. No
+per-field code: save and load walk the reflected properties, so adding a
+parameter is one line and no format change. Format documented in
+[../../documentation/11-material-format.md](../../documentation/11-material-format.md).
+
+**Measured:** 286 fast + 89 integration green on both targets (was 268 fast);
+`zig build docs` clean.
+
+**A material owns no GPU resources**, deliberately — the textures it names are
+separate assets — which is what puts the whole of 60.1 in the fast bucket.
+
+#### Finding 1: the texture lineup is five slots, and displacement does not exist
+
+Diligent defines **17** texture attributes; this carries the five the renderer
+binds (base colour, metallic-roughness, normal, occlusion, emissive). The other
+twelve are extended materials (clearcoat, sheen, anisotropy, iridescence,
+transmission, thickness) that D24 keeps off, plus the two legacy spec-gloss
+slots.
+
+Two things worth knowing before anyone expects a Godot-sized parameter list:
+
+- **Metallic and roughness are one texture**, glTF's packing — roughness in
+  green, metallic in blue. A DCC tool exporting them separately needs them packed
+  at import (T0023), not two slots here.
+- **There is no displacement or height slot, and `PBR_Renderer` has no path for
+  one** — no parallax-occlusion mapping, no tessellation. A `displacementTexture`
+  field would be a field nothing reads, which is what `Camera::cullingMask` spent
+  three tickets being. **Height-mapped surfaces are shader work and belong to
+  T0141**, which is now referenced from there.
+
+#### Finding 2: enums serialised as integers, and hand-authored ones silently did not load
+
+Not a material problem, found because `alphaMode` is exactly the field a person
+hand-edits. `10-scene-file-format.md` has claimed since it was written that enums
+are written **by name**; the code wrote integers, and `readLeaf` parsed *only* an
+integer. So a hand-authored `Light: {type: Spot}` — the whole point of T0139 —
+failed to read, hit the lenient rule that leaves an unreadable field alone, and
+produced a **directional light with no warning**.
+
+Fixed generically rather than per type: `TypeBuilder::value` had existed since
+T0053 for exactly this and nothing used it. An enum earns names by being
+reflected; one that is not falls back to its integer, so nothing regressed by
+omission. Numbers are still *read*, which makes this a representation change
+rather than a schema break — no `version` bump.
+
+**The test that should have caught it was there and could not.** The authoring
+fixture used `type: Directional`, and Directional is the default, so "read
+correctly" and "never read" produce the same result. The new cases use `Spot` and
+`Point` for that reason.
+
+#### Finding 4: a glb's node tree renders, and is not addressable
+
+Raised by the owner while this was in flight, and checked rather than assumed. A
+`.glb` containing a tree of objects imports as **one** `MeshAsset` under one
+GUID, and one entity's `MeshRenderer` draws the whole thing —
+`SceneRenderer::drawModel` walks `model.Scenes[0].LinearNodes` and Diligent
+computes the node transforms internally. Nothing creates an entity per node;
+`AssetImport.cpp` never touches `Hierarchy`.
+
+So the hierarchy is honoured for *rendering* and is not addressable: a sub-object
+cannot be moved, hidden, parented to or given a component.
+
+**That belongs to T0059, not here** — importing a tree as objects is what a
+prefab is, and building it in the importer would produce a second, worse override
+model. Filed as **59.10** with the three constraints this ticket imposes on it,
+and T0059 now references this ticket back.
+
+#### Finding 3: `meta_any::allow_cast<T>()` returns `bool` on a mutable any
+
+**This one cost two rounds and crashes only in release.** entt has two overloads:
+
+```cpp
+meta_any allow_cast<T>() const;   // converts, returns the result
+bool     allow_cast<T>();         // converts IN PLACE, returns whether it could
+```
+
+So `entt::meta_any n = someAny.allow_cast<std::int64_t>();` compiles on a
+non-const any and builds an any holding **`true`** — a perfectly valid `meta_any`,
+so every check downstream passes. `n.cast<std::int64_t>()` then dereferences
+null: an assert in a debug build, a **SIGSEGV** in release. The same trap applies
+to `allow_cast(const meta_type&)`, where it produced a "valid" converted value
+that matched no enumerator and silently dropped the field through the cook path.
+
+Isolated with a 30-line standalone program against the vendored entt rather than
+by rebuilding the engine — entt is header-only, and that is the fastest way to
+settle a question about it. The working shape is: construct, convert in place,
+check the bool.
 
 ### Inherited from T0134 / D24 (2026-08-05) — materials map onto `PBRMaterialShaderAttribs`
 

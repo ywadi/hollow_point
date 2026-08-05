@@ -223,6 +223,23 @@ layers: 1                  # LayerMask, as its bits
 Enums by name is deliberate: `type: Spot` survives someone inserting a value
 into the middle of the enum, and `type: 2` does not.
 
+**A number is still read**, because every file written before T0060 carries one.
+That makes names a change of representation rather than a schema break, which is
+why `version` did not have to move. A name this build does not have leaves the
+field at whatever it already held and says so, rather than resetting it — an
+enum silently sitting at its default is the exact bug this replaced. It applies
+to **every** reflected enum: the mechanism is generic, and an enum earns names by
+being passed to `hp::reflect` with its values listed, not by being added to a
+list inside the serializer.
+
+> This document claimed names from the day it was written and the code wrote
+> integers, which meant a hand-authored `type: Spot` produced a **directional**
+> light with no warning at all — `readLeaf` parsed only integers, so the field
+> was simply never read and the lenient rule left it at its default. Fixed in
+> T0060 with the tests that would have caught it. The lesson is the one the
+> conventions already state: a fixture whose expected value is the type's
+> default cannot tell "read correctly" from "never read".
+
 ### Reading is lenient; writing is exact
 
 The asymmetry is intentional, because files outlive the code that wrote them:

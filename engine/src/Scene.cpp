@@ -115,6 +115,17 @@ void registerCoreComponents() {
         .property<&Camera::enabled>("enabled")
         .property<&Camera::cullingMask>("cullingMask")
         .property<&Camera::viewSlot>("viewSlot");
+    // **The enum, so it serialises as `type: Spot` rather than `type: 2`.**
+    // Reflected separately from the component that holds it, because that is
+    // what enum reflection is: entt cannot enumerate an enum's enumerators and
+    // neither can C++20, so each one is named by hand. A missing enumerator is
+    // a value the inspector shows as a bare integer and a file writes the same
+    // way -- so this list must gain a line whenever `LightType` does.
+    reflect<LightType>("LightType")
+        .value<LightType::Directional>("Directional")
+        .value<LightType::Point>("Point")
+        .value<LightType::Spot>("Spot");
+
     // T0079. Position and direction are deliberately absent: they come from the
     // entity's transform, so serialising them here would store the same truth
     // twice and let the two disagree.

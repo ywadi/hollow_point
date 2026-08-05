@@ -88,6 +88,7 @@ add_library(hp_engine SHARED
     src/Serialize.cpp
     src/Settings.cpp
     src/Light.cpp
+    src/Material.cpp
     src/Layer.cpp
     src/Log.cpp
     src/Time.cpp

@@ -13,6 +13,7 @@
 #include <hp/Assets.hpp>
 
 #include <hp/Log.hpp>
+#include <hp/Material.hpp>
 #include <hp/Profiling.hpp>
 #include <hp/Vfs.hpp>
 
@@ -60,6 +61,13 @@ constexpr std::array<std::string_view, 10> kTextureExtensions{
 
 constexpr std::array<std::string_view, 2> kMeshExtensions{"gltf", "glb"};
 
+/// `kMaterialExtension` without its dot, which is what `extensionOf` yields.
+///
+/// Derived rather than spelled again: the public constant carries the dot
+/// because that is how a path is built, and two independent spellings of the
+/// same extension is how one of them goes stale.
+constexpr std::string_view kMaterialExtensionBody{kMaterialExtension + 1};
+
 } // namespace
 
 AssetKind assetKindForPath(std::string_view path) {
@@ -77,6 +85,9 @@ AssetKind assetKindForPath(std::string_view path) {
             return AssetKind::Mesh;
         }
     }
+    if (ext == kMaterialExtensionBody) {
+        return AssetKind::Material;
+    }
     return AssetKind::Unknown;
 }
 
@@ -86,6 +97,8 @@ std::string_view assetKindName(AssetKind kind) {
         return AssetTraits<TextureAsset>::name;
     case AssetKind::Mesh:
         return "Mesh";
+    case AssetKind::Material:
+        return AssetTraits<Material>::name;
     case AssetKind::Unknown:
         break;
     }
@@ -389,6 +402,23 @@ ImportResult importAsset(Diligent::IRenderDevice* device, Diligent::IDeviceConte
             // worse than an empty space plus a loud error. T0061's debug draw
             // is where a "something was here" marker belongs.
             HP_LOG_ERROR(kLog, "'{}' failed to load; nothing was stored for it", virtualPath);
+        }
+        return result;
+    }
+    case AssetKind::Material: {
+        if (auto material = loadMaterial(virtualPath)) {
+            pool.store(result.guid, std::move(material));
+            result.loaded = true;
+        } else {
+            // **No placeholder material here, and that is not a gap.** 60.10's
+            // fallback belongs to the *renderer*, which is the only thing that
+            // can build the checkerboard: it needs a device, and this function
+            // is reached with `device == nullptr` in every test that does not
+            // want one. Storing nothing means `AssetPool::get<Material>`
+            // returns null for this GUID, which is exactly the signal the
+            // renderer substitutes the fallback on.
+            HP_LOG_ERROR(kLog, "'{}' failed to load; meshes using it will render the "
+                               "missing-material pattern", virtualPath);
         }
         return result;
     }

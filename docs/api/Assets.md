@@ -252,6 +252,7 @@ enum class AssetKind
 | `Unknown` | 0 |
 | `Texture` | 1 |
 | `Mesh` | 2 |
+| `Material` | 3 |
 
  What kind of asset a file holds, decided by its extension (23.2).
 

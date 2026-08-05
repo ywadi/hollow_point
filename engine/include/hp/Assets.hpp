@@ -226,6 +226,11 @@ enum class AssetKind : std::uint8_t {
 
     /// A glTF model, text or binary.
     Mesh,
+
+    /// A material asset, `.hpmat` (T0060). **Authored by this engine rather than
+    /// imported from a DCC tool**, which is what makes it the first kind here
+    /// whose file the engine also writes — see `hp/Material.hpp`.
+    Material,
 };
 
 /// @param path a virtual path, or any path with an extension.

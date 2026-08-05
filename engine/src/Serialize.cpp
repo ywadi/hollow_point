@@ -2,7 +2,10 @@
 
 #include <hp/Guid.hpp>
 #include <hp/Layers.hpp>
-#include <hp/Light.hpp>
+// No <hp/Light.hpp>, and its absence is the point: this layer used to name
+// `LightType` in four places, and enums now go through one generic path. A leaf
+// list that has to grow by one case per enum is the "four switches" failure
+// T0053 exists to prevent, arriving one type at a time.
 #include <hp/Log.hpp>
 #include <hp/Math.hpp>
 #include <hp/Profiling.hpp>
@@ -44,6 +47,106 @@ bool readFloats(YamlNode node, float* values, std::size_t count) {
         values[i] = static_cast<float>(value);
     }
     return true;
+}
+
+// --- enums ------------------------------------------------------------------
+//
+// **Enums are written by name, and this is generic rather than a list.** The
+// leaf layer used to special-case `LightType` and write its integer, with a
+// comment saying names would read better and needed the enum reflected. They
+// do, and it does, and `TypeBuilder::value` had already existed for exactly
+// that since T0053 without anything using it.
+//
+// The cost of the integer was not only readability. `type: 2` silently means
+// something else the moment a value is inserted into the middle of an enum —
+// and worse, `readLeaf` parsed *only* an integer, so a hand-authored
+// `Light: {type: Spot}` (T0139's whole point) failed to read, hit the
+// lenient-read rule that leaves an unreadable field alone, and produced a
+// **directional** light with no warning. Measured on `tests/fast`'s own
+// authoring fixture, which had `type: Directional` in it and passed because
+// Directional is the default.
+//
+// An enum nobody reflected still works: it falls back to its integer, which is
+// what every enum did before. So this adds a capability rather than a
+// requirement, and no type has to be edited to keep working.
+
+/// @param type an enum's reflected type.
+/// @returns whether any enumerator was registered on it — i.e. whether it was
+///          passed to `hp::reflect` and given `value()` calls.
+bool hasEnumerators(const entt::meta_type& type) {
+    for (auto&& [id, data] : type.data()) {
+        if (data.is_static() && data.name() != nullptr) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// @param value an enum value.
+/// @returns the registered name of the enumerator it equals, or nullptr when
+///          the enum has no enumerator with this value — which covers both an
+///          unreflected enum and a value that is not one of them.
+const char* enumeratorName(const entt::meta_any& value) {
+    for (auto&& [id, data] : value.type().data()) {
+        if (!data.is_static() || data.name() == nullptr) {
+            continue;
+        }
+        if (data.get({}) == value) {
+            return data.name();
+        }
+    }
+    return nullptr;
+}
+
+/// @param type the enum type to search.
+/// @param name an enumerator's registered name.
+/// @param out receives the enumerator's value when one matches.
+/// @returns whether the type has an enumerator with that name.
+bool enumeratorByName(const entt::meta_type& type, std::string_view name, entt::meta_any& out) {
+    for (auto&& [id, data] : type.data()) {
+        if (!data.is_static() || data.name() == nullptr) {
+            continue;
+        }
+        if (name == data.name()) {
+            out = data.get({});
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Assigns an integer to an enum, refusing a value the enum does not have.
+///
+/// **Refused rather than trusted**, matching what the hand-written `LightType`
+/// case did: a file naming a value this build does not have would otherwise
+/// produce an out-of-range enum, and the switches that read one have no default
+/// case by design. An *unreflected* enum cannot be checked this way and is
+/// trusted, because refusing every value of one would be worse.
+/// @param value a reference to the target enum.
+/// @param n the integer read from the document.
+/// @returns whether it was assigned.
+bool assignEnumInteger(entt::meta_any& value, std::int64_t n) {
+    const entt::meta_type type = value.type();
+
+    // **`allow_cast` on a mutable `meta_any` returns `bool`, not `meta_any`.**
+    // The const overload converts and returns the result; the non-const one
+    // converts *in place* and reports whether it could. Writing
+    // `meta_any converted = anyInt.allow_cast(type)` therefore compiles, and
+    // builds an any holding **`true`** -- which is a perfectly valid `meta_any`,
+    // so every check downstream passes and the value is silently wrong. Calling
+    // `.cast<std::int64_t>()` on it then dereferences null: an assert in a debug
+    // build, a **segfault** in release. That is measured, not theoretical -- it
+    // cost this change two rounds, and the release-only crash is why.
+    //
+    // So: construct, convert in place, check the bool.
+    entt::meta_any converted{n};
+    if (!converted.allow_cast(type)) {
+        return false;
+    }
+    if (hasEnumerators(type) && enumeratorName(converted) == nullptr) {
+        return false;
+    }
+    return value.assign(std::move(converted));
 }
 
 /// Floats are cooked as their exact bit pattern, not as text.
@@ -103,12 +206,19 @@ bool writeLeaf(YamlNode parent, std::string_view key, const entt::meta_any& valu
         parent.set(key, v->toString());
         return true;
     }
-    if (const auto* v = value.try_cast<LightType>()) {
-        // As its integer, matching every other enum-shaped value here. Names
-        // would read better in a diff and would need the enum reflected through
-        // `entt::meta`, which nothing does yet -- recorded rather than done.
-        parent.set(key, static_cast<std::int64_t>(*v));
-        return true;
+    if (const entt::meta_type type = value.type(); type && type.is_enum()) {
+        // By name when the enum was reflected, by integer when it was not --
+        // see the block above `writeFloat`. Every enum takes this path; there
+        // is deliberately no per-enum case to forget to add.
+        if (const char* name = enumeratorName(value)) {
+            parent.set(key, std::string_view{name});
+            return true;
+        }
+        if (const entt::meta_any asInteger = value.allow_cast<std::int64_t>(); asInteger) {
+            parent.set(key, asInteger.cast<std::int64_t>());
+            return true;
+        }
+        return false;
     }
     if (const auto* v = value.try_cast<LayerMask>()) {
         // As a plain integer, so the on-disk shape is what it was before
@@ -205,19 +315,28 @@ bool readLeaf(YamlNode node, entt::meta_any& value) {
         *v = *parsed;
         return true;
     }
-    if (auto* v = value.try_cast<LightType>()) {
+    if (const entt::meta_type type = value.type(); type && type.is_enum()) {
+        // **The integer is tried first, and that ordering is what makes both
+        // work.** `tryRead(std::int64_t&)` refuses a non-numeric scalar, so
+        // `Directional` falls through to the name; reading the string first
+        // would swallow `0` as the *name* "0" and never find an enumerator.
         std::int64_t n = 0;
-        if (!node.tryRead(n)) {
+        if (node.tryRead(n)) {
+            return assignEnumInteger(value, n);
+        }
+        std::string name;
+        if (!node.tryRead(name)) {
             return false;
         }
-        // Clamped rather than trusted: a file naming a light type this build
-        // does not have would otherwise produce an out-of-range enum, and the
-        // switch that reads it has no default case by design.
-        if (n < 0 || n > static_cast<std::int64_t>(LightType::Spot)) {
+        entt::meta_any enumerator;
+        if (!enumeratorByName(type, name, enumerator)) {
+            // Named, and this build has no such value. Reported rather than
+            // defaulted: an enum silently left at its default is exactly the
+            // bug this replaced, and a name is a thing a person can misspell.
+            HP_LOG_WARN(kLog, "'{}' is not a value of this enum; leaving the field alone", name);
             return false;
         }
-        *v = static_cast<LightType>(n);
-        return true;
+        return value.assign(std::move(enumerator));
     }
     if (auto* v = value.try_cast<LayerMask>()) {
         std::uint64_t n = 0;
@@ -520,8 +639,17 @@ bool cookLeaf(const entt::meta_any& value, std::vector<std::byte>& out) {
         writeU64(out, v->value());
         return true;
     }
-    if (const auto* v = value.try_cast<LightType>()) {
-        writeU64(out, static_cast<std::uint64_t>(*v));
+    if (const entt::meta_type type = value.type(); type && type.is_enum()) {
+        // **As its integer, and deliberately not by name.** The cook is a cache
+        // keyed on a hash of its source (`Cook.hpp`), so it is never read by a
+        // person and never outlives a rename -- an enum whose enumerators moved
+        // invalidates the cook rather than being silently misread from it. The
+        // YAML beside it is where the name earns its cost.
+        const entt::meta_any asInteger = value.allow_cast<std::int64_t>();
+        if (!asInteger) {
+            return false;
+        }
+        writeU64(out, static_cast<std::uint64_t>(asInteger.cast<std::int64_t>()));
         return true;
     }
     if (const auto* v = value.try_cast<LayerMask>()) {
@@ -609,16 +737,14 @@ bool uncookLeaf(const std::vector<std::byte>& bytes, std::size_t& cursor, entt::
         *v = Guid{raw};
         return true;
     }
-    if (auto* v = value.try_cast<LightType>()) {
+    if (const entt::meta_type type = value.type(); type && type.is_enum()) {
         std::uint64_t raw = 0;
         if (!readU64(bytes, cursor, raw)) {
             return false;
         }
-        if (raw > static_cast<std::uint64_t>(LightType::Spot)) {
-            return false;
-        }
-        *v = static_cast<LightType>(raw);
-        return true;
+        // A value this build's enum does not have means "re-cook", which is
+        // what every other failure in this path means -- see `Cook.hpp`.
+        return assignEnumInteger(value, static_cast<std::int64_t>(raw));
     }
     if (auto* v = value.try_cast<LayerMask>()) {
         std::uint64_t raw = 0;
