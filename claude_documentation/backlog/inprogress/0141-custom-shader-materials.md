@@ -543,10 +543,30 @@ exists and shades correctly from constants; the sampling half of it was never
 written. `SceneRenderer` binds the model's textures into the SRB as it always
 did, and our shader simply does not read them.
 
-**So `HpSurface.psh` must declare and sample the material textures**, which means
-matching the resource names `PBR_Renderer`'s signature already uses — the same
-names `PBR_Textures.fxh` declares on their path. That is the next piece of work
-and it is what makes 141.11's assertions pass.
+**So `HpSurface.psh` must declare and sample the material textures**, matching
+the resource names `PBR_Renderer`'s signature already uses:
+`Texture2DArray g_BaseColorMap`, `g_PhysicalDescriptorMap`, `g_NormalMap`, and
+`SamplerState g_LinearClampSampler`. The names are not ours to choose —
+`SceneRenderer` binds through `SetMaterialTexture` into that signature, so a
+different name binds nothing.
+
+**That was attempted and reverted, and the reason is worth having before the next
+attempt.** Adding the declarations and sampling them turned the *untextured*
+`lit_surface_test` black. `SceneRenderer::ensureBindings` calls
+`SetMaterialTexture` **only when `material.GetTextureId(attrib) >= 0`**, so a
+material with no base colour map leaves `g_BaseColorMap` unbound — and sampling
+an unbound array returns zero, not the white default. DiligentFX's own shader
+does not hit this because `PBR_Textures.fxh` gates every sample behind the same
+`USE_*_MAP` macro *and* their binding path supplies defaults.
+
+So the sampling work has a prerequisite: **`ensureBindings` must bind the
+renderer's default textures for every slot a material does not fill**, which is
+what `CreateInfo::CreateDefaultTextures = true` creates them for. Doing the
+sampling without that trades a flat grey frame for a black one.
+
+The attempt is preserved at `tests/gpu/textured_surface_test.cpp.pending` —
+`.pending` because `tests/gpu/*.cpp` is globbed and a red suite is worse than an
+absent test. Rename it back when the sampling lands.
 
 **The test is written and correct and is deliberately not committed yet**
 (`tests/gpu/textured_surface_test.cpp`, held back), because a red suite is worse
