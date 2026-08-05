@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 3 — Data model |
@@ -18,12 +18,14 @@ schema is still small.
 
 ## Done when
 
-- [x] Save produces a readable, git-diffable `.hpscene` YAML
+- [x] Save produces a readable, git-diffable `.hpscene` YAML — and *stably*
+      diffable: saving a loaded scene reproduces the document byte for byte,
+      which it did not until entity order was fixed (see the findings)
 - [x] Load reconstructs an equivalent scene — same entities, GUIDs, components
-- [ ] Binary cook and load produce an identical scene to the YAML path
-- [~] Unknown components in a file are handled deliberately — **counted, named
-      and logged; not preserved.** D23 wants the raw subtree kept and re-emitted,
-      and that is not built. See "What is not done" below
+- [x] Binary cook and load produce an identical scene to the YAML path
+- [x] Unknown components in a file are handled deliberately — **preserved as
+      text, written back verbatim, and materialised when the type reappears**,
+      which is D23's policy rather than a subset of it
 - [x] Round-trip tests over a scene using every component type — driven by
       walking the registry, so a type added later is covered without anyone
       remembering this test
@@ -37,7 +39,8 @@ schema is still small.
 - [x] 22.3 Save: iterate entities and their components
 - [x] 22.4 Load: recreate entities preserving GUIDs, then components, then
       resolve parents by GUID in a second pass
-- [ ] 22.5 Wire binary cook/load through T0020 — **not started**
+- [x] 22.5 Wire binary cook/load through T0020 — `cookScene` /
+      `loadSceneFromCooked`, inside `hp/Cook.hpp`'s container
 - [x] 22.6 Round-trip tests, including an empty scene
 
 ## Design worked out 2026-08-05, before writing any code
@@ -240,20 +243,106 @@ than partly loaded. That half of T0082 had to happen now: a file with no version
 can only be guessed at, and loading what this build understands would write the
 loss back on the next save. Migration itself remains T0082's.
 
-### What is not done
+### What was not done in that pass — all of it closed 2026-08-05, below
 
-- **22.5, the binary cook path.** `cookProperties` / `readCookedProperties` exist
-  and are tested, so this is wiring — but it is wiring that has not been written,
-  and the Done-when about YAML and binary agreeing is therefore unmet. This
-  ticket stays open for it.
-- **Unknown components are dropped.** They are counted, named in the log and
-  surfaced on `SceneLoadResult::unknownComponents`, with a test asserting the
-  count. What D23 actually asks for — keep the raw subtree, re-emit it verbatim,
-  re-materialise it when the type reappears — is **not built**, because
-  `YamlNode` has no way to capture or re-emit a subtree and adding one is its own
-  piece of work in T0020's layer. Until it exists, *a save-after-load destroys
-  data belonging to a gameplay type that merely failed to build today*, which is
-  exactly the failure D23 named. Recorded plainly rather than ticked.
-- **No `.hpscene` file is ever written or read from disk.** The API is
-  string-in/string-out; the VFS path and the file extension belong with T0024's
-  project layout.
+- 22.5, the binary cook path.
+- Unknown components were counted and dropped, not preserved.
+
+## Closed 2026-08-05 — the blob, the cook, and a diff bug nobody had noticed
+
+`engine/include/hp/Yaml.hpp`, `engine/src/Yaml.cpp`,
+`engine/include/hp/SceneSerialize.hpp`, `engine/src/SceneSerialize.cpp`,
+`engine/src/Scene.cpp`, `tests/fast/serialization_test.cpp`,
+`tests/fast/scene_serialize_test.cpp`, and a new
+[`../../documentation/10-scene-file-format.md`](../../documentation/10-scene-file-format.md).
+
+**263 fast and 89 integration green on both targets** (was 248/89), `zig build
+docs` clean.
+
+### The YAML layer gained the primitive that was blocking D23
+
+`YamlNode::emitSubtree()` and `YamlNode::graft()`, a **pair** — the property that
+matters is that `parent.graft(child.emitSubtree())` reproduces `child`. rapidyaml
+supports both directly (`emitrs_yaml` takes a node id; `Tree::duplicate_children`
+grafts across trees), so this was exposing what was already there rather than
+building anything.
+
+**The trap, and it is not a compile error:** `Tree::duplicate` copies *spans*,
+not characters — `_copy_props` assigns `m_key` and `m_val` straight across — so a
+grafted node points into the buffer **and the arena** of the tree it was parsed
+from. The document therefore owns every grafted fragment's text *and* its
+temporary tree, for the document's lifetime. That is the same invariant the
+header already stated about its own text; a graft would have broken it silently,
+and the symptom would have been garbage in an emitted document arbitrarily far
+from the call that caused it. There is a test that mutates and frees the source
+string after grafting.
+
+Held indirectly (`unique_ptr`) because the addresses must not move: `std::string`
+has a small-buffer optimisation, so moving one relocates short text — which is
+exactly the size a component fragment is.
+
+### Unknown components are preserved, and it is a component
+
+`UnknownComponents` holds `{type, raw YAML}` per preserved subtree and lives on
+the entity, because the round trip that matters is *load → edit → save* and the
+blob has to still be there at save time. Registered in `registerCoreComponents`
+like any other component, so `Scene::clone` carries it for free — a play-mode
+clone of a scene loaded while the module was broken must not be the thing that
+finally loses the data — and marked non-serialized, because `saveSceneToString`
+writes its contents back under their *own* names rather than as a component
+literally called `UnknownComponents`.
+
+`materialiseUnknownComponents(Scene&)` is the other half: it turns preserved text
+into real components for types that now exist, and is what a module host calls
+after a reload. An item whose stored form will not read is **kept as text**
+rather than discarded — the type came back but its shape changed, and dropping
+the text then would destroy the only record of what the file said.
+
+**A registered-but-non-serialized type is not "unknown".** `Hierarchy`, `Id`,
+`WorldTransform` and `Tag` appearing under `components` in a hand-edited file are
+ignored with a warning, not preserved — preserving them would write them back and
+resurrect exactly the corrupt key the schema exists to keep out.
+
+### 22.5 was wiring, as predicted
+
+`cookScene` / `loadSceneFromCooked`, inside `hp/Cook.hpp`'s container, with the
+payload layout documented on the declaration. Each component record carries its
+type name and a **byte length**, so a build whose type set has moved on can name
+every type it could not read instead of losing sync at the first.
+
+**One asymmetry, made explicit rather than hidden:** the YAML path preserves a
+component it cannot interpret; the binary path cannot, because cooked bytes for
+an unnameable type are not something a save could write back. So a cook naming an
+absent type returns `Stale` — "re-cook from the YAML" — instead of quietly
+loading a scene with less in it than the document has. Every other cook failure
+collapses to the same answer, which is why there is one status and not six.
+
+### The bug this ticket did not set out to find
+
+**Every save-after-load produced a whole-file diff containing no change.** entt
+walks a storage's packed array from the back, so `view<Id>` yields *reverse*
+creation order — while a load creates in *file* order. The two compose into an
+order that flips on every round trip.
+
+It surfaced only because the binary-vs-YAML comparison compared whole documents;
+none of the existing round-trip tests looked at order, and a human would have met
+it as "why does my commit touch every line". Fixed with
+`entitiesInCreationOrder`, used by both save and cook, and pinned by a test that
+round-trips **twice** — because an order that flips is stable every *other* time,
+so one round trip would have passed while the file still churned on every save.
+
+That is the "readable, git-diffable" Done-when actually being met rather than
+assumed, and it is a good argument for comparing whole outputs rather than
+fields.
+
+### What is still not done, deliberately
+
+- **No `.hpscene` file is written to or read from disk.** The API is
+  string-in/string-out; the virtual path and the file extension belong with
+  T0024's project layout. The document is ready for it.
+- **`materialiseUnknownComponents` is not called by anything yet.** Nothing loads
+  a gameplay module and then a scene in the same process today; T0062 owns
+  calling it, and now has the reference.
+- **Migration between schema versions** remains T0082's. This ticket built only
+  the half that cannot be added retroactively: stamp the version, refuse a newer
+  one.

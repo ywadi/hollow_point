@@ -59,16 +59,16 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Scene.hpp>`](Scene.md) | 58 | 58 |
 | [`<hp/SceneRenderLayer.hpp>`](SceneRenderLayer.md) | 10 | 10 |
 | [`<hp/SceneRenderer.hpp>`](SceneRenderer.md) | 11 | 11 |
-| [`<hp/SceneSerialize.hpp>`](SceneSerialize.md) | 5 | 5 |
+| [`<hp/SceneSerialize.hpp>`](SceneSerialize.md) | 10 | 10 |
 | [`<hp/SceneView.hpp>`](SceneView.md) | 18 | 18 |
 | [`<hp/Serialize.hpp>`](Serialize.md) | 6 | 6 |
 | [`<hp/Settings.hpp>`](Settings.md) | 28 | 28 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Vfs.hpp>`](Vfs.md) | 23 | 23 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
-| [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
+| [`<hp/Yaml.hpp>`](Yaml.md) | 47 | 47 |
 
-**692 public declarations across 37 headers, 575 documented.**
+**699 public declarations across 37 headers, 582 documented.**
 
 ## Every symbol
 
@@ -601,11 +601,16 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `SceneRenderer::release` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `SceneRenderer::valid` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `SceneRenderer::render` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `UnknownComponent` | [`SceneSerialize.hpp`](SceneSerialize.md) |
+| `UnknownComponents` | [`SceneSerialize.hpp`](SceneSerialize.md) |
+| `materialiseUnknownComponents` | [`SceneSerialize.hpp`](SceneSerialize.md) |
 | `kSceneSchemaVersion` | [`SceneSerialize.hpp`](SceneSerialize.md) |
 | `saveSceneToString` | [`SceneSerialize.hpp`](SceneSerialize.md) |
 | `SceneLoadStatus` | [`SceneSerialize.hpp`](SceneSerialize.md) |
 | `SceneLoadResult` | [`SceneSerialize.hpp`](SceneSerialize.md) |
 | `loadSceneFromString` | [`SceneSerialize.hpp`](SceneSerialize.md) |
+| `cookScene` | [`SceneSerialize.hpp`](SceneSerialize.md) |
+| `loadSceneFromCooked` | [`SceneSerialize.hpp`](SceneSerialize.md) |
 | `SceneViewStats` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::SceneView` | [`SceneView.hpp`](SceneView.md) |
@@ -743,6 +748,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `YamlNode::tryRead` | [`Yaml.hpp`](Yaml.md) |
 | `YamlNode::tryRead` | [`Yaml.hpp`](Yaml.md) |
 | `YamlNode::tryRead` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::emitSubtree` | [`Yaml.hpp`](Yaml.md) |
+| `YamlNode::graft` | [`Yaml.hpp`](Yaml.md) |
 | `YamlNode::addMap` | [`Yaml.hpp`](Yaml.md) |
 | `YamlNode::addSequence` | [`Yaml.hpp`](Yaml.md) |
 | `YamlNode::appendMap` | [`Yaml.hpp`](Yaml.md) |

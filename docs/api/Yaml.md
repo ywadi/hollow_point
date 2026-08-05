@@ -6,7 +6,7 @@
 #include <hp/Yaml.hpp>
 ```
 
-45 public declaration(s), 45 documented.
+47 public declaration(s), 47 documented.
 
 ## `YamlNode`
 
@@ -218,6 +218,37 @@ bool tryRead(std::string & out) const
  Reads a string scalar, reporting whether it was there and well-formed.
  @param out receives the value, untouched on failure.
  @returns whether the read succeeded.
+
+## `YamlNode::emitSubtree`
+
+```cpp
+std::string emitSubtree() const
+```
+
+ Emits this node as YAML text, **including its key** when it has one.
+
+ The key is included so the result grafts back where it came from without
+ the caller having to reattach it — which is also why a fragment is
+ self-describing enough to be stored on its own.
+ @returns the text, or empty for an invalid node.
+
+## `YamlNode::graft`
+
+```cpp
+bool graft(std::string_view yaml)
+```
+
+ Parses @p yaml and appends its top-level children to this node.
+
+ **The document takes ownership of the fragment's buffer.** rapidyaml
+ copies spans rather than text when it duplicates nodes, so the grafted
+ nodes point into the text they were parsed from — the same invariant this
+ header already keeps for the parsed document, extended to text that
+ arrived later.
+ @param yaml a fragment: a mapping's entries, or a sequence's.
+ @returns false when the fragment will not parse, carries nothing, or is a
+          sequence being grafted into a mapping (or the reverse) — which
+          would produce a node rapidyaml cannot emit.
 
 ## `YamlNode::addMap`
 

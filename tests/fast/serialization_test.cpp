@@ -249,6 +249,146 @@ TEST_CASE("setting a key twice replaces rather than duplicating") {
 
 // --- the binary cook -------------------------------------------------------
 
+// --- subtree capture and graft (T0022's D23 blob) --------------------------
+//
+// `emitSubtree` and `graft` are a pair and are tested as one: the property that
+// matters is not what either produces in isolation but that the second undoes
+// the first. They exist so a component this build cannot interpret survives a
+// save-after-load, which is a data-loss bug when it does not work and silent
+// when it half-works.
+
+TEST_CASE("a subtree survives being emitted and grafted back") {
+    auto source = hp::YamlDocument::parse(R"(components:
+  PlayerController:
+    speed: 4.5
+    waypoints: [a, b]
+)");
+    REQUIRE(source.has_value());
+
+    const std::string fragment =
+        source->root()["components"]["PlayerController"].emitSubtree();
+    // The key comes with it — that is what makes a fragment self-describing
+    // enough to be stored on its own and grafted back without reattaching it.
+    CHECK(fragment.find("PlayerController") != std::string::npos);
+    CHECK(fragment.find("4.5") != std::string::npos);
+
+    hp::YamlDocument destination;
+    hp::YamlNode components = destination.root().addMap("components");
+    REQUIRE(components.graft(fragment));
+
+    // Re-parsed rather than string-compared: the emitter's exact whitespace is
+    // not the contract, and asserting on it makes this test fail for a
+    // rapidyaml upgrade that changed nothing that matters.
+    auto reloaded = hp::YamlDocument::parse(destination.emit());
+    REQUIRE(reloaded.has_value());
+    hp::YamlNode controller = reloaded->root()["components"]["PlayerController"];
+    REQUIRE(controller.isMap());
+    CHECK(controller["speed"].read(0.0) == doctest::Approx(4.5));
+    REQUIRE(controller["waypoints"].isSequence());
+    CHECK(controller["waypoints"].at(1).read(std::string{}) == "b");
+}
+
+TEST_CASE("a grafted fragment outlives the text it was parsed from") {
+    // **The failure this guards is not a compile error.** rapidyaml duplicates
+    // nodes by copying spans, not characters, so a grafted node points into the
+    // buffer it was parsed from — and if the document does not take ownership,
+    // the emitted text is garbage produced long after the call that caused it.
+    hp::YamlDocument destination;
+    hp::YamlNode components = destination.root().addMap("components");
+    {
+        std::string fragment = "PlayerController:\n  speed: 4.5\n";
+        REQUIRE(components.graft(fragment));
+        fragment.assign(4096, 'x');   // reuse the storage, if it were shared
+        fragment.clear();
+        fragment.shrink_to_fit();
+    }
+
+    auto reloaded = hp::YamlDocument::parse(destination.emit());
+    REQUIRE(reloaded.has_value());
+    CHECK(reloaded->root()["components"]["PlayerController"]["speed"].read(0.0)
+          == doctest::Approx(4.5));
+}
+
+TEST_CASE("grafting appends rather than replacing") {
+    hp::YamlDocument document;
+    hp::YamlNode components = document.root().addMap("components");
+    components.addMap("Transform").set("x", std::int64_t{1});
+
+    REQUIRE(components.graft("PlayerController:\n  speed: 4.5\n"));
+    REQUIRE(components.graft("Inventory:\n  slots: 8\n"));
+
+    auto reloaded = hp::YamlDocument::parse(document.emit());
+    REQUIRE(reloaded.has_value());
+    hp::YamlNode result = reloaded->root()["components"];
+    CHECK(result.size() == 3);
+    CHECK(result["Transform"]["x"].read(std::int64_t{0}) == 1);
+    CHECK(result["PlayerController"]["speed"].read(0.0) == doctest::Approx(4.5));
+    CHECK(result["Inventory"]["slots"].read(std::int64_t{0}) == 8);
+}
+
+TEST_CASE("a graft that cannot work is refused rather than corrupting the document") {
+    hp::YamlDocument document;
+    hp::YamlNode map = document.root().addMap("map");
+
+    SUBCASE("a sequence into a mapping") {
+        // Both bits set on one node produces something the emitter cannot
+        // write, and it would fail at emit time — far from the cause.
+        CHECK_FALSE(map.graft("- one\n- two\n"));
+    }
+    SUBCASE("a bare scalar, which has no children and no key") {
+        CHECK_FALSE(map.graft("just a scalar\n"));
+    }
+    SUBCASE("text that is not YAML") {
+        CHECK_FALSE(map.graft("\t: not: yaml: ["));
+    }
+    SUBCASE("nothing at all") {
+        CHECK_FALSE(map.graft(""));
+    }
+
+    // Refused means unchanged, not partially applied.
+    auto reloaded = hp::YamlDocument::parse(document.emit());
+    REQUIRE(reloaded.has_value());
+    CHECK(reloaded->root()["map"].size() == 0);
+}
+
+TEST_CASE("a sequence-valued key round-trips through the pair") {
+    // The pair's contract is `parent.graft(child.emitSubtree())`, so the graft
+    // target is the *parent* of the captured node. A keyed sequence therefore
+    // grafts into a mapping — its key needs somewhere to live — and the case
+    // below covers the other direction.
+    auto source = hp::YamlDocument::parse("items: [1, 2, 3]\n");
+    REQUIRE(source.has_value());
+
+    hp::YamlDocument destination;
+    REQUIRE(destination.root().graft(source->root()["items"].emitSubtree()));
+
+    auto reloaded = hp::YamlDocument::parse(destination.emit());
+    REQUIRE(reloaded.has_value());
+    REQUIRE(reloaded->root()["items"].isSequence());
+    CHECK(reloaded->root()["items"].size() == 3);
+    CHECK(reloaded->root()["items"].at(2).read(std::int64_t{0}) == 3);
+}
+
+TEST_CASE("sequence elements graft into a sequence") {
+    hp::YamlDocument document;
+    hp::YamlNode items = document.root().addSequence("items");
+    items.append(std::int64_t{1});
+    REQUIRE(items.graft("- 2\n- 3\n"));
+
+    auto reloaded = hp::YamlDocument::parse(document.emit());
+    REQUIRE(reloaded.has_value());
+    REQUIRE(reloaded->root()["items"].isSequence());
+    CHECK(reloaded->root()["items"].size() == 3);
+    CHECK(reloaded->root()["items"].at(2).read(std::int64_t{0}) == 3);
+}
+
+TEST_CASE("emitting an invalid node yields nothing rather than crashing") {
+    hp::YamlDocument document;
+    CHECK(document.root()["absent"].emitSubtree().empty());
+    CHECK(hp::YamlNode{}.emitSubtree().empty());
+    CHECK_FALSE(hp::YamlNode{}.graft("a: 1\n"));
+}
+
 TEST_CASE("a cooked payload round-trips") {
     const auto payload = bytesOf("cooked contents");
     const std::uint64_t hash = hp::hashSource("source: yaml\n");

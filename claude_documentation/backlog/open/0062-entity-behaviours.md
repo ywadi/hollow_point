@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 270 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), [../../documentation/09-gameplay-authoring.md](../../documentation/09-gameplay-authoring.md) (owns), [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D23, T0053 (Blocks this), T0095, T0071, T0072, T0073, T0076 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), [../../documentation/09-gameplay-authoring.md](../../documentation/09-gameplay-authoring.md) (owns), [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D23, T0053 (Blocks this), [../completed/0022-scene-serialization.md](../completed/0022-scene-serialization.md), T0095, T0071, T0072, T0073, T0076 |
 
 ## Why
 
@@ -308,3 +308,15 @@ annotation-free reflection — not both.
   clean host lifetimes, 1.76 ms reload swap). One of them is stale and it
   matters here: if unload is genuine, module-side vtables and pools genuinely
   dangle and 62.6 is **mandatory**. Resolve before building 62.6.
+
+### From T0022 (closed 2026-08-05) — you must call `materialiseUnknownComponents`
+
+A behaviour is a reflected component and serializes through T0022's path, with no
+second mechanism (D23). The half that is **yours**: when a scene is loaded while
+this module is absent or failed to build, its types are preserved as raw YAML on
+an `UnknownComponents` component rather than dropped. They become real components
+only when something calls `hp::materialiseUnknownComponents(scene)` — **this
+ticket owns calling it after a module loads or reloads.** Nothing calls it today,
+because nothing yet loads a module and a scene in the same process. Without that
+call the data is still safe on disk, but a developer who fixes their build and
+reloads sees the components missing from the live scene.

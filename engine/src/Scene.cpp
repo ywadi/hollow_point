@@ -3,6 +3,10 @@
 
 #include <hp/Log.hpp>
 #include <hp/Profiling.hpp>
+// For `UnknownComponents`, which is a component and so is registered here with
+// the rest of them — there is one list, which is the whole point of the
+// registry — while its meaning belongs to serialization (T0022, D23).
+#include <hp/SceneSerialize.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -123,6 +127,14 @@ void registerCoreComponents() {
         .property<&Light::outerConeAngle>("outerConeAngle")
         .property<&Light::enabled>("enabled");
 
+    // Registered so that a clone carries preserved unknown components -- a
+    // play-mode clone of a scene loaded while the gameplay module was broken
+    // must not be the thing that finally loses the data (D23). Non-serialized
+    // because `saveSceneToString` writes its contents back under their *own*
+    // names; writing it generically would produce a file with a component
+    // literally called `UnknownComponents`, which is a second format.
+    registerComponent<UnknownComponents>("UnknownComponents");
+
     // T0022's trap, made explicit. A loop that writes every registered
     // component produces a corrupt file that looks fine -- see `ComponentOps`
     // above for why each of these is excluded, and note that all four stay
@@ -131,6 +143,7 @@ void registerCoreComponents() {
     detail::setComponentSerialized("Hierarchy", false);
     detail::setComponentSerialized("WorldTransform", false);
     detail::setComponentSerialized("Tag", false);
+    detail::setComponentSerialized("UnknownComponents", false);
 }
 
 bool Entity::valid() const {

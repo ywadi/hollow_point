@@ -53,6 +53,22 @@ struct YamlDocument::Impl {
     /// it rather than the caller.
     std::string text;
     ryml::Tree tree;
+
+    /// Every fragment grafted in after the parse, kept alive for the document's
+    /// lifetime.
+    ///
+    /// **`Tree::duplicate` copies spans, not characters** -- `_copy_props`
+    /// assigns `m_key` and `m_val` straight across -- so a grafted node points
+    /// into the buffer *and the arena* of the tree it was parsed from. Both are
+    /// held here. This is the same rule the class comment already states about
+    /// `text`; a graft would break it silently otherwise, and the symptom would
+    /// be garbage in an emitted document long after the call that caused it.
+    ///
+    /// Indirect because the addresses must not move: `std::string` has a small
+    /// buffer, so moving one relocates short text, and a `std::vector` grows by
+    /// moving its elements.
+    std::vector<std::unique_ptr<std::string>> graftedText;
+    std::vector<std::unique_ptr<ryml::Tree>> graftedTrees;
 };
 
 YamlDocument::YamlDocument() : impl_(std::make_unique<Impl>()) {
@@ -287,6 +303,76 @@ double YamlNode::read(double fallback) const {
 std::string YamlNode::read(const std::string& fallback) const {
     std::string value;
     return tryRead(value) ? value : fallback;
+}
+
+std::string YamlNode::emitSubtree() const {
+    HP_PROFILE_ZONE();
+
+    auto* tree = static_cast<ryml::Tree*>(treeHandle());
+    if (!valid() || tree->empty()) {
+        return {};
+    }
+    try {
+        return ryml::emitrs_yaml<std::string>(*tree, static_cast<ryml::id_type>(id_));
+    } catch (const std::exception& error) {
+        // Reachable: the emitter reports through the same callback the parser
+        // does, and this header's contract is that a data problem is reported
+        // rather than fatal.
+        HP_LOG_ERROR(kLog, "could not emit a subtree: {}", error.what());
+        return {};
+    }
+}
+
+bool YamlNode::graft(std::string_view yaml) {
+    HP_PROFILE_ZONE();
+
+    auto* tree = static_cast<ryml::Tree*>(treeHandle());
+    if (!valid() || yaml.empty()) {
+        return false;
+    }
+    ensureCallbacks();
+
+    auto buffer = std::make_unique<std::string>(yaml);
+    auto fragment = std::make_unique<ryml::Tree>();
+    try {
+        *fragment = ryml::parse_in_place(toRyml("<fragment>"), c4::to_substr(*buffer));
+    } catch (const std::exception& error) {
+        HP_LOG_ERROR(kLog, "could not parse a fragment to graft: {}", error.what());
+        return false;
+    }
+    if (fragment->empty()) {
+        return false;
+    }
+
+    const auto destination = static_cast<ryml::id_type>(id_);
+    const ryml::id_type source = fragment->root_id();
+    const bool fragmentIsMap = fragment->is_map(source);
+    const bool fragmentIsSeq = fragment->is_seq(source);
+    if (!fragmentIsMap && !fragmentIsSeq) {
+        // A bare scalar has no children, so there is nothing to append and no
+        // key to append it under. Refused rather than silently doing nothing.
+        HP_LOG_ERROR(kLog, "a fragment to graft must be a mapping or a sequence");
+        return false;
+    }
+    if ((fragmentIsSeq && tree->is_map(destination))
+        || (fragmentIsMap && tree->is_seq(destination))) {
+        // Mixing the two sets both bits on the destination, which produces a
+        // node the emitter cannot write -- and it would fail at emit time, far
+        // from the call that caused it.
+        HP_LOG_ERROR(kLog, "cannot graft a {} into a {}", fragmentIsSeq ? "sequence" : "mapping",
+                     tree->is_map(destination) ? "mapping" : "sequence");
+        return false;
+    }
+    if (fragment->num_children(source) == 0) {
+        return false;
+    }
+
+    tree->_p(destination)->m_type |= fragmentIsMap ? ryml::MAP : ryml::SEQ;
+    tree->duplicate_children(fragment.get(), source, destination, tree->last_child(destination));
+
+    document_->impl_->graftedText.push_back(std::move(buffer));
+    document_->impl_->graftedTrees.push_back(std::move(fragment));
+    return true;
 }
 
 namespace {

@@ -8,6 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 370 |
 | **Created** | 2026-08-03 |
+| **Refs** | [../completed/0022-scene-serialization.md](../completed/0022-scene-serialization.md), [../../documentation/10-scene-file-format.md](../../documentation/10-scene-file-format.md) |
 
 ## Why
 
@@ -56,3 +57,15 @@ newer build silently makes it unopenable in the older one.
 Keeping fixture files per version is what makes migrations trustworthy. They are
 tiny, and without them a migration chain is only ever tested against whatever the
 current schema happens to be.
+
+### From T0022 (closed 2026-08-05) — the scene schema is already stamped
+
+`hp::kSceneSchemaVersion` is `1`, written into every scene document and into
+every cook's container, and a file from a **newer** schema is already refused
+rather than partially loaded (`SceneLoadStatus::NewerSchema`) — refusing is the
+half that could not be added retroactively. **What this ticket owes is the
+migration itself**: a way to read version N-1 and produce version N, hooked in
+where `loadSceneFromString` currently compares the version and gives up. Note
+that a *newer file* and a *missing type* are different problems and already have
+different answers — the second is preserved as text (D23), not refused, and
+migration must not collapse the two.

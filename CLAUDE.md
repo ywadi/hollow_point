@@ -23,6 +23,7 @@ you in the first ten minutes.
 | What is the design missing? | [`claude_documentation/documentation/07-design-gaps.md`](claude_documentation/documentation/07-design-gaps.md) |
 | What runs when, in a frame? | [`claude_documentation/documentation/08-frame-anatomy.md`](claude_documentation/documentation/08-frame-anatomy.md) |
 | What does *game* code look like? | [`claude_documentation/documentation/09-gameplay-authoring.md`](claude_documentation/documentation/09-gameplay-authoring.md) |
+| How is a scene file structured? | [`claude_documentation/documentation/10-scene-file-format.md`](claude_documentation/documentation/10-scene-file-format.md) |
 
 **The decision log is binding.** Entries D1–D25 record what was rejected and
 why, usually against a specific failure. If you are about to do something one of

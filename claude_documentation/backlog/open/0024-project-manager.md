@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 290 |
 | **Created** | 2026-08-02 |
-| **Refs** | [../completed/0023-asset-manager.md](../completed/0023-asset-manager.md) |
+| **Refs** | [../completed/0023-asset-manager.md](../completed/0023-asset-manager.md), [../completed/0022-scene-serialization.md](../completed/0022-scene-serialization.md) (owns the document; this ticket owns the file), [../../documentation/10-scene-file-format.md](../../documentation/10-scene-file-format.md) |
 
 ## Why
 
@@ -73,3 +73,14 @@ account and worth stating explicitly.
 
 Project *settings* (render quality, startup scene) belong here rather than in the
 editor, for the same reason.
+
+### From T0022 (closed 2026-08-05) — the document exists; the file does not
+
+`saveSceneToString` / `loadSceneFromString` and `cookScene` /
+`loadSceneFromCooked` are built and tested, and the format is written down in
+[`../../documentation/10-scene-file-format.md`](../../documentation/10-scene-file-format.md).
+T0022 deliberately stopped at string-in/string-out: **this ticket owns the
+virtual path, the `.hpscene` extension, and reading and writing them through the
+VFS.** Call that API rather than growing a second serializer, and put the cook
+beside the YAML with `hashSource` of the YAML as its staleness key — the cook
+layer already refuses a stale one, but only if something passes it the hash.

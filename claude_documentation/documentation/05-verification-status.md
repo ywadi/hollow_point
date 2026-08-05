@@ -144,6 +144,32 @@ tickets: black differs from a blue clear colour, so "did geometry arrive" passed
 while nothing about shading was tested at all. T0028's headline evidence is still
 true and still proves less than it reads.
 
+### Scenes save and load ✅ (2026-08-05, T0022)
+
+**A scene survives a round trip through text and through the binary cook**, and
+both paths produce the same scene. Verified by comparing whole documents rather
+than fields — which is how the last item in this table was found at all.
+
+| Claim | Evidence |
+|---|---|
+| Every registered component round-trips | The test walks `registeredComponents()` rather than listing types, so one added tomorrow is covered |
+| GUIDs are preserved, never regenerated | Every GUID present before the round trip resolves after it |
+| Hierarchy survives as GUIDs, not handles | A child listed *before* its parent still links (hand-written document, two-pass load) |
+| A newer schema is refused, not partly loaded | `NewerSchema`, scene left empty |
+| A component this build cannot construct is **kept** | Loaded, saved, reloaded, saved again — `speed: 4.5` still in the text; survives a clone too |
+| ...and becomes real when its type appears | `materialiseUnknownComponents` attaches it and drops the text, so the next save does not write the key twice |
+| Binary cook == YAML path | `saveSceneToString(fromCook) == saveSceneToString(fromYaml)` on a four-entity scene |
+| Every broken cook says "re-cook" | Changed source, junk bytes, truncated payload, wrong schema, absent type — all `Stale`, scene untouched |
+| **Saving a loaded scene is byte-identical** | Round-tripped twice, because an order that flips is stable every *other* time |
+
+That last row was a real bug, not a formality. entt walks a storage backwards
+while a load creates in file order, so **every save-after-load emitted the
+entities in reverse** — opening a scene and saving it produced a whole-file diff
+containing no change. None of the field-level round-trip tests could see it.
+
+**What is not verified**: nothing writes or reads an `.hpscene` *file*. The API
+is string-in/string-out; the VFS path is T0024's.
+
 ### GPU testing — hardware coverage, and how to know what you got ✅/⚠️ (T0135)
 
 **You no longer have to read this to find out what the gpu bucket ran on — the
