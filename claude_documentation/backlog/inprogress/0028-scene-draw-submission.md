@@ -282,9 +282,33 @@ a Diligent upgrade cannot silently break this through a private detail, which is
 precisely what would have happened had the answer been "reach into
 `m_PbrPSOCache`".
 
+**Qualification found while writing against it (2026-08-05).** "All public API" is
+true of the *draw* path and **not** of material SRB setup. `InitMaterialSRB` is a
+`GLTF_PBR_Renderer` member, and replicating it needs two things this engine
+cannot reach:
+
+- **`GetPBRTextureSRV(texture, id, colourConversionMode)`** — absent from
+  `PBR_Renderer.hpp` entirely, so private or file-local. It is what applies the
+  **colour-space conversion** per texture slot, which is the same concern T0097
+  owns for imported textures.
+- **`m_pDefaultPhysDescSRV`** — private (`:1000`) with no getter, unlike
+  `GetWhiteTexSRV()` / `GetBlackTexSRV()` which are public at `:469-470`.
+
+Workable, with substitutions that must be recorded rather than slipped in: bind
+the model's own texture views via `Model.GetTexture(idx)` and
+`SetMaterialTexture` (public), fall back to white for the missing
+physical-descriptor default, and handle — or deliberately skip — the colour
+conversion `GetPBRTextureSRV` would have applied.
+
+**That last one is a correctness question, not a detail**, and it lands next to
+T0097's sRGB work: skipping the conversion silently is exactly the kind of
+lighting bug that gets compensated by hand-tuning and then has to be
+un-compensated. Whatever is chosen goes in writing here and on T0134.
+
 **Not yet verified**, and not to be claimed until it is: that the pipeline states
-actually build on both backends here, and that the traversal draws correctly.
-Both need `zig build test -Dtest=gpu`, which `all` builds and never runs.
+actually build on both backends here, that the traversal draws correctly, and
+that the substituted texture binding produces the right colours. All three need
+`zig build test -Dtest=gpu`, which `all` builds and never runs.
 
 ### Camera
 

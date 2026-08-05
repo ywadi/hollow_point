@@ -40,6 +40,57 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options("SHELL:-Xclang -fno-pch-timestamp")
 endif()
 
+# --- debug information (T0128.6) ---------------------------------------------
+#
+# **`zig c++` emits full DWARF by default.** Plain clang emits none, and nothing
+# in this repository or in Diligent asks for `-g` -- a census of every
+# translation unit in both `compile_commands.json` (1416 Linux, 1410 Windows)
+# found not one passing it. So the default was costing:
+#
+#   libhp_engine.so   203.0 MiB, of which 92% debug info (16.7 MiB stripped)
+#   libhp_engine.pdb  131.4 MiB on Windows, beside a 16.5 MiB DLL
+#   dist              1.4 GB staged on Linux, 92.2% debug info and symtab
+#   build tree        ~4.3 GB
+#
+# and about 16% of compile time on top. Our own objects were 54.5% debug info by
+# size, so this was never only a third-party problem.
+#
+# **`-g0` rather than stripping at link, and the difference is `.symtab`.** Under
+# LLD, `-Wl,--strip-debug` also removes the symbol table -- it produces a
+# byte-identical file to `--strip-all` -- and with `CXX_VISIBILITY_PRESET hidden`
+# the remaining `.dynsym` is ~133 KB, so stripped backtraces name almost nothing.
+# `-g0` keeps `.symtab`, so a crash still reports function names, and it shrinks
+# the *objects* too rather than only the final image.
+#
+# **What this gives up**, stated plainly: full source-level symbolication.
+# Turning this option ON restores it, and that is the build to make when symbols
+# are wanted -- for a release whose crashes must be symbolicated, keep that
+# unstripped artifact as the symbol archive (Breakpad's `dump_syms` and
+# `sentry-cli` both accept an unstripped binary directly).
+#
+# The alternative that looks obvious and is unavailable: splitting debug info
+# into sidecar files. `zig objcopy` answers `error: unimplemented` for every ELF
+# option including `--only-keep-debug` and `--add-gnu-debuglink` -- and truncates
+# its output to zero bytes *before* exiting non-zero, so a naive staging check
+# would ship an empty library. LLD has no `--separate-debug-file`. Requiring host
+# `objcopy` would break D3, since a Windows host cross-compiling to Linux has
+# none. See T0128 for the measurements behind each of these.
+option(HP_DEBUG_INFO "Emit debug information (large: see T0128.6)" OFF)
+if (NOT HP_DEBUG_INFO AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_compile_options(-g0)
+endif()
+
+# A build id, so a stripped or `-g0` binary can still be matched to its symbols
+# by a symbol server or `debuginfod`. **Absent from every binary before this**,
+# and it is the one piece here that cannot be added retroactively: a build that
+# ships without one can never be symbolicated afterwards. ~180 bytes.
+#
+# ELF only. PE carries its own identity in the CodeView entry that already points
+# at the `.pdb`, and `--build-id` is not a thing lld-link accepts.
+if (NOT WIN32)
+    add_link_options(-Wl,--build-id=sha1)
+endif()
+
 # Diligent supplies the renderer. We only need SampleBase as an app shell, so skip
 # building the ~40 bundled tutorials/samples: add_sample_app() is still defined.
 set(DILIGENT_BUILD_SAMPLE_BASE_ONLY ON  CACHE BOOL "" FORCE)

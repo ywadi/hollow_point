@@ -65,7 +65,12 @@ layouts. Until that is decided, the glob keeps making the decision by accident.
 - [ ] 128.3 Orphan test: a stale artifact in the build tree must not stage
 - [ ] 128.4 Decide `.pdb` and static/import library inclusion per output kind
 - [ ] 128.5 Extend `tests/harness/dist_test.zig`
-- [ ] 128.6 Decide whether ELF debug info is stripped or split on staging — see
+- [x] 128.6 **Done 2026-08-05 — `-g0` by default**, see "Applied" below. Split
+      debug was investigated and is *unavailable in this toolchain*, recorded as
+      rejected against a measured constraint rather than deferred
+- [ ] 128.7 Decide whether `dist` additionally strips, now that the inputs are
+      small — the double-staging (128.2) is now the larger remaining waste
+- [ ] 128.6b Decide whether ELF debug info is stripped or split on staging — see
       "92% of the Linux engine is debug info" below. `.pdb` is named in 128.4;
       the Linux equivalent was not named anywhere
 
@@ -108,6 +113,40 @@ engine objects total 34,341,808 B, of which **18,733,440 B (54.5%) is `.debug_*`
 Diligent dominates by *volume* — 804 Diligent TUs against 33 of ours — not by
 being uniquely at fault. So "suppress `-g` for third-party only" would leave
 half our own object size in place.
+
+### Applied 2026-08-05 — `HP_DEBUG_INFO=OFF` by default, measured
+
+`CMakeLists.txt` now sets `-g0` globally unless `HP_DEBUG_INFO` is ON, and adds
+`-Wl,--build-id=sha1` on ELF. Full cold rebuild of both targets, then measured:
+
+| | before | after | |
+|---|---|---|---|
+| `libhp_engine.so` | 203.0 MiB | **28.7 MiB** | 7.1× |
+| `libhp_engine.pdb` | 131.4 MiB | **15.0 MiB** | 8.8× |
+| build tree | ~4.3 GB | **914 MB** | 4.7× |
+
+`.symtab` is **kept** (1.2 MiB), which is the whole reason `-g0` was chosen over
+`-Wl,--strip-debug`: under LLD that flag also drops the symbol table, and with
+hidden visibility the remaining `.dynsym` is ~133 KB, so backtraces would name
+almost nothing. Build ID present and verified:
+`87d59ea4a4b8335b471e8e296b1b2f4ee199617c`.
+
+**Verified green afterwards**: `zig build test -Dtest=all`, all four buckets —
+185 cases / 214,073 assertions fast, 89 / 515 integration, on Linux and on
+Windows under wine.
+
+**A residual ~6.6 MiB of `.debug_*` survives in the `.so`, and it is a floor
+rather than a miss.** Checked rather than assumed: **not one** of the 1241 object
+files in the tree carries `.debug_info`, so `-g0` reached every translation unit.
+Reading `.debug_str` in the linked library shows the source — `libunwind` (127
+references), `zig-x`, `compiler_rt`, `libcxx/src/locale.cpp`. These are **zig's
+own prebuilt runtime libraries**, shipped with debug info in the toolchain
+distribution, and no compile option of ours reaches them. Chasing it would mean
+rebuilding zig's runtime, which is not worth 6 MiB.
+
+**Note for whoever does 128.2**: with the inputs now this small, the
+double-staging of `libhp_engine.so` is the largest remaining waste in `dist`, not
+the debug info.
 
 ### Windows does not escape it — it externalizes it (and `dist` misses that)
 
