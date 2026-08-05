@@ -169,6 +169,57 @@ Other vendored trees here set global state more politely, but none of that is
 guaranteed. When adding a dependency, grep it for `CACHE` and `FORCE` before
 trusting it.
 
+## Reading a build log
+
+Two failure modes, both observed here, both of which make a correct build look
+broken or a broken one look fine.
+
+**The exit code must come from a redirect, not a pipe.** A shell pipeline
+reports the last command's status:
+
+```sh
+zig build all | tail -60          # WRONG -- this is tail's exit code
+zig build all > build.log 2>&1    # right
+echo "EXIT: $?"
+```
+
+Reading a truncated `tail` of a 1500-target build also cuts the summary line the
+check exists to read. This has hidden a failing test bucket twice.
+
+**Grepping for `error` or `failed` produces false positives on a clean build.**
+Measured on a full clean cold build of both targets (2026-08-05):
+
+| pattern | hits on a **clean** build |
+|---|---|
+| `grep -icE 'error\|failed'` | **19** |
+| `grep -cE '^FAILED:\|error:'` | **0** |
+
+The 19 are of two kinds and neither indicates a problem:
+
+- **CMake feature probes.** `-- Performing Test LIBC_HAS_ISINFF - Failed`,
+  `HAVE_GAMEINPUT_H - Failed`, `ABSL_INTERNAL_AT_LEAST_CXX20 - Failed`. A probe
+  failing *is* the mechanism working — it is how CMake discovers the platform.
+- **Filenames.** `jerror.c`, `pngerror.c`, `tif_error.c`, `SDL_error.c`,
+  `c4core/src/c4/error.cpp`. Each appears in its compile line, so a
+  case-insensitive substring match hits it on every rebuild.
+
+Use:
+
+```sh
+grep -nE '^FAILED:|error:' build.log
+```
+
+`^FAILED:` is ninja's marker for a failed edge; `error:` with the colon is what
+clang emits. Verified against a deliberately broken translation unit: the build
+exits 1 and the pattern returns one of each. **The colon and the anchor are load
+bearing** — `grep -i error` without them matches every one of those filenames
+again.
+
+This is the general rule in `CLAUDE.md` — *when a check fails, suspect the
+check* — in its second form. A filter can invent failures as easily as it can
+hide them, and a confident "the build is broken" from a bad grep costs the same
+hour as a missed one.
+
 ## dist
 
 `cmake/dist.cmake` is run with `cmake -P`, not included — kept as a CMake script

@@ -94,6 +94,33 @@ zig build dist                 # stage runnable output
 Everything is pinned in `.harness/` — zig, cmake, ninja. Nothing on `PATH` is
 required, and the build says so loudly if it falls back to something there.
 
+### Deciding whether the build actually failed
+
+Two ways to get this wrong, and both have happened here. Do this:
+
+```sh
+zig build all > build.log 2>&1; echo "EXIT: $?"   # NO pipe -- see below
+grep -nE '^FAILED:|error:' build.log              # real failures only
+```
+
+**Never pipe the build into `tail`/`head` to get the exit code.** A shell
+pipeline returns the *last* command's status, so `zig build all | tail -60`
+reports `tail`'s success and hides zig's failure. The same truncation also cuts
+the summary you were trying to read. Redirect to a file and check `$?`.
+
+**Never grep for bare `error` or `failed`.** On a **clean** build of this tree
+that matches **19 lines**, every one a false positive:
+
+- CMake feature probes — `-- Performing Test LIBC_HAS_ISINFF - Failed` — which
+  are normal and expected;
+- *filenames* — `jerror.c`, `pngerror.c`, `tif_error.c`, `SDL_error.c`,
+  `c4core/src/c4/error.cpp` — matched because they appear in every compile line.
+
+`^FAILED:|error:` returns **0** on that same clean log. Verified against a
+deliberately broken build: exit 1, one `^FAILED:` (ninja's marker) and one
+`error:` (clang's, with the colon). The colon and the anchor are what do the
+work — drop either and the filenames come back.
+
 **On WSL, the working tree must NOT be under `/mnt/`** — clone it into the Linux
 filesystem (`~/dev/hollow_point`). Zig commits its cache by renaming a directory
 whose files are still open; POSIX allows that and Windows does not, and `/mnt/c`
@@ -254,6 +281,13 @@ push.
 - **Verify with the whole output, not a filtered tail.** Truncating a test
   summary has twice hidden a failing bucket here. When a check fails, suspect
   the check before the code — that has been right more often than not.
+- **A filter lies in both directions.** Truncation hides real failures; a loose
+  pattern invents them. `grep -icE 'error|failed'` returns **19** on a perfectly
+  clean build of this tree — CMake feature probes and source files named
+  `jerror.c`, `pngerror.c`, `SDL_error.c`. Use `grep -nE '^FAILED:|error:'`,
+  and get the exit code from a redirect rather than a pipe, because
+  `zig build … | tail` returns `tail`'s status and not zig's. Recipe and the
+  measurement behind it are under **Build**, above.
 
 ---
 
