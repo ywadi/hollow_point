@@ -1,4 +1,4 @@
-# T0141 — Custom shader materials
+# T0141 — The surface stage: the standard material shader, and custom ones
 
 | | |
 |---|---|
@@ -8,26 +8,55 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 455 |
 | **Created** | 2026-08-05 |
-| **Blocked by** | T0060 (there is no material asset to attach a shader to yet) |
-| **Blocks** | height mapping, parallax occlusion and triplanar — 141.7/141.8, which T0060 cannot deliver because Diligent's material shader has no hook before texture sampling |
+| **Blocked by** | T0060.1 + T0060.6 only — the material *asset* and per-surface assignment. **Not** the rest of T0060, which was re-cut into this ticket on 2026-08-05 |
+| **Blocks** | **T0086** (shadow sampling is built on `RenderPBR.psh`; 141.0 must land first or shadows are built twice). Height mapping, parallax occlusion, triplanar and vertex displacement — 141.7/141.8 — which no material parameter can express |
 | **Refs** | [../inprogress/0060-material-system.md](../inprogress/0060-material-system.md) (split from it), [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md), T0093, T0053, T0094, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D24 |
 
 ## Why
 
-Split out of T0060 on 2026-08-05, deliberately and with the reason recorded.
+**The owner's concern, in their words:** *"im still worried that the engine wont
+be complete enough for the editors with the PBR setup that it currently has, so
+if an editor wants to use screen displacement for texture, thats a custom shader
+or not even possible on the engine it self?"*
 
-T0060 as written was two tickets wearing one number: **a material asset**, which
-is a data-model gap and blocks T0045 and T0086, and **a shader system** — custom
-shaders, parameter reflection, compile caching, hot reload, an error material,
-and a documented interface to engine intermediates. The second is larger than the
-first and blocks nothing.
+The honest answer as of 2026-08-05 is **not possible at all** — there is no
+custom shader mechanism, and the standard material cannot do it either. That is
+a real ceiling on what an artist can author, and this ticket is what lifts it.
 
-Following Godot's model, which T0060 already cites: a standard PBR material
-covers the common case, **plus the ability to attach a custom shader** for
-anything else. T0060 delivers the first half. This is the second.
+The ceiling has a single cause. `RenderPBR.psh` and `RenderPBR.vsh` are private
+to DiligentFX with **no hook before texture sampling**, and
+`CreateInfo::GetPSMainSource` reaches only the pixel shader's output struct and a
+footer — it can change what the shader *emits*, never how it *samples*. So every
+technique that displaces UVs or positions before sampling is unreachable, no
+matter what the material asset says.
 
-Keeping them together would have meant T0045 and T0086 waiting behind a shader
-compiler cache, which is the wrong dependency to accept.
+### What the current PBR already has, so the ceiling is not where it looks
+
+The "quad and a light" is what the engine has **enabled**, not what
+`PBR_Renderer` implements. It already carries metallic-roughness *and*
+spec-gloss workflows, clearcoat, sheen, anisotropy, iridescence, transmission,
+volume, IBL, punctual lights, PCF shadows, order-independent transparency, two UV
+sets with per-slot transforms, tonemapping, motion vectors and skinning — nearly
+all of it masked off by D24 and switched on ticket by ticket (T0079 lights, T0086
+shadows, T0087 IBL, T0096 tonemapping).
+
+So "complete enough" is mostly a question of how fast that is unmasked, and the
+base is not thin. What it genuinely **cannot** do at any setting is the list
+above: parallax, height, triplanar, tessellation, vertex animation, custom BRDFs.
+Those need the surface stage, which is this ticket.
+
+### Re-cut 2026-08-05 — this ticket took the renderer half of T0060
+
+The original split claimed this ticket *"blocks nothing"*. That was false: it
+blocks the shape of 60.2 and it blocks T0086. See T0060's "Re-cut" section for
+the full reasoning and the table of what moved. In short, T0060 is now the
+material **data model**, and everything that decides how a surface is *shaded* —
+the standard material shader included — is here.
+
+Following Godot's model, which T0060 already cited: a standard material covers
+the common case, **plus the ability to attach a custom shader**. The difference
+after the re-cut is that the standard material is *also* written against our own
+surface stage rather than being Diligent's fixed shader.
 
 ## Done when
 
@@ -43,6 +72,61 @@ compiler cache, which is the wrong dependency to accept.
       screen position, depth, world position — not just a finished colour
 - [ ] Variant growth is bounded by a decision that is written down, not by
       whatever the permutations happen to be
+- [ ] **The standard material renders through the surface stage** — absorbed
+      from 60.2, and the reason this ticket exists before T0086
+- [ ] **Parallax occlusion mapping works on a standard material** — the owner's
+      "screen displacement", and the concrete proof the ceiling is lifted
+- [ ] A **textured** mesh renders with its pixels asserted — absorbed from 60.11,
+      the regression guard T0134 could not write
+- [ ] **What is *not* delivered is written down with a trigger**, not left vague
+      — see "Tessellation is deferred, with a named trigger"
+
+## Capability answer 2026-08-05 — exactly what the surface stage buys, and what it does not
+
+The owner asked, before agreeing the re-cut: *"if we do 141 we can get parallex
+and screen displacement for textures and so on?"* Checked against the vendored
+source rather than answered from memory, because the answer **changes the
+C1/C2/C3 decision** in 141.0.
+
+`PBR_Renderer::CreatePSO` sets `PSOCreateInfo.pVS` and `pPS` and nothing else.
+There is no hull, domain or geometry shader anywhere in the PBR pipeline.
+
+| Technique | What it needs | Delivered by |
+|---|---|---|
+| **Parallax / POM** — offset UVs by a height map and view vector before sampling | a pixel-shader hook before texture fetch | **C1, C2 or C3.** This *is* the surface stage |
+| **Triplanar** projection | same hook | **C1, C2 or C3** |
+| Detail maps, layer blending, vertex-colour splatting, dissolve | same hook | **C1, C2 or C3** |
+| T0093 vision-based visibility | same hook | **C1, C2 or C3** |
+| **Vertex displacement** — push existing vertices along normals | a hook in `RenderPBR.vsh` as well | **C1/C3 patching both shaders, or C2.** Limited by the mesh's existing vertex density |
+| **Tessellation displacement** — generate new geometry | **hull + domain shaders, which the pipeline never creates** | **C2 only** |
+
+**That last row is the finding, and it was missed the first time this was
+costed.** For tessellation the missing piece is **C++ PSO construction, not
+shader text**, so C1 cannot reach it however good the patch is. Only C2, where we
+own PSO creation, can add those stages. C1-vs-C2 is therefore a **capability**
+choice and not only a maintenance one, which is how it was first described.
+
+### The honest limitation of POM, so nobody is surprised by it
+
+Parallax occlusion mapping is an illusion computed in the pixel shader.
+**Silhouettes stay flat** — a POM brick wall still has a straight edge against the
+sky — and it degrades at grazing angles. It needs a height map and reasonable UVs.
+It is genuinely convincing head-on and genuinely not geometry. If the requirement
+is an object whose *outline* changes, that is tessellation, and that is C2.
+
+### Tessellation is deferred, with a named trigger
+
+**Recommendation: C1 first.** POM covers what is actually wanted the
+overwhelming majority of the time — depth on brick, cobblestone, tile grout,
+panelling — at pixel-shader cost, on flat geometry, with no extra triangles. True
+displacement is expensive and is mostly a terrain-and-hero-asset technique.
+
+C2 stays available because owning PSO creation is **additive** to owning the
+shader source, not a rewrite of it.
+
+**The trigger for revisiting is explicit rather than vague: when a silhouette
+must change.** Recorded so nobody assumes tessellation arrived with the surface
+stage, which is the misreading this paragraph exists to prevent.
 
 ## Decided-shaped finding 2026-08-05 — DiligentFX's *lighting* is a reusable library; its *material shader* is not hookable
 
@@ -169,6 +253,17 @@ T0060 already says it must not foreclose and does not.
       first because everything else here depends on the answer. **Do it before
       T0086**: shadows build on `RenderPBR.psh`'s shadow path, and moving to our
       own PS main afterwards moves shadow sampling with it
+- [ ] 141.10 **The standard material shader**, written against the surface stage
+      (was 60.2). Includes the two obligations T0060 inherited from T0134:
+      un-inline `GetMaterialPSOFlags` in `SceneRenderer.cpp` the moment any
+      extended-material setting is enabled, and decide `EnableEmissive`/`EnableAO`
+      deliberately rather than by drift
+- [ ] 141.11 **The textured-render regression test** T0134 could not write (was
+      60.11) — a textured mesh with its pixels asserted, which is what catches an
+      unwritten `PBRFrameAttribs::Renderer` and its garbage `MipBias`
+- [ ] 141.12 **Render the missing-material fallback** — T0060.10 defines the
+      convention and the three-state table; this draws it, and must reach the
+      same code path as 141.4's failed-compile pattern
 - [ ] 141.9 **Tessellation / displacement**, or an explicit decision not to.
       Further out than the other two: `PBR_Renderer` creates no hull or domain
       shaders, so this is new pipeline work rather than new shader code
@@ -207,6 +302,70 @@ Tinting the checks differently per cause — magenta for a missing asset, red fo
 failed compile — is about one line and keeps the at-a-glance distinction. Not
 taken, because the owner asked for one pattern and the log already answers "which".
 Recorded so it is a decision someone can revisit rather than an option nobody saw.
+
+## Answered 2026-08-05 — the shader language, and how parameters are declared
+
+The owner asked: *"question on custom shader parameter, will it be in the HSLS?
+how will it be defined where to place them and refference them?"*
+
+### The language is HLSL, and that is already settled
+
+Not reopened here, but restated because it is the premise everything below rests
+on. **D2** makes OpenGL the only fallback on Windows, and Diligent's portable
+path is **HLSL** — compiled through glslang for Vulkan, converted for GL by its
+HLSL2GLSL converter. GLSL written directly does not reach both backends through
+one pipeline. Whatever is chosen becomes the language every custom material is
+written in **forever**, so it is worth the sentence: it is HLSL, and 141.1 must
+also record which HLSL subset is safe on the GL path, because the converter has
+documented limitations.
+
+### How parameters are declared: reflect the buffer, annotate the source
+
+Two mechanisms exist and **neither is sufficient alone**, which is the whole
+answer:
+
+- **Reflect the constant buffer** — `IShader::GetResourceDesc` and the shader
+  resource variables give names, types and offsets. This is *authoritative* and
+  cannot drift from the shader, because it is derived from the compiled shader.
+  What it cannot know is ranges, defaults, tooltips, or whether a `float4` is a
+  colour or four unrelated numbers.
+- **An annotation block in the shader source** for exactly those. Godot's
+  `uniform float x : hint_range(0, 1) = 0.5;` is the model to copy.
+
+**Reflection alone** gives an inspector full of unlabelled, unbounded floats.
+**Declaration alone** drifts from the shader the first time somebody edits one
+and not the other. So: layout from reflection, presentation from annotation, and
+a parameter present in the annotation but absent from the compiled buffer is a
+**warning**, not a silent omission.
+
+### Where the values are placed on the GPU
+
+`PBR_Renderer` already reserves a configurable custom-data region —
+`GetPBRPrimitiveAttribsSize(Flags, CustomDataSize = sizeof(float4))`, with
+`PSO_FLAG_ENABLE_CUSTOM_DATA_OUTPUT` — so there is a per-draw channel to shader
+parameters **without inventing a buffer**. `Material::ShaderAttribs::CustomData`
+is a second, per-material `float4` of the same kind. Check whether those cover
+the common case before adding a third constant buffer; a custom shader with four
+floats of parameters should not cost a buffer of its own.
+
+## D24 must be revisited as part of 141.0, not left to erode
+
+**D24 says materials map onto `PBRMaterialShaderAttribs`.** That decision was
+taken when `RenderPBR.psh` *was* the material shader. If 141.0 chooses to own the
+surface stage, the premise changes: the shader consuming the material becomes
+ours, and the parameter set is then bounded by what our surface function reads
+rather than by what Diligent's struct happens to carry.
+
+**The decision may well survive** — reusing their struct layout keeps their
+lighting functions callable with no translation, which is a good reason to keep
+it. What must not happen is the decision quietly ceasing to be true while the
+log still asserts it. **141.0 amends D24 explicitly, either way.**
+
+The same applies to the omission recorded in `11-material-format.md`:
+`SpecularFactor` is absent because it is read only under
+`PBR_WORKFLOW_SPECULAR_GLOSSINESS` (`RenderPBR.psh:159`). If the surface stage
+becomes ours, that justification is no longer automatic and should be restated
+rather than inherited.
 
 ## Inherited notes, moved from T0060 rather than re-derived
 

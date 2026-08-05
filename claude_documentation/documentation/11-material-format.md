@@ -149,8 +149,13 @@ two slots would have to be combined before they could be sampled anyway.
 **There is no displacement or height slot, and Diligent has no path for one.**
 `PBR_Renderer` implements neither parallax-occlusion mapping nor tessellation, so
 a `displacementTexture` key would be a field nothing reads — which is the mistake
-`Camera::cullingMask` spent three tickets being. Height-mapped surfaces need
-shader work rather than a material parameter, and that belongs with **T0141**.
+`Camera::cullingMask` spent three tickets being.
+
+This is not a gap in the format, it is a gap in the *shader*: parallax needs a
+hook before texture sampling and `RenderPBR.psh` has none. **T0141** owns it —
+141.7 parallax and height, 141.8 triplanar, 141.9 tessellation. When the surface
+stage lands, a height slot is one line here and no format change, because reading
+is lenient and every file already written stays valid.
 
 ### UV channels: two of them, transformed per channel, selected per slot
 

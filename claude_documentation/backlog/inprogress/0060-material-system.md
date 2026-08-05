@@ -1,4 +1,4 @@
-# T0060 — Material assets and custom shader materials
+# T0060 — Material assets
 
 | | |
 |---|---|
@@ -8,7 +8,8 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 450 |
 | **Created** | 2026-08-03 |
-| **Refs** | [0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) — **must reconcile this ticket's material model with `PBR_Renderer`'s material attribs, or diverge deliberately and say so.** T0028 adopted DiligentFX's PBR renderer; read T0134.1 before designing materials |
+| **Refs** | [0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) — **must reconcile this ticket's material model with `PBR_Renderer`'s material attribs, or diverge deliberately and say so.** T0028 adopted DiligentFX's PBR renderer; read T0134.1 before designing materials. [../open/0141-custom-shader-materials.md](../open/0141-custom-shader-materials.md) — **took the renderer half of this ticket on 2026-08-05**; see "Re-cut" below. [../open/0059-prefabs.md](../open/0059-prefabs.md) 59.10 |
+| **Scope** | **The material data model only.** Anything that decides how a surface is *shaded* is T0141's, including the standard material shader |
 
 ## Why
 
@@ -17,29 +18,67 @@ Diligent's `PBR_Renderer` shades glTF materials, but there is no material
 across meshes. Without one, the only way to change how something looks is to
 re-export from the DCC tool.
 
-Following Godot's model: a standard PBR material for the common case, **plus the
-ability to attach a custom shader** for anything else.
+**This ticket is the data model and nothing else.** How a surface is shaded — the
+standard material shader included — is T0141's, for the reason recorded under
+"Re-cut" below.
 
 ## Done when
 
-- [ ] Material is an asset with a GUID, serialized (T0022/T0020), and reflected
+- [x] Material is an asset with a GUID, serialized (T0022/T0020), and reflected
       so the inspector gets it for free
-- [ ] Standard materials drive Diligent's `PBR_Renderer`
-- [ ] Materials are assignable per mesh, overriding what the model imported
-- [ ] A material that is missing or will not load falls back **visibly**, never
-      silently and never as a crash
-- [ ] A **textured** mesh renders with its pixels asserted — the regression guard
-      T0134 could not write, because it needs a texture path a test can drive
-- [ ] Custom shader materials are **T0141's**, and nothing here forecloses them
+- [ ] Materials are assignable **per surface** on the mesh component, overriding
+      what the model imported
+- [ ] A material that is missing or will not load has a **defined, visible**
+      fallback — the convention and the three-state table are this ticket's; the
+      *rendering* of it is T0141's
+- [ ] Nothing here decides how a surface is shaded, so **T0141 is free to change
+      the shader without changing the asset**
 
 ## Subtasks
 
 - [x] 60.1 Material asset: the parameter block, mapped onto
       `PBRMaterialShaderAttribs`, plus room for a shader reference T0141 fills
-- [ ] 60.2 Standard PBR material mapping onto `PBR_Renderer`
 - [ ] 60.6 Material assignment on the mesh component, overriding import defaults
-- [ ] 60.10 A visible fallback material for missing or unloadable assets
-- [ ] 60.11 The textured-render regression test T0134 could not write
+- [ ] 60.10 The fallback **convention** for missing or unloadable assets — the
+      three-state table, and a default-GUID slot never being treated as an error
+
+### Moved to T0141 on 2026-08-05 — the re-cut
+
+- 60.2 Standard PBR material mapping onto `PBR_Renderer` → **141.10**
+- 60.11 The textured-render regression test T0134 could not write → **141.11**
+
+## Re-cut 2026-08-05, at the owner's call — and the split reasoning that was wrong
+
+The owner's words: *"i think we should of done 141 first then 0060 because
+everything im asking for is just 141 and currently blocked, i think 0060 should
+follow what 141 can do"*. They were right, and the reason is worth recording
+because it was **my own stated justification that turned out to rest on a false
+fact**.
+
+The 2026-08-05 split said T0141 *"is larger than the first and **blocks
+nothing**"*. That is false in two places found the same day:
+
+- it blocks the **shape of 60.2** — "standard materials drive `PBR_Renderer`"
+  bakes in the assumption that `RenderPBR.psh` is the material shader, which is
+  precisely what T0141.0 is deciding;
+- it blocks **T0086**, whose shadow sampling is built on that same shader.
+
+So the split was made on a cost argument resting on a wrong fact, and the fault
+line does not run between the two tickets — **it runs through this one**:
+
+| Work | Depends on the shader decision? |
+|---|---|
+| 60.1 asset, GUID, serialization, reflection, UV channels | **No** — done, and safe |
+| 60.6 per-slot `materials` on `MeshRenderer` | **No** — pure data model |
+| 60.10 fallback *convention* | **No** — it is a policy |
+| 60.2 standard material shader | **Yes** → 141.10 |
+| 60.11 textured-render regression test | **Yes**, needs a working textured path → 141.11 |
+
+**The test that settles it: what do T0045 and T0086 actually need from here?**
+T0045 needs material *identity and blend mode* to sort and bucket on. T0086 needs
+*cutout* materials. Both are 60.1 (done) plus 60.6, and neither needs one line of
+shader. So this ticket keeps exactly what unblocks them and gives up the rest —
+which is what "T0060 should follow what T0141 can do" means in practice.
 
 ### Descoped 2026-08-05 — moved to [../open/0141-custom-shader-materials.md](../open/0141-custom-shader-materials.md)
 

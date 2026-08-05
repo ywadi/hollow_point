@@ -82,7 +82,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 440 | [T0045](open/0045-culling-and-render-queues.md) | Culling, sorting and render queues | 4 — Render layer | 🔜 TODO | High | Complex |
 | 445 | [T0134](completed/0134-pbr-renderer-adoption.md) | How far DiligentFX's PBR renderer goes, and what inherits it | 4 — Render layer | ✅ DONE | High | Moderate |
 | 450 | [T0060](inprogress/0060-material-system.md) | Material assets | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
-| 455 | [T0141](open/0141-custom-shader-materials.md) | Custom shader materials | 4 — Render layer | 🔜 TODO | High | Complex |
+| 455 | [T0141](open/0141-custom-shader-materials.md) | The surface stage: standard and custom material shaders | 4 — Render layer | 🔜 TODO | High | Complex |
 | 460 | [T0096](open/0096-hdr-pipeline-and-tonemapping.md) | HDR pipeline, tonemapping and the linear-workflow policy | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 470 | [T0079](completed/0079-lighting-system.md) | Lights and per-object light selection | 4 — Render layer | ✅ DONE | High | Complex |
 | 480 | [T0086](open/0086-shadows.md) | Shadow rendering | 4 — Render layer | 🔜 TODO | High | Complex |

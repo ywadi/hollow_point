@@ -8,7 +8,8 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 480 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0078, T0085, T0091, T0092, T0093 |
+| **Blocked by** | [../open/0141-custom-shader-materials.md](../open/0141-custom-shader-materials.md) **141.0** — the surface-stage decision. Shadow sampling is built on `RenderPBR.psh`; if the standard material later moves onto our own pixel shader, shadow sampling moves with it. **Materially cheaper decided before this ticket than after**, which is why the block exists |
+| **Refs** | T0078, T0085, T0091, T0092, T0093, [../inprogress/0060-material-system.md](../inprogress/0060-material-system.md) — needs **cutout** materials (`AlphaMode::Mask`) for alpha-tested shadow casters, delivered by 60.1 |
 
 ## Why
 

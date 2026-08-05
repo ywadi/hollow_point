@@ -10,6 +10,23 @@
 | **Created** | 2026-08-02 |
 | **Refs** | T0050, T0085, T0086, T0089, T0120, [../completed/0081-camera-system.md](../completed/0081-camera-system.md), [../completed/0027-render-stack.md](../completed/0027-render-stack.md), [../completed/0085-layers-and-masks.md](../completed/0085-layers-and-masks.md) — **the `cullingMask` obligation is discharged**; T0085 honours it in `parseScene`, leaving frustum culling and sorting here |
 
+## Dependency note 2026-08-05 — unblocked, and shader-independent
+
+**What this ticket needs from T0060 is already delivered.** Queues bucket by
+material properties and sorting reduces material switches, so what is required is
+material **identity and blend mode** — `Guid` plus `AlphaMode` — which landed in
+60.1, with per-surface assignment in 60.6.
+
+**Nothing here depends on T0141's surface-stage decision**, because culling and
+sorting do not care how a surface is shaded. So this ticket can run before or
+after T0141 without rework, which is what makes it safe to slot anywhere in the
+sequence — unlike T0086, which is blocked on 141.0.
+
+One thing it *will* want from T0141 when that lands: a **PSO identity** to sort
+on. Sorting by material GUID reduces state changes only approximately; sorting by
+the pipeline state actually bound is what removes them. Recorded rather than
+built, because the PSO identity does not exist yet.
+
 ## Why
 
 Diligent is a graphics abstraction, not a game engine: it has **no scene graph,

@@ -10,6 +10,32 @@
 | **Created** | 2026-08-02 |
 | **Refs** | T0053 (Blocks this), T0032, T0071, T0062, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D23, [../../documentation/09-gameplay-authoring.md](../../documentation/09-gameplay-authoring.md), [../completed/0112-string-identity-and-localisation.md](../completed/0112-string-identity-and-localisation.md) |
 
+## Obligation from T0060 (2026-08-05) — percentages are the inspector's job
+
+The owner asked whether PBR strengths should be **0-100**. They are stored
+**0..1**, because they multiply straight into shader math and a second unit means
+a conversion at exactly one edge — which is a bug the first time somebody
+hand-writes a material and it comes out a hundred times too bright.
+
+**The percentage belongs here.** `PropertyMeta` already carries `min`, `max` and
+a tooltip per property (T0053), so this panel can show a 0–100% slider while the
+file stays in the units the shader wants. That is the whole resolution, and it is
+recorded on *this* ticket because this is where it has to be honoured.
+
+Three properties must **not** be clamped to 1 by a naive percentage widget, and
+clamping them would be a real authoring regression:
+
+- **`Material::emissive`** is HDR — values above 1 are the entire point once
+  T0096's tonemapping exists;
+- **`Material::normalScale`** above 1 exaggerates a normal map, which is a common
+  and legitimate authoring move;
+- **`Light::intensity`** is unbounded for the same reason.
+
+`Material::baseColour` genuinely *is* bounded to 0..1 — a surface reflecting more
+light than falls on it is not a material, it is a bug — so the clamp is right
+there and wrong on the three above. The distinction has to be per property, which
+is what `PropertyMeta` is for.
+
 ## Why
 
 Built as a pair, because the inspector is useless without the hierarchy feeding
