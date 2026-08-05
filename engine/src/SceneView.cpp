@@ -2,6 +2,7 @@
 
 #include <hp/Assets.hpp>
 #include <hp/CameraSystem.hpp>
+#include <hp/Light.hpp>
 #include <hp/DepthConvention.hpp>
 #include <hp/Log.hpp>
 #include <hp/Profiling.hpp>
@@ -210,8 +211,12 @@ Diligent::ITextureView* SceneView::render(Diligent::IDeviceContext* context, Sce
     counted.considered = parsed.considered;
     counted.culledByLayer = parsed.culledByLayer;
 
+    // Frame-wide for now: every light lights everything. Per-object selection
+    // and the illumination layer mask are T0079.3/79.5.
+    const LightList lights = gatherLights(scene);
+
     DrawSubmitStats submitted;
-    impl.renderer.render(context, impl.drawList, *view, pool, &submitted);
+    impl.renderer.render(context, impl.drawList, *view, pool, lights, &submitted);
     counted.submitted = submitted.submitted;
     counted.missingMesh = submitted.missingMesh;
 

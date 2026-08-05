@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Complex |
 | **Phase** | 4 — Render layer |
@@ -23,22 +23,106 @@ usable authoring story.
 
 ## Done when
 
-- [ ] Light components: directional, point, spot, with colour, intensity, range
+- [x] Light components: directional, point, spot, with colour, intensity, range — `hp::Light`, all three verified in pixels on hardware
 - [ ] Lights are authored in the editor and serialized with the scene
 - [ ] Per-object light selection — the most relevant lights within the shader limit
 - [ ] Lights respect the illumination layer mask (T0085)
 - [ ] Lights are frustum-culled like geometry (T0045)
-- [ ] Exceeding the light limit degrades gracefully, never pops or fails
+- [~] Exceeding the light limit degrades gracefully — it **caps and warns** rather than failing, but *which* lights survive is registry order, which is arbitrary. Graceful requires selection (79.3)
 
 ## Subtasks
 
-- [ ] 79.1 Light components and their reflected properties
-- [ ] 79.2 Light gathering and frustum culling per frame
+- [~] 79.1 Light components — built; **not yet reflected** (`Scene.cpp` registration), so they do not serialise
+- [~] 79.2 Light gathering — built (`gatherLights`), with the placement resolve split out for T0093; **no frustum culling**, which needs T0045
 - [ ] 79.3 Per-object light selection — see notes, this is the design decision
-- [ ] 79.4 Feed lights into `PBR_Renderer`'s frame attribs
+- [x] 79.4 Feed lights into `PBR_Renderer`'s frame attribs — written after the frame struct, with `Renderer.LightCount` set
 - [ ] 79.5 Illumination layer mask applied during selection (T0085)
 - [ ] 79.6 Debug visualisation of light bounds and affected objects (T0061)
 - [ ] 79.7 Profiling zones for light gathering and selection
+
+## Built and measured 2026-08-05 — the engine renders lit surfaces
+
+`engine/include/hp/Light.hpp`, `engine/src/Light.cpp`,
+`tests/gpu/lit_surface_test.cpp`. **On an RTX 4070**, both backends:
+
+```
+lit red quad under a white light: (211, 144, 144)
+same quad with no light:          (0, 0, 0)
+intensity 0.5: (92, 61, 61)   versus 3.0: (211, 144, 144)
+point light 2 units away: (255, 145, 145),  9 units away: (80, 46, 46)
+point light past its range: (0, 0, 0)
+spot wide cone: (255, 251, 251),  narrow cone: (0, 0, 0)
+```
+
+That is **the assertion T0134 recorded as owed and nothing here could make**:
+every pixel test before this one could only ask "did geometry arrive", because
+the frame was black whatever the material said.
+
+### The bug, and it is the one this repository had already written down
+
+Adding `PSO_FLAG_USE_LIGHTS` to `kFeatureMask` **changed nothing**. The frame
+came back exactly as black as before, with every counter still agreeing a draw
+had been issued.
+
+`RenderInfo::Flags` is a **mask** — T0134 recorded that in as many words, after
+T0028 got it wrong with `PSO_FLAG_UNSHADED` — so it can only ever *remove* a
+flag. `flags = (vertexFlags | kMaterialFlags) & kFeatureMask` cannot produce a
+bit that is not already in the left-hand side.
+
+Fixed by splitting the two ideas that were being conflated: **`kFeatureMask`**
+is what is permitted, **`kEnabledFeatures`** is what the engine turns on. A
+feature not derived from the material or the vertex layout — lights, and later
+IBL and shadows — goes in the second. Worth naming because the ticket after this
+one will reach for the same lever.
+
+### Two measurements that were surprising and are not bugs
+
+**The specular highlight is achromatic.** A red quad under a white light reads
+`(211, 144, 144)`, not `(255, 0, 0)` — the specular term is the colour of the
+*light*, so it lifts green and blue equally. The first version of the test
+asserted `g < r / 2` and failed; the assertion was wrong about PBR, not the
+renderer wrong about lighting. It now asserts ordering and the `g == b` symmetry,
+which distinguishes "lit red surface" from every failure mode without pinning a
+BRDF this ticket does not own.
+
+**The test quad is lit from behind.** The directional case works with
+`L = -direction = +Z`, so a point light placed between the camera and the quad
+faces *away* from the surface and renders black. Correct, and it cost a
+measurement to see — the lights had to move to `z > 3`. Recorded because the next
+person writing a lighting test will put the lamp between the camera and the
+subject, exactly as I did.
+
+### T0093's obligation, discharged before it could be forked
+
+The ticket says gathering must stay reusable for a projector that does not shade,
+"or T0093 ends up forking it". The forkable part is not the loop — it is
+**deriving a world position and facing from a transform**, including the glTF
+negative-Z convention and the degenerate-matrix guard. Three lines that are wrong
+in two interesting ways.
+
+That is now `hp::resolvePlacement(const float4x4&)` returning `ResolvedPlacement`,
+which `gatherLights` calls. A vision cone reuses it and never touches `Light`.
+**Per-object *selection* (79.3) does not exist yet, and when it does it must be
+written generically too** — that half of the obligation is still open.
+
+### Not done, and the honest shape of it
+
+- **79.3 — per-object light selection does not exist.** Every light lights
+  everything, frame-wide. This is the ticket's stated design decision
+  (nearest-N versus clustered) and it is untouched.
+- **79.5 — no illumination layer mask.** `Light` deliberately has **no**
+  `LayerMask` field yet: a mask is applied *during selection*, and adding a field
+  now that nothing reads is precisely the mistake `Camera::cullingMask` spent
+  three tickets being. It goes in with 79.3.
+- **Lights are not reflected and do not serialise.** `Scene.cpp` registers
+  `Camera` and `MeshRenderer` with `entt::meta`; `Light` is not registered, so a
+  light cannot be saved with a scene. 79.1 is only half done.
+- **No frustum culling of lights** (79.2) — needs T0045.
+- **Intensity is unitless.** glTF specifies lux for directional and candela for
+  point/spot; honouring that needs exposure, which is T0096's. Documented in the
+  header as a revisit rather than quietly approximated.
+- **Nothing measures cost.** 79.7's profiling zones exist via `HP_PROFILE_ZONE`
+  in `gatherLights`, but no scene has enough lights to measure.
 
 ## Notes / findings
 

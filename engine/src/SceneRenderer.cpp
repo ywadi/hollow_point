@@ -1,5 +1,7 @@
 #include <hp/SceneRenderer.hpp>
 
+#include <hp/Light.hpp>
+
 #include <hp/Assets.hpp>
 #include <hp/DepthConvention.hpp>
 #include <hp/Log.hpp>
@@ -78,7 +80,24 @@ Diligent::TEXTURE_FORMAT toDiligentFormat(TargetFormat format) {
 constexpr Diligent::PBR_Renderer::PSO_FLAGS kFeatureMask =
     static_cast<Diligent::PBR_Renderer::PSO_FLAGS>(
         Diligent::PBR_Renderer::PSO_FLAG_VERTEX_ATTRIBS |
-        Diligent::PBR_Renderer::PSO_FLAG_DEFAULT_TEXTURES);
+        Diligent::PBR_Renderer::PSO_FLAG_DEFAULT_TEXTURES |
+        Diligent::PBR_Renderer::PSO_FLAG_USE_LIGHTS);
+
+/// Features the engine **turns on**, as opposed to what the mask above permits.
+///
+/// **These are two different things and conflating them costs an afternoon.**
+/// The mask can only ever *remove* flags — T0134 recorded that in as many words
+/// — so adding `PSO_FLAG_USE_LIGHTS` to `kFeatureMask` and stopping there
+/// changes nothing at all: the flag has to be present in the accumulated set
+/// before the AND can preserve it. It was written that way first, and the frame
+/// came back exactly as black as before, with every counter still agreeing that
+/// a draw had been issued.
+///
+/// So a feature that is not derived from the material or the vertex layout —
+/// lights, and later IBL and shadows — is enabled **here**, and the mask is what
+/// keeps everything else off.
+constexpr Diligent::PBR_Renderer::PSO_FLAGS kEnabledFeatures =
+    Diligent::PBR_Renderer::PSO_FLAG_USE_LIGHTS;
 
 } // namespace
 
@@ -287,7 +306,7 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                     Diligent::PBR_Renderer::PSO_FLAG_USE_NORMAL_MAP |
                     Diligent::PBR_Renderer::PSO_FLAG_USE_PHYS_DESC_MAP);
             const Diligent::PBR_Renderer::PSO_FLAGS flags =
-                (vertexFlags | kMaterialFlags) & kFeatureMask;
+                (vertexFlags | kMaterialFlags | kEnabledFeatures) & kFeatureMask;
 
             const Diligent::PBR_Renderer::PSOKey key{
                 Diligent::PBR_Renderer::RenderPassType::Main, flags,
@@ -381,7 +400,10 @@ bool SceneRenderer::create(Diligent::IRenderDevice* device, Diligent::IDeviceCon
     info.EnableAO = false;
     info.EnableEmissive = false;
     info.EnableShadows = false;
-    info.MaxLightCount = 0;
+    // **Sizes the frame attributes buffer**, which is
+    // `CameraAttribs * 2 + renderer params + PBRLightAttribs * MaxLightCount`.
+    // Zero here is what made `PSO_FLAG_USE_LIGHTS` pointless even when set.
+    info.MaxLightCount = static_cast<Diligent::Uint32>(kMaxLights);
     // **This is 28.2.** The renderer creates white/black/default-normal
     // textures, which is what a material with no texture assigned samples. So
     // "entities with no material get a visible default" costs nothing here --
@@ -475,6 +497,7 @@ bool SceneRenderer::valid() const {
 
 std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawList& list,
                                   const ResolvedView& view, const AssetPool& pool,
+                                  const LightList& lights,
                                   DrawSubmitStats* stats) {
     HP_PROFILE_ZONE();
 
@@ -556,7 +579,42 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
             // it is what makes "no lights" mean no lights rather than reading
             // past the end of an array that `MaxLightCount = 0` did not
             // allocate.
-            params.LightCount = 0;
+            // **Light data follows the frame struct in the same buffer** --
+            // `PBRFrameAttribs` deliberately does not declare the array (its
+            // length is a shader define), so the C++ side writes past the end of
+            // the struct into space `GetPRBFrameAttribsSize` reserved. This is
+            // how Diligent's own viewer does it; there is no typed accessor.
+            auto* lightArray = reinterpret_cast<Diligent::HLSL::PBRLightAttribs*>(frame + 1);
+            const std::size_t lightCount = std::min(lights.size(), kMaxLights);
+            for (std::size_t i = 0; i < lightCount; ++i) {
+                const ResolvedLight& source = lights[i];
+
+                // Converted into Diligent's own glTF light rather than packed by
+                // hand, so `Range4` and the spot cone's scale/offset come from
+                // the code that owns the layout (D24). Reimplementing that
+                // packing is how a layout drifts silently.
+                Diligent::GLTF::Light lamp;
+                switch (source.light.type) {
+                case LightType::Directional:
+                    lamp.Type = Diligent::GLTF::Light::TYPE::DIRECTIONAL;
+                    break;
+                case LightType::Point:
+                    lamp.Type = Diligent::GLTF::Light::TYPE::POINT;
+                    break;
+                case LightType::Spot:
+                    lamp.Type = Diligent::GLTF::Light::TYPE::SPOT;
+                    break;
+                }
+                lamp.Color = source.light.colour;
+                lamp.Intensity = source.light.intensity;
+                lamp.Range = source.light.range;
+                lamp.InnerConeAngle = source.light.innerConeAngle;
+                lamp.OuterConeAngle = source.light.outerConeAngle;
+
+                Diligent::GLTF_PBR_Renderer::WritePBRLightShaderAttribs(
+                    {&lamp, &source.position, &source.direction, 1.0F}, lightArray + i);
+            }
+            params.LightCount = static_cast<int>(lightCount);
 
             // Tonemapping parameters. Unused while `PSO_FLAG_ENABLE_TONE_MAPPING`
             // is masked off, and set to Diligent's own defaults anyway so that

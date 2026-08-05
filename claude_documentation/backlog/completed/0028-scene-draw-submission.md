@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 410 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0120, [../open/0033-viewport-panel.md](../open/0033-viewport-panel.md), [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md), [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), [../completed/0081-camera-system.md](../completed/0081-camera-system.md), [0027-render-stack.md](0027-render-stack.md), [../open/0079-lighting-system.md](../open/0079-lighting-system.md) — **see the caveat below on what this ticket's pixel evidence actually proves** |
+| **Refs** | T0120, [../open/0033-viewport-panel.md](../open/0033-viewport-panel.md), [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md), [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), [../completed/0081-camera-system.md](../completed/0081-camera-system.md), [0027-render-stack.md](0027-render-stack.md), [../inprogress/0079-lighting-system.md](../inprogress/0079-lighting-system.md) — **see the caveat below on what this ticket's pixel evidence actually proves** |
 
 ## Why
 

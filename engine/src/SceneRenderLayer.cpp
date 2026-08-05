@@ -2,6 +2,7 @@
 
 #include <hp/Assets.hpp>
 #include <hp/CameraSystem.hpp>
+#include <hp/Light.hpp>
 #include <hp/Log.hpp>
 #include <hp/Profiling.hpp>
 #include <hp/Scene.hpp>
@@ -124,7 +125,8 @@ void SceneRenderLayer::onRenderLayer(const RenderPassContext& pass) {
     // The resolved camera's mask (T0085), so a world layer and a HUD layer can
     // share one scene and each draw only its own objects.
     drawList_ = parseScene(*scene_, view->camera.cullingMask);
-    renderer_.render(pass.context, drawList_, *view, *pool_, &lastFrame);
+    const LightList lights = gatherLights(*scene_);
+    renderer_.render(pass.context, drawList_, *view, *pool_, lights, &lastFrame);
 }
 
 void configureAsHud(SceneRenderLayer& layer, std::uint8_t slot, int order) {

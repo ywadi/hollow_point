@@ -22,6 +22,7 @@
 #include <hp/CameraSystem.hpp>
 #include <hp/DrawSubmission.hpp>
 #include <hp/FrameTargets.hpp>
+#include <hp/Light.hpp>
 
 #include <cstddef>
 #include <memory>
@@ -123,9 +124,12 @@ public:
     ///        skipped and counted.
     /// @param stats optional; filled with what the pass did. Null to ignore.
     /// @returns how many items were drawn.
+    /// @param lights what illuminates the scene, from `gatherLights`. **An
+    ///        empty list renders black**, which is not an error and is exactly
+    ///        what every frame did before T0079.
     std::size_t render(Diligent::IDeviceContext* context, const DrawList& list,
                        const ResolvedView& view, const AssetPool& pool,
-                       DrawSubmitStats* stats = nullptr);
+                       const LightList& lights = {}, DrawSubmitStats* stats = nullptr);
 
 private:
     struct Impl;

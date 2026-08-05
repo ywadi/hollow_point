@@ -123,7 +123,7 @@ void exerciseSceneRenderer(hp::RenderBackend backend, const char* backendName) {
 
         hp::DrawSubmitStats stats;
         const std::size_t drawn =
-            renderer.render(device.render->context(), hp::DrawList{}, view, pool, &stats);
+            renderer.render(device.render->context(), hp::DrawList{}, view, pool, hp::LightList{}, &stats);
         CHECK(drawn == 0);
         CHECK(stats.submitted == 0);
         CHECK(stats.missingMesh == 0);
@@ -150,7 +150,7 @@ void exerciseSceneRenderer(hp::RenderBackend backend, const char* backendName) {
 
         hp::DrawSubmitStats stats;
         const std::size_t drawn =
-            renderer.render(device.render->context(), list, view, pool, &stats);
+            renderer.render(device.render->context(), list, view, pool, hp::LightList{}, &stats);
         CHECK(drawn == 0);
         CHECK(stats.submitted == 0);
         CHECK(stats.missingMesh == 1);

@@ -86,6 +86,7 @@ add_library(hp_engine SHARED
     src/SceneView.cpp
     src/Serialize.cpp
     src/Settings.cpp
+    src/Light.cpp
     src/Layer.cpp
     src/Log.cpp
     src/Time.cpp

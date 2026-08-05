@@ -119,7 +119,7 @@ bool valid() const
 ## `SceneRenderer::render`
 
 ```cpp
-std::size_t render(Diligent::IDeviceContext * context, const int & list, const ResolvedView & view, const AssetPool & pool, DrawSubmitStats * stats)
+std::size_t render(Diligent::IDeviceContext * context, const int & list, const ResolvedView & view, const AssetPool & pool, const int & lights, DrawSubmitStats * stats)
 ```
 
  Draws a list through a view.
@@ -134,3 +134,6 @@ std::size_t render(Diligent::IDeviceContext * context, const int & list, const R
         skipped and counted.
  @param stats optional; filled with what the pass did. Null to ignore.
  @returns how many items were drawn.
+ @param lights what illuminates the scene, from `gatherLights`. **An
+        empty list renders black**, which is not an error and is exactly
+        what every frame did before T0079.

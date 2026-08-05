@@ -46,6 +46,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Input.hpp>`](Input.md) | 39 | 39 |
 | [`<hp/Layer.hpp>`](Layer.md) | 28 | 16 |
 | [`<hp/Layers.hpp>`](Layers.md) | 15 | 15 |
+| [`<hp/Light.hpp>`](Light.md) | 7 | 7 |
 | [`<hp/Log.hpp>`](Log.md) | 22 | 12 |
 | [`<hp/Math.hpp>`](Math.md) | 6 | 6 |
 | [`<hp/Module.hpp>`](Module.md) | 6 | 6 |
@@ -66,7 +67,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
 
-**674 public declarations across 35 headers, 557 documented.**
+**681 public declarations across 36 headers, 564 documented.**
 
 ## Every symbol
 
@@ -398,6 +399,13 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `LayerMask::empty` | [`Layers.hpp`](Layers.md) |
 | `LayerMask::operator==` | [`Layers.hpp`](Layers.md) |
 | `defaultObjectLayers` | [`Layers.hpp`](Layers.md) |
+| `LightType` | [`Light.hpp`](Light.md) |
+| `kMaxLights` | [`Light.hpp`](Light.md) |
+| `Light` | [`Light.hpp`](Light.md) |
+| `ResolvedPlacement` | [`Light.hpp`](Light.md) |
+| `resolvePlacement` | [`Light.hpp`](Light.md) |
+| `ResolvedLight` | [`Light.hpp`](Light.md) |
+| `gatherLights` | [`Light.hpp`](Light.md) |
 | `LogLevel` | [`Log.hpp`](Log.md) |
 | `logLevelName` | [`Log.hpp`](Log.md) |
 | `LogCategory` | [`Log.hpp`](Log.md) |
