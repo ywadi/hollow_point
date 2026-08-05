@@ -69,6 +69,27 @@ The backlog README states it, and it gets forgotten anyway:
 
    A one-way reference is not enough. Nobody reads the ticket they have already
    closed.
+6. **Keep the Current ticket sequence current** — the list at the top of
+   [`claude_documentation/backlog/README.md`](claude_documentation/backlog/README.md#current-ticket-sequence),
+   which is also what the web board shows first. **Remove an item when it is
+   done, in the same commit that finishes it**, renumber what is left, and bump
+   the `Set` date. Adding or reordering is the same rule.
+
+   **No check can catch this and none ever will.** A finished *subtask* leaves
+   no trace on disk: the ticket stays in `inprogress/`, so `check_backlog.py`
+   passes, the board renders, and the sequence quietly describes work that is
+   already merged. It went stale within hours of being created, for exactly this
+   reason, and it took a person noticing.
+
+   The point of the section is that it survives a context reset — so a stale one
+   is worse than none at all, because the next session trusts it and starts on
+   something finished. It is the one document here whose value comes entirely
+   from being current.
+
+   **If the sequence and your work disagree, say so rather than quietly
+   diverging.** Deciding the order is the owner's call, not something to
+   rewrite mid-task; if what you found makes the next item wrong, that is worth
+   raising, and the ticket sequence is where the disagreement gets settled.
 
 Run `python3 tools/check_backlog.py` before you commit backlog changes. It
 verifies the folder, the `Status` field and the board row agree, and that every
