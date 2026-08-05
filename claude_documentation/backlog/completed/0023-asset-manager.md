@@ -147,11 +147,24 @@ Recorded on T0024, so the linkage reads both ways.
 
 ### Known and deliberate
 
-**sRGB is forced on for every imported texture.** Correct for colour, wrong for a
-normal map or a mask. It needs to become a per-asset setting on the metafile,
-and it is called out rather than guessed at because getting it wrong is a
-lighting bug nobody attributes to the importer. That is a small ticket of its
-own, not a line to change blind.
+**sRGB is forced on for every imported texture** (`engine/src/AssetImport.cpp`,
+`loadInfo.IsSRGB = true`). Correct for colour, wrong for a normal map or a mask.
+It needs to become a per-asset setting on the metafile, and it is called out
+rather than guessed at because getting it wrong is a lighting bug nobody
+attributes to the importer.
+
+**That ticket already exists — it is [T0097](../open/0097-texture-import-pipeline.md), and 97.3 is exactly this**:
+"Metafile settings and defaults-by-usage; the sRGB flag must flow through to the
+view format (T0096's policy)." The placement question is decided there and does
+not need re-deciding: the flag lives **in the metafile**, with defaults by usage
+— albedo sRGB + compressed, normal maps linear with a deliberate format choice,
+data and masks linear. T0096.3 owns writing down which semantic slots are sRGB.
+
+Named explicitly because the reference was one-way. T0097 refs T0023; T0023 said
+only "a small ticket of its own" and never named it, so reading this ticket alone
+made a filed decision look like an open one — and that nearly produced a
+duplicate ticket on 2026-08-05. This is the failure the both-ways rule in
+`CLAUDE.md` exists to prevent, landing on the ticket that wrote the rule down.
 
 ## Mesh import — the callback is the whole mechanism (2026-08-05)
 

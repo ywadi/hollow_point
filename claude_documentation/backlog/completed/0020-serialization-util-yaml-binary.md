@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 190 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0016, T0082, [../inprogress/0068-input-mapping.md](../inprogress/0068-input-mapping.md) |
+| **Refs** | T0016, T0082, [../completed/0068-input-mapping.md](../completed/0068-input-mapping.md) |
 
 ## Why
 

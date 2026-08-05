@@ -62,6 +62,22 @@ import path and the metafile — not building a compressor.
 
 ## Notes / findings
 
+### Where 97.3 starts: sRGB is hardcoded on, today (2026-08-05, from T0023)
+
+T0023 closed with texture import working and **sRGB forced on for every imported
+texture** — `engine/src/AssetImport.cpp`, `loadInfo.IsSRGB = true`, one line with
+a comment saying an imported image "almost always" is colour. That is right for
+albedo and wrong for every normal map and mask, and the symptom is a lighting bug
+that gets compensated by hand-tuning lights and then has to be un-compensated.
+
+So 97.3 is not greenfield: it is replacing a hardcoded `true` with the metafile
+setting, and the metafile mechanism it needs already exists and is proven — a
+second import of the same file returns the same GUID from its metafile.
+
+T0023 now points here explicitly. It previously said only "a small ticket of its
+own" without naming this one, which made a decision that *was* filed read as
+open.
+
 - The colour-space *policy* is decided in T0096 and merely recorded per asset
   here — do not let the two drift.
 - KTX2/BasisU is the heavier alternative (transcodable, smaller on disk). Not

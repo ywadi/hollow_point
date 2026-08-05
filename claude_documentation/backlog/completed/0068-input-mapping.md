@@ -2,31 +2,41 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | Medium |
 | **Complexity** | Moderate |
 | **Phase** | 2 — Engine skeleton |
 | **Order** | 170 |
-| **Blocked by** | Nothing. T0020 and T0110 are both closed; only 68.5 (gamepad) remains, and it needs *hardware*, not a ticket |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0110, T0112 , [../completed/0129-display-modes-and-window-control.md](../completed/0129-display-modes-and-window-control.md) |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0110, T0112 , [../completed/0129-display-modes-and-window-control.md](../completed/0129-display-modes-and-window-control.md), [../open/0132-gamepad-and-rumble.md](../open/0132-gamepad-and-rumble.md), [../open/0133-cursor-control-and-pointer-input.md](../open/0133-cursor-control-and-pointer-input.md) |
 
-## Blocked on
+## Closed — 2026-08-05
 
-**The action layer is built and working** (see "Built", below). What remains
-splits three ways, and only two of them are genuinely blocked:
+**The action layer is built, verified and closed.** Two remainders moved to the
+tickets that own them, the T0095 → T0105 pattern, rather than parking a working
+action layer behind them:
 
-- **68.7 — done (2026-08-05).** T0020 closed, so the loader it was waiting for
-  could be written. See "Binding files", below.
-- **Cursor control and focus loss — T0110 is closed**, so this is no longer
-  blocked either; it is simply not built. `InputSystem::reset()` still exists as
-  the focus-loss hook with nothing calling it.
-- **68.5, gamepad — not blocked by a ticket.** SDL3 supplies the devices (D16),
-  so the platform work is gone; what is missing is engine event types, pump
-  translation and stick/button bindings. It was not done because **there is no
-  controller on this machine to verify against**, and shipping input handling
-  that has never seen a device is worse than shipping it absent. This one needs
-  hardware and an afternoon, not another ticket.
+- **68.5, gamepad and rumble → [T0132](../open/0132-gamepad-and-rumble.md).**
+  Blocked on **hardware, not a ticket**: there is no controller on this machine
+  to verify against, and shipping input handling that has never seen a device is
+  worse than shipping it absent. D16 already removed the platform work, so what
+  remains is wiring SDL's events into the action layer — but it cannot be
+  verified here, and this ticket should not sit at the top of the queue waiting
+  for a controller that may not arrive.
+- **Cursor control and pointer-as-action →
+  [T0133](../open/0133-cursor-control-and-pointer-input.md).** Hide / pin /
+  custom cursor image, plus mouse motion and scroll as action sources. Not
+  blocked by anything — simply not built. They are one ticket because a look
+  axis needs relative motion, so the second depends on the first.
+
+Recorded on both, so the linkage reads both ways.
+
+**What this ticket did deliver**, all verified: actions as data; digital edges
+(pressed/released/held) that survive a press-and-release inside one frame;
+analog axes composed from keys and normalised; input contexts with per-input
+consumption and priority; YAML binding files that round-trip and rebind at
+runtime; dead zones and sensitivity; and the rule that gameplay cannot read a
+raw key code because no API exposes one.
 
 ## Binding files — 68.7, done 2026-08-05
 
@@ -90,7 +100,8 @@ through gameplay code and rebinding becomes impossible without touching all of i
 - [x] Actions defined as data, bound to keys, buttons or axes
 - [x] Digital actions report pressed / released / held distinctly
 - [x] Analog actions produce a normalised axis or vector — for keyboard composition; a *device* analog axis needs 68.5
-- [ ] Gamepad supported alongside keyboard and mouse — **not done**, see below
+- [ ] Gamepad supported alongside keyboard and mouse — **not done. Not ticked.**
+      Moved to [T0132](../open/0132-gamepad-and-rumble.md), blocked on hardware
 - [x] Bindings are serialized (T0020) and user-rebindable — YAML binding files, and a test that loads one, rebinds and proves the new key drives the action
 - [x] **Input contexts** so editor and game bindings do not collide
 - [x] Gameplay never reads a raw key code — there is no API that would let it
@@ -101,7 +112,7 @@ through gameplay code and rebinding becomes impossible without touching all of i
 - [x] 68.2 Map raw events (T0018) onto actions — consumed at frame phase 2
 - [x] 68.3 Digital state edges: pressed, released, held — including a tap inside one step, and auto-repeat excluded
 - [x] 68.4 Analog axes, including composing WASD into a 2D vector
-- [ ] 68.5 Gamepad support, with hot-plug handling — **not done.** SDL3 supplies it (D16), but no engine event type carries gamepad input yet and there is no controller here to verify against
+- [ ] 68.5 Gamepad support, with hot-plug handling — **not done, moved to [T0132](../open/0132-gamepad-and-rumble.md).** SDL3 supplies it (D16), but no engine event type carries gamepad input yet and there is no controller here to verify against
 - [x] 68.6 Input contexts with priority, and consumption between them
 - [x] 68.7 Serialize bindings; support rebinding at runtime
 - [x] 68.8 Dead zones and sensitivity for analog input
@@ -289,6 +300,10 @@ an alias and no call site changes.
 
 ### What is not done
 
+> **Re-checked against the code at close, 2026-08-05.** One entry below was
+> stale — `reset()` *is* now called — and the other three are the remainders
+> that moved to T0132 and T0133. Corrections are inline, marked **UPDATE**.
+
 - **68.5, gamepad — not started.** D16 settled that SDL3 supplies enumeration,
   the mapping database, hot-plug and rumble, so the platform work is gone. What
   remains is real but was not done: no engine event type carries gamepad input
@@ -297,6 +312,8 @@ an alias and no call site changes.
   controller on this machine to verify against**, so it would have shipped
   untested — which is worse than shipping it absent. Rumble is output rather
   than input and needs a place in the API that does not exist yet.
+  **UPDATE (close):** moved whole to
+  [T0132](../open/0132-gamepad-and-rumble.md), still blocked on hardware.
 - **68.7, serialization — blocked on T0020.** The map is deliberately data, so
   this is a loader rather than a redesign; there is simply no serializer to
   write one against. Recorded on T0020.
@@ -305,14 +322,26 @@ an alias and no call site changes.
   the context stack should own cursor state rather than whoever set it last, and
   relative mode must survive focus loss — which is T0110's policy. Left whole
   rather than half-built, and T0110 has the reference.
+  **UPDATE (close):** moved to
+  [T0133](../open/0133-cursor-control-and-pointer-input.md). Confirmed still
+  absent at close — `Window.hpp` has no cursor API at all.
 - **`reset()` exists but nothing calls it.** It is the focus-loss hook: a window
   that loses focus while a key is down never receives the key-up, so the action
   would stay held forever. Wiring it to a focus event is T0110's call about what
   focus loss *means*, so the hook is provided and the policy is not invented
   here.
+  **UPDATE (close): no longer true — this is done.** T0110.3 made the call and
+  wired it: `engine/src/Application.cpp:114` calls `input_.reset()` on
+  `WindowFocusLost`, observed in the application rather than in a layer that
+  might consume the event. Nothing remains here. What T0133 still owes is
+  *cursor* release on focus loss, which is a different thing hanging off the
+  same hook.
 - **Mouse motion and scroll are not bound to actions.** Only keys and buttons
   are. A look axis needs relative motion, which is the same cursor-capture work
   above.
+  **UPDATE (close):** moved to
+  [T0133](../open/0133-cursor-control-and-pointer-input.md), which is why it and
+  cursor control are one ticket rather than two.
 
 ### Cross-ticket note — T0129 (2026-08-04)
 

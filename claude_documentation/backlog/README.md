@@ -39,7 +39,9 @@ This is the work. For what is already proven to work — and what only appears t
 | — | [T0127](completed/0127-exceptions-across-the-module-boundary.md) | A typed exception cannot cross the module boundary on Linux | 2 — Engine skeleton | ✅ DONE | High | Moderate |
 | — | [T0048](completed/0048-hot-reloadable-gameplay-module.md) | Hot-reloadable gameplay module | 2 — Engine skeleton | ✅ DONE | High | Very Complex |
 | — | [T0105](completed/0105-module-linkage-loose-ends.md) | Module linkage: the parts that need something built first | 2 — Engine skeleton | ✅ DONE | High | Moderate |
-| ▶ | [T0068](inprogress/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | 🚧 IN PROGRESS | Medium | Moderate |
+| — | [T0068](completed/0068-input-mapping.md) | Input mapping and action system | 2 — Engine skeleton | ✅ DONE | Medium | Moderate |
+| 172 | [T0132](open/0132-gamepad-and-rumble.md) | Gamepad, rumble and hot-plug | 2 — Engine skeleton | ⏸ BLOCKED | Medium | Moderate |
+| 174 | [T0133](open/0133-cursor-control-and-pointer-input.md) | Cursor control and pointer input as actions | 2 — Engine skeleton | 🔜 TODO | Medium | Moderate |
 | 180 | [T0103](completed/0103-virtual-filesystem-and-packs.md) | Virtual filesystem and content packs | 3 — Data model | ✅ DONE | High | Moderate |
 | 185 | [T0112](completed/0112-string-identity-and-localisation.md) | String identity: keys before literals | 3 — Data model | ✅ DONE | Medium | Simple |
 | 190 | [T0020](completed/0020-serialization-util-yaml-binary.md) | Serialization util: rapidyaml + binary cook | 3 — Data model | ✅ DONE | High | Complex |
