@@ -43,14 +43,14 @@ flags into each subsystem — exactly the situation to avoid.
 - [x] Cameras carry a culling mask; objects outside it are rejected during culling — in `parseScene`, **before any other check**, and counted as `culledByLayer`
 - [ ] Lights carry a mask for illumination, and separately for shadow casting — **moved to T0079 (illumination) and T0086 (shadow casting)**, which own the components; the `LayerMask` type they use exists
 - [x] Masks are applied during culling, not per-pixel — one AND in `parseScene`, and it runs first so an excluded object costs nothing further
-- [ ] Layers are **named in project settings** (T0078), not bare numbers — **moved to T0078**, which owns settings and does not exist yet
+- [x] Layers are **named in project settings** (T0078), not bare numbers — `hp::LayerNames`, stored under `layers` in a `SettingsStore`. Code says `names.indexOf("Player")`, not `7`
 - [ ] The inspector shows names and a multi-select mask editor, never a raw integer — **moved to T0032/T0053**; there is no inspector yet
 - [ ] Physics collision layers use the same definitions (T0051) — **moved to T0051**; `hp::LayerMask` is the shared definition it must use
 - [ ] Debug view showing what a given camera or light actually affects — **moved to T0061** (debug draw)
 
 ## Subtasks
 
-- [~] 85.1 Layer definition in project settings — **the set exists** (`kMaxLayers = 32`, `kDefaultLayer`); **the names do not**, and they need T0078
+- [x] 85.1 Layer definition in project settings — the set (`kMaxLayers`, `kDefaultLayer`) **and the names** (`hp::LayerNames`, round-tripping through `SettingsStore`)
 - [x] 85.2 Layer field on the renderable component — `MeshRenderer::layers`
 - [x] 85.3 Camera culling mask — applied in **`parseScene`**, which is what this ticket's own preamble specified; T0045 inserts frustum culling around it later
 - [ ] 85.4 Light illumination mask, applied during per-object light selection — **T0079's**, with the type ready
@@ -58,6 +58,44 @@ flags into each subsystem — exactly the situation to avoid.
 - [ ] 85.6 Mask editor widget in the inspector — **T0032's**; `LayerMask` is reflected and serialises as an integer already
 - [ ] 85.7 Physics collision matrix using the same layers — **T0051's**
 - [ ] 85.8 Debug visualisation — **T0061's**
+
+## Unblocked and closed 2026-08-05 — T0078 was worked rather than used as a parking space
+
+The reopening below stands as the record. The fix was to **do T0078** instead of
+citing it: `hp::LayerNames` now lives in a `SettingsStore`, round-trips as a
+readable sequence, and resolves names to indices — so `layer 7` no longer appears
+in code, which was the unmet requirement.
+
+**One thing it wanted is still deliberately not done, and is recorded rather than
+ticked quietly**: layers still *serialise* as an integer, not as names. Writing
+names needs the `LayerNames` table threaded into `Serialize.cpp`, which has no
+owner until T0024's `ProjectManager` — and inventing a global to reach it is
+exactly the singleton T0078 declined. The `writeLeaf` branch carries a comment
+marking the line. What this ticket asked for is met: **names exist in project
+settings and code uses them.**
+
+## Reopened 2026-08-05, same day — closing it was overstating
+
+**Closed, then reopened within the hour, and the reason is worth keeping.** The
+mechanism below is built and proven; five subtasks were moved to tickets that own
+systems which do not exist yet, which is the T0095 → T0105 pattern and is fine.
+The sixth move was not.
+
+**85.1 — layer names — was moved to T0078 on the grounds of "blocked on something
+that does not exist". That does not hold up.** T0078 is **order 360**, Phase 3,
+complexity *Simple* — it sits **earlier** in the execution order than this ticket
+at 430. It is not distant work.
+
+And it is not peripheral. This ticket's own Done-when says *"Layers are **named
+in project settings**, not bare numbers"*, and its notes say *"Name them in
+project settings so `layer 7` never appears in code."* That is unmet: `layer 7`
+is still `7`.
+
+So the board was showing ✅ DONE for a ticket whose headline requirement was not
+met. The remainder was recorded honestly in the "Not done" section — but **the
+board is what people scan**, and a ticket that overstates what it achieved is
+worse than one left open. Blocked on T0078, which is being worked next; this
+closes as soon as there is a name table to read.
 
 ## Built and measured 2026-08-05 — the core, and what moved
 

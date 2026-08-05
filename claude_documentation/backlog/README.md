@@ -61,7 +61,7 @@ This is the work. For what is already proven to work — and what only appears t
 | 330 | [T0075](open/0075-message-bus.md) | Message bus with addressing | 3 — Data model | 🔜 TODO | High | Complex |
 | 340 | [T0077](open/0077-scene-management.md) | Scene loading, transitions and additive scenes | 3 — Data model | 🔜 TODO | High | Complex |
 | 350 | [T0076](open/0076-autoloads.md) | Autoloads: project and scene scoped services | 3 — Data model | 🔜 TODO | High | Moderate |
-| 360 | [T0078](open/0078-settings-and-config.md) | Settings and configuration | 3 — Data model | 🔜 TODO | Medium | Simple |
+| 360 | [T0078](inprogress/0078-settings-and-config.md) | Settings and configuration | 3 — Data model | 🚧 IN PROGRESS | Medium | Simple |
 | 370 | [T0082](open/0082-schema-versioning.md) | Schema versioning and migration | 3 — Data model | 🔜 TODO | Medium | Moderate |
 | — | [T0110](completed/0110-presentation-and-frame-pacing.md) | Presentation: vsync, present modes, frame pacing and focus loss | 4 — Render layer | ✅ DONE | High | Moderate |
 | — | [T0025](completed/0025-render-layer.md) | Render layer and device lifecycle | 4 — Render layer | ✅ DONE | High | Moderate |
