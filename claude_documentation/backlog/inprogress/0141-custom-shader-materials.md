@@ -468,6 +468,56 @@ developer who wants something the contract does not expose waits for us to
 expose it. The mitigation is a generous `HpSurfaceInput`, which is why 141.6 is
 a deliberate decision and not a list that grows by accident.
 
+## Where this stands (2026-08-05)
+
+**Done and verified on hardware** — RTX 2080, Vulkan, zero skipped tests:
+
+- **141.0** — the decision, recorded as **D26**.
+- **141.6** — `HpMaterial.fxh`, the contract, recorded as **D27**. `HP_UNSHADED`
+  is declared, so 141.15 needs no contract change.
+- **The shader plumbing** — shaders embedded in the binary, a compound source
+  factory, and `compileEngineShader`.
+- **`SurfacePipeline`** — a pipeline built from the engine's own pixel shader
+  and accepted by the device, which is the claim D26 rests on.
+- **The shading path** — the surface stage calling DiligentFX's public
+  `GetSurfaceReflectanceMR` / `ApplyPunctualLight` / `ResolveLighting`, with the
+  `HP_UNSHADED` branch compiling beside it.
+
+**Not done, and the engine's output is unchanged so far.** `SceneRenderer` still
+draws through `PBR_Renderer`'s own pipeline; nothing in the render path uses
+`SurfacePipeline`. Everything above is proven to build and be accepted — none of
+it is proven to *draw the right thing*, and those are different claims.
+
+### The next step, and why it is shaped this way
+
+**Switch `SceneRenderer` over, together with a pixel assertion that the new path
+matches the old one.** Not one then the other: "it renders" and "it renders the
+same thing" are different claims, and only the second is worth making about a
+renderer. The gpu bucket runs here, so this can be a real pixel comparison rather
+than a submission count — which is exactly the guard T0134 could not write and
+141.11 exists to provide.
+
+Only after that do 141.7 (parallax) and 141.8 (triplanar) mean anything, because
+until the engine draws through this shader they would be changing a code path
+nothing executes.
+
+### Remaining, in dependency order
+
+| | | Blocked on |
+|---|---|---|
+| **141.10 close** | swap `SceneRenderer` over | — |
+| **141.11** | textured-render pixel guard | the swap |
+| **141.12** | draw the missing-material checkerboard | the swap |
+| **141.7 / 141.8** | parallax + height, triplanar | the swap |
+| **141.13** | VFS-backed shader source | — |
+| **141.1 / 141.2** | custom shader asset, parameter reflection | 141.13 |
+| **141.15** | `HP_UNSHADED` as a PSO permutation | 141.1 |
+| **141.3** | `RenderStateCache` / `BytecodeCache` | — |
+| **141.4** | error shader on compile failure | 141.1 |
+| **141.5** | shader hot reload | 141.13 |
+| **141.14** | generated shader-contract docs, gated in CI | 141.6 settling |
+| **141.9** | tessellation | deferred: *when a silhouette must change* |
+
 ## Notes / findings
 
 ### D26's mechanism is proven on hardware, 2026-08-05 — first increment of 141.10
