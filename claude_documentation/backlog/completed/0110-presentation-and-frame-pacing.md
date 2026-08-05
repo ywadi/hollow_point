@@ -113,17 +113,27 @@ is cheap.
 
 ## Subtasks
 
-- [ ] 110.1 Present-mode selection at swap-chain creation and a runtime vsync
+- [~] 110.1 Present-mode selection at swap-chain creation and a runtime vsync
       toggle path -- lands inside T0025's device code, driven by this ticket's
-      policy
+      policy — **the toggle half is built and measured on both backends and both
+      targets (110.6); present-mode *selection* is not, and cannot be.**
+      Diligent derives the mode from the boolean and exposes no way to choose it,
+      so the mapping is recorded rather than implemented. See "110.1 decided"
 - [x] 110.2 Frame-rate cap — sleep-then-spin, measured at 30/60/120 Hz
 - [x] 110.3 Focus-loss handling — background cap + input reset; simulation
       pause and audio mute deliberately excluded, see below
 - [x] 110.4 Editor pacing — capped at 60 focused / 10 background
-- [ ] 110.5 Display options wired into T0078: vsync on/off, cap value
-      (off/30/60/120/custom), and whether raw present-mode selection is exposed
-      as an advanced option or kept internal
 - [x] 110.6 Verification pass on both backends — results below
+
+## Descoped 2026-08-05 — what left this ticket's checklist, and where it went
+
+"Closed with one item deferred" at the foot of this file already says where 110.5
+went, and T0078 carries it under "Cross-ticket obligation — T0110.5". It was
+still an unticked box here, which reads as abandoned rather than handed on.
+
+| Was | Went to | Because |
+|---|---|---|
+| Display options wired into T0078: vsync on/off, cap value, and whether raw present-mode selection is exposed (110.5) | **T0078** | There was no settings store to wire an option into. T0078 also inherits the finding that an "advanced" raw present-mode option cannot be offered at all without patching Diligent |
 
 ## Notes / findings
 

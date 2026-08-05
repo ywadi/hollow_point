@@ -24,7 +24,7 @@ programs over one engine, which is the whole point of T0013.
 - [x] `engine/include/hp/EntryPoint.hpp` defines `main`, and including it in an
       app is the only thing that app needs to become an executable
 - [x] `Application` owns the loop: poll → update → render → present. **"update layers" is update-the-app-hook for now** — the LayerStack is T0017, and the call site is marked
-- [ ] The editor app runs and exits cleanly — **it does not open a window**, because there is none until T0015. Exit is by frame budget or `requestExit`, not by a close event
+- [~] The editor app runs and exits cleanly — it does, on both targets, with the log pasted below. **It does not open a window**, because there is none until T0015: exit is by frame budget or `requestExit`, not by a close event. T0015 has since landed and closes on the window event
 - [x] Frame timing is available to the loop (delta time) — T0057's `Clock`, ticked once per frame so every system sees one delta
 
 ## Subtasks

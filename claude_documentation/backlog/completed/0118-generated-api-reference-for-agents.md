@@ -57,24 +57,24 @@ Whichever is chosen **runs as a host tool only** — it never cross-compiles, mi
 
 ## Done when
 
-- [ ] Every declaration in `engine/include/hp/` — and only that directory; `engine/src/` is not public surface — appears in the generated reference, with signature and doc-comment prose, checkable as a coverage count against the header count
-- [ ] `///` comments on public API gain `@param`/`@returns`/`@throws`-shaped tags where a function takes parameters or returns something non-obvious, so the generator has structured data to extract — added as tag discipline on top of the existing prose, not a replacement for it (see the tension below)
-- [ ] The context-window structure decision is made and recorded: one file per header/subsystem versus a single reference file, and the prose-density question (full doc comment versus signature-plus-one-line)
-- [ ] The convention-inlining decision is made and recorded: how constraints from `06-engine-conventions.md` (module-boundary rules, exception policy, `HP_ASSERT` behaviour) reach the generated output next to the symbols they constrain
-- [ ] `zig build docs` (or the chosen step name) produces the reference as part of the build, per the build-step-over-CI-check reasoning above; whether it runs on every ordinary build or on demand is decided and recorded, weighing generation cost on every build against the risk of it not being run
-- [ ] The commit-vs-gitignore decision is made and recorded (see below), not defaulted by whichever happens to be convenient at implementation time
-- [ ] If committed: CI fails on a dirty working tree after running the docs step — the simple gate the build-step design enables, instead of a second header-parsing pass to detect drift
-- [ ] Verified against a real change: adding a parameter to a public function and running the build step changes the generated output; forgetting to regenerate (if committed) fails CI
+- [~] Every declaration in `engine/include/hp/` — and only that directory; `engine/src/` is not public surface — appears in the generated reference, with signature and doc-comment prose, checkable as a coverage count against the header count — **coverage is complete and counted (87 declarations across 9 headers); prose is not.** 47 declarations carry none, deliberately (see the closing note), and the generator marks them `*No documentation comment.*` rather than omitting them
+- [x] `///` comments on public API gain `@param`/`@returns`/`@throws`-shaped tags where a function takes parameters or returns something non-obvious, so the generator has structured data to extract — added as tag discipline on top of the existing prose, not a replacement for it (see the tension below) — every `@param`/`@returns` defect fixed, and `stale-param` made non-baselinable
+- [x] The context-window structure decision is made and recorded: one file per header/subsystem versus a single reference file, and the prose-density question (full doc comment versus signature-plus-one-line) — 118.2 below: one file per header plus an index, full doc comment
+- [x] The convention-inlining decision is made and recorded: how constraints from `06-engine-conventions.md` (module-boundary rules, exception policy, `HP_ASSERT` behaviour) reach the generated output next to the symbols they constrain — 118.4 below: a rules preamble in `index.md`
+- [x] `zig build docs` (or the chosen step name) produces the reference as part of the build, per the build-step-over-CI-check reasoning above; whether it runs on every ordinary build or on demand is decided and recorded, weighing generation cost on every build against the risk of it not being run — 118.5 below
+- [x] The commit-vs-gitignore decision is made and recorded (see below), not defaulted by whichever happens to be convenient at implementation time — 118.6 below: committed
+- [x] If committed: CI fails on a dirty working tree after running the docs step — the simple gate the build-step design enables, instead of a second header-parsing pass to detect drift — `ci.yml`'s `api-docs-current` job runs `zig build docs` then `git diff --quiet -- docs/api`
+- [~] Verified against a real change: adding a parameter to a public function and running the build step changes the generated output; forgetting to regenerate (if committed) fails CI — **the first half is proven** (`Guid::generate()` → `generate(int seedHint)` changed the output; an undocumented public function failed the build, exit 1). **The CI half is wired and has never been observed red** — no run has actually failed the dirty-tree gate
 
 ## Subtasks
 
-- [ ] 118.1 Decide the tooling (see the options table) and record the rejected alternatives' costs, matching the decision-log's own style
-- [ ] 118.2 Decide the context-window structure: file granularity and prose density
-- [ ] 118.3 Add `@param`/`@returns`/`@throws` tag discipline to the 8 existing public headers as a worked example, and write the expectation into `06-engine-conventions.md` (or this ticket's own note, if conventions is judged the wrong home) so new public API is tagged as it is written — the same "land the rule before the surface grows" reasoning as T0019's profiling macros
-- [ ] 118.4 Decide how module-boundary and other cross-cutting conventions surface inline in the generated output
-- [ ] 118.5 Wire the chosen tool into `build.zig` as a host-only step (`zig build docs`), following the existing `configure`/`dist`/`test` pattern; decide on-demand versus part of the default build
-- [ ] 118.6 Decide committed-to-the-repo versus generated-and-gitignored (see the trade-off below) and implement the corresponding CI gate
-- [ ] 118.7 Confirm the tool runs once, host-only, independent of target — no accidental per-target regeneration
+- [x] 118.1 Decide the tooling (see the options table) and record the rejected alternatives' costs, matching the decision-log's own style — python + libclang; `clang-doc` and Doxygen rejected with reasons below
+- [x] 118.2 Decide the context-window structure: file granularity and prose density
+- [x] 118.3 Add `@param`/`@returns`/`@throws` tag discipline to the 8 existing public headers as a worked example, and write the expectation into `06-engine-conventions.md` (or this ticket's own note, if conventions is judged the wrong home) so new public API is tagged as it is written — the same "land the rule before the surface grows" reasoning as T0019's profiling macros — the rule is under "Documenting public API" in the conventions doc, and the generator enforces it rather than leaving it remembered
+- [x] 118.4 Decide how module-boundary and other cross-cutting conventions surface inline in the generated output
+- [x] 118.5 Wire the chosen tool into `build.zig` as a host-only step (`zig build docs`), following the existing `configure`/`dist`/`test` pattern; decide on-demand versus part of the default build
+- [x] 118.6 Decide committed-to-the-repo versus generated-and-gitignored (see the trade-off below) and implement the corresponding CI gate
+- [x] 118.7 Confirm the tool runs once, host-only, independent of target — no accidental per-target regeneration — one `Run` step in `build.zig` that the install, `all` and per-target steps all *depend on*, so every route to a build reaches the same single invocation
 
 ## Notes / findings
 
@@ -224,6 +224,16 @@ The rule is written into
 [`06-engine-conventions.md`](../../documentation/06-engine-conventions.md) under
 "Documenting public API", so new API is tagged as it is written — and the check
 makes that automatic rather than remembered.
+
+## Checkboxes reconciled 2026-08-05
+
+**Every box here was left unticked while the work was finished around it**, which
+is how a ✅ DONE ticket ends up reading as abandoned. Nothing new was done for
+this pass: each box was closed against evidence already in this file, and the two
+that could not be closed honestly are `[~]` with the shortfall stated on the line
+rather than ticked. The section below stays as written — it is the record of what
+was outstanding before the closing note, and its "118.3 is not done" is what the
+closing note supersedes.
 
 ## Superseded — what was still to do
 

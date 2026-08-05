@@ -99,9 +99,7 @@ through gameplay code and rebinding becomes impossible without touching all of i
 
 - [x] Actions defined as data, bound to keys, buttons or axes
 - [x] Digital actions report pressed / released / held distinctly
-- [x] Analog actions produce a normalised axis or vector — for keyboard composition; a *device* analog axis needs 68.5
-- [ ] Gamepad supported alongside keyboard and mouse — **not done. Not ticked.**
-      Moved to [T0132](../open/0132-gamepad-and-rumble.md), blocked on hardware
+- [x] Analog actions produce a normalised axis or vector — for keyboard composition; a *device* analog axis needs the gamepad work that moved to T0132
 - [x] Bindings are serialized (T0020) and user-rebindable — YAML binding files, and a test that loads one, rebinds and proves the new key drives the action
 - [x] **Input contexts** so editor and game bindings do not collide
 - [x] Gameplay never reads a raw key code — there is no API that would let it
@@ -112,10 +110,27 @@ through gameplay code and rebinding becomes impossible without touching all of i
 - [x] 68.2 Map raw events (T0018) onto actions — consumed at frame phase 2
 - [x] 68.3 Digital state edges: pressed, released, held — including a tap inside one step, and auto-repeat excluded
 - [x] 68.4 Analog axes, including composing WASD into a 2D vector
-- [ ] 68.5 Gamepad support, with hot-plug handling — **not done, moved to [T0132](../open/0132-gamepad-and-rumble.md).** SDL3 supplies it (D16), but no engine event type carries gamepad input yet and there is no controller here to verify against
 - [x] 68.6 Input contexts with priority, and consumption between them
 - [x] 68.7 Serialize bindings; support rebinding at runtime
 - [x] 68.8 Dead zones and sensitivity for analog input
+
+## Descoped 2026-08-05 — what left this ticket's checklist, and where it went
+
+The "Closed — 2026-08-05" note at the top already records both moves and says
+they are recorded on both sides; [T0132](../open/0132-gamepad-and-rumble.md)
+opens by saying it was split out of this ticket, and quotes the Done-when it
+inherits verbatim. The boxes were left unticked here anyway, which reads as an
+action layer that was abandoned rather than one that closed and handed the device
+half on.
+
+| Was | Went to | Because |
+|---|---|---|
+| Gamepad supported alongside keyboard and mouse (Done when, 68.5) | **T0132** | Blocked on **hardware, not a ticket** — there is no controller on this machine, and shipping input handling that has never seen a device is worse than shipping it absent. D16 removed the platform work; what remains is wiring SDL's events into the action layer |
+
+Cursor control and pointer-as-action left the same way, to
+[T0133](../open/0133-cursor-control-and-pointer-input.md), but were never
+checklist items here — the 2026-08-03 amendment added them in prose. They are
+listed under "What is not done" below.
 
 ## Notes / findings
 

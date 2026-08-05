@@ -25,9 +25,6 @@ switches between them, or how the render stack's layers get their own cameras
 - [x] Perspective and orthographic both supported
 - [x] Switching cameras from gameplay is one call
 - [x] Viewport rect per camera, so split-screen or picture-in-picture is possible
-- [ ] An object culling mask, so a camera can render only some object layers —
-      **not done, moved to [T0085](../completed/0085-layers-and-masks.md)**, which
-      owns what an object layer *is*
 - [~] A camera with no valid target degrades visibly rather than rendering nothing
 - [x] The editor camera (T0063) is explicitly outside this system
 
@@ -38,20 +35,28 @@ switches between them, or how the render stack's layers get their own cameras
       `hp::SceneView::render`, per view slot
 - [x] 81.3 Projection and view matrix computation from the transform
 - [x] 81.4 Viewport rect support
-- [ ] 81.5 **Object culling mask → [T0085](../completed/0085-layers-and-masks.md).**
-      The `Camera` component carries the mask field; nothing filters on it,
-      because what an object layer *means* is T0085's to define
 - [x] 81.6 Frustum extraction shared with culling (T0045)
 - [x] 81.7 Screen-to-world and world-to-screen helpers — gameplay and UI both need them
-- [ ] 81.8 Debug draw of camera frustums — **moved to
-      [T0061](../open/0061-debug-draw.md).** `extractFrustum` is built and
-      tested; what is missing is a way to draw lines, which is T0061's whole
-      subject
 - [x] 81.9 Post-resolve view offset seam -- shake, recoil, blends hook here
       (see the 2026-08-03 amendment)
 - [x] 81.10 Decide the aspect-ratio policy and implement it -- **this ticket
       owns it**, because this is where projection is computed from the viewport
       rect (see the 2026-08-03 amendment)
+
+## Descoped 2026-08-05 — what left this ticket's checklist, and where it went
+
+The "Closed — 2026-08-05" note below already says both of these moved. They were
+still sitting here as unticked boxes, which reads as work abandoned rather than
+work handed on. Removed from the checklist and listed here; both receiving
+tickets carry the obligation, so the linkage reads both ways.
+
+Neither left because it was hard or skipped — each needs a subsystem this ticket
+does not own.
+
+| Was | Went to | Because |
+|---|---|---|
+| An object culling mask, so a camera renders only some object layers (Done when, 81.5) | **T0085** | `Camera` carries the mask field and nothing filters on it. What an object layer *is* is T0085's vocabulary to define, and it has since defined it |
+| Debug draw of camera frustums (81.8) | **T0061** | `extractFrustum` is built and tested against the matrices; what is missing is a way to draw a line, which is the entirety of T0061 |
 
 ## Closed — 2026-08-05
 

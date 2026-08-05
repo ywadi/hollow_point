@@ -32,9 +32,6 @@ outcome to avoid, and it is very expensive to unpick later.
 
 - [x] Types register their properties once, in one place
 - [x] Properties are enumerable at runtime: name, type, get, set
-- [ ] Serialization, inspector and undo all consume this and nothing else —
-      **not met, and cannot be here**: T0022, T0035 and T0065 do not exist.
-      Moved to those tickets; see the closing note
 - [x] Adding a component means touching **one** location
 - [x] Nested structs, enums, containers and asset GUID references all supported
 - [x] Attributes/metadata: ranges, tooltips, hidden, read-only
@@ -49,10 +46,22 @@ outcome to avoid, and it is very expensive to unpick later.
 - [x] 53.4 Typed get/set with a safe fallback for mismatches
 - [x] 53.5 Property metadata (range, tooltip, hidden, read-only)
 - [x] 53.6 Containers, nested structs, enums, GUID references
-- [ ] 53.7 Component registration hooked into the ECS — **moved to T0021**,
-      which builds the registry this would hook into
-- [ ] 53.8 Round-trip through serialization — **moved to T0022**, which builds
-      the serializer. The reflection half is tested here
+
+## Descoped 2026-08-05 — what left this ticket's checklist, and where it went
+
+"What moved, and to where" in the closing note below already carries this table
+and says each receiving ticket was told what it inherits. The boxes were left
+unticked here anyway, which makes a layer that is built and tested read as
+half-built. Removed from the checklist; the table below is the record.
+
+Each left because its consumer does not exist — this ticket is Phase 2 and every
+consumer is Phase 3 or later.
+
+| Was | Went to | Because |
+|---|---|---|
+| Serialization, inspector and undo all consume this and nothing else (Done when) | **T0022 / T0035 / T0065** | None of the three existed. All three now carry an "Inherited from T0053" section saying they must consume reflection rather than hand-rolling a switch |
+| Component registration hooked into the ECS (53.7) | **T0021** | There was no registry to hook into. T0021 records it as discharged |
+| Round-trip through serialization (53.8) | **T0022** | There was no serializer. The reflection half is tested here |
 
 ## Notes / findings
 

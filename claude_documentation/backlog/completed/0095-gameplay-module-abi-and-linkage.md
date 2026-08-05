@@ -60,9 +60,6 @@ world — exactly the "hacking the engine" outcome this backlog exists to avoid.
       not left to chance. **It works, on both targets, measured** — so it is
       allowed rather than banned, conditional on boundary types being marked
       default-visibility
-- [ ] Dev and shipped configurations build from the same source with no
-      `#ifdef` spread through gameplay code — **moved to T0105**, needs a build
-      system and T0104 to exist
 - [x] The rules are written into the conventions doc (T0055) — see its module boundary section
 
 ## Subtasks
@@ -77,13 +74,16 @@ world — exactly the "hacking the engine" outcome this backlog exists to avoid.
       disagree rather than unifying them; `type_hash` was confirmed identical
       across modules on both targets. The reasoning is in the prototype results
       below and the resulting rule is in the conventions doc
-- [ ] 95.3 Boundary test: two component types (one engine-defined, one
+- [~] 95.3 Boundary test: two component types (one engine-defined, one
       module-defined), created on one side, queried on the other, surviving a
-      hot reload — **still not fully done**: both component types are tested
-      both directions on both targets, and two independently loaded generations
-      are proven to agree, but a *genuine unload* is impossible under this
-      toolchain today (see the dlclose finding). Reload is proven only in the
-      copy-before-load shape T0048 will actually use
+      hot reload — **the boundary half is done and the unload half is not**:
+      both component types are tested both directions on both targets, and two
+      independently loaded generations are proven to agree, but a *genuine
+      unload* is impossible under this toolchain today (see the dlclose
+      finding). Reload is proven only in the copy-before-load shape T0048 will
+      actually use. The unload half left for
+      [T0105](../completed/0105-module-linkage-loose-ends.md), which root-caused
+      and fixed it as 105.1
 - [x] 95.4 Symbol visibility policy for shared types — confirmed by
       measurement and written into the conventions doc: boundary types marked
       default-visibility, `-fvisibility=hidden` everywhere else, which is what
@@ -93,11 +93,21 @@ world — exactly the "hacking the engine" outcome this backlog exists to avoid.
       site and never reach a module boundary, and memory is released by the
       side that allocated it because each library carries its own statically
       linked libc++
-- [ ] 95.6 Re-verify T0048's mechanics against the chosen model — **moved to
-      T0105**, blocked on T0048 existing
-- [ ] 95.7 Check `dist`/export staging carries the engine shared library
-      correctly on both platforms — **moved to T0105**, blocked on T0013
-      producing an engine shared library to stage
+
+## Descoped 2026-08-05 — what left this ticket's checklist, and where it went
+
+The closing note below already records these as moved to
+[T0105](../completed/0105-module-linkage-loose-ends.md). They were still sitting
+here as unticked boxes, which makes a closed ticket read as abandoned rather than
+as one that handed work on. Removed from the checklist and listed here instead —
+the state of each is T0105's to report, and it reports all four as done.
+
+| Was | Went to | Because |
+|---|---|---|
+| Dev and shipped configurations with no `#ifdef` in gameplay code (Done when) | **T0105** (105.2) | Needed a build system and T0104's build id to exist |
+| Re-verify T0048's mechanics against the chosen model (95.6) | **T0105** (105.3) | T0048 had no mechanics to verify yet |
+| `dist`/export staging of the engine shared library (95.7) | **T0105** (105.4) | T0013 was not yet producing an engine shared library to stage |
+| The unload half of 95.3 (kept as `[~]` above, not removed) | **T0105** (105.1) | The measured half stays here; only the part that needed a fix moved |
 
 ## Prototype results (2026-08-03) — 95.1/95.2/95.3 fact-finding
 

@@ -29,12 +29,26 @@ mostly deciding to use it rather than building alternatives.
 
 - [x] 56.1 **Math: use Diligent's `BasicMath.hpp` / `AdvancedMath.hpp`** — decide
       and record; see notes for why not glm
-- [ ] 56.2 Confirm the SSE/NEON paths are enabled for release builds — **moved to [T0025](../completed/0025-render-layer.md)**
-- [ ] 56.3 Adopt `DynamicLinearAllocator` for per-frame scratch allocations — **moved to [T0025](../completed/0025-render-layer.md)**
-- [ ] 56.4 Adopt `FixedBlockMemoryAllocator` where pooling pays — **moved to [T0025](../completed/0025-render-layer.md)**, and it needs a profile as well as a linked library
 - [x] 56.5 Decide on standard containers vs alternatives, and record it
 - [x] 56.6 Decide whether engine types are exposed to gameplay directly or behind
       a narrower surface (interacts with T0048's module boundary)
+
+## Descoped 2026-08-05 — what left this ticket's checklist, and where it went
+
+The closing note below already records all three as moved to
+[T0025](../completed/0025-render-layer.md), which lists them under what it
+inherited. They were still sitting here as unticked boxes, and a policy ticket
+that closed on its policies should not look half-finished because of three
+adoption tasks it deliberately handed on.
+
+All three need the engine to link Diligent, which T0013 deferred and T0025 owns
+— and this ticket sits at order 50 while that lands at 380.
+
+| Was | Went to | Because |
+|---|---|---|
+| Confirm the SSE/NEON math paths are on in release (56.2) | **T0025** | `BasicMathSSE.hpp` / `BasicMathNEON.hpp` have to be in the link before anything can confirm they are compiled in |
+| Adopt `DynamicLinearAllocator` for per-frame scratch (56.3) | **T0025** | The allocator does not exist in the link |
+| Adopt `FixedBlockMemoryAllocator` where pooling pays (56.4) | **T0025** | Same, **and it needs a profile**: "where pooling pays" is a measurement, so T0025 making the allocator reachable is not on its own grounds to tick it |
 
 ## Notes / findings
 

@@ -27,7 +27,16 @@ demo-shaped assumptions we would have to unpick later.
 - [x] A window opens on Linux and closes cleanly
 - [x] The same code path builds for Windows — **and runs**, opening a window under wine with SDL's `windows` video driver
 - [x] Window resize is observable — `onResize(width, height)` in *pixels*, which is what a swap chain is sized in
-- [ ] Raw input reaches the engine — **only close and resize are surfaced today.** SDL delivers keyboard, mouse and gamepad into the same pump, but turning them into engine events is T0018's job and inventing a shape here would be the wrong thing to migrate from
+
+## Descoped 2026-08-05 — what left this ticket's checklist, and where it went
+
+One item, and it was already named in the "Not done" section as belonging
+elsewhere. Left unticked it claimed this ticket had failed at something it had
+deliberately declined to invent.
+
+| Was | Went to | Because |
+|---|---|---|
+| Raw input reaches the engine (Done when) | **T0018** | Only close and resize are surfaced here. SDL delivers keyboard, mouse and gamepad into the same pump, but the *shape* of an engine input event is T0018's to define, and guessing it here would have been the wrong thing to migrate from. T0018's 18.5 — "feed window/input events in from T0015" — is done |
 
 ## Subtasks
 

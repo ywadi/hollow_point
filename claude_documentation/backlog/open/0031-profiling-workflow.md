@@ -8,7 +8,7 @@
 | **Phase** | 5 — Profiling |
 | **Order** | 580 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0110, T0117 |
+| **Refs** | T0110, T0117, [../completed/0057-time-system.md](../completed/0057-time-system.md) |
 
 ## Why
 
@@ -76,3 +76,8 @@ release policy unless a budget is actually exceeded.
 - **T0117**: any on-screen profiling overlay renders its text through T0117's
   stack (117.5) — do not grow an ad-hoc glyph path here; avoiding that
   retrofit is the reason T0117 was split out of T0069.
+- **T0057** (2026-08-05): **57.6, "surface the clock in the profiler overlay",
+  moved here** — an overlay is a profiling feature and T0057 is only the clock it
+  reads. `hp::Clock` already exposes scaled and unscaled delta, elapsed, frame
+  index and the fixed-step alpha, so nothing there changes; the display itself
+  needs T0029.

@@ -14,6 +14,18 @@ one kind of inconsistency the whole scheme is supposed to make impossible.
 
 Also checks every relative markdown link resolves -- that has caught a stale
 link on four separate ticket moves, always after the fact.
+
+And it refuses an unticked `- [ ]` in a ticket marked DONE. Fifteen completed
+tickets carried one, which makes a green DONE read as abandoned rather than as a
+ticket that closed and handed work on. Only two states are legal there:
+
+  - [x]   done and verified
+  - [~]   partly achieved, with the shortfall stated on the line
+
+Anything else belongs to another ticket, in which case the line leaves this
+checklist entirely and goes in a `## Descoped` section naming where it went --
+"moved" has to mean moved, or the box sits unticked forever. SUPERSEDED and
+DROPPED tickets are exempt: unfinished work is what those words mean.
 """
 import pathlib
 import re
@@ -35,6 +47,7 @@ ROW = re.compile(
 )
 STATUS = re.compile(r"\| \*\*Status\*\* \| ([^|]+?) \|")
 LINK = re.compile(r"\]\(([^)#\s]+\.md)\)")
+UNTICKED = re.compile(r"^\s*[-*] \[ \]")
 
 
 def main() -> int:
@@ -50,10 +63,23 @@ def main() -> int:
             continue
         if board_state not in ALLOWED[folder]:
             problems.append(f"{tid}: sits in {folder}/ but the board says {board_state}")
-        own = STATUS.search(path.read_text())
+        text = path.read_text()
+        own = STATUS.search(text)
         own_state = own.group(1).strip() if own else "(no Status field)"
         if not any(own_state.startswith(s) for s in ALLOWED[folder]):
             problems.append(f"{tid}: sits in {folder}/ but its Status field says '{own_state}'")
+
+        # A DONE ticket with an unticked box reads as abandoned, whatever the
+        # prose next to it says -- and the board renders the boxes, not the prose.
+        if own_state.startswith("✅ DONE"):
+            for lineno, line in enumerate(text.splitlines(), 1):
+                if UNTICKED.match(line):
+                    excerpt = line.strip()[:72]
+                    problems.append(
+                        f"{tid}: DONE but {folder}/{fname}:{lineno} is unticked -- "
+                        f"'- [~]' it with the shortfall stated inline, or remove the "
+                        f"line and record it under '## Descoped': {excerpt}"
+                    )
 
     # A ticket on disk with no board row is invisible to anyone reading the board.
     for folder in ALLOWED:
@@ -72,7 +98,10 @@ def main() -> int:
     if problems:
         print(f"\n{len(problems)} backlog inconsistency/ies", file=sys.stderr)
         return 1
-    print(f"backlog consistent: {len(seen)} tickets, folder/Status/board agree, links resolve")
+    print(
+        f"backlog consistent: {len(seen)} tickets, folder/Status/board agree, "
+        "links resolve, no DONE ticket has an unticked box"
+    )
     return 0
 
 

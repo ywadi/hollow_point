@@ -25,7 +25,6 @@ a bug report from a user actionable.
 - [x] Multiple sinks — sink interface plus console and file. **Editor panel (T0066) and Tracy (T0029) do not exist yet**; they are sinks on this interface when they do
 - [x] Compile-time level floor (`HP_LOG_MIN_LEVEL`) — arguments are not evaluated below it
 - [x] Thread-safe — shared_mutex over sinks and categories, atomic levels
-- [ ] Diligent's own `DebugOutput` is routed into it — **blocked**: the engine deliberately links nothing from Diligent yet (T0013's 13.3), so there is no callback to install
 - [x] Formatting is type-safe — `std::format`, verified on both targets
 
 ## Subtasks
@@ -41,9 +40,24 @@ a bug report from a user actionable.
       deliberately deferred: there are no worker threads yet (T0026), so it
       would be untestable speculation, and the sink interface is the seam where
       it lands
-- [ ] 54.5 Install a Diligent debug-message callback — **blocked on the engine linking Diligent** (T0015/T0025)
-- [ ] 54.6 Bridge to Tracy messages — **blocked on T0029**
 - [x] 54.7 Formatting: **`std::format`**. The toolchain is happy with it — verified including `vformat`/`make_format_args` on both targets
+
+## Descoped 2026-08-05 — what left this ticket's checklist, and where it went
+
+The closing note below already records both of these as moved. They were still
+sitting here as unticked boxes, which makes a closed ticket claim less than it
+achieved and read as abandoned. Removed from the checklist and listed here.
+
+Each left because it needs a library this ticket's phase deliberately does not
+link — not because it was skipped.
+
+| Was | Went to | Because |
+|---|---|---|
+| Diligent's `DebugOutput` routed into the logger (Done when, 54.5) | **T0025** | The engine links nothing from Diligent until T0025 (T0013's 13.3), so there is no `SetDebugMessageCallback` to install. T0025 lists it inherited |
+| Bridge to Tracy messages (54.6) | **T0029** | T0029 owns the Tracy client; there is nothing to bridge to until it exists |
+
+**54.4 stays here as `[~]`, deliberately.** It is not blocked and it did not move
+— it is half done on purpose, and the subtask says which half.
 
 ## Notes / findings
 

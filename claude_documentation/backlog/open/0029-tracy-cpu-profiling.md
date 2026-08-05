@@ -8,7 +8,7 @@
 | **Phase** | 5 — Profiling |
 | **Order** | 560 |
 | **Created** | 2026-08-02 |
-| **Refs** | [../completed/0046-frame-render-targets.md](../completed/0046-frame-render-targets.md) |
+| **Refs** | [../completed/0046-frame-render-targets.md](../completed/0046-frame-render-targets.md), [../completed/0054-logging.md](../completed/0054-logging.md), [../completed/0057-time-system.md](../completed/0057-time-system.md) |
 
 ## Why
 
@@ -55,6 +55,19 @@ alignment and tiling make the real figure somewhat larger. That is good enough
 for "what is eating VRAM", which is the question it exists to answer, and the
 distinction is worth keeping in whatever displays it.
 
+
+### Inherited (2026-08-05) — two closed tickets left work here
+
+Both closed rather than sitting BLOCKED near the head of the board, and both
+recorded the remainder here rather than only on their own side.
+
+- **T0054.6, the log → Tracy message bridge.** T0054's sink interface is the seam
+  it lands on, with no change to any call site — a Tracy sink is just another
+  sink. Nothing to bridge to until this ticket vendors the client.
+- **T0057.6, the frame-time overlay** — the *display* rests on this ticket, the
+  workflow on T0031. `hp::Clock` already exposes everything one would read
+  (scaled and unscaled delta, elapsed, frame index, the fixed-step alpha), so
+  T0057 needs no change when it is built.
 
 **Main risk is the MinGW cross-build.** The Tracy client uses OS threading and
 timing primitives; it supports MinGW, but this project's toolchain has already

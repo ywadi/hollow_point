@@ -31,7 +31,16 @@ build in now than to retrofit.
 - [x] 57.3 Fixed-step accumulator, with the leftover fraction exposed as alpha
 - [x] 57.4 Delta clamping
 - [x] 57.5 Separate editor and game clocks
-- [ ] 57.6 Surface it in the profiler overlay — **not done, and not blocked by this ticket**: there is no overlay. It belongs with T0029/T0031, and the clock exposes everything an overlay would read
+
+## Descoped 2026-08-05 — what left this ticket's checklist, and where it went
+
+One item, and it was never this ticket's to finish: an overlay is a profiling
+feature, and this ticket is the clock it would read. Left unticked it made a
+complete, tested time system look unfinished.
+
+| Was | Went to | Because |
+|---|---|---|
+| Surface it in the profiler overlay (57.6) | **T0031**, with the display itself resting on **T0029** | There is no overlay and no Tracy client. The clock already exposes everything one would read — scaled and unscaled delta, elapsed, frame index, the fixed-step alpha — so nothing here has to change when it is built |
 
 ## Notes / findings
 

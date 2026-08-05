@@ -20,10 +20,16 @@ plus a bootstrap that installs its own toolchain means CI needs almost no setup.
 
 ## Done when
 
-- [ ] Both targets build on every push
+- [~] Both targets build on every push — **not met as written, deliberately.**
+      Both targets do build; `full-build.yml` runs them nightly and on dispatch
+      rather than per-commit, weighed against 84.7. See "Closing" below
 - [x] The test suite runs and failures block the result
 - [x] The bootstrap is exercised from scratch, catching toolchain-pinning breakage
-- [ ] Build time is reasonable — caching where it helps
+- [~] Build time is reasonable — caching where it helps — **`.harness/` is
+      cached (635 MB of pure download, the real win) and the fast/slow job split
+      is the design answer; no durations were recorded here**, so the claim rested
+      on reasoning. Measuring it — and fixing what the measurement showed — became
+      [T0121](0121-ci-build-time.md)
 - [x] A failure is legible without reproducing locally
 - [x] Ideally, a Windows runner covers T0004 (building *on* Windows)
 
@@ -31,11 +37,22 @@ plus a bootstrap that installs its own toolchain means CI needs almost no setup.
 
 - [x] 84.1 Choose CI (GitHub Actions is the obvious fit — the repo is on GitHub)
 - [x] 84.2 Linux job: bootstrap, `zig build all`, run tests
-- [ ] 84.3 Cache `.harness/` and ccache between runs
+- [~] 84.3 Cache `.harness/` and ccache between runs — **`.harness/` yes, the
+      ccache directory never.** ccache therefore did nothing useful on the Linux
+      jobs even when present; [T0121](0121-ci-build-time.md) later measured it at
+      2 hits in 615 compiles and removed it rather than persisting it
 - [x] 84.4 Windows runner for the native path (T0004)
-- [ ] 84.5 Verify configure works offline (T0010) — a job with networking blocked
+- [~] 84.5 Verify configure works offline (T0010) — a job with networking blocked
+      — **the job asserts on the *result*** (no `_deps/*-src`), which is how a lost
+      `FETCHCONTENT_SOURCE_DIR_*` redirect manifests and it fires correctly.
+      **Networking is not blocked**, so it is weaker than the local
+      `unshare -r -n` proof
 - [x] 84.6 Upload `dist/` artifacts on demand
-- [ ] 84.7 Keep run time low enough that it is not routinely ignored
+- [~] 84.7 Keep run time low enough that it is not routinely ignored — **the
+      split addresses it and no timings were taken here.** The one datum seen was
+      a 282s Windows configure against ~28s locally. Measured for real in
+      [T0121](0121-ci-build-time.md), which found the fast jobs at 18–21m and
+      brought them to 5m
 
 ## Notes / findings
 
@@ -324,6 +341,11 @@ So every workflow in the repository has now executed successfully at least once:
 
 Following `completed/0007-retire-imgui-probe.md`: a ticket that overstates what
 it achieved is worse than one left open.
+
+> **2026-08-05:** all four are now `[~]` rather than `[ ]`. Every one is
+> *partly* achieved — the split, `.harness/`, the offline assertion — and none
+> is another ticket's, so none was descoped. Left unticked they said the work
+> never happened, which is the opposite error to overstating it.
 
 - **"Both targets build on every push"** — not met as written, deliberately.
   The full build is nightly plus dispatch. Chosen against the literal wording
