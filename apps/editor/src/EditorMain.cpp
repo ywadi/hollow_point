@@ -296,13 +296,27 @@ private:
         renderer.mesh = meshGuid;
         quad.add<hp::MeshRenderer>(renderer);
 
-        // Behind the quad, shining back towards the camera — the geometry T0079
-        // measured, where an identity transform points a light down -Z.
+        // **Angled, and that is not decoration.** An identity transform points a
+        // light straight down -Z, exactly anti-parallel to the camera's view.
+        // The half-vector `normalize(L + V)` then collapses to zero at the
+        // centre of the quad and the specular term with it, producing a dark
+        // radial smudge that looks like a renderer bug and is not — it is the
+        // one lighting arrangement guaranteed to look wrong. Rotating the lamp
+        // off-axis puts the highlight somewhere sensible and shows the surface
+        // actually being shaded.
         hp::Entity sun = scene.create("Sun");
         hp::Light light;
         light.type = hp::LightType::Directional;
         light.intensity = 3.0F;
         sun.add<hp::Light>(light);
+
+        hp::Transform sunPlacement;
+        // Yaw ~35 degrees and pitch ~25 down, as a quaternion from Euler angles.
+        sunPlacement.rotation = hp::Quaternion::RotationFromAxisAngle(
+                                    hp::float3{0.0F, 1.0F, 0.0F}, 0.6F)
+                                * hp::Quaternion::RotationFromAxisAngle(
+                                    hp::float3{1.0F, 0.0F, 0.0F}, 0.45F);
+        scene.setLocalTransform(sun, sunPlacement);
 
         scene.propagateTransforms();
         HP_LOG_INFO(kLog, "demo scene ready: a lit quad. Run with --backend=opengl to see it.");

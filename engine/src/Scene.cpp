@@ -1,3 +1,4 @@
+#include <hp/Light.hpp>
 #include <hp/Scene.hpp>
 
 #include <hp/Log.hpp>
@@ -81,7 +82,11 @@ void registerCoreComponents() {
     registerComponent<WorldTransform>("WorldTransform");
     registerComponent<MeshRenderer>("MeshRenderer")
         .property<&MeshRenderer::mesh>("mesh")
-        .property<&MeshRenderer::material>("material");
+        .property<&MeshRenderer::material>("material")
+        // Added with the field in T0085 -- an object's layers must survive a
+        // save, or a scene reloads with everything back on the default layer
+        // and visible to cameras that were told to exclude it.
+        .property<&MeshRenderer::layers>("layers");
     registerComponent<Camera>("Camera")
         .property<&Camera::verticalFov>("verticalFov")
         .property<&Camera::nearPlane>("nearPlane")
@@ -98,6 +103,17 @@ void registerCoreComponents() {
         .property<&Camera::enabled>("enabled")
         .property<&Camera::cullingMask>("cullingMask")
         .property<&Camera::viewSlot>("viewSlot");
+    // T0079. Position and direction are deliberately absent: they come from the
+    // entity's transform, so serialising them here would store the same truth
+    // twice and let the two disagree.
+    registerComponent<Light>("Light")
+        .property<&Light::type>("type")
+        .property<&Light::colour>("colour")
+        .property<&Light::intensity>("intensity")
+        .property<&Light::range>("range")
+        .property<&Light::innerConeAngle>("innerConeAngle")
+        .property<&Light::outerConeAngle>("outerConeAngle")
+        .property<&Light::enabled>("enabled");
 }
 
 bool Entity::valid() const {

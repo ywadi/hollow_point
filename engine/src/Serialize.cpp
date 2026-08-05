@@ -2,6 +2,7 @@
 
 #include <hp/Guid.hpp>
 #include <hp/Layers.hpp>
+#include <hp/Light.hpp>
 #include <hp/Log.hpp>
 #include <hp/Math.hpp>
 #include <hp/Profiling.hpp>
@@ -102,6 +103,13 @@ bool writeLeaf(YamlNode parent, std::string_view key, const entt::meta_any& valu
         parent.set(key, v->toString());
         return true;
     }
+    if (const auto* v = value.try_cast<LightType>()) {
+        // As its integer, matching every other enum-shaped value here. Names
+        // would read better in a diff and would need the enum reflected through
+        // `entt::meta`, which nothing does yet -- recorded rather than done.
+        parent.set(key, static_cast<std::int64_t>(*v));
+        return true;
+    }
     if (const auto* v = value.try_cast<LayerMask>()) {
         // As a plain integer, so the on-disk shape is what it was before
         // `cullingMask` became a typed mask (T0085) rather than a nested
@@ -195,6 +203,20 @@ bool readLeaf(YamlNode node, entt::meta_any& value) {
             return false;
         }
         *v = *parsed;
+        return true;
+    }
+    if (auto* v = value.try_cast<LightType>()) {
+        std::int64_t n = 0;
+        if (!node.tryRead(n)) {
+            return false;
+        }
+        // Clamped rather than trusted: a file naming a light type this build
+        // does not have would otherwise produce an out-of-range enum, and the
+        // switch that reads it has no default case by design.
+        if (n < 0 || n > static_cast<std::int64_t>(LightType::Spot)) {
+            return false;
+        }
+        *v = static_cast<LightType>(n);
         return true;
     }
     if (auto* v = value.try_cast<LayerMask>()) {
@@ -498,6 +520,10 @@ bool cookLeaf(const entt::meta_any& value, std::vector<std::byte>& out) {
         writeU64(out, v->value());
         return true;
     }
+    if (const auto* v = value.try_cast<LightType>()) {
+        writeU64(out, static_cast<std::uint64_t>(*v));
+        return true;
+    }
     if (const auto* v = value.try_cast<LayerMask>()) {
         // U64 rather than U32, matching every other integer in this format:
         // widths are uniform here so the reader never has to know which one a
@@ -581,6 +607,17 @@ bool uncookLeaf(const std::vector<std::byte>& bytes, std::size_t& cursor, entt::
             return false;
         }
         *v = Guid{raw};
+        return true;
+    }
+    if (auto* v = value.try_cast<LightType>()) {
+        std::uint64_t raw = 0;
+        if (!readU64(bytes, cursor, raw)) {
+            return false;
+        }
+        if (raw > static_cast<std::uint64_t>(LightType::Spot)) {
+            return false;
+        }
+        *v = static_cast<LightType>(raw);
         return true;
     }
     if (auto* v = value.try_cast<LayerMask>()) {
