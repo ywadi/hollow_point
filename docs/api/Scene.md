@@ -6,7 +6,7 @@
 #include <hp/Scene.hpp>
 ```
 
-54 public declaration(s), 54 documented.
+58 public declaration(s), 58 documented.
 
 ## `Id`
 
@@ -159,6 +159,21 @@ Guid guid() const
 
  @returns the entity's stable identity, or a default GUID when the handle
           is not valid.
+
+## `Entity::handle`
+
+```cpp
+entt::entity handle() const
+```
+
+ The underlying registry handle.
+
+ **Valid only within the current frame and only for this scene's
+ registry** — it is a slot index, reused after a destroy, and it differs
+ across the module boundary (T0095). Never persist one; persist the GUID
+ and resolve it with `Scene::find`. Exposed for code that must reach
+ `entt` directly, such as the serializer's type-erased component ops.
+ @returns the handle, or `entt::null` for a null entity.
 
 ## `Entity::scene`
 
@@ -548,15 +563,59 @@ TypeBuilder<Component> registerComponent(const char * name)
           same expression that registers the type — which is what stops the
           field list and the type list from drifting apart.
 
-## `registerComponentClone`
+## `registerComponentOps`
 
 ```cpp
-void registerComponentClone(const char * name, void (*)(const int &, entt::entity, int &, entt::entity) copy)
+void registerComponentOps(const char * name, void (*)(const int &, entt::entity, int &, entt::entity) copy, entt::meta_any (*)(const int &, entt::entity) get, bool (*)(int &, entt::entity, const entt::meta_any &) set)
 ```
 
- Records the clone operation for a component type.
+ Records the type-erased operations for a component type.
+
+ One table serves cloning and serialization (T0022). A second registry keyed
+ the same way would be two lists to keep in step, and a type present in one
+ and missing from the other fails silently in whichever direction nobody
+ tested.
+
  @param name the stable type name.
  @param copy a function copying the component from one registry to another.
+ @param get reads the component as a reflected value; invalid when absent.
+ @param set writes a reflected value back, adding the component if absent.
+ @returns nothing.
+
+## `ComponentOps`
+
+```cpp
+struct ComponentOps
+```
+
+ One registered component type's type-erased operations.
+
+ Exposed so the serializer (T0022) can walk every registered type without a
+ switch, which is the whole point of there being a registry.
+
+## `registeredComponents`
+
+```cpp
+const int & registeredComponents()
+```
+
+ Every component type registered so far, in registration order.
+ @returns the table. Valid for the process; entries are replaced rather than
+          appended when a gameplay module reloads and re-registers.
+
+## `setComponentSerialized`
+
+```cpp
+void setComponentSerialized(const char * name, bool serialized)
+```
+
+ Marks whether a scene file carries this component.
+
+ Explicit rather than inferred from a type having no reflected properties —
+ that inference would start writing garbage the moment somebody added a
+ property to `Hierarchy`.
+ @param name the stable type name, already registered.
+ @param serialized whether `saveScene` should write it.
  @returns nothing.
 
 ## `registerCoreComponents`

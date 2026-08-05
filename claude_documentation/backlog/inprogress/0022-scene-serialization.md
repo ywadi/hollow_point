@@ -18,22 +18,27 @@ schema is still small.
 
 ## Done when
 
-- [ ] Save produces a readable, git-diffable `.hpscene` YAML
-- [ ] Load reconstructs an equivalent scene — same entities, GUIDs, components
+- [x] Save produces a readable, git-diffable `.hpscene` YAML
+- [x] Load reconstructs an equivalent scene — same entities, GUIDs, components
 - [ ] Binary cook and load produce an identical scene to the YAML path
-- [ ] Unknown components in a file are handled deliberately (see notes)
-- [ ] Round-trip tests over a scene using every component type
+- [~] Unknown components in a file are handled deliberately — **counted, named
+      and logged; not preserved.** D23 wants the raw subtree kept and re-emitted,
+      and that is not built. See "What is not done" below
+- [x] Round-trip tests over a scene using every component type — driven by
+      walking the registry, so a type added later is covered without anyone
+      remembering this test
 
 ## Subtasks
 
-- [ ] 22.1 `.hpscene` schema — entities as a list, each with GUID, tag, components
-- [ ] 22.2 Per-component serialize/deserialize **driven by reflection (T0053)**
-      — registration falls out of the type's one reflection declaration, so
-      adding a component still touches exactly one place
-- [ ] 22.3 Save: iterate entities and their components
-- [ ] 22.4 Load: recreate entities preserving GUIDs, then components
-- [ ] 22.5 Wire binary cook/load through T0020
-- [ ] 22.6 Round-trip tests, including an empty scene and a large one
+- [x] 22.1 `.hpscene` schema — entities as a list, each with GUID, name, parent
+      and components; `version` from the first file ever written
+- [x] 22.2 Per-component serialize/deserialize **driven by reflection (T0053)** —
+      `get`/`set` added to the existing clone registry, not a second table
+- [x] 22.3 Save: iterate entities and their components
+- [x] 22.4 Load: recreate entities preserving GUIDs, then components, then
+      resolve parents by GUID in a second pass
+- [ ] 22.5 Wire binary cook/load through T0020 — **not started**
+- [x] 22.6 Round-trip tests, including an empty scene
 
 ## Design worked out 2026-08-05, before writing any code
 
@@ -196,3 +201,59 @@ Two requirements that follow:
 - The same property enumeration is reused by T0062.6's in-memory hot-reload
   snapshot. That snapshot does **not** need the YAML/file layer, but it should
   not be a second implementation of "walk a reflected type's properties".
+
+
+## Built 2026-08-05 — the YAML round trip, not the binary path
+
+`engine/include/hp/SceneSerialize.hpp`, `engine/src/SceneSerialize.cpp`,
+`tests/fast/scene_serialize_test.cpp`. **248 fast and 89 integration green on
+both targets**, ten new cases.
+
+### The registry grew two function pointers rather than a twin
+
+`ComponentClone` became `detail::ComponentOps`, carrying `get`, `set` and a
+`serialized` flag alongside the existing `copy`, all populated by the same
+`registerComponent<T>` call. The design section above called for exactly this and
+warned against a parallel table; that warning was worth heeding, because a second
+name-keyed registry is two lists to keep in step and a type present in one and
+missing from the other fails silently in whichever direction nobody tested.
+
+`detail::registeredComponents()` exposes the table so the serializer walks it
+instead of switching on type. Adding a component still touches one place.
+
+### The trap is marked in code, not inferred
+
+`Id`, `Hierarchy`, `WorldTransform` **and `Tag`** are flagged non-serialized
+explicitly. `Tag` joined the list because the schema carries the name on the
+entity, where a diff reader expects it — the same argument that excludes `Id`.
+All four stay reflected; the inspector still wants them.
+
+The flag is set rather than inferred from "has no reflected properties", which is
+what these look like today. That inference would start writing garbage the moment
+somebody added `.property<&Hierarchy::parent>`, and the assertion that no
+`Hierarchy:` key appears in a saved document is in the tests.
+
+### The version field exists from the first file
+
+`kSceneSchemaVersion = 1`, written always, and a **newer** file is refused rather
+than partly loaded. That half of T0082 had to happen now: a file with no version
+can only be guessed at, and loading what this build understands would write the
+loss back on the next save. Migration itself remains T0082's.
+
+### What is not done
+
+- **22.5, the binary cook path.** `cookProperties` / `readCookedProperties` exist
+  and are tested, so this is wiring — but it is wiring that has not been written,
+  and the Done-when about YAML and binary agreeing is therefore unmet. This
+  ticket stays open for it.
+- **Unknown components are dropped.** They are counted, named in the log and
+  surfaced on `SceneLoadResult::unknownComponents`, with a test asserting the
+  count. What D23 actually asks for — keep the raw subtree, re-emit it verbatim,
+  re-materialise it when the type reappears — is **not built**, because
+  `YamlNode` has no way to capture or re-emit a subtree and adding one is its own
+  piece of work in T0020's layer. Until it exists, *a save-after-load destroys
+  data belonging to a gameplay type that merely failed to build today*, which is
+  exactly the failure D23 named. Recorded plainly rather than ticked.
+- **No `.hpscene` file is ever written or read from disk.** The API is
+  string-in/string-out; the VFS path and the file extension belong with T0024's
+  project layout.

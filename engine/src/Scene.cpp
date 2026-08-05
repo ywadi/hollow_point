@@ -14,20 +14,8 @@ namespace {
 
 const LogCategory kLog("scene");
 
-/// One registered component type's clone operation.
-struct ComponentClone {
-    const char* name;
-    void (*copy)(const entt::registry&, entt::entity, entt::registry&, entt::entity);
-};
-
-/// The registered component types.
-///
-/// A function-local static rather than a namespace-scope one, because the engine
-/// is a shared library and a namespace-scope vector's constructor runs at load
-/// time in an order nothing here controls. `registerCoreComponents` can then be
-/// called from a `Scene` constructor without depending on that order.
-std::vector<ComponentClone>& componentClones() {
-    static std::vector<ComponentClone> clones;
+std::vector<detail::ComponentOps>& componentClones() {
+    static std::vector<detail::ComponentOps> clones;
     return clones;
 }
 
@@ -35,13 +23,15 @@ std::vector<ComponentClone>& componentClones() {
 
 namespace detail {
 
-void registerComponentClone(const char* name,
-                            void (*copy)(const entt::registry&, entt::entity,
-                                         entt::registry&, entt::entity)) {
+void registerComponentOps(const char* name,
+                          void (*copy)(const entt::registry&, entt::entity, entt::registry&,
+                                       entt::entity),
+                          entt::meta_any (*get)(const entt::registry&, entt::entity),
+                          bool (*set)(entt::registry&, entt::entity, const entt::meta_any&)) {
     auto& clones = componentClones();
     const auto existing = std::find_if(clones.begin(), clones.end(),
-                                       [name](const ComponentClone& clone) {
-                                           return std::string_view{clone.name} == name;
+                                       [name](const detail::ComponentOps& ops) {
+                                           return std::string_view{ops.name} == name;
                                        });
     if (existing != clones.end()) {
         // Re-registering the same name is normal: a gameplay module reloads and
@@ -49,9 +39,27 @@ void registerComponentClone(const char* name,
         // would run twice and the second call would hold a function pointer into
         // the unloaded module.
         existing->copy = copy;
+        existing->get = get;
+        existing->set = set;
         return;
     }
-    clones.push_back({name, copy});
+    // Serialized by default. The engine's three exceptions are marked below, in
+    // `registerCoreComponents`; a gameplay type registering itself wants to be
+    // saved, which is the whole point of registering it.
+    clones.push_back({name, copy, get, set, true});
+}
+
+const std::vector<ComponentOps>& registeredComponents() { return componentClones(); }
+
+void setComponentSerialized(const char* name, bool serialized) {
+    auto& clones = componentClones();
+    const auto existing = std::find_if(clones.begin(), clones.end(),
+                                       [name](const detail::ComponentOps& ops) {
+                                           return std::string_view{ops.name} == name;
+                                       });
+    if (existing != clones.end()) {
+        existing->serialized = serialized;
+    }
 }
 
 } // namespace detail
@@ -114,6 +122,15 @@ void registerCoreComponents() {
         .property<&Light::innerConeAngle>("innerConeAngle")
         .property<&Light::outerConeAngle>("outerConeAngle")
         .property<&Light::enabled>("enabled");
+
+    // T0022's trap, made explicit. A loop that writes every registered
+    // component produces a corrupt file that looks fine -- see `ComponentOps`
+    // above for why each of these is excluded, and note that all four stay
+    // *reflected*, because the inspector still wants them.
+    detail::setComponentSerialized("Id", false);
+    detail::setComponentSerialized("Hierarchy", false);
+    detail::setComponentSerialized("WorldTransform", false);
+    detail::setComponentSerialized("Tag", false);
 }
 
 bool Entity::valid() const {

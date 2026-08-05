@@ -56,9 +56,10 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
 | [`<hp/Render.hpp>`](Render.md) | 25 | 25 |
 | [`<hp/RenderStack.hpp>`](RenderStack.md) | 21 | 21 |
-| [`<hp/Scene.hpp>`](Scene.md) | 54 | 54 |
+| [`<hp/Scene.hpp>`](Scene.md) | 58 | 58 |
 | [`<hp/SceneRenderLayer.hpp>`](SceneRenderLayer.md) | 10 | 10 |
 | [`<hp/SceneRenderer.hpp>`](SceneRenderer.md) | 11 | 11 |
+| [`<hp/SceneSerialize.hpp>`](SceneSerialize.md) | 5 | 5 |
 | [`<hp/SceneView.hpp>`](SceneView.md) | 18 | 18 |
 | [`<hp/Serialize.hpp>`](Serialize.md) | 6 | 6 |
 | [`<hp/Settings.hpp>`](Settings.md) | 28 | 28 |
@@ -67,7 +68,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
 
-**683 public declarations across 36 headers, 566 documented.**
+**692 public declarations across 37 headers, 575 documented.**
 
 ## Every symbol
 
@@ -533,6 +534,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Entity::Entity` | [`Scene.hpp`](Scene.md) |
 | `Entity::valid` | [`Scene.hpp`](Scene.md) |
 | `Entity::guid` | [`Scene.hpp`](Scene.md) |
+| `Entity::handle` | [`Scene.hpp`](Scene.md) |
 | `Entity::scene` | [`Scene.hpp`](Scene.md) |
 | `Entity::raw` | [`Scene.hpp`](Scene.md) |
 | `Entity::add` | [`Scene.hpp`](Scene.md) |
@@ -567,7 +569,10 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Scene::registry` | [`Scene.hpp`](Scene.md) |
 | `Scene::registry` | [`Scene.hpp`](Scene.md) |
 | `registerComponent` | [`Scene.hpp`](Scene.md) |
-| `registerComponentClone` | [`Scene.hpp`](Scene.md) |
+| `registerComponentOps` | [`Scene.hpp`](Scene.md) |
+| `ComponentOps` | [`Scene.hpp`](Scene.md) |
+| `registeredComponents` | [`Scene.hpp`](Scene.md) |
+| `setComponentSerialized` | [`Scene.hpp`](Scene.md) |
 | `registerCoreComponents` | [`Scene.hpp`](Scene.md) |
 | `add` | [`Scene.hpp`](Scene.md) |
 | `has` | [`Scene.hpp`](Scene.md) |
@@ -596,6 +601,11 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `SceneRenderer::release` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `SceneRenderer::valid` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `SceneRenderer::render` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `kSceneSchemaVersion` | [`SceneSerialize.hpp`](SceneSerialize.md) |
+| `saveSceneToString` | [`SceneSerialize.hpp`](SceneSerialize.md) |
+| `SceneLoadStatus` | [`SceneSerialize.hpp`](SceneSerialize.md) |
+| `SceneLoadResult` | [`SceneSerialize.hpp`](SceneSerialize.md) |
+| `loadSceneFromString` | [`SceneSerialize.hpp`](SceneSerialize.md) |
 | `SceneViewStats` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::SceneView` | [`SceneView.hpp`](SceneView.md) |

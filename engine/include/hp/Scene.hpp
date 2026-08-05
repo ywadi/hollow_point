@@ -194,6 +194,16 @@ public:
     ///          is not valid.
     [[nodiscard]] Guid guid() const;
 
+    /// The underlying registry handle.
+    ///
+    /// **Valid only within the current frame and only for this scene's
+    /// registry** — it is a slot index, reused after a destroy, and it differs
+    /// across the module boundary (T0095). Never persist one; persist the GUID
+    /// and resolve it with `Scene::find`. Exposed for code that must reach
+    /// `entt` directly, such as the serializer's type-erased component ops.
+    /// @returns the handle, or `entt::null` for a null entity.
+    [[nodiscard]] entt::entity handle() const { return handle_; }
+
     /// @returns the owning scene, or nullptr for a default-constructed handle.
     [[nodiscard]] Scene* scene() const { return scene_; }
 
@@ -466,13 +476,53 @@ TypeBuilder<Component> registerComponent(const char* name);
 
 namespace detail {
 
-/// Records the clone operation for a component type.
+/// Records the type-erased operations for a component type.
+///
+/// One table serves cloning and serialization (T0022). A second registry keyed
+/// the same way would be two lists to keep in step, and a type present in one
+/// and missing from the other fails silently in whichever direction nobody
+/// tested.
+///
 /// @param name the stable type name.
 /// @param copy a function copying the component from one registry to another.
+/// @param get reads the component as a reflected value; invalid when absent.
+/// @param set writes a reflected value back, adding the component if absent.
 /// @returns nothing.
-HP_API void registerComponentClone(const char* name,
-                                   void (*copy)(const entt::registry&, entt::entity,
-                                                entt::registry&, entt::entity));
+HP_API void registerComponentOps(const char* name,
+                                 void (*copy)(const entt::registry&, entt::entity,
+                                              entt::registry&, entt::entity),
+                                 entt::meta_any (*get)(const entt::registry&, entt::entity),
+                                 bool (*set)(entt::registry&, entt::entity,
+                                             const entt::meta_any&));
+
+/// One registered component type's type-erased operations.
+///
+/// Exposed so the serializer (T0022) can walk every registered type without a
+/// switch, which is the whole point of there being a registry.
+struct ComponentOps {
+    /// The stable type name. Identity is the name, never `entt::type_index` —
+    /// that index differs per module (T0095, D12) and must never reach a file.
+    const char* name;
+    void (*copy)(const entt::registry&, entt::entity, entt::registry&, entt::entity);
+    entt::meta_any (*get)(const entt::registry&, entt::entity);
+    bool (*set)(entt::registry&, entt::entity, const entt::meta_any&);
+    bool serialized;
+};
+
+/// Every component type registered so far, in registration order.
+/// @returns the table. Valid for the process; entries are replaced rather than
+///          appended when a gameplay module reloads and re-registers.
+[[nodiscard]] HP_API const std::vector<ComponentOps>& registeredComponents();
+
+/// Marks whether a scene file carries this component.
+///
+/// Explicit rather than inferred from a type having no reflected properties —
+/// that inference would start writing garbage the moment somebody added a
+/// property to `Hierarchy`.
+/// @param name the stable type name, already registered.
+/// @param serialized whether `saveScene` should write it.
+/// @returns nothing.
+HP_API void setComponentSerialized(const char* name, bool serialized);
 
 } // namespace detail
 
@@ -517,13 +567,32 @@ std::size_t Entity::remove() {
 
 template <typename Component>
 TypeBuilder<Component> registerComponent(const char* name) {
-    detail::registerComponentClone(
+    detail::registerComponentOps(
         name,
         [](const entt::registry& from, entt::entity source, entt::registry& to,
            entt::entity target) {
             if (const auto* component = from.try_get<Component>(source)) {
                 to.emplace_or_replace<Component>(target, *component);
             }
+        },
+        [](const entt::registry& registry, entt::entity entity) -> entt::meta_any {
+            const auto* component = registry.try_get<Component>(entity);
+            // `forward_as_meta` on a reference, so the caller reads the real
+            // object rather than a copy — the same rule `readProperties`
+            // documents, and the same way to get it wrong.
+            return component == nullptr ? entt::meta_any{}
+                                        : entt::forward_as_meta(*component);
+        },
+        [](entt::registry& registry, entt::entity entity, const entt::meta_any& value) {
+            const auto* typed = value.try_cast<Component>();
+            if (typed == nullptr) {
+                // A wrongly-typed set returns false rather than reinterpreting
+                // bytes — T0053 guarantees that of `meta_data::set` and this
+                // layer must not be the place it stops being true.
+                return false;
+            }
+            registry.emplace_or_replace<Component>(entity, *typed);
+            return true;
         });
     return reflect<Component>(name);
 }

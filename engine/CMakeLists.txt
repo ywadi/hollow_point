@@ -81,6 +81,7 @@ add_library(hp_engine SHARED
     src/Render.cpp
     src/RenderStack.cpp
     src/Scene.cpp
+    src/SceneSerialize.cpp
     src/SceneRenderer.cpp
     src/SceneRenderLayer.cpp
     src/SceneView.cpp
