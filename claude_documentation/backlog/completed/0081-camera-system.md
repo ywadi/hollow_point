@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | ⏸ BLOCKED |
+| **Status** | ✅ DONE |
 | **Priority** | Medium |
 | **Complexity** | Simple |
 | **Phase** | 4 — Render layer |
@@ -19,31 +19,67 @@ switches between them, or how the render stack's layers get their own cameras
 
 ## Done when
 
-- [~] An active camera per render layer, resolved each frame
+- [x] An active camera per render layer, resolved each frame — `SceneView`
+      resolves per frame, per view slot (T0028)
 - [x] Multiple cameras coexist; priority decides which is active
 - [x] Perspective and orthographic both supported
 - [x] Switching cameras from gameplay is one call
 - [x] Viewport rect per camera, so split-screen or picture-in-picture is possible
-- [~] An object culling mask, so a camera can render only some object layers
+- [ ] An object culling mask, so a camera can render only some object layers —
+      **not done, moved to [T0085](../open/0085-layers-and-masks.md)**, which
+      owns what an object layer *is*
 - [~] A camera with no valid target degrades visibly rather than rendering nothing
 - [x] The editor camera (T0063) is explicitly outside this system
 
 ## Subtasks
 
 - [x] 81.1 Camera component: projection, FOV/size, near/far, priority, layer mask
-- [~] 81.2 Active camera resolution per render layer
+- [x] 81.2 Active camera resolution per render layer — called every frame by
+      `hp::SceneView::render`, per view slot
 - [x] 81.3 Projection and view matrix computation from the transform
 - [x] 81.4 Viewport rect support
-- [~] 81.5 **Object culling mask** (T0085) — which object layers this camera
-      renders. Distinct from RenderStack layers, see notes
+- [ ] 81.5 **Object culling mask → [T0085](../open/0085-layers-and-masks.md).**
+      The `Camera` component carries the mask field; nothing filters on it,
+      because what an object layer *means* is T0085's to define
 - [x] 81.6 Frustum extraction shared with culling (T0045)
 - [x] 81.7 Screen-to-world and world-to-screen helpers — gameplay and UI both need them
-- [ ] 81.8 Debug draw of camera frustums — BLOCKED on T0061 (T0061)
+- [ ] 81.8 Debug draw of camera frustums — **moved to
+      [T0061](../open/0061-debug-draw.md).** `extractFrustum` is built and
+      tested; what is missing is a way to draw lines, which is T0061's whole
+      subject
 - [x] 81.9 Post-resolve view offset seam -- shake, recoil, blends hook here
       (see the 2026-08-03 amendment)
 - [x] 81.10 Decide the aspect-ratio policy and implement it -- **this ticket
       owns it**, because this is where projection is computed from the viewport
       rect (see the 2026-08-03 amendment)
+
+## Closed — 2026-08-05
+
+**The camera system is built, tested and now actually driven each frame.** T0028
+was the last thing it was waiting on: `hp::SceneView::render` calls
+`resolveCamera` and `buildView` per frame per view slot, and uses
+`ResolvedView::viewport*` rather than the target size — which is the letterboxing
+trap this ticket's notes warned about, honoured at the one call site that
+existed to honour it.
+
+**Two remainders move to the tickets that unblock them**, rather than parking a
+finished camera system behind them — the T0095 → T0105 pattern. Both are
+recorded on the receiving ticket:
+
+- **81.5, the object culling mask → [T0085](../open/0085-layers-and-masks.md).**
+  `Camera` carries the mask field; nothing filters on it, and nothing can until
+  T0085 defines what an object layer *is*. Implementing a filter here would mean
+  inventing that vocabulary in the wrong ticket.
+- **81.8, frustum debug draw → [T0061](../open/0061-debug-draw.md).**
+  `extractFrustum` is built and tested against the matrices; what is missing is a
+  way to draw a line, which is the entirety of T0061.
+
+**Not ticked, and not moved:** "a camera with no valid *target* degrades
+visibly". What T0028 verified is the neighbouring case — a scene with **no
+camera** clears and publishes rather than crashing or showing a stale frame. A
+camera pointed at a target that fails to create is a device-loss-shaped problem
+and belongs with T0113's policy, not here. Said plainly rather than ticked,
+because the two cases are easy to confuse and one of them is genuinely untested.
 
 ## Notes / findings
 

@@ -9,6 +9,17 @@
 | **Order** | 430 |
 | **Created** | 2026-08-03 |
 
+## Inherited from T0081 (2026-08-05)
+
+**The `Camera` component already carries a layer mask field and nothing filters
+on it.** T0081 closed with 81.5 unbuilt and moved here, because filtering would
+have meant inventing the vocabulary this ticket owns — what an object layer *is*
+— inside a camera ticket.
+
+So this ticket owes the camera path a definition and a filter: `parseScene`
+(`hp/DrawSubmission.hpp`) is where the filter belongs, since its output is
+already the explicit list a cull pass is meant to be inserted around.
+
 ## Why
 
 A cross-cutting filter used in the hottest paths of three subsystems:

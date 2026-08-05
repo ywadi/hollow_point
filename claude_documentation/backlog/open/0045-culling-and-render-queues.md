@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 440 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0050, T0085, T0086, T0089, T0120, [../inprogress/0081-camera-system.md](../inprogress/0081-camera-system.md) |
+| **Refs** | T0050, T0085, T0086, T0089, T0120, [../completed/0081-camera-system.md](../completed/0081-camera-system.md) |
 
 ## Why
 

@@ -8,7 +8,18 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 500 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0117, [../inprogress/0081-camera-system.md](../inprogress/0081-camera-system.md) |
+| **Refs** | T0117, [../completed/0081-camera-system.md](../completed/0081-camera-system.md) |
+
+## Inherited from T0081 (2026-08-05)
+
+**Frustum debug draw (81.8) moved here.** `hp::extractFrustum` is built and
+tested against real matrices — six planes, normals pointing inward — so what is
+missing is not the maths but a way to draw a line, which is this ticket's whole
+subject. T0081 closed rather than parking a finished camera system behind it.
+
+Also worth knowing: **a missing *mesh* deliberately draws nothing and gets no
+placeholder** (T0023, T0028). Inventing a cube would put geometry in the world no
+artist authored, so the visible marker for an unloaded mesh belongs here too.
 
 ## Why
 
