@@ -376,8 +376,11 @@ resolve to Mesa's software rasteriser here — `Vulkan on 'llvmpipe (LLVM 20.1.2
 256 bits)'` — because `/usr/share/vulkan/icd.d/` carries only `lvp_icd.json` and
 no NVIDIA ICD, despite the machine having an RTX 4070 and `/dev/dxg`. Lavapipe
 and llvmpipe are conformant, so the result below stands; it is simply not
-hardware coverage, and **nothing in this repository has yet run on a GPU**. So
-`PBR_Renderer`
+hardware coverage. **Amended again the same day (T0135): the OpenGL backend now has
+hardware coverage** on an RTX 4070 via Mesa's `d3d12` gallium driver, with results
+pixel-identical to software; Vulkan still has no hardware path here. See
+[../open/0135-gpu-tests-on-real-hardware.md](../open/0135-gpu-tests-on-real-hardware.md).
+So `PBR_Renderer`
 compiles its shaders and builds pipeline states against `GREATER_EQUAL` on both
 — the substitution for `GLTF_PBR_Renderer` works, and reverse-Z is not something
 the backends object to.

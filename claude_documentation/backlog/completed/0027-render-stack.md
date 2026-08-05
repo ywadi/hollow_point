@@ -171,6 +171,8 @@ a hardware GPU.**
 Worth fixing at the environment level rather than the ticket level, and worth
 knowing before anyone reads a green `gpu` bucket as hardware coverage.
 
+**Superseded in part (2026-08-05, T0135): hardware coverage now exists on the OpenGL backend.** Mesa's `d3d12` gallium driver reaches the RTX 4070 with `GALLIUM_DRIVER=d3d12 MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA`, and the whole gpu bucket passes there with **pixel-identical results** to the software run. Vulkan still has no hardware path on this machine — NVIDIA's WSL package ships no Vulkan ICD and Mesa's Dozen is not packaged — so `RenderBackend::Default` remains lavapipe. See [../open/0135-gpu-tests-on-real-hardware.md](../open/0135-gpu-tests-on-real-hardware.md).
+
 #### The engine renders every mesh pure black, and that is not a T0027 bug
 
 **Measured, not assumed** — `(0, 0, 0, 255)` regardless of `baseColorFactor`,
