@@ -71,6 +71,7 @@ add_library(hp_engine SHARED
     src/Camera.cpp
     src/Cook.cpp
     src/CameraSystem.cpp
+    src/DrawSubmission.cpp
     src/Engine.cpp
     src/Guid.cpp
     src/Input.cpp

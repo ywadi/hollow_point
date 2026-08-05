@@ -37,6 +37,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/CameraSystem.hpp>`](CameraSystem.md) | 11 | 11 |
 | [`<hp/Cook.hpp>`](Cook.md) | 14 | 14 |
 | [`<hp/DepthConvention.hpp>`](DepthConvention.md) | 2 | 2 |
+| [`<hp/DrawSubmission.hpp>`](DrawSubmission.md) | 3 | 3 |
 | [`<hp/Engine.hpp>`](Engine.md) | 4 | 4 |
 | [`<hp/EntryPoint.hpp>`](EntryPoint.md) | 1 | 0 |
 | [`<hp/Event.hpp>`](Event.md) | 72 | 15 |
@@ -60,7 +61,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
 
-**579 public declarations across 29 headers, 462 documented.**
+**582 public declarations across 30 headers, 465 documented.**
 
 ## Every symbol
 
@@ -182,6 +183,9 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `readString` | [`Cook.hpp`](Cook.md) |
 | `kReverseZ` | [`DepthConvention.hpp`](DepthConvention.md) |
 | `kDepthClearValue` | [`DepthConvention.hpp`](DepthConvention.md) |
+| `DrawItem` | [`DrawSubmission.hpp`](DrawSubmission.md) |
+| `DrawParseStats` | [`DrawSubmission.hpp`](DrawSubmission.md) |
+| `parseScene` | [`DrawSubmission.hpp`](DrawSubmission.md) |
 | `engineVersion` | [`Engine.hpp`](Engine.md) |
 | `engineInstanceCount` | [`Engine.hpp`](Engine.md) |
 | `engineRegisterConsumer` | [`Engine.hpp`](Engine.md) |

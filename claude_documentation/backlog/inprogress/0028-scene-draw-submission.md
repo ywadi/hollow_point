@@ -27,7 +27,10 @@ editor viewport can display it without the renderer knowing the editor exists.
 
 ## Subtasks
 
-- [ ] 28.1 Parse step: filter to entities with transform + mesh, require a camera
+- [x] 28.1 Parse step: filter to entities with transform + mesh — **done**, see
+      "The parse step" below. The *require a camera* half belongs to the submit
+      path and is tracked under 28.4/28.5, since the parse step deliberately
+      takes no camera
 - [ ] 28.2 Default material for meshes without one
 - [ ] 28.3 Resolve mesh/material GUIDs against the asset pool
 - [ ] 28.4 Render to an offscreen target sized to the viewport
@@ -126,6 +129,40 @@ what T0060, T0079, T0087 and T0096 do about materials, lighting, IBL and
 tonemapping — is [T0134](../open/0134-pbr-renderer-adoption.md), which carries
 this survey and references all four both ways. **This ticket leaves an
 unshaded-mode stopgap that T0134.6 resolves.**
+
+### The parse step — built 2026-08-05 (28.1)
+
+`hp/DrawSubmission.hpp` — `parseScene(const Scene&, DrawParseStats*) -> DrawList`.
+
+**It takes no device, no asset pool and no camera**, and that is the design
+rather than an omission. It is what lets a sort or cull pass be inserted between
+parse and submit without restructuring (T0045), what keeps the path callable
+per-camera against an arbitrary target (T0120.2), and what puts the whole step in
+the **fast** bucket with no GPU — 7 cases, all green on both targets.
+
+Three decisions worth keeping:
+
+- **Filters on `WorldTransform`, not `Transform`.** A child's local position is
+  meaningless to a draw, and the world matrix exists only after propagation
+  (T0101). Parsing off `Transform` would render every parented entity at its
+  local offset from the origin the first frame a hierarchy is built — which
+  reads as a broken scene, not as a parse bug. There is a test that parents an
+  entity at +5 under a parent at +10 and asserts the item carries 15.
+- **The mesh/material asymmetry is deliberate and is 28.2.** An unset *mesh*
+  GUID drops the entity; an unset *material* GUID is carried through. Both come
+  straight from `MeshRenderer`'s own documentation: a default mesh means
+  "nothing to draw", a legitimate state for an entity that exists before its
+  asset is assigned, while a default material means the fallback, so a mesh with
+  no material is still visible rather than silently absent.
+- **The world matrix is copied, not referenced.** The list outlives the walk, and
+  a pointer into component storage dangles as soon as anything creates an
+  entity, which entt may answer by reallocating.
+
+`DrawParseStats` is separate from the list because "how many were skipped and
+why" is exactly what is worth reporting when a scene renders nothing, and a
+dropped entity that is *counted* is what lets an empty frame explain itself. A
+test asserts an entity with no `MeshRenderer` is not merely absent from the list
+but is never *considered*, or the report would count every entity in the scene.
 
 ### Camera
 
