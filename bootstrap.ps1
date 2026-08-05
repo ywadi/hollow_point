@@ -24,6 +24,7 @@ $ErrorActionPreference = 'Stop'
 $ZigVersion   = '0.16.0'
 $CMakeVersion = '3.31.12'
 $NinjaVersion = '1.13.2'
+$SlangVersion = '2026.14.1'
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Dl   = Join-Path $Root '.harness\dl'
@@ -127,6 +128,48 @@ if (Test-Path (Join-Path $NinjaDir 'ninja.exe')) {
 }
 & (Join-Path $NinjaDir 'ninja.exe') --version | Out-Null
 
+# --- slang (T0142, D28) ------------------------------------------------------
+#
+# The shader compiler. Keyed by the PACKAGE's platform rather than the host's,
+# and BOTH packages are installed on every host: the engine compiles `.slang`
+# shaders at pipeline-build time through the target platform's own slang
+# library, so the Windows suite needs slang-compiler.dll staged beside its
+# binaries and a cross-compiled Linux target needs libslang-compiler.so.
+# Nothing links slang at build time, and a shipped game never loads it (D28).
+#
+# Both bootstrap scripts write the same two directories from the same pinned
+# archives, so the T0102 host-collision hazard does not apply here: either
+# script re-creates byte-identical content.
+#
+# The archives are .tar.gz, which Expand-Archive cannot read; extract with the
+# CMake that was just installed, the same trick the ninja zip uses.
+
+function Install-Slang {
+    param([string]$Key, [string]$Archive, [string]$Sha)
+
+    $dir = Join-Path $Root ".harness\slang\$Key\$SlangVersion"
+    if (Test-Path (Join-Path $dir 'include')) {
+        Write-Host "slang $SlangVersion ($Key) already present"
+        return
+    }
+    $a = Get-Pinned "https://github.com/shader-slang/slang/releases/download/v$SlangVersion/$Archive" `
+                    $Archive $Sha
+    Write-Host "==> installing slang $SlangVersion ($Key)"
+    if (Test-Path $dir) { Remove-Item $dir -Recurse -Force }
+    New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    Push-Location $dir
+    try {
+        & (Join-Path $CMakeDir 'bin\cmake.exe') -E tar xzf $a
+    } finally {
+        Pop-Location
+    }
+}
+
+Install-Slang 'linux-x86_64' "slang-$SlangVersion-linux-x86_64-glibc-2.27.tar.gz" `
+    '427d9985aac9e88912429bf9e7c1a3543bf35a61aaa855c890eeb96920175e0c'
+Install-Slang 'windows-x86_64' "slang-$SlangVersion-windows-x86_64.tar.gz" `
+    '791fe8400fe3cabdaf054089e6f5bffa745fbf5912b5b85e2ee4dc78c6b9aff7'
+
 # Report a pre-T0102 install still sitting at the old shared path.
 #
 # Only reports. Deleting it here would be the very bug this layout fixes: on a
@@ -147,6 +190,7 @@ Write-Host "toolchain ready in .harness\<tool>\$HostKey\"
 Write-Host "  zig    $ZigVersion"
 Write-Host "  cmake  $CMakeVersion"
 Write-Host "  ninja  $NinjaVersion"
+Write-Host "  slang  $SlangVersion (linux-x86_64 + windows-x86_64)"
 
 Write-LegacyNote 'zig'   $ZigVersion
 Write-LegacyNote 'cmake' $CMakeVersion

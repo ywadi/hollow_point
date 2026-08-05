@@ -72,15 +72,27 @@ set(HP_ENGINE_SHADERS_HEADER "${CMAKE_BINARY_DIR}/generated/hp/EngineShaders.h")
 file(GLOB _hp_shader_sources CONFIGURE_DEPENDS
      "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.vsh"
      "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.psh"
-     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.fxh")
+     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.fxh"
+     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.slang")
+
+# Embedded alongside our own shaders (T0142): Diligent *prepends* this file to
+# HLSL sources itself, but slang resolves it as an ordinary `#include`, so the
+# engine factory must serve it. Read from the pinned submodule at build time --
+# same bytes, regenerated when the submodule moves, so it cannot drift. The
+# file carries its own include guard, so double inclusion on Diligent's paths
+# is harmless.
+set(_hp_shader_extra_files
+    "${CMAKE_SOURCE_DIR}/third_party/DiligentEngine/DiligentCore/Graphics/ShaderTools/include/HLSLDefinitions.fxh")
 
 add_custom_command(
     OUTPUT "${HP_ENGINE_SHADERS_HEADER}"
     COMMAND "${CMAKE_COMMAND}"
             -DHP_SHADER_DIR=${CMAKE_CURRENT_SOURCE_DIR}/shaders
             -DHP_SHADER_OUTPUT=${HP_ENGINE_SHADERS_HEADER}
+            "-DHP_SHADER_EXTRA_FILES=${_hp_shader_extra_files}"
             -P "${CMAKE_SOURCE_DIR}/cmake/hp_embed_shaders.cmake"
-    DEPENDS ${_hp_shader_sources} "${CMAKE_SOURCE_DIR}/cmake/hp_embed_shaders.cmake"
+    DEPENDS ${_hp_shader_sources} ${_hp_shader_extra_files}
+            "${CMAKE_SOURCE_DIR}/cmake/hp_embed_shaders.cmake"
     COMMENT "Embedding engine shaders (T0141)"
     VERBATIM)
 
@@ -107,6 +119,7 @@ add_library(hp_engine SHARED
     src/RenderStack.cpp
     src/Scene.cpp
     src/ShaderSources.cpp
+    src/SlangCompiler.cpp
     src/SurfacePipeline.cpp
     src/SceneSerialize.cpp
     src/SceneRenderer.cpp
@@ -357,3 +370,15 @@ target_link_libraries(hp_engine PRIVATE Diligent-GraphicsTools)
 # build error here rather than a silently wrong include.
 target_include_directories(hp_engine PRIVATE
     "${CMAKE_SOURCE_DIR}/third_party/DiligentEngine/DiligentFX/Utilities/interface")
+
+# --- slang (T0142, D28) ------------------------------------------------------
+#
+# Headers only, PRIVATE, SYSTEM. The library itself is loaded at RUN time by
+# `src/SlangCompiler.cpp` -- deliberately no link edge, so nothing a consumer
+# links inherits slang, the MinGW cross-link never sees an MSVC import library,
+# and a shipped game that reads cooked shaders (142.7) simply never loads it.
+# The name is a compile definition because it differs per target and the code
+# must ask for exactly the file the build staged.
+target_include_directories(hp_engine SYSTEM PRIVATE "${HP_SLANG_ROOT}/include")
+target_compile_definitions(hp_engine PRIVATE
+    HP_SLANG_LIBRARY_NAME="${HP_SLANG_LIBRARY_NAME}")

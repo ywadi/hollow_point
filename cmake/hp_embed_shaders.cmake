@@ -21,7 +21,16 @@
 # at all by using a **raw string literal**, so it does.
 #
 # Invoked as a script:
-#   cmake -DHP_SHADER_DIR=<dir> -DHP_SHADER_OUTPUT=<header> -P hp_embed_shaders.cmake
+#   cmake -DHP_SHADER_DIR=<dir> -DHP_SHADER_OUTPUT=<header> [-DHP_SHADER_EXTRA_FILES=<a;b>]
+#         -P hp_embed_shaders.cmake
+#
+# HP_SHADER_EXTRA_FILES is a list of absolute paths embedded alongside the
+# directory's own shaders, under their bare file names. It exists for
+# `HLSLDefinitions.fxh` (T0142): Diligent *prepends* that file to HLSL sources
+# itself, but slang resolves it as an ordinary `#include`, so the engine's
+# factory has to be able to serve it. Read from the pinned submodule at build
+# time -- the same bytes, regenerated whenever the submodule moves, so the copy
+# cannot drift.
 
 if(NOT DEFINED HP_SHADER_DIR OR NOT DEFINED HP_SHADER_OUTPUT)
     message(FATAL_ERROR "hp_embed_shaders.cmake needs HP_SHADER_DIR and HP_SHADER_OUTPUT")
@@ -30,8 +39,17 @@ endif()
 file(GLOB _shader_files
      "${HP_SHADER_DIR}/*.vsh"
      "${HP_SHADER_DIR}/*.psh"
-     "${HP_SHADER_DIR}/*.fxh")
+     "${HP_SHADER_DIR}/*.fxh"
+     "${HP_SHADER_DIR}/*.slang")
 list(SORT _shader_files)
+if(DEFINED HP_SHADER_EXTRA_FILES)
+    foreach(_extra IN LISTS HP_SHADER_EXTRA_FILES)
+        if(NOT EXISTS "${_extra}")
+            message(FATAL_ERROR "hp_embed_shaders.cmake: extra file '${_extra}' does not exist")
+        endif()
+        list(APPEND _shader_files "${_extra}")
+    endforeach()
+endif()
 
 # **The delimiter is what makes escaping unnecessary, and it has to be one no
 # shader contains.** `HPSHADER` is checked against every file below rather than

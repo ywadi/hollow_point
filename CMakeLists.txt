@@ -376,6 +376,53 @@ set(SDL_RPATH      OFF CACHE BOOL "" FORCE)  # the engine decides RPATH, not a d
 # recorded unknown; it is confirmed here.
 add_subdirectory(third_party/SDL)
 
+# --- slang (T0142, D28) ------------------------------------------------------
+#
+# The engine's shader language. `.slang` sources are compiled to SPIR-V at
+# pipeline-build time by the slang library, which the engine loads at RUN time
+# (dlopen/LoadLibrary) -- there is deliberately no link edge, so a shipped game
+# that reads cooked shaders never touches it and the cross-compile never has to
+# link an MSVC-built import library.
+#
+# What the build needs from the pinned package is therefore only:
+#   * the headers, to compile the engine's slang-driving code against;
+#   * the target platform's runtime library, staged beside every executable
+#     that renders (tests and apps), because that is the one place both
+#     platforms' loaders look without help -- Windows has no RPATH, and under
+#     wine an absolute POSIX path is meaningless.
+#
+# Keyed by the TARGET platform: a Linux host cross-compiling the Windows suite
+# stages slang-compiler.dll for wine, from the windows-x86_64 package.
+# bootstrap installs both packages on every host for exactly this reason.
+set(HP_SLANG_VERSION "2026.14.1")
+if (WIN32)
+    set(HP_SLANG_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.harness/slang/windows-x86_64/${HP_SLANG_VERSION}")
+    # slang-compiler.dll is the real library; slang.dll is a forwarder shim
+    # over it, so loading the real one directly saves staging both.
+    # slang-glslang.dll is loaded on demand by slang itself (SPIR-V validation
+    # and optimisation passes) from its own directory; staged so the passes
+    # that want it do not silently degrade.
+    set(HP_SLANG_LIBRARY_NAME "slang-compiler.dll")
+    set(HP_SLANG_RUNTIME_LIBRARIES
+        "${HP_SLANG_ROOT}/bin/slang-compiler.dll"
+        "${HP_SLANG_ROOT}/bin/slang-glslang.dll")
+else()
+    set(HP_SLANG_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.harness/slang/linux-x86_64/${HP_SLANG_VERSION}")
+    set(HP_SLANG_LIBRARY_NAME "libslang-compiler.so")
+    # The first entry is a symlink in the package; copy_if_different
+    # dereferences it, so what lands beside the binaries is the real library
+    # under the unversioned name the engine asks for.
+    set(HP_SLANG_RUNTIME_LIBRARIES
+        "${HP_SLANG_ROOT}/lib/libslang-compiler.so"
+        "${HP_SLANG_ROOT}/lib/libslang-glslang-${HP_SLANG_VERSION}.so")
+endif()
+if (NOT EXISTS "${HP_SLANG_ROOT}/include/slang.h")
+    message(FATAL_ERROR
+            "slang ${HP_SLANG_VERSION} is not installed in .harness/ -- run ./bootstrap.sh "
+            "(or .\\bootstrap.ps1 on Windows) once, then reconfigure. The build is offline "
+            "afterwards (T0142).")
+endif()
+
 # The engine library, and the four-artifact layout it anchors (T0013).
 #
 # engine/  a SHARED library -- the editor, the runtime and the gameplay module

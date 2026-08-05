@@ -94,6 +94,63 @@ test "bootstrap.ps1 installs under a host key" {
     }
 }
 
+/// Value of a `set(NAME "value")` assignment in a CMake script.
+fn cmakeValue(src: []const u8, name: []const u8) ?[]const u8 {
+    var lines = std.mem.splitScalar(u8, src, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+        const prefix = "set(";
+        if (!std.mem.startsWith(u8, trimmed, prefix)) continue;
+        const rest = trimmed[prefix.len..];
+        if (!std.mem.startsWith(u8, rest, name)) continue;
+        const close = std.mem.indexOfScalar(u8, rest, ')') orelse continue;
+        return std.mem.trim(u8, rest[name.len..close], " \"");
+    }
+    return null;
+}
+
+test "the slang pin agrees across bootstrap.sh, bootstrap.ps1 and CMakeLists.txt" {
+    // Slang's version lives in THREE places rather than two (T0142): both
+    // bootstrap scripts install it, and the root CMakeLists resolves
+    // `.harness/slang/<platform>/<version>` to find the headers and to stage
+    // the runtime library beside every executable. A drift here does not fail
+    // the build loudly -- CMake reports "slang is not installed, run
+    // bootstrap", which reads like a machine problem rather than a pin
+    // mismatch. This is what notices instead.
+    const gpa = testing.allocator;
+
+    const sh = try readScript(gpa, "bootstrap.sh");
+    defer gpa.free(sh);
+    const ps = try readScript(gpa, "bootstrap.ps1");
+    defer gpa.free(ps);
+    const cmake = try readScript(gpa, "CMakeLists.txt");
+    defer gpa.free(cmake);
+
+    const pinned = shValue(sh, "SLANG_VERSION").?;
+    try testing.expectEqualStrings(pinned, psValue(ps, "$SlangVersion").?);
+    try testing.expectEqualStrings(pinned, cmakeValue(cmake, "HP_SLANG_VERSION").?);
+}
+
+test "both scripts install slang under both platform keys" {
+    // Slang is keyed by the PACKAGE's platform, not the host's, and both
+    // packages are installed on every host: either host cross-builds both
+    // targets, and each target's suite loads its own platform's library at
+    // run time. A host that installs only its own package leaves the other
+    // target's staging with nothing to copy -- a configure error on this
+    // machine, and a broken suite on the machine the pin was "simplified" on.
+    const gpa = testing.allocator;
+
+    const sh = try readScript(gpa, "bootstrap.sh");
+    defer gpa.free(sh);
+    try testing.expect(std.mem.indexOf(u8, sh, "install_slang linux-x86_64") != null);
+    try testing.expect(std.mem.indexOf(u8, sh, "install_slang windows-x86_64") != null);
+
+    const ps = try readScript(gpa, "bootstrap.ps1");
+    defer gpa.free(ps);
+    try testing.expect(std.mem.indexOf(u8, ps, "Install-Slang 'linux-x86_64'") != null);
+    try testing.expect(std.mem.indexOf(u8, ps, "Install-Slang 'windows-x86_64'") != null);
+}
+
 test "neither script installs at the old unkeyed path" {
     // The T0102 regression, stated directly. `.harness/zig/$ZIG_VERSION` is the
     // exact expression that made a Linux bootstrap delete a Windows toolchain,

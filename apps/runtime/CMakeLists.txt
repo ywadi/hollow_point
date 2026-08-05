@@ -73,6 +73,10 @@ if (WIN32)
         OUTPUT "${_engine_stamp}"
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                 "$<TARGET_FILE:hp_engine>" "$<TARGET_FILE_DIR:hp_runtime>"
+        # The slang runtime, beside the exe for the same reason the engine is
+        # (T0142): loaded at run time by name from the exe's own directory.
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                ${HP_SLANG_RUNTIME_LIBRARIES} "$<TARGET_FILE_DIR:hp_runtime>"
         COMMAND "${CMAKE_COMMAND}" -E touch "${_engine_stamp}"
         DEPENDS hp_engine
         COMMENT "Refreshing hp_engine beside hp_runtime"
@@ -93,9 +97,12 @@ else()
         INSTALL_RPATH "$ORIGIN:$ORIGIN/../lib")
 
     # And put the engine beside the executable in the build tree, so `$ORIGIN`
-    # resolves there too without needing LD_LIBRARY_PATH.
+    # resolves there too without needing LD_LIBRARY_PATH. The slang runtime
+    # rides along (T0142): the engine loads it by name from the exe directory.
     add_custom_command(TARGET hp_runtime POST_BUILD
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                 "$<TARGET_FILE:hp_engine>" "$<TARGET_FILE_DIR:hp_runtime>"
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                ${HP_SLANG_RUNTIME_LIBRARIES} "$<TARGET_FILE_DIR:hp_runtime>"
         VERBATIM)
 endif()

@@ -47,33 +47,62 @@ RTX 2080 — their arithmetic, to the byte.
 
 ## Subtasks
 
-- [ ] 142.1 **Pin `slangc` in `.harness/`** the way zig, cmake and ninja are —
+- [x] 142.1 **Pin `slangc` in `.harness/`** the way zig, cmake and ninja are —
       version plus SHA256, fetched once by `bootstrap.sh`, zero network during
       `zig build`. Prebuilt archives exist per platform (23–78 MB); the
       `glibc-2.27` Linux variant is the small one. **Build-time only** — this
       must never become a runtime dependency.
+      *Done 2026-08-06: 2026.14.1 pinned, both packages (linux glibc-2.27 +
+      windows) installed by both bootstrap scripts, keyed by the package's
+      platform since either host cross-builds both targets. Verified idempotent
+      on this host; `bootstrap.ps1` mirrors it but has not run on a Windows
+      host. "Build-time only" is honoured one step further than asked: the
+      engine does not even link slang — it loads it at run time, dev paths
+      only (see notes).*
 - [ ] 142.2 **Define `IHpMaterial`** — the interface whose default
       implementations *are* the standard material. This is **D27's contract
       restated in a language that can express it**, and the same promise applies:
       adding is free, removing breaks every shipped game. `HpMaterial.fxh`'s
       field table and its "nothing is exposed before the system behind it exists"
       rule carry over unchanged.
-- [ ] 142.3 **Port `HpSurface.psh` to Slang** as the reference implementation of
+- [~] 142.3 **Port `HpSurface.psh` to Slang** as the reference implementation of
       142.2, still calling DiligentFX's getters and lighting. **The pixel output
       must not change** — the existing byte-identical comparison against
       `RenderPBR.psh` is the acceptance test, and it already exists.
-- [ ] 142.4 **Feed the generated interface structs to Slang.** `PBR_Renderer`
+      *2026-08-06: the shader is `HpSurface.slang`, compiled by slang to
+      SPIR-V on Vulkan with the real macros and generated structs, and **every
+      measured pixel value matched the pre-Slang baseline to the last printed
+      digit on both targets** (evidence in notes). The `[~]`: the file must
+      stay inside the HLSL-compatible subset because the GL backend still
+      compiles the same bytes through Diligent's path — so it is not yet the
+      *reference implementation of 142.2's interface*, which is the other half
+      of this subtask and waits on 142.2 itself.*
+- [x] 142.4 **Feed the generated interface structs to Slang.** `PBR_Renderer`
       emits `VSOutputStruct.generated` and friends into *Diligent's* source
       factory; Slang compiles first, so they must reach `ISlangFileSystem`
       instead. Same strings, different consumer.
-- [ ] 142.5 **Pass the permutation macros through.** `DefineMacros` already
+      *Done 2026-08-06: `FactoryFileSystem` in `SlangCompiler.cpp` bridges the
+      same compound factory Diligent uses to `ISlangFileSystem` — one
+      resolution order for both compilers. One amendment earned by measurement:
+      the slang-path copy of `VSInputStruct.generated` carries injected
+      `[[vk::location(n)]]`, because slang ignores semantic indices (see
+      notes).*
+- [x] 142.5 **Pass the permutation macros through.** `DefineMacros` already
       produces exactly the `-D` set Slang needs. Verified working for
       `PBR_Textures.fxh` in the D28 probe.
+      *Done 2026-08-06: forwarded verbatim per compile request; the textured
+      permutation (119 macros, `USE_AO_MAP`, `TextureAttribId` constants and
+      all) compiles and renders identically.*
 - [ ] 142.6 **Choose the interchange format and measure it.** Slang → HLSL → DXC
       keeps Diligent's whole pipeline and lets Slang stay ignorant of nothing;
       Slang → SPIR-V skips a step. **Measure both** — cold compile time and first
       frame — rather than picking on taste. The bytecode path is proven to work
       (D28); the HLSL path is not yet tried end to end.
+      *2026-08-06, half-answered by a disqualification rather than a stopwatch:
+      Slang → HLSL is **not currently viable at all** — slang's HLSL output
+      renames every resource (`cbFrameAttribs_0`), and Diligent binds by name,
+      so the signature finds nothing. SPIR-V is adopted for Vulkan on that
+      basis. Compile-time and first-frame numbers are still owed.*
 - [ ] 142.7 **Cook shaders as compiled assets.** Slang → cooked output at cook
       time, keyed on content hash like everything else. **But `Cook.hpp`'s
       invariant does not hold**: it promises anything cooked can be re-cooked from
@@ -97,15 +126,34 @@ RTX 2080 — their arithmetic, to the byte.
 - [ ] 142.11 **Windows and D3D12.** The D28 probe was Linux and Vulkan only.
       DXIL output, and the `SLANG_ParameterGroup_*` naming behaviour on the D3D12
       backend, are both unverified.
-- [ ] 142.12 **Delete or promote the probe.** `tests/gpu/slang_spirv_probe_test.cpp`
+      *2026-08-06: the Windows half is now verified under wine — the Windows
+      suite loads `slang-compiler.dll`, compiles, and its pixels match its own
+      baseline digit-for-digit. Still owed: a native Windows host run. And a
+      finding that reshapes the D3D12 half: **this toolchain has no D3D12
+      backend at all** — MinGW gates it out on ATL (recorded in D25), so
+      DXIL/D3D12 verification is moot until the toolchain decision reopens, and
+      should be closed against D25 rather than left implying work.*
+- [x] 142.12 **Delete or promote the probe.** `tests/gpu/slang_spirv_probe_test.cpp`
       and `hp::probePrecompiledSpirvPipeline` are experimental scaffolding from
       D28, gated behind `HP_SLANG_PROBE_DIR`. They become the real integration
       test or they go — they must not sit half-alive.
+      *Deleted 2026-08-06, and deletion was the promotion: the question the
+      probe asked — does Diligent run SPIR-V from a compiler that is not its
+      own — is now answered by the shipping path itself, on every Vulkan gpu
+      test, against the real resource signature the probe never had. The
+      public `probePrecompiledSpirvPipeline` went with it; `zig build docs`
+      regenerated.*
 - [ ] 142.13 **Retire the HLSL path.** When the engine's shaders are Slang, the
       hand-written `.psh`/`.fxh` in `engine/shaders/` go, along with
       `cmake/hp_embed_shaders.cmake` if cooking replaces embedding. **Two paths
       that both work is the outcome to avoid** — it is how the `CreateInfo`
       duplication that hid `TextureAttribIndices` happened.
+      *2026-08-06: the hand-written `.psh` is gone (it is the `.slang` file
+      now), and the drift hazard specifically is gone with it — there is
+      **one source**, consumed by two compilers, never two sources. What
+      remains of this subtask is the GL backend's Diligent-HLSL *path*, which
+      cannot retire until GL can consume slang output (the resource-renaming
+      finding in notes). `HpMaterial.fxh` also remains, pending 142.2.*
 
 ## What this changes in T0141
 
@@ -121,6 +169,87 @@ RTX 2080 — their arithmetic, to the byte.
 | 141.10 / 141.11 | **Done**, and 141.11 is the acceptance test for 142.3 |
 
 ## Notes / findings
+
+### 2026-08-06, overnight session — the mechanism landed, measured as it went
+
+**The engine's material shader now compiles through Slang on Vulkan, at
+pipeline-build time, with the real permutation macros and the real generated
+structs — and the rendered output is identical to the last printed digit.**
+Every gpu pixel test passed unchanged on Linux: lit quad (211, 144, 144), base
+colour centre (116, 108, 69) variation 16.3817, shading normal 12.1651,
+occlusion 6.3732, rock shaded (85, 80, 57) 14.5218, metal (12, 12, 11)
+6.89045 — each value equal to the pre-Slang baseline captured the same night,
+digit for digit, 803/803 assertions. A compiler swap that reproduces floats to
+six significant digits is executing equivalent arithmetic, not similar
+arithmetic.
+
+**How it is shaped.** `engine/src/SlangCompiler.{hpp,cpp}` loads the slang
+library at **run time** (dlopen/LoadLibrary, one exported C symbol, then COM
+vtables) — no link edge, so nothing a consumer links inherits slang, the MinGW
+cross-link never meets an MSVC import library, and a shipped game that reads
+cooked shaders never loads it. `SurfacePipeline::build` decides per backend:
+Vulkan compiles both stages (their `RenderPBR.vsh` and our surface shader)
+through slang to SPIR-V and hands Diligent bytecode; OpenGL keeps Diligent's
+HLSL path over the **same embedded bytes**. The library is staged beside every
+test and app binary by the build, which is the one location Linux, Windows and
+wine all resolve without help.
+
+### Four findings that cost measurement, so nobody pays twice
+
+- **Slang numbers vertex inputs sequentially; the pipeline numbers them by
+  semantic.** `GetVSInputStructAndLayout` emits `Tangent : ATTRIB7` with a
+  layout expecting location 7; slang put it at location 3. Caught on the CLI
+  before any engine code was written, by disassembling the SPIR-V. Fixed by
+  injecting `[[vk::location(n)]]` into the *slang-path copy* of the generated
+  struct — the Diligent-path copy must not carry it, since neither of their
+  compilers accepts the syntax.
+- **Slang's HLSL and GLSL outputs rename every resource** (`cbFrameAttribs` →
+  `cbFrameAttribs_0`, `g_BaseColorMap` → `g_BaseColorMap_0`), and the GL
+  backend binds by name — so **the GL backend cannot consume slang output
+  today**, on naming alone, before any converter question. This is why GL
+  keeps Diligent's HLSL path over the same source. The known route to closing
+  it is SPIRV-Cross with a renaming pass (DiligentCore does the equivalent for
+  Vulkan: `SPIRVShaderResources.cpp` prefers slang instance names). 142.13
+  cannot fully close until this does.
+- **The GL HLSL2GLSL converter inlines `#include` textually, before any
+  preprocessing** — an include guard never runs. Including
+  `HLSLDefinitions.fxh` from the shader (which slang needs first) defined
+  every function in it twice on GL. The fix mirrors Diligent exactly: the
+  slang path **prepends** the file, the shader includes nothing, and the same
+  bytes serve both compilers. The file itself is embedded from the pinned
+  submodule at build time (`hp_embed_shaders` grew an extra-files parameter),
+  so it cannot drift.
+- **On Windows, `slang.dll` is a forwarder shim; `slang-compiler.dll` is the
+  real library** (and on Linux `libslang.so` is a symlink to
+  `libslang-compiler.so`). The engine loads the real name directly.
+
+### Smaller things worth knowing
+
+- **The pin lives in three files** — both bootstrap scripts and the root
+  `CMakeLists.txt` — and `tests/harness/pins_test.zig` now asserts they agree,
+  plus that both scripts install both platform packages. A drift there reads
+  as "run bootstrap" on the wrong machine, not as a pin mismatch.
+- **CI's harness cache key is `hashFiles('bootstrap.sh')`**, so the first push
+  re-downloads the whole harness (~635 MB + the new ~77 MB) and re-caches.
+  One-time, by design.
+- **`dist` was not re-verified.** The slang libraries are staged beside the
+  build-tree binaries; whether `dist`'s glob sweeps them, and what a dist'd
+  editor does about them, is T0128's territory and was not tested tonight.
+  Until 142.7 cooks shaders, a dist'd build without the library beside the
+  executable will fail pipeline creation on Vulkan — loudly, with the log
+  naming the library.
+- **The compile is serialised behind one mutex** and the global session lives
+  for the process. No compile-time numbers were taken (142.6 owes them); the
+  gpu suite's wall time did not visibly move.
+
+### The single-source constraint, stated so 142.2 does not trip on it
+
+Until GL can consume slang output, `HpSurface.slang` must stay inside the
+subset both compilers accept — no `interface`, no generics, no `override` in
+*this file*. The game-facing `IHpMaterial` model (142.2) rides the slang-only
+path, which today means **custom shader materials will be Vulkan-only until
+the GL naming problem is solved**, and that constraint should be decided
+deliberately (D2 made GL the Windows fallback) rather than discovered.
 
 ### Struct inheritance is deprecated — do not build on it
 

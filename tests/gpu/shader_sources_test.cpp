@@ -109,7 +109,7 @@ TEST_CASE("a shader neither side has fails, rather than resolving to something e
 }
 
 TEST_CASE("a null device is refused rather than crashing") {
-    CHECK_FALSE(hp::compileEngineShader(nullptr, "HpSurface.psh", hp::ShaderStage::Pixel));
+    CHECK_FALSE(hp::compileEngineShader(nullptr, "HpSurface.slang", hp::ShaderStage::Pixel));
 }
 
 TEST_CASE("a pipeline state is built from the engine's own shaders") {

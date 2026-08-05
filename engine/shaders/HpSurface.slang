@@ -1,10 +1,21 @@
-// The engine's own pixel shader (T0141, D26).
+// The engine's own pixel shader (T0141, D26; a `.slang` file since T0142, D28).
 //
 // **This file is why D26 exists.** DiligentFX's `RenderPBR.psh` is private and
 // has no hook before texture sampling, so parallax, height mapping and triplanar
 // are unreachable through it at any setting. Rather than patch a vendored
 // submodule, the engine owns this half and calls DiligentFX's *public* shading
 // library for the lighting -- surface properties in, radiance out.
+//
+// ## One source, two compilers -- and the subset that implies
+//
+// On Vulkan this file is compiled by **slang** to SPIR-V (D28); on OpenGL the
+// *same bytes* go through **Diligent's HLSL path**, because slang's HLSL and
+// GLSL outputs rename every resource (`cbFrameAttribs` -> `cbFrameAttribs_0`)
+// and GL binds by name -- measured, and recorded in T0142 rather than worked
+// around badly. Until the GL backend can consume slang output, everything in
+// this file must stay inside the subset both compilers accept: no `interface`,
+// no generics, no `override` here yet. The game-facing interface model
+// (T0142.2) rides the slang-only path and does not carry this constraint.
 //
 // The split, and it is the same one Godot and Unreal draw:
 //
@@ -29,6 +40,13 @@
 // compile error. Owning our own `main` couples us to their *public* library
 // instead, which is the thing they have promised to keep stable.
 
+// `HLSLDefinitions.fxh` is deliberately NOT included here, although slang
+// needs it first: **every compiler that consumes this file prepends it
+// itself**. Diligent's do so natively; the engine's slang path mirrors them
+// (`SlangCompiler.cpp`). Including it here instead was tried and broke the GL
+// backend: the HLSL2GLSL converter inlines `#include` directives textually,
+// before any preprocessing, so the include guard never ran and every function
+// in the file was defined twice.
 #include "BasicStructures.fxh"
 #include "PBR_Structures.fxh"
 // **Their lighting, called from our main** — this include is D26 in one line.

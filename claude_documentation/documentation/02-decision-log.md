@@ -1483,11 +1483,28 @@ including shadow filtering and tonemapping that T0086 and T0096 have not started
 
 ### Not verified
 
-- No permutation of a *real* engine shader has been compiled through Slang — only
-  their headers plus a probe. The `.generated` interface structs would need
-  feeding to Slang's include path rather than Diligent's factory.
+*(As decided 2026-08-06. Struck-through items were verified later the same
+day by T0142's first implementation session; the remainder still stand.)*
+
+- ~~No permutation of a *real* engine shader has been compiled through Slang —
+  only their headers plus a probe. The `.generated` interface structs would
+  need feeding to Slang's include path rather than Diligent's factory.~~
+  **Verified**: the engine's own surface shader and DiligentFX's
+  `RenderPBR.vsh`, with the real permutation macros and generated structs,
+  compile through Slang at pipeline-build time and render **digit-for-digit
+  identical** pixel values to the glslang baseline, against the real resource
+  signature, on both targets.
 - No compile-time or runtime performance measurement.
-- Nothing on Windows or D3D12/DXIL; the probe was Linux and Vulkan.
-- `RenderPBR.psh` itself has not been compiled through Slang.
+- ~~Nothing on Windows~~ **Verified under wine** (the Windows suite loads
+  `slang-compiler.dll` and matches its baseline); a native Windows host run is
+  still owed. **D3D12/DXIL is moot** rather than unverified: this toolchain
+  has no D3D12 backend at all (MinGW/ATL, see D25).
+- `RenderPBR.psh` itself has not been compiled through Slang — and no longer
+  needs to be: the engine's own pixel shader replaced it (D26/T0141.10).
+- **New, found by measurement**: Slang's HLSL and GLSL outputs rename every
+  resource (`cbFrameAttribs` → `cbFrameAttribs_0`), and Diligent binds by
+  name — so the **OpenGL backend cannot consume Slang output today** and keeps
+  Diligent's HLSL path over the same single source. SPIRV-Cross with a
+  renaming pass is the known route to closing this.
 
 **T0142 owns the adoption** and carries each of these as work.

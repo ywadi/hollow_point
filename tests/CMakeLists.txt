@@ -90,6 +90,14 @@ function(hp_add_test_bucket bucket)
             OUTPUT "${_engine_stamp}"
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different
                     "$<TARGET_FILE:hp_engine>" "${CMAKE_CURRENT_BINARY_DIR}"
+            # The slang runtime, beside the binaries for the same reason the
+            # engine is (T0142): the engine loads it at run time by name, and
+            # the executable's own directory is the one place both platforms'
+            # loaders look without help -- under wine especially, where no
+            # POSIX path is usable. The pinned files never change between
+            # builds, so riding this stamp is fresh enough.
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+                    ${HP_SLANG_RUNTIME_LIBRARIES} "${CMAKE_CURRENT_BINARY_DIR}"
             COMMAND "${CMAKE_COMMAND}" -E touch "${_engine_stamp}"
             DEPENDS hp_engine
             COMMENT "Refreshing hp_engine beside the test binaries"

@@ -1,5 +1,7 @@
 #include "SurfacePipeline.hpp"
 
+#include "SlangCompiler.hpp"
+
 #include <hp/Light.hpp>
 #include <hp/Log.hpp>
 #include <hp/Profiling.hpp>
@@ -11,6 +13,8 @@
 #include <ShaderSourceFactoryUtils.h>
 
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace hp {
 namespace {
@@ -26,14 +30,20 @@ const LogCategory kLog("render.pipeline");
 /// consumes, and reimplementing it now would be work with no capability behind
 /// it.
 ///
+/// On the Slang path it is compiled by slang like our own shader is -- both
+/// stages through one compiler, so the varying interface between them is
+/// assigned by one set of rules rather than two compilers happening to agree.
+///
 /// **141.7's vertex displacement is what changes this**, and it is the only
 /// thing that should: at that point the engine writes its own and this constant
-/// moves to `HpSurface.vsh`. Naming it here rather than inlining the string is
-/// what makes that a one-line change.
+/// moves to `HpSurface.slang`'s vertex half. Naming it here rather than
+/// inlining the string is what makes that a one-line change.
 constexpr const char* kVertexShader = "RenderPBR.vsh";
 
-/// The engine's pixel shader — ours, and the whole point of D26.
-constexpr const char* kPixelShader = "HpSurface.psh";
+/// The engine's pixel shader — ours, and the whole point of D26. A `.slang`
+/// file (D28), and the *same bytes* are what the GL fallback compiles as HLSL
+/// -- see the note on `useSlang` below.
+constexpr const char* kPixelShader = "HpSurface.slang";
 
 /// Folds the render-target formats into the PSO key's hash.
 ///
@@ -56,6 +66,69 @@ std::size_t cacheKey(const Diligent::GraphicsPipelineDesc& graphics,
     mix(static_cast<std::size_t>(graphics.DepthStencilDesc.DepthFunc));
     mix(graphics.DepthStencilDesc.DepthEnable ? 1U : 0U);
     return hash;
+}
+
+/// Prefixes every `ATTRIBn` field of the generated `VSInput` struct with
+/// `[[vk::location(n)]]`, for the Slang path only.
+///
+/// **Slang numbers vertex inputs sequentially; the pipeline numbers them by
+/// semantic.** `GetVSInputStructAndLayout` emits `Tangent : ATTRIB7` and a
+/// layout whose tangent element carries `InputIndex` 7 -- Diligent's HLSL
+/// path maps the semantic's own digits to the SPIR-V location, so they agree.
+/// Slang ignores the digits and would put that field at location 3, and the
+/// tangent buffer would feed it nothing: a mis-bound vertex stream, which
+/// renders as garbage or black with no validation error naming the cause.
+/// Measured on the CLI before this was written, not discovered after.
+///
+/// The attribute is DXC/Slang syntax that Diligent's own compilers do not
+/// accept, which is why the injection happens on a Slang-path copy rather than
+/// in the shared generated string.
+std::string addVkInputLocations(const std::string& vsInput) {
+    std::string out;
+    out.reserve(vsInput.size() + 128);
+    std::size_t fields = 0;
+    std::size_t lineStart = 0;
+    while (lineStart <= vsInput.size()) {
+        std::size_t lineEnd = vsInput.find('\n', lineStart);
+        if (lineEnd == std::string::npos) {
+            lineEnd = vsInput.size();
+        }
+        const std::string_view line(vsInput.data() + lineStart, lineEnd - lineStart);
+
+        const std::size_t attrib = line.find("ATTRIB");
+        std::string digits;
+        if (attrib != std::string_view::npos && line.find(':') != std::string_view::npos) {
+            for (std::size_t i = attrib + 6; i < line.size() && line[i] >= '0' && line[i] <= '9';
+                 ++i) {
+                digits.push_back(line[i]);
+            }
+        }
+        if (!digits.empty()) {
+            std::size_t indent = 0;
+            while (indent < line.size() && (line[indent] == ' ' || line[indent] == '\t')) {
+                ++indent;
+            }
+            out.append(line.substr(0, indent));
+            out += "[[vk::location(";
+            out += digits;
+            out += ")]] ";
+            out.append(line.substr(indent));
+            ++fields;
+        } else {
+            out.append(line);
+        }
+        if (lineEnd < vsInput.size()) {
+            out.push_back('\n');
+        }
+        lineStart = lineEnd + 1;
+    }
+    if (fields == 0) {
+        // A VSInput with no ATTRIB fields means the generator's format moved
+        // under us; the pipeline would mis-bind silently, so say so here.
+        HP_LOG_ERROR(kLog, "no ATTRIB fields found in the generated VSInput struct; "
+                           "vertex input locations were not assigned");
+    }
+    return out;
 }
 
 } // namespace
@@ -235,18 +308,43 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
                           /*UsePrimitiveId = */ false);
     const std::string psOutputStruct = GetPSOutputStruct(key.GetFlags());
 
-    const Diligent::MemoryShaderSourceFileInfo generatedSources[] = {
-        {"VSInputStruct.generated", vsInputStruct},
-        {"VSOutputStruct.generated", vsOutputStruct},
-        {"PSOutputStruct.generated", psOutputStruct},
-        // Empty, and it has to exist: `RenderPBR.vsh` includes it
-        // unconditionally, and a missing include is a compile error rather than
-        // an empty expansion.
-        {"PSMainFooter.generated", R"(
+    // **Which compiler consumes the sources is decided per backend, and the
+    // sources themselves are shared** (D28):
+    //
+    //   * **Vulkan — slang.** Both stages are compiled by the slang runtime to
+    //     SPIR-V and handed to Diligent as bytecode. Diligent never learns
+    //     slang exists; its signature matches resources by name, and the
+    //     pinned submodule already prefers slang's instance names
+    //     (`SPIRVShaderResources.cpp`, DiligentCore #698).
+    //   * **OpenGL — Diligent's own HLSL path**, unchanged. Slang cannot serve
+    //     it today, and the reason is recorded rather than worked around
+    //     badly: slang's HLSL and GLSL outputs rename every resource
+    //     (`cbFrameAttribs` becomes `cbFrameAttribs_0`), and GL binds by
+    //     name, so the signature would find nothing. Measured on the CLI.
+    //     Until that is solved (SPIRV-Cross with a renaming pass is the known
+    //     route), the engine's shaders stay inside the subset both compilers
+    //     accept, and the *same embedded bytes* feed both -- one source, so
+    //     the two backends cannot drift apart (the 142.13 hazard).
+    const bool useSlang = GetDevice()->GetDeviceInfo().IsVulkanDevice();
+
+    // The Slang-path copy of the VSInput struct carries [[vk::location]]; the
+    // Diligent-path copy must not, because neither of Diligent's compilers
+    // accepts the syntax. Everything else is byte-identical.
+    const std::string vsInputStructSlang = addVkInputLocations(vsInputStruct);
+
+    // Empty PSMainFooter, and it has to exist: `RenderPBR.vsh` includes it
+    // unconditionally, and a missing include is a compile error rather than
+    // an empty expansion.
+    constexpr const char* kPsMainFooter = R"(
     PSOutput PSOut;
     PSOut.Color = OutColor;
     return PSOut;
-)"},
+)";
+    const Diligent::MemoryShaderSourceFileInfo generatedSources[] = {
+        {"VSInputStruct.generated", useSlang ? vsInputStructSlang : vsInputStruct},
+        {"VSOutputStruct.generated", vsOutputStruct},
+        {"PSOutputStruct.generated", psOutputStruct},
+        {"PSMainFooter.generated", kPsMainFooter},
     };
     Diligent::RefCntAutoPtr<Diligent::IShaderSourceInputStreamFactory> generated;
     Diligent::CreateMemoryShaderSourceFactory(
@@ -269,7 +367,8 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
 
     // Generated first, then the engine's own (which is itself ours-then-
     // DiligentFX). The generated structs must win: they are per-PSO and there is
-    // no other copy of them to fall back to.
+    // no other copy of them to fall back to. **The slang bridge consumes this
+    // same compound factory** (142.4) -- one resolution order, two compilers.
     Diligent::IShaderSourceInputStreamFactory* sources[] = {generated, engine};
     Diligent::RefCntAutoPtr<Diligent::IShaderSourceInputStreamFactory> factory;
     Diligent::CreateCompoundShaderSourceFactory({sources, _countof(sources)}, &factory);
@@ -278,38 +377,96 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
         return pso;
     }
 
-    const bool combinedSamplers = GetDevice()->GetDeviceInfo().IsGLDevice();
-
-    Diligent::ShaderCreateInfo shaderInfo;
-    shaderInfo.SourceLanguage = Diligent::SHADER_SOURCE_LANGUAGE_HLSL;
-    shaderInfo.pShaderSourceStreamFactory = factory;
-    shaderInfo.Macros = macros;
-    shaderInfo.EntryPoint = "main";
-    // Row-major, matching `CreateInfo::PackMatrixRowMajor`. **Getting this wrong
-    // is invisible**: every matrix is read transposed, the geometry lands off
-    // screen, and the frame comes back clear-coloured with a draw counted.
-    // T0028 paid an afternoon for it once already.
-    shaderInfo.CompileFlags = GetSettings().PackMatrixRowMajor
-                                  ? Diligent::SHADER_COMPILE_FLAG_PACK_MATRIX_ROW_MAJOR
-                                  : Diligent::SHADER_COMPILE_FLAG_NONE;
-
     Diligent::RefCntAutoPtr<Diligent::IShader> vertexShader;
-    shaderInfo.Desc = {"hp surface VS", Diligent::SHADER_TYPE_VERTEX, combinedSamplers};
-    shaderInfo.FilePath = kVertexShader;
-    GetDevice()->CreateShader(shaderInfo, &vertexShader);
-
     Diligent::RefCntAutoPtr<Diligent::IShader> pixelShader;
-    shaderInfo.Desc = {"hp surface PS", Diligent::SHADER_TYPE_PIXEL, combinedSamplers};
-    shaderInfo.FilePath = kPixelShader;
-    GetDevice()->CreateShader(shaderInfo, &pixelShader);
 
-    if (!vertexShader || !pixelShader) {
-        // **Logged here, on the compile attempt.** One line per failed pipeline,
-        // never per draw -- see T0141. The result is cached so this does not
-        // repeat next frame.
-        HP_LOG_ERROR(kLog, "the engine's shaders did not compile ({} / {})",
-                     vertexShader ? "vs ok" : "vs failed", pixelShader ? "ps ok" : "ps failed");
-        return pso;
+    if (useSlang) {
+        // The permutation macros, forwarded exactly as `DefineMacros` produced
+        // them (142.5). `ShaderMacroArray` keeps the helper's storage alive
+        // for the duration of the calls below.
+        const Diligent::ShaderMacroArray macroArray = macros;
+        std::vector<SlangMacro> slangMacros;
+        slangMacros.reserve(macroArray.Count);
+        for (Diligent::Uint32 i = 0; i < macroArray.Count; ++i) {
+            slangMacros.push_back(
+                {macroArray.Elements[i].Name, macroArray.Elements[i].Definition});
+        }
+
+        const auto compileStage = [&](const char* file, ShaderStage stage, const char* name,
+                                      Diligent::SHADER_TYPE type)
+            -> Diligent::RefCntAutoPtr<Diligent::IShader> {
+            Diligent::RefCntAutoPtr<Diligent::IShader> shader;
+            std::vector<std::uint8_t> spirv;
+            std::string diagnostics;
+            if (!compileSlangToSpirv(file, stage, slangMacros.data(), slangMacros.size(), factory,
+                                     spirv, diagnostics)) {
+                // **Logged here, on the compile attempt.** One line per failed
+                // pipeline, never per draw (T0141); the null result is cached.
+                HP_LOG_ERROR(kLog, "slang failed to compile '{}': {}", file,
+                             diagnostics.empty() ? "(no diagnostics)" : diagnostics);
+                return shader;
+            }
+            if (!diagnostics.empty()) {
+                // Warnings from a successful compile -- worth seeing, once,
+                // because a shader has no other channel.
+                HP_LOG_WARN(kLog, "slang compiled '{}' with diagnostics: {}", file, diagnostics);
+            }
+            Diligent::ShaderCreateInfo shaderInfo;
+            // **`ByteCode`, not `Source`** -- the two are mutually exclusive
+            // and their size fields are a union, so setting the wrong one
+            // sends SPIR-V down the text path.
+            shaderInfo.ByteCode = spirv.data();
+            shaderInfo.ByteCodeSize = spirv.size();
+            shaderInfo.EntryPoint = "main";
+            shaderInfo.Desc = {name, type, /*UseCombinedTextureSamplers = */ false};
+            GetDevice()->CreateShader(shaderInfo, &shader);
+            if (!shader) {
+                HP_LOG_ERROR(kLog, "the device refused slang-compiled SPIR-V for '{}'", file);
+            }
+            return shader;
+        };
+
+        vertexShader = compileStage(kVertexShader, ShaderStage::Vertex, "hp surface VS (slang)",
+                                    Diligent::SHADER_TYPE_VERTEX);
+        pixelShader = compileStage(kPixelShader, ShaderStage::Pixel, "hp surface PS (slang)",
+                                   Diligent::SHADER_TYPE_PIXEL);
+        if (!vertexShader || !pixelShader) {
+            return pso;
+        }
+    } else {
+        const bool combinedSamplers = GetDevice()->GetDeviceInfo().IsGLDevice();
+
+        Diligent::ShaderCreateInfo shaderInfo;
+        shaderInfo.SourceLanguage = Diligent::SHADER_SOURCE_LANGUAGE_HLSL;
+        shaderInfo.pShaderSourceStreamFactory = factory;
+        shaderInfo.Macros = macros;
+        shaderInfo.EntryPoint = "main";
+        // Row-major, matching `CreateInfo::PackMatrixRowMajor`. **Getting this
+        // wrong is invisible**: every matrix is read transposed, the geometry
+        // lands off screen, and the frame comes back clear-coloured with a
+        // draw counted. T0028 paid an afternoon for it once already. The slang
+        // path sets the same thing through `setMatrixLayoutMode`.
+        shaderInfo.CompileFlags = GetSettings().PackMatrixRowMajor
+                                      ? Diligent::SHADER_COMPILE_FLAG_PACK_MATRIX_ROW_MAJOR
+                                      : Diligent::SHADER_COMPILE_FLAG_NONE;
+
+        shaderInfo.Desc = {"hp surface VS", Diligent::SHADER_TYPE_VERTEX, combinedSamplers};
+        shaderInfo.FilePath = kVertexShader;
+        GetDevice()->CreateShader(shaderInfo, &vertexShader);
+
+        shaderInfo.Desc = {"hp surface PS", Diligent::SHADER_TYPE_PIXEL, combinedSamplers};
+        shaderInfo.FilePath = kPixelShader;
+        GetDevice()->CreateShader(shaderInfo, &pixelShader);
+
+        if (!vertexShader || !pixelShader) {
+            // **Logged here, on the compile attempt.** One line per failed
+            // pipeline, never per draw -- see T0141. The result is cached so
+            // this does not repeat next frame.
+            HP_LOG_ERROR(kLog, "the engine's shaders did not compile ({} / {})",
+                         vertexShader ? "vs ok" : "vs failed",
+                         pixelShader ? "ps ok" : "ps failed");
+            return pso;
+        }
     }
 
     Diligent::GraphicsPipelineStateCreateInfoX psoInfo{"hp surface"};

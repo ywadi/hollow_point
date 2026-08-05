@@ -24,6 +24,7 @@ set -eu
 ZIG_VERSION=0.16.0
 CMAKE_VERSION=3.31.12
 NINJA_VERSION=1.13.2
+SLANG_VERSION=2026.14.1
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 DL="$ROOT/.harness/dl"
@@ -157,11 +158,51 @@ else
 fi
 "$NINJA_DIR/ninja" --version >/dev/null
 
+# --- slang (T0142, D28) ------------------------------------------------------
+#
+# The shader compiler. Keyed by the PACKAGE's platform rather than the host's,
+# and BOTH packages are installed on every host, which is deliberate: the
+# engine compiles `.slang` shaders at pipeline-build time through the target
+# platform's own slang library, so the Windows suite (native, or under wine
+# from a Linux host) needs `slang-compiler.dll` staged beside its binaries and
+# the Linux suite needs `libslang-compiler.so`. The build stages them from
+# here; nothing links slang at build time, and a shipped game never loads it
+# (D28 -- cooked shaders are what ship).
+#
+# The glibc-2.27 Linux variant is chosen deliberately: it is the small one
+# (24 MB against 78 MB), and the difference is libslang-llvm -- CPU codegen the
+# engine never uses.
+#
+# Both hosts write the same two directories from the same pinned archives, so
+# the T0102 host-collision hazard does not apply: either script re-creates
+# byte-identical content.
+
+install_slang() {
+    _slang_key=$1; _slang_archive=$2; _slang_sha=$3
+    _slang_dir="$ROOT/.harness/slang/$_slang_key/$SLANG_VERSION"
+    if [ -d "$_slang_dir/include" ]; then
+        echo "slang $SLANG_VERSION ($_slang_key) already present"
+        return
+    fi
+    fetch "https://github.com/shader-slang/slang/releases/download/v$SLANG_VERSION/$_slang_archive" \
+          "$_slang_archive" "$_slang_sha"
+    echo "==> installing slang $SLANG_VERSION ($_slang_key)"
+    rm -rf "$_slang_dir"
+    mkdir -p "$_slang_dir"
+    tar -xzf "$DL/$_slang_archive" -C "$_slang_dir"
+}
+
+install_slang linux-x86_64 "slang-$SLANG_VERSION-linux-x86_64-glibc-2.27.tar.gz" \
+    427d9985aac9e88912429bf9e7c1a3543bf35a61aaa855c890eeb96920175e0c
+install_slang windows-x86_64 "slang-$SLANG_VERSION-windows-x86_64.tar.gz" \
+    791fe8400fe3cabdaf054089e6f5bffa745fbf5912b5b85e2ee4dc78c6b9aff7
+
 echo
 echo "toolchain ready in .harness/<tool>/$HOST_KEY/"
 echo "  zig    $ZIG_VERSION"
 echo "  cmake  $CMAKE_VERSION"
 echo "  ninja  $NINJA_VERSION"
+echo "  slang  $SLANG_VERSION (linux-x86_64 + windows-x86_64)"
 
 warn_legacy zig "$ZIG_VERSION"
 warn_legacy cmake "$CMAKE_VERSION"
