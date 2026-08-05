@@ -83,26 +83,145 @@ there, because staging policy is this ticket's:
 | debug info | **186.3 MiB — 92% of the file** |
 | `hp_engine.dll` (Windows) | 16.5 MiB |
 
-**It is not our compiler flags.** `CMAKE_BUILD_TYPE=Release`,
-`CMAKE_CXX_FLAGS_RELEASE=-O3 -DNDEBUG`, and the engine's own translation units
-compile with `-O3` and no `-g` — checked in `compile_commands.json`, not assumed.
-The debug info arrives from **Diligent's static archives**, which carry it
-regardless of build type: `libDiligent-GraphicsEngineVk-static.a` is 41 MB,
-`libDiligent-AssetLoader.a` 16 MB, `libDiligentFX.a` 25 MB, `libDiligent-Imgui.a`
-8.6 MB, and every one of them has `.debug_*` sections.
+**Corrected 2026-08-05 — the first diagnosis here was wrong.** It originally read
+"the debug info arrives from Diligent's static archives, which carry it
+regardless of build type". Half right, and the half that was wrong is the half
+that decides the fix.
 
-The stripped Linux size matching the Windows DLL almost exactly — 16.7 against
-16.5 MiB — is the evidence that the *code* is the expected size and only the
-symbols are not.
+**The cause is the toolchain, not Diligent and not our CMake.** `zig c++` emits
+full DWARF **by default**; clang proper emits none. Measured with the project's
+own shim, `build/linux-x86_64-release/toolchain/zig-cxx`, on one TU:
 
-**`cmake/dist.cmake` performs no stripping**, so a staged build carries all
-186 MB. 128.4 already decides `.pdb` inclusion for Windows; **the ELF side was
-not named anywhere in this ticket**, which is why it is added as 128.6 rather
-than assumed to be covered.
+| compile | object | `.debug_*` |
+|---|---|---|
+| `-O3 -DNDEBUG` (exactly how everything here is built) | 44,264 B | 25,957 B |
+| `-O3 -DNDEBUG -g0` | 1,176 B | 0 |
 
-Worth deciding rather than reflexively stripping: separate `.debug` files with
-`objcopy --only-keep-debug` keep a shipped artifact small *and* keep crash
-symbolication possible, which matters more here than raw size.
+A census of **every** TU in both `compile_commands.json` — 1416 Linux, 1410
+Windows — finds **not one passing `-g`**. Diligent's CMake adds none either:
+`set_common_target_properties`
+(`third_party/DiligentEngine/DiligentCore/BuildTools/CMake/BuildUtils.cmake:197`)
+sets only `CXX_STANDARD`, MSVC LTCG flags and `CXX_VISIBILITY_PRESET hidden`.
+
+**Our own code is equally affected**, which the original note denied: the 26
+engine objects total 34,341,808 B, of which **18,733,440 B (54.5%) is `.debug_*`**.
+Diligent dominates by *volume* — 804 Diligent TUs against 33 of ours — not by
+being uniquely at fault. So "suppress `-g` for third-party only" would leave
+half our own object size in place.
+
+### Windows does not escape it — it externalizes it (and `dist` misses that)
+
+The second wrong claim was that Windows avoids the problem. It does not. The
+Windows objects carry `.debug$S` 9,360,008 B and `.debug$T` 6,910,628 B. The
+linked DLL has **zero** debug sections and a 41-byte `RSDS` CodeView entry
+pointing at **`libhp_engine.pdb`, which is 137,748,480 B (131.4 MiB)** beside a
+16.5 MiB DLL.
+
+PE moves debug info into a sidecar; ELF has no such mechanism, so ld.lld copies
+DWARF into the `.so`. **128.4's `.pdb` question and this one are the same
+question in two platform costumes and must be decided together.**
+
+Note the accident: Windows `dist` stages only the two *app* PDBs, because the
+engine's 131 MiB PDB is outside `apps/` and no glob matches it. Windows looks
+tidy by luck, not by decision — which is exactly this ticket's thesis.
+
+### What `dist` actually stages, measured
+
+| | Linux | Windows |
+|---|---|---|
+| **total staged** | **1.4 GB** | 471 MiB |
+| shared objects / DLLs | 768.9 MiB (7) | 43.9 MiB (6) |
+| static / import libs | 574.2 MiB (93) | — |
+
+**92.2% of it is debug info plus symtab** (909.7 of 987.1 MiB). And
+`libhp_engine.so` is staged **twice at 203 MiB** — once in `bin/`, once in
+`lib/` — which 128.2's declared staging fixes independently of any stripping.
+
+### The options, measured by relinking the real engine
+
+| approach | size | `.symtab` | link time | works? |
+|---|---|---|---|---|
+| status quo | 203.0 MiB | 1,225,488 | 1.07 s | — |
+| `-Wl,--strip-debug` | **16.71 MiB** | **0** | **0.28 s** | yes |
+| `-Wl,--strip-all` | 16.71 MiB — md5-identical | 0 | 0.28 s | yes |
+| `--compress-debug-sections=zlib` | 74.5 MiB | kept | 1.42 s | yes |
+| `-g0` everywhere | ~21.6 MiB *(estimate)* | kept | ~16% faster | yes |
+| `zig objcopy` split | — | — | — | **no — unimplemented** |
+| lld `--separate-debug-file` | — | — | — | **no such flag** |
+| `-gsplit-dwarf` | — | — | — | **unusable** |
+
+**`--only-keep-debug` + `.gnu_debuglink` is not available in this toolchain.**
+`zig objcopy` returns `error: unimplemented` for every ELF option —
+`--strip-debug`, `--only-keep-debug`, `--add-gnu-debuglink`, `--extract-to`
+(`zig-0.16.0/lib/compiler/objcopy.zig`, the `.elf` branch calls
+`fatal("unimplemented")`; still unimplemented on zig master).
+[ziglang/zig#24522](https://github.com/ziglang/zig/issues/24522) is open.
+**Trap worth recording: it exits 1 but truncates the output to 0 bytes first**,
+so a naive `if(EXISTS)` staging check would ship an empty `.so`.
+
+LLD has no `--separate-debug-file` (LLD 21.1.0; absent from `lld/ELF/Options.td`
+at `llvmorg-21.1.0`). Split debug on ELF always needs an objcopy-class pass, and
+requiring host binutils **breaks D3** — a Windows host cross-compiling to Linux
+has no `objcopy`, so `dist` would differ by who built it.
+
+`-gsplit-dwarf` is accepted and does move debug info — into
+`~/.cache/zig/tmp/<hash>-t.dwo`, outside the build tree, subject to cache GC,
+with no `dwp` shipped. Dangerous precisely because the build succeeds and objects
+shrink ([ziglang/zig#11858](https://github.com/ziglang/zig/issues/11858)).
+
+**Two constraints on the choice:**
+
+- **Under LLD, `--strip-debug` also removes `.symtab`** — byte-identical to
+  `--strip-all`. With `CXX_VISIBILITY_PRESET hidden`, `.dynsym` is only
+  133,080 B, so a link-stripped engine gives near-useless backtraces. `-g0`
+  keeps `.symtab` and function-name-level stacks; `--strip-debug` does not.
+- **Stripping is safe for T0104.** The build-id stamp is an exported
+  `extern "C"` function resolved by name, so it lives in `.dynsym`, which every
+  variant preserves. All variants `dlopen` successfully.
+
+### Recommendation for 128.6
+
+1. **Record `--only-keep-debug` + `.gnu_debuglink` as rejected against a measured
+   constraint**, not deferred. It is unimplementable here and requiring host
+   binutils violates D3 — a decision-log-shaped fact, not a TODO.
+2. **Strip shipped artifacts at link with `-Wl,--strip-debug`**, behind a CMake
+   option defaulting **OFF** so developer builds stay debuggable. Only hermetic
+   ELF strip available, and it makes the link 4× faster.
+3. **Keep the unstripped build as the symbol archive.** Breakpad's `dump_syms`
+   and `sentry-cli` both accept an unstripped binary directly;
+   `--only-keep-debug` is a size optimization on the archive, not a functional
+   requirement. Nothing is lost but archive bytes.
+4. **Add `-Wl,--build-id=sha1` now.** Currently **absent** — no
+   `.note.gnu.build-id` in any binary. It costs ~180 bytes and is the key symbol
+   stores index on; retrofitting after a release means those builds are
+   unsymbolicatable forever.
+5. **Fix the double-staging regardless** — worth ~200 MiB on its own (128.2).
+6. **Decide `.pdb` (128.4) and this together.** Consistent pair: ship stripped
+   `.so` and strip-equivalent DLL; retain the unstripped `.so` and
+   `libhp_engine.pdb` as the symbol archive; ship neither.
+
+Considered and **not** recommended as primary: `-g0` on third-party targets buys
+~16% build time and ~1.2 GB of build tree while keeping `.symtab` — attractive,
+but it destroys the symbol archive, so it should only follow a decision that we
+never symbolicate third-party frames. `--compress-debug-sections=zlib` is a good
+option for the *build tree*, not for shipping.
+
+### Not verified — do not promote these to fact without measuring
+
+- **The `-g0` figure (21.6 MiB) is an estimate**, derived as stripped size plus
+  `.symtab`/`.strtab`. A real `-g0` tree is a 16–18 min cold build, not run.
+- **The editor was not run against a stripped engine.** `dlopen` of the stripped
+  `libhp_engine.so` succeeds with all dependencies resolved — which exercises
+  every relocation — but that is not "it renders a frame".
+- **No debugger symbolication test.** No hermetic debugger exists in `.harness/`.
+  `SHF_COMPRESSED` was confirmed set on the compressed variant; no frame was
+  watched resolving.
+- **`dump_syms` / `sentry-cli` behaviour is sourced, not measured here.** Neither
+  is vendored; the claim rests on Chromium and Sentry docs.
+- **Windows figures come from the Linux-host cross-compile only.** A Windows-host
+  build was not checked for the same PDB layout.
+- Interaction between `--strip-debug` and the `dist` RUNPATH verification
+  (T0105.4) is untested, though stripping does not touch `.dynamic`.
 
 **Not a regression, and specifically not DiligentFX's doing.** Measured by
 relinking with the `DiligentFX` line removed: byte-identical at 212,847,352.
