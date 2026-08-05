@@ -301,7 +301,16 @@ T0060 already says it must not foreclose and does not.
 - [ ] 141.4 Error shader on compile failure: the shared checkerboard, plus a
       console error naming the shader and the compiler's message (was 60.7)
 - [ ] 141.5 Shader hot reload (was 60.8)
-- [ ] 141.6 Document the engine intermediates a custom shader may read
+- [ ] 141.6 **Define `HpMaterial.fxh` — the contract a game shader compiles
+      against** (D27). `HpSurfaceInput` is a *promise*: adding to it later is
+      easy, removing from it breaks shipped games, so the list is decided
+      deliberately. Must cover at least UVs, world position, normal, view
+      direction, depth, and **T0093's per-pixel visibility**, which is the one
+      most likely to be forgotten and most expensive to retrofit
+- [ ] 141.13 **A VFS-backed shader source**, so a game's shader is content like
+      any other (D13). Resolution order is **engine, then game, then DiligentFX**
+      — a project must not be able to shadow `HpMaterial.fxh` and redefine the
+      contract — which makes engine and DiligentFX header names reserved
 - [ ] 141.7 **Height mapping and parallax occlusion** — needs the surface stage;
       `PBR_Renderer` has no path for it and `GetPSMainSource` cannot reach before
       texture sampling. Raised from T0060 on 2026-08-05
@@ -425,6 +434,23 @@ The same applies to the omission recorded in `11-material-format.md`:
 `PBR_WORKFLOW_SPECULAR_GLOSSINESS` (`RenderPBR.psh:159`). If the surface stage
 becomes ours, that justification is no longer automatic and should be restated
 rather than inherited.
+
+## Decided 2026-08-05, with the owner — the Godot model, recorded as D27
+
+A game shader includes **one engine header** and fills in a function; the engine
+owns the `main`. It never includes a DiligentFX header.
+
+The rejected alternative was letting game shaders include `PBR_Shading.fxh`
+directly, which is cheaper and would have made DiligentFX's internals part of
+this engine's public contract — so every upstream rename would silently break
+every shipped game shader. That is D26's trap from the other side: D26 stopped us
+being unable to *change* DiligentFX, and this stops us being unable to *update*
+it.
+
+**The accepted cost is named in D27 rather than left to be discovered:** a
+developer who wants something the contract does not expose waits for us to
+expose it. The mitigation is a generous `HpSurfaceInput`, which is why 141.6 is
+a deliberate decision and not a list that grows by accident.
 
 ## Notes / findings
 

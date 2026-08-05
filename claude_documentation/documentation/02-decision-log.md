@@ -1198,3 +1198,64 @@ add hull and domain stages — but is **deliberately deferred with a named
 trigger: when a silhouette must change** (141.9). Parallax is an illusion in the
 pixel shader: convincing head-on, and a POM brick wall still has a straight edge
 against the sky.
+
+---
+
+## D27 — A game's shader compiles against the **engine's** contract, never against DiligentFX directly
+
+**Decided 2026-08-05 on T0141, by the owner**: *"godot model it is"*.
+
+A game developer writes a function; the engine owns the shader `main` around it:
+
+```hlsl
+#include "HpMaterial.fxh"          // the only engine header a game shader includes
+
+void HpSurface(in HpSurfaceInput In, inout HpSurfaceOutput Out)
+{
+    Out.BaseColor = ...;           // theirs
+    Out.Roughness = ...;
+}
+```
+
+**We include DiligentFX; they include us.**
+
+### Why the pass-through was rejected
+
+Letting a game shader `#include "PBR_Shading.fxh"` is one line cheaper and would
+have made **DiligentFX's internals part of this engine's public contract**. Every
+upgrade that renamed a function or changed a struct would then silently break
+every shader in every shipped game — which is the *same* inability-to-upgrade
+trap **D26** was written to escape, arriving from the opposite direction. D26
+stopped us being unable to change DiligentFX; this stops us being unable to
+*update* it.
+
+With a contract in between, a rename upstream is ported **once**, by us, behind a
+header whose shape does not move.
+
+### The cost, accepted rather than discovered
+
+**A developer who wants something the contract does not expose has to wait for
+the engine to expose it.** They cannot reach for a Diligent function themselves.
+That is a real constraint on a real person, and it is named here because "just
+let them include it" will look extremely reasonable the first time somebody hits
+that wall — and taking it then costs everything above.
+
+The mitigation is not a loophole, it is keeping `HpSurfaceInput` generous:
+**T0141.6 decides that list deliberately**, because it is a promise. Adding to it
+later is easy; removing from it breaks games.
+
+### Consequences
+
+- **Three shader sources, resolved in order: engine, then game, then DiligentFX.**
+  Engine before game is deliberate — a project must not be able to shadow
+  `HpMaterial.fxh` and quietly redefine the contract. The consequence is that
+  engine and DiligentFX header names are **reserved**, which is a documented
+  constraint rather than a surprise at compile time.
+- **Game shaders arrive through the VFS** (D13), like any other content, while
+  engine shaders are embedded in the binary (T0141). That asymmetry is what makes
+  **hot reload** work for the half that needs it: a game's shader can change
+  while the editor is open; the engine's cannot without a rebuild, and does not
+  need to.
+- **HLSL**, per D2 — OpenGL is the only fallback on Windows and Diligent's
+  portable path is HLSL. T0141.1 must also record which HLSL subset survives the
+  GL converter, because that subset is what a game shader may actually use.
