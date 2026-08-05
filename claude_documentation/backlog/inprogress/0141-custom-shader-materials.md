@@ -551,11 +551,31 @@ it consumes the per-pipeline generated structs, so compiling it alone now fails
 been testing scaffolding. The pipeline case exercises the same includes and then
 requires the device to accept the result.
 
-**Still to do in 141.10, and the shader says so in place of pretending:** it
-writes the missing-material magenta rather than reading the material attribs and
-calling `ApplyPunctualLight`. That is deliberate — loud rather than plausible, so
-a half-wired pipeline cannot be mistaken for a working one, and it is why nothing
-in `SceneRenderer` has been switched over to it yet.
+**The shading landed in the increment after this one.** `HpSurface.psh` now
+reads the material attribs, runs the surface stage, and calls DiligentFX's public
+`GetSurfaceReflectanceMR` / `ApplyPunctualLight` / `ResolveLighting`. Both the
+shaded and `HP_UNSHADED` paths compile and the device accepts the pipeline.
+
+One include is worth defending: **`RenderPBR_Structures.fxh` is private and this
+shader takes it anyway.** `PBRFrameAttribs` and `PBRPrimitiveAttribs` are the
+*layouts of the constant buffers `PBR_Renderer` fills*, and this engine already
+uses those buffers — `SceneRenderer.cpp` includes the same file on the C++ side
+to write them. It is the coupling we already had, not a new one, and D26 accepted
+it in as many words: keeping their struct layouts is what keeps their lighting
+callable with no translation. **Layout versus behaviour is the distinction that
+matters** — a layout change breaks the C++ that writes the buffer and the shader
+that reads it in the same build, loudly. Depending on a private *function* would
+be the thing to avoid, and this shader does not.
+
+**`NdotV` is clamped away from zero**, which is not defensive padding: a normal
+facing exactly edge-on makes the BRDF divide by it, and the result is NaN pixels
+reaching the target as black or white speckle depending on the backend.
+
+**Still not switched on.** `SceneRenderer` continues to draw through
+`PBR_Renderer`'s own pipeline; nothing in the render path uses `SurfacePipeline`
+yet, so the engine's output is unchanged. That swap plus a pixel assertion that
+it matches what the old path drew is what closes 141.10 — see "Where this
+stands".
 
 ### Build wiring worth knowing
 
