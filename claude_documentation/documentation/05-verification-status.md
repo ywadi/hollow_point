@@ -121,6 +121,67 @@ dockspace. `1.92.9b` (not Diligent's 1.92.1) proves the swap took effect.
 
 ---
 
+### Rendering, end to end ✅ (2026-08-05)
+
+**A lit mesh reaches the screen.** Verified by reading pixels back, not by
+watching a frame counter — the distinction matters here more than usual, because
+three separate bugs have now survived a frame where every statistic agreed a draw
+had been issued.
+
+| Claim | Evidence |
+|---|---|
+| A glTF mesh loads through the VFS and rasterises | 65,536 / 65,536 pixels differ from the clear colour (T0028) |
+| Reverse-Z is right | It draws at all. Under a mismatched comparison **nothing** would (T0130/T0028) |
+| Layers composite in order | Right half is clear-colour with the world alone, covered with the HUD (T0027) |
+| Object layer masks filter | One scene, two cameras, each drawing only its own layer (T0085) |
+| **Surfaces are actually shaded** | Red quad + white light = `(211, 144, 144)`; no light = `(0, 0, 0)` (T0079) |
+| Point-light attenuation | 2 units `(255,145,145)`, 9 units `(80,46,46)`, past range `(0,0,0)` |
+| Spot cone falloff | Wide cone `(255,251,251)`, narrow cone `(0,0,0)` |
+
+**Until T0079 landed, this engine rendered every mesh pure black** — no lights,
+no IBL, no emissive — and it is worth knowing why that went unnoticed for three
+tickets: black differs from a blue clear colour, so "did geometry arrive" passed
+while nothing about shading was tested at all. T0028's headline evidence is still
+true and still proves less than it reads.
+
+### GPU testing — hardware coverage is partial, and was zero until today ⚠️
+
+**Read this before treating a green `gpu` bucket as hardware coverage.**
+
+| Backend | Device | Status |
+|---|---|---|
+| OpenGL | `D3D12 (NVIDIA GeForce RTX 4070 Laptop GPU)` | ✅ hardware |
+| Vulkan | `llvmpipe (LLVM 20.1.2, 256 bits)` | ⚠️ **software** |
+
+Hardware needs naming, because Mesa cannot find it on its own — there is no
+`/dev/dri` node, so the device probe falls back to `swrast`:
+
+```sh
+GALLIUM_DRIVER=d3d12 MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA zig build test -Dtest=gpu
+```
+
+**Vulkan has no hardware path in WSL at all**, and it is not a misconfiguration:
+NVIDIA's WSL package ships D3D12 and CUDA but **no Vulkan ICD**, and Mesa's Dozen
+is not in Ubuntu's `mesa-vulkan-drivers`. The only loadable ICD is lavapipe. Real
+Vulkan needs a native Windows run — the exes are cross-compiled and staged, so
+that is available, just not automated. **T0135** owns making this not silently
+misleading.
+
+**Two closed tickets claimed hardware they never had** (T0027 said "a real GPU",
+T0028 said "an NVIDIA RTX 4070"); both are corrected in place.
+
+### What the editor shows ⚠️
+
+`hp_editor --backend=opengl` displays a lit quad. **The `--backend` flag is not
+optional**: the dev present path is a `CopyTexture` needing an exact format
+match, and a Vulkan surface is BGRA against the scene target's RGBA, so Vulkan
+shows a clear colour and looks broken. T0033 deletes that path by sampling the
+texture in a shader.
+
+The scene is a **throwaway generated at startup** into a temp directory — there
+is no content pipeline and **no committed asset of any kind** in this repository.
+Every mesh rendered to date was written by code at run time.
+
 ## Not verified — do not claim these work
 
 - ⚠️ **Windows host — now largely proven; two caveats remain.** `bootstrap.ps1`,

@@ -39,7 +39,7 @@ later. That is the whole trade this document represents.
 | 7 | Transform propagation | named, empty | T0101 |
 | 8 | **Late update** — `onLateUpdate` | implemented | T0081, T0052 |
 | 9 | Transform propagation, again | named, empty | T0101 |
-| 10 | Render | implemented | T0025 |
+| 10 | **Render** — see the breakdown below | implemented | T0025 |
 | 11 | Present | named, empty | T0025, T0110 |
 | 12 | **End-of-frame safe point** | named, empty | T0048, T0058, T0077 |
 | 13 | Frame end — profiler frame mark, exit checks | implemented | T0014 |
@@ -49,6 +49,46 @@ zone with a comment naming its owning ticket, and does nothing yet. That is
 deliberate. A later system slots into a place that already exists and is already
 in the right position, instead of choosing one — which is the retrofit this
 document exists to avoid.
+
+## Inside phase 10 — what "Render" actually does (2026-08-05)
+
+The table above has said "Render / implemented / T0025" since before anything was
+drawn. It now has an interior worth naming, because five tickets landed in it and
+the next few slot into gaps between these steps rather than after them.
+
+| Step | What | Owner |
+|---|---|---|
+| 10.1 | Resolve the camera for a view slot | T0081 |
+| 10.2 | Build view + projection (reverse-Z) | T0081, T0130 |
+| 10.3 | **Set the viewport from the resolved view**, not the target size | T0081 |
+| 10.4 | `parseScene` — filter by **object layer mask**, then by mesh | T0085 |
+| 10.5 | *(gap)* frustum cull, sort into queues | **T0045** |
+| 10.6 | `gatherLights` — resolve placement, cap, warn | T0079 |
+| 10.7 | *(gap)* per-object light selection | **T0079.3** |
+| 10.8 | Write frame attribs — camera, renderer params, light array | T0079, T0134 |
+| 10.9 | Submit draws through `PBR_Renderer` | T0028, D24 |
+| 10.10 | *(gap)* tonemap / upscale / composite pass | **T0096, T0111** |
+
+Repeated per `RenderStack` layer for 10.1–10.9, into **one shared colour
+target** (T0027.5).
+
+**Three things about this order are load-bearing:**
+
+- **The layer mask test is first in 10.4, before the mesh check.** An object the
+  camera does not render must cost nothing further — no GUID lookup, no list
+  entry, no draw. It is also cheaper than the frustum test that will join it at
+  10.5, so it stays first when that lands.
+- **10.3 takes the viewport from the resolved camera, not from the pass.** They
+  differ under a letterboxing aspect policy, and using the pass size stretches
+  the image by exactly the letterbox ratio.
+- **10.10 is one seam, wanted by three tickets.** Tonemapping (T0096), the
+  render-scale upscale and UI-at-native resolution (T0111/D25) all belong
+  between the world layers and the UI layers. D25 records that they must share
+  it rather than each inventing one.
+
+**Lights are frame-wide today.** 10.6 gathers every enabled light and 10.8 writes
+them all; nothing selects per object, so every light lights everything and
+`Light` deliberately carries no layer mask until 10.7 exists to apply one.
 
 ## The decisions worth knowing
 
