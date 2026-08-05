@@ -95,6 +95,49 @@ rewriting PBR.** Three options were weighed:
 shaders onto the side of `PBR_Renderer`", it is "own the surface stage, and the
 standard material is the first shader written against it".
 
+### Correction, same day: C is right but it is **not** cheap through the public API
+
+The paragraph above was written after finding `PBR_Shading.fxh` and before
+reading `PBR_Renderer::CreatePSO`. Reading it changes the cost, so the estimate
+is corrected here rather than left to be discovered by whoever starts 141.1.
+
+`CreatePSO` builds its shader source factory internally:
+
+```cpp
+CreateCompoundShaderSourceFactory({&DiligentFXShaderSourceStreamFactory::GetInstance(),
+                                   pMemorySourceFactory});
+```
+
+DiligentFX's own factory is **first**, `pMemorySourceFactory` carries only the
+four generated stubs (`VSInputStruct`, `VSOutputStruct`, `PSOutputStruct`,
+`PSMainFooter`), and the whole thing is a local in a **private** method. There is
+no public or protected way to add a search path or shadow `RenderPBR.psh`. So
+"our PS main, their lighting" cannot be reached by configuration.
+
+What subclassing *does* reach, since `PBR_Renderer` has a virtual destructor and
+a useful `protected` section: `DefineMacros`, `GetVSInputStructAndLayout`,
+`GetVSOutputStruct`, `GetPSOutputStruct`, `GetPSO`, and
+`CreateCustomSignature` (already virtual). That is most of the permutation
+machinery, which is the part that would be miserable to rewrite.
+
+So option C splits into three, and they differ by more than taste:
+
+| | What it is | Cost | Risk |
+|---|---|---|---|
+| **C1** | Vendored patch adding a surface-stage `#include` hook to `PBR_Textures.fxh` / `RenderPBR.psh` | Smallest — a few lines | A patch to carry across every DiligentFX bump, and `04-cross-compile-gotchas.md`'s rule about pinned third-party applies |
+| **C2** | Subclass `PBR_Renderer`, own PSO creation and the PS main, `#include` `PBR_Shading.fxh` | Moderate — the protected surface covers the permutation setup, so this is less than it sounds | Ours to maintain against upstream changes to the protected API |
+| **C3** | Upstream the hook to DiligentFX | Smallest to carry | Slowest, and not in our control |
+
+**C1 and C3 are the same change**, which is the useful observation: write the
+hook as a patch, use it, and offer it upstream. If it lands, the patch
+disappears; if it does not, we were carrying it anyway.
+
+**Sequencing consequence, and it is the reason this matters now.** T0086 builds
+shadow sampling on `RenderPBR.psh`'s shadow path. Moving to our own PS main later
+moves shadow sampling with it. **The decision is materially cheaper before T0086
+than after**, and T0045 is shader-independent so it is safe to do first either
+way.
+
 Two things are genuinely the owner's call rather than technical, so they are
 **left open here rather than decided**: how much shader maintenance the studio
 takes on, and whether the standard material moving onto our own surface stage is
@@ -122,6 +165,10 @@ T0060 already says it must not foreclose and does not.
       texture sampling. Raised from T0060 on 2026-08-05
 - [ ] 141.8 **Triplanar projection** — same reason: a surface-stage technique,
       not a material parameter. Raised from T0060 on 2026-08-05
+- [ ] 141.0 **Decide C1/C2/C3 and record it** — time-boxed spike, and it comes
+      first because everything else here depends on the answer. **Do it before
+      T0086**: shadows build on `RenderPBR.psh`'s shadow path, and moving to our
+      own PS main afterwards moves shadow sampling with it
 - [ ] 141.9 **Tessellation / displacement**, or an explicit decision not to.
       Further out than the other two: `PBR_Renderer` creates no hull or domain
       shaders, so this is new pipeline work rather than new shader code
