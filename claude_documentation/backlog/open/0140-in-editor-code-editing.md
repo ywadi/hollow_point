@@ -35,7 +35,8 @@ single blessed editor.
       knows the project (asset panel, console error, module load failure)
 - [ ] **Which editor is used is configurable**, and at least one option is an
       external editor already on the machine
-- [ ] Ned is supported as an option, embedded or launched — see the open question
+- [ ] Ned is supported as an option — embedded as a panel if its licence allows,
+      launched as a process if not
 - [ ] A compile error can be jumped to: file **and line**, not just the file
 - [ ] Choosing an editor that is not installed fails with a message naming what
       it looked for, rather than doing nothing
@@ -46,7 +47,8 @@ single blessed editor.
 
 ## Subtasks
 
-- [ ] 140.1 Decide embedded vs external, and record it (see below)
+- [x] 140.1 Decide which editor — **nealmick/ned**, confirmed 2026-08-05
+- [ ] 140.1b Decide embedded vs external, once the licence is known
 - [ ] 140.2 An `openInEditor(path, line)` seam with a null implementation
 - [ ] 140.3 External-editor backend, configured by command template
 - [ ] 140.4 Ned backend
@@ -55,36 +57,43 @@ single blessed editor.
 - [ ] 140.7 Tests for the seam and the command templating; the editors themselves
       are not testable here and should not pretend to be
 
-## The open question, which is the owner's and not an engineering one
+## Decided 2026-08-05 — it is nealmick/ned
 
-**Which Ned, and embedded or launched?** The name is ambiguous and the answer
-changes the size of this ticket by an order of magnitude:
+**The owner confirmed [nealmick/ned](https://github.com/nealmick/ned), and the
+reason is the one that matters: the editor is built on ImGui, and that is the
+only candidate that is too.** So Ned can be a *panel* in the docking layout
+rather than a process beside it — which is a materially better integration than
+launching an external editor and losing every piece of context the editor holds.
+
+The alternatives are recorded below rather than deleted, because "why not NEdit"
+is a question that will be asked again by someone who finds it first in a search.
 
 | Candidate | What it is | Fit |
 |---|---|---|
-| [nealmick/ned](https://github.com/nealmick/ned) | **ImGui** text editor with GL shaders, tree-sitter highlighting, LSP, terminal | Most likely what was meant. ImGui is already in the tree and docking is verified, so this could be a *panel* rather than a process |
+| **[nealmick/ned](https://github.com/nealmick/ned)** | **ImGui** text editor with GL shaders, tree-sitter highlighting, LSP, terminal | **Chosen.** ImGui is already in the tree and docking is verified, so this can be a *panel* rather than a process |
 | [NEdit](https://sourceforge.net/projects/nedit/) | Motif/X11 editor from 1992, mature | **GPL-2.0.** Launchable as a process; linking it is not an option for a proprietary engine. Unix only, so it fails the Windows target outright |
 | [vinc/ned](https://github.com/vinc/ned) | A small terminal editor | Launchable, nothing to embed |
 
-**Assume nealmick/ned until told otherwise** — it is ImGui-based, which is the
-only one of the three that could become a panel in this editor rather than a
-process beside it.
+### What is still open, and it is not which editor
 
-Three things must be checked before any of it is vendored, and each has killed a
-candidate here before:
+Choosing Ned does **not** by itself decide that it gets embedded. Three checks
+stand between the decision and vendoring it, and each has killed a candidate in
+this repository before:
 
-- **Licence.** NEdit is GPL-2.0, which is disqualifying for anything linked into
-  a proprietary engine. nealmick/ned's licence has **not** been checked and must
-  be, first, before any other evaluation — it decides whether embedding is even
-  on the table.
+- **Licence, and this is the gate.** nealmick/ned's licence has **not** been
+  checked. It decides whether embedding is on the table at all, so it comes
+  before any other evaluation — a copyleft licence on an ImGui panel linked into
+  the editor is the same problem NEdit's GPL-2.0 is, and being the right editor
+  does not change that. If it fails here, Ned becomes an *external* backend and
+  the feature still ships.
 - **The build constraints in `03-build-harness.md`.** No network fetch at
   configure time, builds under the pinned zig/cmake toolchain for **both** Linux
   and Windows, not MSVC-only, not POSIX-only, and no build system of its own that
   fights the harness. T0048's survey rejected several libraries on exactly these.
-- **Maintenance surface**, which is the owner's call and not a technical one.
-  An embedded editor with tree-sitter, LSP and a terminal is a large thing to
-  carry for a studio building games. Launching whatever editor the developer
-  already uses costs almost nothing and is what most engines do.
+- **Maintenance surface**, which remains the owner's call. Tree-sitter, LSP and
+  a terminal emulator are a large thing for a small studio to carry, and it is
+  legitimate to embed Ned with those switched off. Decide what is *in* before
+  vendoring, not after.
 
 ## Design
 
@@ -104,10 +113,10 @@ The null implementation returning `false` is the default, and it is what keeps
 the last Done-when true: an editor with nothing configured is not degraded, it
 simply has one affordance switched off.
 
-Doing this first also means 140.1 can be answered *late* and cheaply, which is
-the right shape for a question that is the owner's to settle.
+Doing this first also means 140.1b — embed or launch — can be answered *late*
+and cheaply, once the licence is known. Neither answer changes the call sites.
 
-### External first, embedded second — whichever Ned wins
+### External first, embedded second — even now that Ned is chosen
 
 The external backend is a command template (`code --goto {file}:{line}`,
 `ned {file}`, whatever) and is perhaps a hundred lines. It covers every editor

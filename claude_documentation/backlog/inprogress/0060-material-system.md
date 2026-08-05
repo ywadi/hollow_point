@@ -2,9 +2,9 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
-| **Complexity** | Complex |
+| **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
 | **Order** | 450 |
 | **Created** | 2026-08-03 |
@@ -22,28 +22,47 @@ ability to attach a custom shader** for anything else.
 
 ## Done when
 
-- [ ] Material is an asset with a GUID, serialized (T0020), inspector-editable
+- [ ] Material is an asset with a GUID, serialized (T0022/T0020), and reflected
+      so the inspector gets it for free
 - [ ] Standard materials drive Diligent's `PBR_Renderer`
-- [ ] **Custom shader materials** — attach a shader, expose its parameters
-- [ ] Custom shader parameters appear in the inspector automatically
 - [ ] Materials are assignable per mesh, overriding what the model imported
-- [ ] Shader compilation is cached, not repeated every launch
-- [ ] A shader that fails to compile falls back visibly, never crashes
-- [ ] Shader hot reload in the editor
-- [ ] **Custom shaders receive engine intermediates** — visibility (T0093),
-      screen position, depth — not just a finished colour
+- [ ] A material that is missing or will not load falls back **visibly**, never
+      silently and never as a crash
+- [ ] A **textured** mesh renders with its pixels asserted — the regression guard
+      T0134 could not write, because it needs a texture path a test can drive
+- [ ] Custom shader materials are **T0141's**, and nothing here forecloses them
 
 ## Subtasks
 
-- [ ] 60.1 Material asset: shader reference plus a parameter block
+- [ ] 60.1 Material asset: the parameter block, mapped onto
+      `PBRMaterialShaderAttribs`, plus room for a shader reference T0141 fills
 - [ ] 60.2 Standard PBR material mapping onto `PBR_Renderer`
-- [ ] 60.3 Custom shader material with a declared parameter interface
-- [ ] 60.4 Reflect shader parameters for the inspector — see notes
-- [ ] 60.5 PSO management via Diligent's `RenderStateCache` and `BytecodeCache`
 - [ ] 60.6 Material assignment on the mesh component, overriding import defaults
-- [ ] 60.7 Error material — unmissable magenta — on compile failure
-- [ ] 60.8 Shader hot reload
-- [ ] 60.9 Sort by material/PSO in the render queue (T0045)
+- [ ] 60.10 A visible fallback material for missing or unloadable assets
+- [ ] 60.11 The textured-render regression test T0134 could not write
+
+### Descoped 2026-08-05 — moved to [../open/0141-custom-shader-materials.md](../open/0141-custom-shader-materials.md)
+
+Not dropped, and not "later" in the vague sense: T0141 exists, is blocked by this
+ticket, and carries the notes rather than leaving them here to rot.
+
+- 60.3 Custom shader material with a declared parameter interface → **141.1**
+- 60.4 Reflect shader parameters for the inspector → **141.2**
+- 60.5 PSO management via `RenderStateCache` / `BytecodeCache` → **141.3**
+- 60.7 Error *shader* on compile failure → **141.4** (a fallback *material* for a
+  missing asset stays here as 60.10; they are different failures)
+- 60.8 Shader hot reload → **141.5**
+
+**Why.** This ticket was two tickets under one number: a material *asset*, which
+is a data-model gap that blocks T0045 (whose render queues and sort keys are
+material properties) and T0086 (which needs cutout materials for alpha-tested
+shadow casters) — and a *shader system*, which is larger and blocks nothing.
+Keeping them together meant culling and shadows waiting behind a shader compile
+cache, which is the wrong dependency to accept.
+
+- [ ] 60.9 Sort by material/PSO in the render queue → **T0045 owns this**; it is
+      listed in that ticket's Done-when already. What this ticket owes T0045 is
+      the material *identity and blend mode* to sort and bucket on
 
 ## Notes / findings
 
