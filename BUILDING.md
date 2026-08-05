@@ -97,6 +97,13 @@ CMake is held on the 3.x line deliberately: CMake 4 rejects
 third-party libraries still declare 2.8. 3.31 is also new enough for
 ozz-animation, which requires 3.30.
 
+Bootstrap also installs **slang** (the shader language, D28) — both platform
+packages on every host, because either host cross-builds both targets and each
+target's test suite loads its own platform's slang library at run time. If
+configure stops with "slang ... is not installed in .harness/", run bootstrap
+once; the build is offline afterwards. Details in
+`claude_documentation/documentation/03-build-harness.md`.
+
 ## Building
 
 ```sh

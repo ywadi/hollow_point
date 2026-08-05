@@ -18,6 +18,7 @@ configures, Ninja decides *what* to rebuild, Zig compiles and links.
 | zig | 0.16.0 | the compiler, libc and Windows SDK |
 | cmake | 3.31.12 | **must stay on 3.x** — see D5 in the decision log |
 | ninja | 1.13.2 | incremental engine |
+| slang | 2026.14.1 | the shader language (D28, T0142) — see below, it is keyed differently |
 
 The host key is `<os>-<arch>` — `linux-x86_64`, `windows-x86_64`,
 `linux-aarch64` — the same vocabulary as the target keys and the `build/` and
@@ -27,6 +28,19 @@ two hosts at once (Windows plus WSL), and until T0102 both scripts installed to
 either bootstrap destroyed the other's toolchain. `.harness/dl/` stays shared
 and unkeyed: the archives are already named for their host, so they cannot
 collide, and a dual-host machine downloads each one once.
+
+**Slang is keyed by the *package's* platform, not the host's, and both packages
+are installed on every host.** It is not a build tool in the way the other three
+are: nothing runs `slangc` during `zig build`. The engine loads the platform's
+slang *library* at run time to compile `.slang` shaders at pipeline-build time
+(T0142), so the Linux suite needs `libslang-compiler.so` and the Windows suite —
+native or under wine — needs `slang-compiler.dll`, and either host cross-builds
+both targets. CMake resolves `.harness/slang/<platform>/<version>` at configure
+time (headers, plus the runtime library it stages beside every executable) and
+fails with a "run bootstrap" message if it is absent. The two bootstrap scripts
+write identical content to identical paths, so the T0102 collision hazard does
+not apply to it. The pin lives in three files — both bootstrap scripts and the
+root `CMakeLists.txt` — and `pins_test.zig` fails if they drift.
 
 The layout has one definition, `tools/harness/paths.zig`, which `build.zig` uses
 and `tests/harness/paths_test.zig` pins down. The bootstrap scripts cannot

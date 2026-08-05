@@ -303,7 +303,11 @@ T0060 already says it must not foreclose and does not.
       reflects constant-buffer contents at runtime
       (`LoadConstantBufferReflection`, one bool, currently false). Both beat
       annotating and parsing, which was this subtask's plan
-- [ ] 141.3 PSO management via `RenderStateCache` and `BytecodeCache` (was 60.5)
+- [ ] 141.3 PSO management via `RenderStateCache` and `BytecodeCache` (was 60.5).
+      **T0142 measured the argument for this** (2026-08-06): slang's cold
+      compile is 2–4x slower than glslang's on identical permutations — the
+      debug-channel gpu test went 3.2s → 7.9s — so the cache is what turns
+      that from a startup cost into a one-time miss. Consider pulling forward
 - [ ] 141.4 Error shader on compile failure: the shared checkerboard, plus a
       console error naming the shader and the compiler's message (was 60.7)
 - [→] 141.5 **Moved to T0142.8** — Slang's runtime API is built for it

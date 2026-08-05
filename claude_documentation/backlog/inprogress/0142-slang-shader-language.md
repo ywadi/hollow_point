@@ -102,7 +102,18 @@ RTX 2080 — their arithmetic, to the byte.
       Slang → HLSL is **not currently viable at all** — slang's HLSL output
       renames every resource (`cbFrameAttribs_0`), and Diligent binds by name,
       so the signature finds nothing. SPIR-V is adopted for Vulkan on that
-      basis. Compile-time and first-frame numbers are still owed.*
+      basis.*
+      *The stopwatch half, measured the same night by flipping `useSlang` off
+      locally and rerunning the Linux gpu suite with doctest durations —
+      **slang's cold compile is 2–4x slower than glslang's** on identical
+      permutations, same machine, same backend: the single-pipeline test
+      0.43s → 0.59s, the lit-surface test 1.99s → 3.07s, the debug-channel
+      test (the most permutations) 3.20s → 7.90s. GL cases moved <1%, which
+      is the control. Real but bounded — and it is the direct argument for
+      pulling T0141.3's `RenderStateCache`/`BytecodeCache` forward and for
+      142.7's cooking, both of which make the cold compile a cache miss
+      rather than a startup cost. First-frame-in-the-editor was not measured
+      separately.*
 - [ ] 142.7 **Cook shaders as compiled assets.** Slang → cooked output at cook
       time, keyed on content hash like everything else. **But `Cook.hpp`'s
       invariant does not hold**: it promises anything cooked can be re-cooked from
@@ -222,6 +233,24 @@ wine all resolve without help.
 - **On Windows, `slang.dll` is a forwarder shim; `slang-compiler.dll` is the
   real library** (and on Linux `libslang.so` is a symlink to
   `libslang-compiler.so`). The engine loads the real name directly.
+
+### Where this stands at the end of the 2026-08-06 overnight session
+
+Done and verified on hardware: **142.1, 142.4, 142.5, 142.12**, and 142.3's
+rendering half. Final-tree verification: `zig build test -Dtest=all` — 302
+fast (214,663 assertions) + 89 integration (515) on **both** targets, zero
+failures; `-Dtest=gpu` — 22 cases (23 minus the deleted probe), 803
+assertions, both targets, RTX 2080, wine running the Windows suite against
+`slang-compiler.dll`; `zig build docs` green; a bounded `hp_editor` run loads
+the staged library from beside the executable and renders without errors.
+
+**Next, in rough order of readiness:** 142.2 needs one decision first — see
+"The single-source constraint" below; it is close to the owner's territory
+because it decides whether custom materials can be Vulkan-only for a while.
+142.7 (cooking) and T0141.3 (`RenderStateCache`) are now the measured answer
+to the 2–4x cold-compile cost. 142.8–142.10 want editor scaffolding that does
+not exist yet (T0032+). 142.11's remainder is one native-Windows-host run
+plus closing the D3D12 half against D25.
 
 ### Smaller things worth knowing
 
