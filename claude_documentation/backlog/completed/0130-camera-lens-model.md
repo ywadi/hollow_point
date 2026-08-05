@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 415 |
 | **Created** | 2026-08-05 |
-| **Refs** | [../completed/0021-scene-and-ecs.md](../completed/0021-scene-and-ecs.md), T0081, T0096, T0028, [../inprogress/0046-frame-render-targets.md](../inprogress/0046-frame-render-targets.md), T0111 |
+| **Refs** | [../completed/0021-scene-and-ecs.md](../completed/0021-scene-and-ecs.md), T0081, T0096, T0028, [../completed/0046-frame-render-targets.md](../completed/0046-frame-render-targets.md), T0111 |
 
 ## Why
 

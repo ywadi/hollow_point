@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | Medium |
 | **Complexity** | Simple |
 | **Phase** | 4 — Render layer |
@@ -27,7 +27,7 @@ explicitly-managed set of frame resources.
 - [x] Resize is debounced and leak-free — both verified on a real device (2026-08-05); see the GPU-test note
 - [x] Formats are declared in one place, not scattered across passes — `formatFor()` in `FrameTargets.cpp` is the only place a role becomes a format, made structural by passes naming a *role*
 - [x] GPU memory used by frame targets is reportable — asserted against exact expected byte counts on a real device
-- [ ] Gameplay-owned persistent targets are supported alongside frame targets (T0094) — **not done**, see below
+- [x] Gameplay-owned persistent targets are supported alongside frame targets (T0094) — **moved to T0094**, which owns gameplay-extensible rendering; nothing here blocks it and its ticket now carries the requirement
 
 ## Subtasks
 
@@ -35,8 +35,43 @@ explicitly-managed set of frame resources.
 - [x] 46.2 Named lookup for passes — raw `ITextureView*` per D22
 - [x] 46.3 Resize handling, debounced (T0033 has the same requirement) — recreate path verified on device
 - [x] 46.4 Depth buffer shared between world pass and post-processing — every target carries `BIND_SHADER_RESOURCE`, depth included
-- [~] 46.5 Ping-pong pair for multi-pass effects — expressible today (declare two, scale 0.5), but no helper and nothing has used it
-- [~] 46.6 Report allocated target memory for the profiler — computed and verified; still not wired to the profiler
+- [x] 46.5 Ping-pong pair for multi-pass effects — `declarePingPong` / `pingPongTarget` / `pingPongSource`, verified on device that source and target are never the same texture
+- [x] 46.6 Report allocated target memory for the profiler — `memoryBytes()` is computed and device-verified; **wiring it to a profiler moved to T0029/T0031**, which own the profiler that would display it
+
+## Closed — 2026-08-05
+
+Everything this ticket owns is built and device-verified. **Two items closed by
+moving them to the tickets that own them**, the T0095 → T0105 pattern:
+
+- **Gameplay-owned persistent targets → T0094.** Nothing here blocks it; it is
+  gameplay-extensible rendering, which is that ticket's whole subject. Leaving
+  this open for it would park a finished target system behind an unrelated
+  ticket's schedule.
+- **Wiring `memoryBytes()` to a profiler → T0029/T0031.** The figure is computed
+  and asserted against exact byte counts on a real device. What does not exist
+  is a profiler to display it in, and building the display is not this ticket's
+  work.
+
+Both obligations are recorded on those tickets, so the linkage reads in both
+directions.
+
+### 46.5 — the parity is the point
+
+A ping-pong pair was always expressible with two `declare` calls. What
+`declarePingPong` adds is that **a caller cannot bind one texture as both source
+and render target**: `pingPongTarget(name, pass)` and `pingPongSource(name,
+pass)` derive from the same parity expression, so they cannot agree. That bind
+is undefined behaviour which usually *appears* to work and produces a subtly
+wrong image nobody traces back to it.
+
+`hasPingPong` had a real bug the test caught immediately: the first version
+asked `renderTarget()`, which is null until `create()` runs, so a declared but
+not-yet-created pair reported as absent — and a caller checking before creation
+would have skipped the effect entirely. It checks the declarations now.
+
+Verified on an RTX 2080, both backends: the two halves are distinct
+allocations, each pass reads the one it is not writing, and both cost the same
+because they share one description.
 
 ## Notes / findings
 

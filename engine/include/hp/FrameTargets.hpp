@@ -165,6 +165,49 @@ public:
     ///          lifetime as `renderTarget`.
     [[nodiscard]] Diligent::ITextureView* shaderResource(std::string_view name) const;
 
+    // --- ping-pong (46.5) ---------------------------------------------------
+    //
+    // A multi-pass effect -- a separable blur, an iterative bloom downsample --
+    // alternates between two targets: read A write B, then read B write A. It
+    // is expressible with two `declare` calls and always has been; what these
+    // add is the parity, and the parity is the part that gets written wrong.
+    //
+    // **Binding a texture as both source and target is the failure this
+    // prevents.** It is undefined behaviour, it usually *appears* to work, and
+    // what it produces is a subtly wrong image that nobody traces back to the
+    // bind. Asking for "the target for pass N" rather than tracking a boolean
+    // means a caller cannot get the sense inverted.
+
+    /// Declares a pair of identical targets for a multi-pass effect.
+    ///
+    /// Creates `"<name>.a"` and `"<name>.b"`, both with `desc`'s format and
+    /// scale. They are ordinary targets: `renderTarget` and `shaderResource`
+    /// work on the suffixed names, so a debug view can show either.
+    /// @param desc the pair's shared description. Its `name` is the pair's name.
+    /// @returns nothing.
+    void declarePingPong(FrameTargetDesc desc);
+
+    /// The target a given pass writes into.
+    /// @param name the pair's name, as declared.
+    /// @param pass the zero-based pass index. Even passes write `.b`, odd write
+    ///        `.a`, so pass 0 reads the `.a` an earlier stage filled.
+    /// @returns the render-target view, or nullptr when the pair is unknown or
+    ///          not created.
+    [[nodiscard]] Diligent::ITextureView* pingPongTarget(std::string_view name, int pass) const;
+
+    /// The target a given pass reads from — always the other one.
+    /// @param name the pair's name, as declared.
+    /// @param pass the zero-based pass index, the same value passed to
+    ///        `pingPongTarget`.
+    /// @returns the shader-resource view, or nullptr when the pair is unknown or
+    ///          not created. **Never the same texture `pingPongTarget` returns
+    ///          for the same pass**, which is the whole point.
+    [[nodiscard]] Diligent::ITextureView* pingPongSource(std::string_view name, int pass) const;
+
+    /// @param name the pair's name.
+    /// @returns whether a ping-pong pair was declared under that name.
+    [[nodiscard]] bool hasPingPong(std::string_view name) const;
+
     /// @returns whether every declared target currently exists.
     [[nodiscard]] bool ready() const;
 

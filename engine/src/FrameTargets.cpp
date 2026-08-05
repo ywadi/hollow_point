@@ -149,6 +149,57 @@ void FrameTargets::declare(FrameTargetDesc desc) {
     impl_->declared.push_back(std::move(desc));
 }
 
+namespace {
+
+/// The two halves of a ping-pong pair, by convention.
+std::string pingPongName(std::string_view name, bool second) {
+    return std::string(name) + (second ? ".b" : ".a");
+}
+
+} // namespace
+
+void FrameTargets::declarePingPong(FrameTargetDesc desc) {
+    const std::string base = desc.name;
+
+    FrameTargetDesc a = desc;
+    a.name = pingPongName(base, false);
+    declare(std::move(a));
+
+    FrameTargetDesc b = std::move(desc);
+    b.name = pingPongName(base, true);
+    declare(std::move(b));
+}
+
+bool FrameTargets::hasPingPong(std::string_view name) const {
+    // Checked against the *declarations*, not the views. The first version
+    // asked `renderTarget()`, which is null until `create()` runs -- so a pair
+    // that had been declared and not yet created reported as absent, and a
+    // caller checking before creation would have skipped the effect entirely.
+    const std::string first = pingPongName(name, false);
+    const std::string second = pingPongName(name, true);
+    bool sawFirst = false;
+    bool sawSecond = false;
+    for (const FrameTargetDesc& desc : declared()) {
+        sawFirst = sawFirst || desc.name == first;
+        sawSecond = sawSecond || desc.name == second;
+    }
+    return sawFirst && sawSecond;
+}
+
+Diligent::ITextureView* FrameTargets::pingPongTarget(std::string_view name, int pass) const {
+    // Even passes write .b so that pass 0 reads the .a an earlier stage filled,
+    // which is the order every multi-pass effect actually wants.
+    const bool writeSecond = (pass % 2) == 0;
+    return renderTarget(pingPongName(name, writeSecond));
+}
+
+Diligent::ITextureView* FrameTargets::pingPongSource(std::string_view name, int pass) const {
+    const bool writeSecond = (pass % 2) == 0;
+    // The other one, always. Deriving both from the same expression is what
+    // makes it impossible for a caller to bind one texture as source and target.
+    return shaderResource(pingPongName(name, !writeSecond));
+}
+
 bool FrameTargets::create(Diligent::IRenderDevice* device, int width, int height) {
     HP_PROFILE_ZONE();
 

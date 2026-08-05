@@ -157,6 +157,41 @@ void exerciseTargetsAndStack(hp::RenderBackend backend, const char* backendName)
         CHECK(targets.memoryBytes() == 320ULL * 240 * 8 + 320ULL * 240 * 4 + 160ULL * 120 * 4);
     }
 
+    SUBCASE("a ping-pong pair alternates between two real textures") {
+        // 46.5 on a device, which is the only place the claim means anything:
+        // **source and target must never be the same texture**. Binding one as
+        // both is undefined, usually appears to work, and produces a subtly
+        // wrong image nobody traces back to the bind.
+        hp::FrameTargets targets;
+        targets.declarePingPong({"blur", hp::TargetFormat::ColourHDR, 0.5F});
+        REQUIRE(targets.create(device.render->device(), 320, 240));
+        REQUIRE(targets.hasPingPong("blur"));
+
+        auto* writeEven = targets.pingPongTarget("blur", 0);
+        auto* readEven = targets.pingPongSource("blur", 0);
+        auto* writeOdd = targets.pingPongTarget("blur", 1);
+        auto* readOdd = targets.pingPongSource("blur", 1);
+
+        REQUIRE(writeEven != nullptr);
+        REQUIRE(readEven != nullptr);
+        REQUIRE(writeOdd != nullptr);
+        REQUIRE(readOdd != nullptr);
+
+        // The two halves are genuinely distinct allocations, and each pass
+        // reads the one it is not writing.
+        CHECK(writeEven != writeOdd);
+        CHECK(readEven != readOdd);
+
+        // Alternating: what pass 0 writes is what pass 1 reads.
+        CHECK(targets.shaderResource("blur.b") == readOdd);
+        CHECK(targets.renderTarget("blur.b") == writeEven);
+
+        // Both halves cost the same, since they share a description -- a pair
+        // that differed in size would change resolution halfway through an
+        // effect.
+        CHECK(targets.memoryBytes() == 2ULL * 160 * 120 * 8);
+    }
+
     SUBCASE("resize rebuilds at the new size and is debounced") {
         hp::FrameTargets targets;
         targets.declare({"scene", hp::TargetFormat::ColourHDR, 1.0F});

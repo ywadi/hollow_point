@@ -6,7 +6,7 @@
 #include <hp/FrameTargets.hpp>
 ```
 
-20 public declaration(s), 20 documented.
+24 public declaration(s), 24 documented.
 
 ## `TargetFormat`
 
@@ -176,6 +176,56 @@ Diligent::ITextureView * shaderResource(std::string_view name) const
  @param name the declared name.
  @returns the view, or nullptr when the name is unknown. Same single-frame
           lifetime as `renderTarget`.
+
+## `FrameTargets::declarePingPong`
+
+```cpp
+void declarePingPong(FrameTargetDesc desc)
+```
+
+ Declares a pair of identical targets for a multi-pass effect.
+
+ Creates `"<name>.a"` and `"<name>.b"`, both with `desc`'s format and
+ scale. They are ordinary targets: `renderTarget` and `shaderResource`
+ work on the suffixed names, so a debug view can show either.
+ @param desc the pair's shared description. Its `name` is the pair's name.
+ @returns nothing.
+
+## `FrameTargets::pingPongTarget`
+
+```cpp
+Diligent::ITextureView * pingPongTarget(std::string_view name, int pass) const
+```
+
+ The target a given pass writes into.
+ @param name the pair's name, as declared.
+ @param pass the zero-based pass index. Even passes write `.b`, odd write
+        `.a`, so pass 0 reads the `.a` an earlier stage filled.
+ @returns the render-target view, or nullptr when the pair is unknown or
+          not created.
+
+## `FrameTargets::pingPongSource`
+
+```cpp
+Diligent::ITextureView * pingPongSource(std::string_view name, int pass) const
+```
+
+ The target a given pass reads from — always the other one.
+ @param name the pair's name, as declared.
+ @param pass the zero-based pass index, the same value passed to
+        `pingPongTarget`.
+ @returns the shader-resource view, or nullptr when the pair is unknown or
+          not created. **Never the same texture `pingPongTarget` returns
+          for the same pass**, which is the whole point.
+
+## `FrameTargets::hasPingPong`
+
+```cpp
+bool hasPingPong(std::string_view name) const
+```
+
+ @param name the pair's name.
+ @returns whether a ping-pong pair was declared under that name.
 
 ## `FrameTargets::ready`
 

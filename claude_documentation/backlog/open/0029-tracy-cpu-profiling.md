@@ -8,6 +8,7 @@
 | **Phase** | 5 — Profiling |
 | **Order** | 560 |
 | **Created** | 2026-08-02 |
+| **Refs** | [../completed/0046-frame-render-targets.md](../completed/0046-frame-render-targets.md) |
 
 ## Why
 
@@ -41,6 +42,19 @@ written, so this ticket is largely a mapping exercise rather than a retrofit.
 - [ ] 29.6 Document the workflow, including that the viewer is a separate app
 
 ## Notes / findings
+
+### From T0046 (2026-08-05) — render-target memory is computed and has nowhere to go
+
+`hp::FrameTargets::memoryBytes()` reports what the frame targets cost, computed
+from the declared formats and sizes and asserted against exact byte counts on a
+real device. **T0046 closed with the display side moved here**, because what is
+missing is a profiler to show it in, not a number to show.
+
+It is deliberately what was *asked for* rather than what the driver allocated —
+alignment and tiling make the real figure somewhat larger. That is good enough
+for "what is eating VRAM", which is the question it exists to answer, and the
+distinction is worth keeping in whatever displays it.
+
 
 **Main risk is the MinGW cross-build.** The Tracy client uses OS threading and
 timing primitives; it supports MinGW, but this project's toolchain has already

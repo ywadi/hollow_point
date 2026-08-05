@@ -8,6 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 510 |
 | **Created** | 2026-08-03 |
+| **Refs** | [../completed/0046-frame-render-targets.md](../completed/0046-frame-render-targets.md) |
 
 ## Why
 
@@ -48,6 +49,31 @@ same three capabilities. Without them, every one of these becomes an engine patc
       to a decided location (see the 2026-08-03 amendment)
 
 ## Notes / findings
+
+### From T0046 (2026-08-05) — gameplay-owned persistent targets land here
+
+T0046 closed with "gameplay-owned persistent targets are supported alongside
+frame targets" **moved to this ticket**, because it is gameplay-extensible
+rendering and that is this ticket's whole subject. Nothing in T0046 blocks it.
+
+What already exists to build on:
+
+- `hp::FrameTargets` owns the engine's per-frame targets, declared by *role*
+  (`Colour`, `ColourHDR`, `Depth`) so no pass names a format. Every target
+  carries `BIND_SHADER_RESOURCE`, so anything can be read as well as written.
+- Resize is debounced by size, verified on device by pointer identity — an
+  unchanged size returns the *same* view rather than quietly reallocating.
+- `declarePingPong` gives a multi-pass effect a pair whose source and target
+  cannot be the same texture.
+
+The open question this ticket has to answer is **lifetime**. Frame targets are
+recreated on every resize, and a gameplay module's target may want to outlive
+that — or may want to die with the module, which is the harder case, because an
+unloaded module leaves the engine holding GPU resources nobody owns.
+`RenderPassContext` hands out raw `ITextureView*` valid for one call only (D22),
+which is the right shape for a frame target and is explicitly *not* an answer
+for a persistent one.
+
 
 **Hot reload is the constraint that makes this non-trivial**, and it is the same
 problem as T0062. A render layer implemented in the gameplay module has a vtable

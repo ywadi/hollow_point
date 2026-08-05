@@ -40,7 +40,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Engine.hpp>`](Engine.md) | 4 | 4 |
 | [`<hp/EntryPoint.hpp>`](EntryPoint.md) | 1 | 0 |
 | [`<hp/Event.hpp>`](Event.md) | 72 | 15 |
-| [`<hp/FrameTargets.hpp>`](FrameTargets.md) | 20 | 20 |
+| [`<hp/FrameTargets.hpp>`](FrameTargets.md) | 24 | 24 |
 | [`<hp/Guid.hpp>`](Guid.md) | 13 | 5 |
 | [`<hp/Input.hpp>`](Input.md) | 39 | 39 |
 | [`<hp/Layer.hpp>`](Layer.md) | 28 | 16 |
@@ -60,7 +60,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
 
-**539 public declarations across 29 headers, 422 documented.**
+**543 public declarations across 29 headers, 426 documented.**
 
 ## Every symbol
 
@@ -238,6 +238,10 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `FrameTargets::renderTarget` | [`FrameTargets.hpp`](FrameTargets.md) |
 | `FrameTargets::depthStencil` | [`FrameTargets.hpp`](FrameTargets.md) |
 | `FrameTargets::shaderResource` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::declarePingPong` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::pingPongTarget` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::pingPongSource` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `FrameTargets::hasPingPong` | [`FrameTargets.hpp`](FrameTargets.md) |
 | `FrameTargets::ready` | [`FrameTargets.hpp`](FrameTargets.md) |
 | `FrameTargets::width` | [`FrameTargets.hpp`](FrameTargets.md) |
 | `FrameTargets::height` | [`FrameTargets.hpp`](FrameTargets.md) |
