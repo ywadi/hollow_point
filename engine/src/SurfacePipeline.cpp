@@ -1,5 +1,6 @@
 #include "SurfacePipeline.hpp"
 
+#include <hp/Light.hpp>
 #include <hp/Log.hpp>
 #include <hp/Profiling.hpp>
 #include <hp/ShaderSources.hpp>
@@ -80,6 +81,125 @@ Diligent::IPipelineState* SurfacePipeline::pipeline(const Diligent::GraphicsPipe
     // path and which applies just as well here.
     pipelines_[hash] = built;
     return built;
+}
+
+void SurfacePipeline::configure(CreateInfo& info) {
+    // Off because they belong to other tickets, and because each one that is on
+    // demands resources the engine has no way to supply yet -- IBL wants a
+    // precomputed environment, lights want a populated light buffer.
+    info.EnableIBL = false;
+    info.EnableAO = false;
+    info.EnableEmissive = false;
+    info.EnableShadows = false;
+    // **Sizes the frame attributes buffer**, which is
+    // `CameraAttribs * 2 + renderer params + PBRLightAttribs * MaxLightCount`.
+    // Zero here is what made `PSO_FLAG_USE_LIGHTS` pointless even when set.
+    info.MaxLightCount = static_cast<Diligent::Uint32>(kMaxLights);
+    // **This is 28.2.** The renderer creates white/black/default-normal
+    // textures, which is what a material with no texture assigned samples. So
+    // "entities with no material get a visible default" costs nothing here --
+    // and turning it off is what would make an unassigned mesh invisible.
+    info.CreateDefaultTextures = true;
+    // **The sRGB decode happens in the shader, because the view cannot do it
+    // here.** Base-colour and emissive textures are authored in sRGB; lighting
+    // has to be done in linear. There are two places to convert: the texture
+    // view (free, the sampler hardware does it) or the shader (`TO_LINEAR`,
+    // a few instructions).
+    //
+    // The view is the better one and it is not available to us.
+    // `GLTF_PBR_Renderer` reaches it through `GetPBRTextureSRV`, which creates
+    // an sRGB view per slot and is **file-static in their .cpp** -- not merely
+    // private, but invisible outside that translation unit. The glTF loader
+    // creates `RGBA8_TYPELESS` textures, whose *default* shader view is
+    // `RGBA8_UNORM`: linear, so a base-colour texture read through it is too
+    // bright by the sRGB curve.
+    //
+    // `TEX_COLOR_CONVERSION_MODE_SRGB_TO_LINEAR` is DiligentFX's own name for
+    // this exact situation -- their comment reads "should be used if the
+    // textures are in sRGB color space, but the texture views are in linear
+    // color space" -- and it costs an instruction per colour sample. T0134
+    // recorded the gap; this closes it rather than carrying it forward, and
+    // T0097 can still move the conversion into the view later without the
+    // shader noticing.
+    info.TexColorConversionMode =
+        Diligent::PBR_Renderer::CreateInfo::TEX_COLOR_CONVERSION_MODE_SRGB_TO_LINEAR;
+
+    // **Which slot of a glTF material feeds which slot of the renderer**, and
+    // leaving it unset is a silent no-op rather than an error.
+    //
+    // `CreateInfo` fills this array with **-1**, and every consumer treats -1 as
+    // "this renderer does not use that texture". So an unset array makes three
+    // separate things quietly do nothing:
+    //
+    //   * `DefineMacros` skips the `BaseColorTextureAttribId` constants, so the
+    //     shader cannot name its own texture attributes;
+    //   * `ensureBindings` binds nothing, because every slot looks disabled;
+    //   * `WritePBRMaterialShaderAttribs` writes no per-texture attributes at
+    //     all, so the UV selectors and slices are never sent.
+    //
+    // None of the three logs anything in a release build, and none of them
+    // mattered until something sampled a texture -- which is why this was found
+    // by a shader failing to compile rather than by an image looking wrong. That
+    // is the only reason it was found at all.
+    //
+    // `GLTF_PBR_Renderer` does this in a private wrapper struct around its
+    // `CreateInfo`, so a renderer built on `PBR_Renderer` directly -- which is
+    // what D26 chose -- has to do it here. The constants are the loader's own,
+    // so the mapping stays correct by construction if `DefaultTextureAttributes`
+    // is ever reordered.
+    //
+    // **Only the five glTF core textures are mapped.** The rest stay -1 on
+    // purpose: D24 keeps clearcoat, sheen, anisotropy, iridescence, transmission
+    // and volume off, so a mapping for them would claim support that the
+    // pipeline flags, the signature and the shader all lack. Whichever ticket
+    // turns one on adds its line here.
+    auto& textureSlots = info.TextureAttribIndices;
+    textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_BASE_COLOR] =
+        Diligent::GLTF::DefaultBaseColorTextureAttribId;
+    textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_PHYS_DESC] =
+        Diligent::GLTF::DefaultMetallicRoughnessTextureAttribId;
+    textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_NORMAL] =
+        Diligent::GLTF::DefaultNormalTextureAttribId;
+    // Mapped although `EnableAO` and `EnableEmissive` are off below: the index
+    // says where the data *lives*, not whether the renderer reads it. T0087 and
+    // T0096 turn the features on and need no change here.
+    textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_OCCLUSION] =
+        Diligent::GLTF::DefaultOcclusionTextureAttribId;
+    textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_EMISSIVE] =
+        Diligent::GLTF::DefaultEmissiveTextureAttribId;
+    // **The engine is row-major and the shaders must be told so.**
+    // `hp::float4x4` is Diligent's, documented in `hp/Math.hpp` as row-major and
+    // multiplied left to right (`World * View * Proj`) -- and `PBR_Renderer`
+    // defaults this to *false*, compiling its shaders for column-major.
+    //
+    // Left at the default, every matrix written into the frame constants is read
+    // transposed. There is no error, no validation warning and no failed draw:
+    // the geometry is simply transformed somewhere off screen, and the frame
+    // comes back pure clear colour with `submitted == 1`. It cost an afternoon
+    // and it is indistinguishable, from the outside, from a depth or culling bug.
+    //
+    // It also has to agree with the transpose flag passed to
+    // `WritePBRPrimitiveShaderAttribs` in `SceneRenderer`, which is spelled
+    // `!PackMatrixRowMajor` for exactly that reason -- set here, the two move
+    // together instead of disagreeing silently.
+    info.PackMatrixRowMajor = true;
+}
+
+Diligent::ITextureView* SurfacePipeline::defaultTexture(TEXTURE_ATTRIB_ID id) const {
+    switch (id) {
+        case TEXTURE_ATTRIB_ID_PHYS_DESC:
+            // Roughness 1, metallic 0 — glTF packs roughness in green and
+            // metallic in blue, and this texture is the 0x0000FF00 that says so.
+            // **White here would make every untextured surface a mirror**, which
+            // is the wrong answer in the loudest possible way.
+            return m_pDefaultPhysDescSRV;
+        case TEXTURE_ATTRIB_ID_NORMAL:
+            return m_pDefaultNormalMapSRV;
+        default:
+            // White: the identity for a multiplied factor, which is what every
+            // remaining slot is.
+            return m_pWhiteTexSRV;
+    }
 }
 
 Diligent::RefCntAutoPtr<Diligent::IPipelineState>

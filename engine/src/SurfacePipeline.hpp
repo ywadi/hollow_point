@@ -37,6 +37,22 @@ namespace hp {
 /// Creates and caches pipeline states that run the engine's shaders.
 class SurfacePipeline final : public Diligent::PBR_Renderer {
 public:
+    /// Fills in the engine's renderer settings.
+    ///
+    /// **One place, because two places is how the last bug got in.**
+    /// `SceneRenderer` and the pipeline test each built their own `CreateInfo`
+    /// by hand, they drifted, and the field they both omitted —
+    /// `TextureAttribIndices` — defaults to a value that means "disabled"
+    /// everywhere it is read. Nothing logged; three subsystems just quietly did
+    /// nothing.
+    ///
+    /// `InputLayout` is **not** set here and is the caller's job: `CreateInfo`
+    /// holds a *pointer* to the layout's elements, so a layout built inside this
+    /// function would dangle the moment it returned.
+    ///
+    /// @param info the settings to fill in.
+    static void configure(CreateInfo& info);
+
     /// Constructs the renderer. Arguments are `PBR_Renderer`'s own.
     /// @param device the render device.
     /// @param cache optional render-state cache; null is fine.
@@ -60,6 +76,32 @@ public:
     ///          logged here, on the attempt, never from the draw path (T0141).
     [[nodiscard]] Diligent::IPipelineState* pipeline(const Diligent::GraphicsPipelineDesc& graphics,
                                                      const PSOKey& key);
+
+    /// The stand-in view for a texture slot a material does not fill.
+    ///
+    /// **Every slot the shader declares has to be bound, whether the material
+    /// uses it or not**, and that is not a nicety. `SceneRenderer` builds every
+    /// pipeline with the colour, normal and physical-descriptor maps enabled —
+    /// one permutation for every material rather than one per texture
+    /// combination — so an untextured material still gets a shader that declares
+    /// all three. Leaving them unbound makes the backend's validation layer
+    /// complain and makes the sample return **zero**, which is a black surface,
+    /// not a white one.
+    ///
+    /// The values match glTF's meaning of "absent": white for colour and
+    /// occlusion, a flat +Z normal, and roughness 1 / metallic 0 for the
+    /// physical descriptor. `CreateInfo::CreateDefaultTextures` is what creates
+    /// them.
+    ///
+    /// **This accessor exists because `m_pDefaultPhysDescSRV` is protected with
+    /// no public getter** — white, black and the default normal map all have
+    /// one, and that one does not. Reaching it is a thing the subclass can do
+    /// and a free function beside the renderer could not, which is the same
+    /// reason `SurfacePipeline` is a subclass at all.
+    ///
+    /// @param id which texture slot.
+    /// @returns the default view, or nullptr when `CreateDefaultTextures` is off.
+    [[nodiscard]] Diligent::ITextureView* defaultTexture(TEXTURE_ATTRIB_ID id) const;
 
 private:
     /// Builds one pipeline. Called only on a cache miss.

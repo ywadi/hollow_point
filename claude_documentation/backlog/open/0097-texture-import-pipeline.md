@@ -8,7 +8,19 @@
 | **Phase** | 7 — Content pipeline |
 | **Order** | 710 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0023, T0038, T0096 |
+| **Refs** | T0023, T0038, T0096, T0134, T0141 |
+
+**From T0141 (2026-08-06): the sRGB decode currently runs in the pixel shader,
+and this ticket may move it.** The glTF loader creates `RGBA8_TYPELESS` textures
+whose default shader view is `RGBA8_UNORM` — linear — so an sRGB-authored albedo
+read through it is too bright. The free fix is an sRGB *texture view*, which is
+what DiligentFX's `GetPBRTextureSRV` creates and which is **file-static in their
+.cpp**, invisible outside that translation unit. So `SurfacePipeline::configure`
+sets `TexColorConversionMode = SRGB_TO_LINEAR` and `HpSurface.psh` applies
+`TO_LINEAR` per colour sample instead. **If this ticket gives the engine its own
+texture import, create the sRGB view there and set the mode back to `NONE`** —
+the shader needs no change, because `TO_LINEAR` compiles to nothing in that
+mode.
 
 ## Why
 

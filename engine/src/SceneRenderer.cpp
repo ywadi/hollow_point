@@ -187,32 +187,55 @@ SceneRenderer::Impl::ensureBindings(Guid guid, const Diligent::GLTF::Model& mode
         }
         renderer->InitCommonSRBVars(srb, frameAttribs);
 
-        // **Textures are bound from the model directly**, because the helper
-        // DiligentFX uses for this -- `GetPBRTextureSRV` -- is not public, and
-        // neither is the default physical-descriptor view. What that helper adds
-        // is a **colour-space conversion** per slot, so this path does not yet
-        // apply one. That is a real gap and it belongs with T0097's sRGB work,
-        // not silently here; T0134 records it. Untextured materials are
-        // unaffected: they fall back to the renderer's default textures, which
-        // is what `CreateDefaultTextures` exists for (28.2).
+        // **Every slot is bound, whether the material fills it or not**, and the
+        // `else` branch here is the whole point rather than an afterthought.
+        //
+        // The pipeline key below enables the colour, normal and
+        // physical-descriptor maps for *every* material -- one permutation
+        // instead of one per texture combination -- so the shader an untextured
+        // material runs still declares all three. An unbound texture array
+        // samples **zero**, so skipping the binding turns an untextured surface
+        // black, with the light present and the material read correctly. That
+        // was measured, and it is what parked 141.11 for a commit.
+        //
+        // DiligentFX does exactly this in `GLTF_PBR_Renderer::InitMaterialSRB`;
+        // this engine cannot call it because that is a `GLTF_PBR_Renderer`
+        // method and `SurfacePipeline` deliberately is not one (D26).
+        //
+        // The one thing their helper adds that this does not is `GetPBRTextureSRV`'s
+        // per-slot **colour-space view**. It is file-static in their .cpp and
+        // unreachable, so the conversion happens in the shader instead:
+        // `TexColorConversionMode` is set to `SRGB_TO_LINEAR` below, which is the
+        // mode DiligentFX documents for exactly this case -- sRGB texture data
+        // behind a UNORM view. The glTF loader creates `RGBA8_TYPELESS` textures
+        // whose default shader view is `RGBA8_UNORM`, so that is the case we are in.
         const Diligent::GLTF::Material& material = model.Materials[i];
         const auto& indices = renderer->GetSettings().TextureAttribIndices;
         for (int id = 0; id < Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_COUNT; ++id) {
+            const auto slot = static_cast<Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID>(id);
             const int attrib = indices[static_cast<std::size_t>(id)];
             if (attrib < 0) {
                 continue;
             }
-            const int texture = material.GetTextureId(attrib);
-            if (texture < 0) {
+
+            Diligent::ITextureView* view = nullptr;
+            if (const int texture = material.GetTextureId(attrib); texture >= 0) {
+                if (Diligent::ITexture* tex = model.GetTexture(texture)) {
+                    view = tex->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+                }
+            }
+            if (view == nullptr) {
+                view = renderer->defaultTexture(slot);
+            }
+            if (view == nullptr) {
+                // Only reachable with `CreateDefaultTextures` off, which this
+                // renderer never does. Logged rather than skipped silently,
+                // because the consequence downstream is a black surface with no
+                // other diagnostic.
+                HP_LOG_ERROR(kLog, "no texture and no default for slot {} of material {}", id, i);
                 continue;
             }
-            Diligent::ITexture* tex = model.GetTexture(texture);
-            if (tex == nullptr) {
-                continue;
-            }
-            renderer->SetMaterialTexture(
-                srb, tex->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE),
-                static_cast<Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID>(id));
+            renderer->SetMaterialTexture(srb, view, slot);
         }
 
         built.material[i] = std::move(srb);
@@ -408,38 +431,7 @@ bool SceneRenderer::create(Diligent::IRenderDevice* device, Diligent::IDeviceCon
     impl->device = device;
 
     Diligent::PBR_Renderer::CreateInfo info;
-    // Off because they belong to other tickets, and because each one that is on
-    // demands resources this ticket has no way to supply -- IBL wants a
-    // precomputed environment, lights want a populated light buffer.
-    info.EnableIBL = false;
-    info.EnableAO = false;
-    info.EnableEmissive = false;
-    info.EnableShadows = false;
-    // **Sizes the frame attributes buffer**, which is
-    // `CameraAttribs * 2 + renderer params + PBRLightAttribs * MaxLightCount`.
-    // Zero here is what made `PSO_FLAG_USE_LIGHTS` pointless even when set.
-    info.MaxLightCount = static_cast<Diligent::Uint32>(kMaxLights);
-    // **This is 28.2.** The renderer creates white/black/default-normal
-    // textures, which is what a material with no texture assigned samples. So
-    // "entities with no material get a visible default" costs nothing here --
-    // and turning it off is what would make an unassigned mesh invisible.
-    info.CreateDefaultTextures = true;
-    // **The engine is row-major and the shaders must be told so.**
-    // `hp::float4x4` is Diligent's, documented in `hp/Math.hpp` as row-major and
-    // multiplied left to right (`World * View * Proj`) -- and `PBR_Renderer`
-    // defaults this to *false*, compiling its shaders for column-major.
-    //
-    // Left at the default, every matrix written into the frame constants is read
-    // transposed. There is no error, no validation warning and no failed draw:
-    // the geometry is simply transformed somewhere off screen, and the frame
-    // comes back pure clear colour with `submitted == 1`. It cost an afternoon
-    // and it is indistinguishable, from the outside, from a depth or culling bug.
-    //
-    // It also has to agree with the transpose flag passed to
-    // `WritePBRPrimitiveShaderAttribs` below, which is spelled
-    // `!PackMatrixRowMajor` for exactly that reason -- set here, the two move
-    // together instead of disagreeing silently.
-    info.PackMatrixRowMajor = true;
+    SurfacePipeline::configure(info);
 
     // **Without this the vertex shader has no inputs and nothing is ever drawn.**
     // `CreateInfo::InputLayout` defaults to empty, and `PBR_Renderer` builds its

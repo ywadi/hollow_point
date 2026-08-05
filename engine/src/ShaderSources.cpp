@@ -122,17 +122,13 @@ bool buildEngineSurfacePipeline(Diligent::IRenderDevice* device,
         return false;
     }
 
-    // The engine's real settings, because a pipeline that only builds under
-    // convenient ones proves nothing. Row-major especially: getting it wrong is
-    // invisible until geometry lands off screen (T0028).
+    // **The engine's real settings, via the same function `SceneRenderer` calls.**
+    // Restating them here is what let this test pass against a `CreateInfo` that
+    // differed from the shipping one -- and the field the two disagreed about
+    // was the one whose unset value silently disables three subsystems. A test
+    // that configures its own renderer is testing its own renderer.
     Diligent::PBR_Renderer::CreateInfo info;
-    info.EnableIBL = false;
-    info.EnableAO = false;
-    info.EnableEmissive = false;
-    info.EnableShadows = false;
-    info.MaxLightCount = 16;
-    info.CreateDefaultTextures = true;
-    info.PackMatrixRowMajor = true;
+    SurfacePipeline::configure(info);
 
     const Diligent::InputLayoutDescX inputLayout = Diligent::GLTF::VertexAttributesToInputLayout(
         Diligent::GLTF::DefaultVertexAttributes.data(),

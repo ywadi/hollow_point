@@ -10,6 +10,16 @@
 | **Created** | 2026-08-03 |
 | **Refs** | [0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) — **decide whether this ticket configures DiligentFX's IBL or supersedes it.** T0028 adopted `GLTF_PBR_Renderer`, which ships an IBL path |
 
+**From T0141 (2026-08-06): this ticket owns a check T0141 could not make.** The
+engine now samples metallic/roughness from a material's texture, and the guard
+that proves it (`tests/gpu/textured_surface_test.cpp`) can only assert that the
+*dielectric* set renders correctly. A metal has no diffuse response, so with
+`EnableIBL = false` there is nothing for it to reflect and it renders nearly
+black — centre (20, 19, 19) — whether the metallic channel is wired to blue,
+to green, or to nothing at all. **When environment lighting lands, extend that
+test to assert the metal set is brighter and more specular than the rock**, which
+is the first assertion that can distinguish those cases.
+
 ## Why
 
 Split out of T0079. Punctual lights alone produce harsh, unconvincing PBR —

@@ -342,7 +342,7 @@ T0060 already says it must not foreclose and does not.
       un-inline `GetMaterialPSOFlags` in `SceneRenderer.cpp` the moment any
       extended-material setting is enabled, and decide `EnableEmissive`/`EnableAO`
       deliberately rather than by drift
-- [ ] 141.11 **The textured-render regression test** T0134 could not write (was
+- [x] 141.11 **The textured-render regression test** T0134 could not write (was
       60.11) — a textured mesh with its pixels asserted, which is what catches an
       unwritten `PBRFrameAttribs::Renderer` and its garbage `MipBias`
 - [ ] 141.12 **Render the missing-material fallback** — T0060.10 defines the
@@ -529,71 +529,124 @@ what it drew before:
 a code path to act in — which they did not before the swap, and which is why they
 were sequenced after it.
 
-### The surface stage does not sample textures yet — found 2026-08-06, with pictures
+### The surface stage samples textures — closed 2026-08-06, with pictures
 
-The owner supplied two ambientCG sets (rock, metal), which are now downscaled and
-ORM-packed into `test_assets/derived/` by `tools/pack_test_textures.py`. A
-textured quad rendered through them comes back **flat grey, exactly one unique
-colour in the whole frame, variation 0.00**.
+The owner supplied two ambientCG sets (rock, metal), downscaled and ORM-packed
+into `test_assets/derived/` by `tools/pack_test_textures.py`. Before this work a
+textured quad came back **flat grey, exactly one unique colour in the frame,
+variation 0.00**. It now comes back as rock:
 
-That is the signature of sampling a **1x1 default** texture, and the cause is
-plain once stated: `HpSurface.psh` reads `BaseColorFactor`, `MetallicFactor` and
-`RoughnessFactor` and **never samples a texture at all**. The surface stage
-exists and shades correctly from constants; the sampling half of it was never
-written. `SceneRenderer` binds the model's textures into the SRB as it always
-did, and our shader simply does not read them.
+| set | centre RGB | variation | unique colours |
+|---|---|---|---|
+| rock (dielectric) | (108, 105, 95) | **14.13** | 21781 |
+| metal | (20, 19, 19) | **8.92** | 1013 |
 
-**So `HpSurface.psh` must declare and sample the material textures**, matching
-the resource names `PBR_Renderer`'s signature already uses:
-`Texture2DArray g_BaseColorMap`, `g_PhysicalDescriptorMap`, `g_NormalMap`, and
-`SamplerState g_LinearClampSampler`. The names are not ours to choose —
-`SceneRenderer` binds through `SetMaterialTexture` into that signature, so a
-different name binds nothing.
+`zig build test -Dtest=gpu` — **21/21 on both targets**, zero skipped. Full suite
+**302 fast + 89 integration**, both targets, green.
 
-**That was attempted and reverted, and the reason is worth having before the next
-attempt.** Adding the declarations and sampling them turned the *untextured*
-`lit_surface_test` black. `SceneRenderer::ensureBindings` calls
-`SetMaterialTexture` **only when `material.GetTextureId(attrib) >= 0`**, so a
-material with no base colour map leaves `g_BaseColorMap` unbound — and sampling
-an unbound array returns zero, not the white default. DiligentFX's own shader
-does not hit this because `PBR_Textures.fxh` gates every sample behind the same
-`USE_*_MAP` macro *and* their binding path supplies defaults.
+#### The cause was not the one recorded the day before, and the correction matters
 
-So the sampling work has a prerequisite: **`ensureBindings` must bind the
-renderer's default textures for every slot a material does not fill**, which is
-what `CreateInfo::CreateDefaultTextures = true` creates them for. Doing the
-sampling without that trades a flat grey frame for a black one.
+The previous note here blamed `ensureBindings` skipping unfilled slots. That was
+**a** bug and it is fixed, but it was not the one holding this up. The real one
+was a field nobody set:
 
-The attempt is preserved at `tests/gpu/textured_surface_test.cpp.pending` —
-`.pending` because `tests/gpu/*.cpp` is globbed and a red suite is worse than an
-absent test. Rename it back when the sampling lands.
+**`PBR_Renderer::CreateInfo::TextureAttribIndices` defaults to all `-1`, and
+`SceneRenderer` never assigned it.** The array maps each renderer texture slot to
+an index in the glTF material's attribute table, and **-1 means "this renderer
+does not use that texture"** to every one of its three readers. So all three did
+nothing, in a release build, without logging:
 
-**The test is written and correct and is deliberately not committed yet**
-(`tests/gpu/textured_surface_test.cpp`, held back), because a red suite is worse
-than an absent test and a test weakened to pass is worse than both. It lands with
-the sampling.
+* `DefineMacros` never emitted `BaseColorTextureAttribId` and friends, so a
+  shader could not name its own texture attributes;
+* `ensureBindings` bound nothing at all, because every slot looked disabled;
+* `WritePBRMaterialShaderAttribs` wrote **no** per-texture attributes, so UV
+  selectors, slices and transforms never reached the GPU.
 
-Its assertion is worth keeping when it does: **variation, not colour**. An
-average colour cannot tell a photograph of rock from a flat brown square, so it
-cannot tell a working texture path from one sampling a single texel — which is
-exactly what T0134's garbage `MipBias` produces. Detail is the signal.
+`GLTF_PBR_Renderer` fills the array in a private wrapper struct around its own
+`CreateInfo`, so a renderer built on `PBR_Renderer` directly — which is what D26
+chose — has to do it itself. Nothing warns.
 
-**Both sets exist for a reason**: rock is a dielectric, so its ORM blue channel
-is zero, and a texture set that is entirely non-metallic cannot catch a metallic
-term wired to the wrong channel. Metal has real metalness.
+**It was found by a shader failing to compile**, not by an image looking wrong:
+`'BaseColorTextureAttribId' : unknown variable`. Had the shader been written to
+tolerate a missing macro, this would have shipped as a texture path that silently
+sampled the wrong thing. Worth remembering the next time a shader constant looks
+like scaffolding.
 
-The gpu bucket now writes each frame to `test-frames/*.ppm` (gitignored). A
-shading bug is far easier to recognise by eye than by channel arithmetic, and the
-assertions check relationships rather than exact values — the image is what turns
-"this passed" into "this is right".
+#### The `CreateInfo` is now built in one place, because two is how it got in
+
+`SceneRenderer::create` and `buildEngineSurfacePipeline` each configured their own
+`PBR_Renderer::CreateInfo` by hand. They drifted, and the field they both omitted
+was this one — so the pipeline test proved a pipeline that was not the shipping
+one. `SurfacePipeline::configure(CreateInfo&)` is now the single definition and
+both call it. `InputLayout` stays the caller's job: `CreateInfo` holds a *pointer*
+to the layout elements, so a layout built inside the function would dangle.
+
+#### What the shader now does, and what stayed public
+
+`HpSurface.psh` declares `g_BaseColorMap`, `g_PhysicalDescriptorMap` and
+`g_NormalMap` as `Texture2DArray` with their per-slot samplers — the names
+`PBR_Renderer::CreateSignature` registers, which are not ours to choose. The
+sampling is **ours**, written against public headers only:
+
+* `HpMaterialTextureUv` — UV-set selection and the material's UV transform,
+  split out as its own function because it is the one place a coordinate is
+  decided, which is exactly what 141.7's parallax displaces;
+* `HpSampleMaterialTexture` — wrap-mode clamping and `SampleBias` with
+  `g_Frame.Renderer.MipBias`;
+* base colour through `TO_LINEAR`, roughness from green and metallic from blue,
+  and normal mapping through the **public** `GetPerturbNormalInfo` /
+  `PerturbNormal`.
+
+Only `PBRMaterialTextureAttribs` and its `Unpack*` helpers were needed from
+DiligentFX, and both are in **public** `PBR_Structures.fxh`. `PBR_Textures.fxh`
+stayed uncluded, as D26 intends.
+
+#### Three things worth knowing that cost time
+
+**The always-on permutation is what makes the default bindings load-bearing.**
+`SceneRenderer` compiles every material with colour, normal and phys-desc enabled
+— one permutation per material rather than one per texture combination — so an
+untextured material still runs a shader declaring all three. Unbound texture
+arrays sample **zero**, which is black, not white. Both halves are needed: the
+C++ binds a default view, and the shader returns the factor untouched when the
+material's UV selector is `-1`.
+
+**`GetPerturbNormalInfo` applies the two-sided flip itself.** Passing it the
+already-flipped `surfaceIn.Normal` flips twice and hands back the away-facing
+normal on exactly the back faces the flip exists to fix. The geometric normal is
+now kept unflipped alongside. The bug this produces — correct from the front,
+inverted from behind — reads as a normal-map handedness problem and is not one.
+
+**The sRGB gap T0134 recorded is closed, in the shader rather than the view.**
+The glTF loader creates `RGBA8_TYPELESS` textures whose default shader view is
+`RGBA8_UNORM` — linear — so an sRGB-authored albedo read through it is too
+bright. The free fix is an sRGB *view*, which is what `GetPBRTextureSRV` makes,
+and that function is **file-static in DiligentFX's .cpp**: not merely private but
+invisible outside the translation unit. So `TexColorConversionMode` is set to
+`SRGB_TO_LINEAR` and `TO_LINEAR` runs per colour sample. T0097 can move it into
+the view later without the shader noticing.
+
+#### Not verified, and honest about it
+
+**The metal set renders very dark** — centre (20, 19, 19). That is consistent
+with correct behaviour rather than evidence of it: a metal has no diffuse
+response, and with `EnableIBL = false` there is no environment for it to reflect,
+so a single directional light leaves it nearly black with bright specks. **It has
+not been proven that the metallic channel is wired correctly** — only that the
+frame varies and is not the clear colour. **T0087's environment lighting is what
+makes that testable**, and this ticket should be referenced from there.
+
+`HpMaterial.fxh` claims `Time` needs "a frame-wide clock field, which
+`PBRFrameAttribs` has no room for yet". That is **wrong**:
+`PBRRendererShaderParameters` already carries a `Time` field. Nothing depends on
+the claim, but the table should be corrected when 141.6's contract is next
+touched.
 
 ### Remaining, in dependency order
 
 | | | Blocked on |
 |---|---|---|
-| **texture sampling in `HpSurface.psh`** | declare and sample the material textures | — **next** |
-| **141.11** | textured-render pixel guard | the sampling |
-| **141.12** | draw the missing-material checkerboard | — |
+| **141.12** | draw the missing-material checkerboard | — **next** |
 | **141.7 / 141.8** | parallax + height, triplanar | — |
 | **141.13** | VFS-backed shader source | — |
 | **141.1 / 141.2** | custom shader asset, parameter reflection | 141.13 |

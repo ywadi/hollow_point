@@ -20,28 +20,25 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-05, revised three times the same day** — T0060 closed, and **141.0 was decided by the owner (D26): the engine owns the surface stage and Diligent's source is never modified.** Every item is code again. The owner's reason for this section: *"This way we know what
-needs to happen next even if the context and session restart."* The
-[Board](#board) below is every ticket there is; this is the six items in flight
-**now**, in order.
+**Set 2026-08-06** — every item is code; the one decision this list carried
+(141.0) was answered on 2026-08-05 and is recorded as **D26**. The owner's reason
+for this section: *"This way we know what needs to happen next even if the
+context and session restart."* The [Board](#board) below is every ticket there
+is; this is the three items in flight **now**, in order.
 
-**Just landed, and therefore not upcoming:** **T0141.0** (decided, D26) and all of **T0060**, now closed — the material asset
-(`hp::Material`, `.hpmat`, `AssetKind::Material`, UV channels), plus a generic
-enum-by-name fix in the serialization leaf layer. It is named because items 1
-and 5 read as half-finished without it.
-
-**`decision` is not `code`.** One item below is a question for the **owner**, not
-work to implement, and an agent that reaches it stops and asks rather than
-picking a branch. Choosing on the owner's behalf is worse than not starting: the
-answer is load-bearing — T0086's shadow sampling is built on top of it — so a
-branch taken by an agent becomes a thing to undo before anyone knew there had
-been a choice.
+**Just landed, and therefore not upcoming:** all of **T0060** (the material
+asset — `hp::Material`, `.hpmat`, `AssetKind::Material`, UV channels — plus a
+generic enum-by-name fix in the serialization leaf layer), and from **T0141**:
+141.0 (D26), 141.6 (`HpMaterial.fxh`, D27), **141.10** (the engine draws every
+mesh through its own pixel shader) and **141.11** (the textured-render guard —
+the surface stage samples real textures and its pixels are asserted). They are
+named because item 1 reads as barely started without them.
 
 | # | Ticket | Kind | Why it sits here |
 |---|---|---|---|
-| 1 | [T0141](inprogress/0141-custom-shader-materials.md) | code | The surface stage: the standard material shader (141.10), the textured-render regression test (141.11), fallback rendering (141.12), parallax and height (141.7), triplanar (141.8). Every one of them is shaped by item 3's answer, so none of it starts before that |
+| 1 | [T0141](inprogress/0141-custom-shader-materials.md) | code | The surface stage. 141.10 and 141.11 are **done** — the engine's own shader samples the material's textures and a pixel guard holds it. What is left, in order: fallback rendering (141.12), parallax and height (141.7), triplanar (141.8), then the custom-shader half — VFS shader source (141.13), the shader asset and its parameters (141.1, 141.2), unshaded as a permutation (141.15) |
 | 2 | [T0045](open/0045-culling-and-render-queues.md) | code | Culling, sorting and render queues. **Shader-independent**, so it may slot anywhere after item 1 — see below |
-| 3 | [T0086](open/0086-shadows.md) | code | Shadows. Last because it is **blocked by item 3**, not because it matters least |
+| 3 | [T0086](open/0086-shadows.md) | code | Shadows. Last because it is **blocked by item 1's surface stage**, not because it matters least — and its `ShadowFactor` is the next field `HpMaterial.fxh` gains |
 
 ### T0045 is the movable one, and that is the useful thing to know about it
 
