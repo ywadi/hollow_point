@@ -88,13 +88,50 @@ void HpSurface(in HpSurfaceInput In, inout HpSurfaceOutput Out)
 /// Deliberately the *fallback* colour rather than an arbitrary one, so the first
 /// thing this shader ever draws is a value the engine already gives a meaning
 /// to, and a test asserting it is asserting something real.
-PSOutput main(in VSOutput VSOut)
+PSOutput main(in VSOutput VSOut,
+              in bool IsFrontFace : SV_IsFrontFace)
 {
+    // **Every optional field is guarded, and the guards are the same macros
+    // `GetVSOutputStruct` generates the struct from.** A mesh with no texture
+    // coordinates produces a `VSOutput` with no `UV0` member at all, so reading
+    // it unconditionally is a *compile* error in exactly the permutation that
+    // lacks it -- which is how this was found, on the untextured quad the lit
+    // surface test draws.
+    //
+    // The contract absorbs that: `HpMaterial.fxh` documents UV1 as zero when the
+    // mesh carries one set, and vertex colour as white when it carries none, so
+    // a game shader may read either unconditionally and never sees the
+    // permutation.
     HpSurfaceInput surfaceIn;
+#if USE_TEXCOORD0
     surfaceIn.UV0 = VSOut.UV0;
+#else
+    surfaceIn.UV0 = float2(0.0, 0.0);
+#endif
+#if USE_TEXCOORD1
     surfaceIn.UV1 = VSOut.UV1;
+#else
+    surfaceIn.UV1 = float2(0.0, 0.0);
+#endif
     surfaceIn.WorldPos = VSOut.WorldPos.xyz;
-    surfaceIn.Normal = normalize(VSOut.Normal);
+#if USE_VERTEX_NORMALS
+    // **Flipped for back faces, and leaving this out cost an afternoon.** A
+    // double-sided surface seen from behind has a geometric normal pointing away
+    // from the viewer, so every `N·L` comes out negative, clamps to zero, and the
+    // surface renders **pure black** -- with the light present, the loop running
+    // and the material read correctly. Diagnosed by outputting the light count
+    // and `N·L` as colours: light count 1, `N·L` 0.
+    //
+    // `GetPerturbNormalInfo` does the same thing on DiligentFX's own path, which
+    // is why the old renderer lit this quad and the first version of this shader
+    // did not.
+    surfaceIn.Normal = normalize(VSOut.Normal) * (IsFrontFace ? 1.0 : -1.0);
+#else
+    // No normals on the mesh. Facing the camera is the least wrong answer: it
+    // keeps the BRDF finite and the surface visible, where a zero normal makes
+    // every lighting term collapse to black with no diagnostic.
+    surfaceIn.Normal = float3(0.0, 0.0, -1.0);
+#endif
     // Zero until the vertex shader carries tangents. Documented in
     // `HpMaterial.fxh` as "zero when the mesh has no tangents", so a surface
     // function already has to tolerate it -- this is that case, not a new one.
@@ -104,7 +141,13 @@ PSOutput main(in VSOutput VSOut)
     // this cheap would be paid by every draw whether a shader reads it or not.
     surfaceIn.CameraPos = g_Frame.Camera.f4Position.xyz;
     surfaceIn.ViewDir = normalize(surfaceIn.CameraPos - surfaceIn.WorldPos);
+#if USE_VERTEX_COLORS
     surfaceIn.VertexColor = VSOut.Color;
+#else
+    // White, so a shader may multiply by it unconditionally -- which is exactly
+    // what `HpMaterial.fxh` promises.
+    surfaceIn.VertexColor = float4(1.0, 1.0, 1.0, 1.0);
+#endif
     surfaceIn.ScreenPos = VSOut.ClipPos;
 
     // **Pre-filled from the material**, so a surface function that writes
@@ -114,7 +157,7 @@ PSOutput main(in VSOutput VSOut)
     PBRMaterialBasicAttribs basic = g_Material.Basic;
 
     HpSurfaceOutput surfaceOut;
-    surfaceOut.BaseColor = basic.BaseColorFactor * VSOut.Color;
+    surfaceOut.BaseColor = basic.BaseColorFactor * surfaceIn.VertexColor;
     surfaceOut.Normal = surfaceIn.Normal;
     surfaceOut.Metallic = basic.MetallicFactor;
     surfaceOut.Roughness = basic.RoughnessFactor;

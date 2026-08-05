@@ -4,6 +4,7 @@
 #include <hp/Profiling.hpp>
 #include <hp/ShaderSources.hpp>
 
+#include <GLTFLoader.hpp>
 #include <GraphicsTypesX.hpp>
 #include <RenderDevice.h>
 #include <ShaderSourceFactoryUtils.h>
@@ -181,6 +182,35 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
     Diligent::GraphicsPipelineStateCreateInfoX psoInfo{"hp surface"};
     psoInfo.GraphicsPipeline = graphics;
     psoInfo.GraphicsPipeline.InputLayout = inputLayout;
+
+    // **The key drives pipeline state, not just shader macros**, and forgetting
+    // that is invisible without a pixel test. `PBR_Renderer::CreatePSO` reads
+    // `Key.GetCullMode()` into the rasterizer; the first version of this did
+    // not, so every draw got the `GraphicsPipelineDesc` default of
+    // `CULL_MODE_BACK` and a **double-sided** quad was back-face culled. The
+    // pipeline built, the draw was submitted, statistics reported one
+    // submission, and the target came back pure clear colour -- which reads
+    // exactly like a transform bug and is not one.
+    psoInfo.GraphicsPipeline.RasterizerDesc.CullMode = key.GetCullMode();
+
+    // Blend state follows the alpha mode, the same way. Opaque and mask do not
+    // blend; `Blend` is premultiplied alpha, matching what T0106.4 will want for
+    // particles. **Depth writes stay on for blended geometry here** because
+    // there is no OIT path in this engine yet -- T0045 owns the sorted
+    // transparent queue, and turning writes off before that exists would trade
+    // one wrong image for another.
+    Diligent::RenderTargetBlendDesc& blend = psoInfo.GraphicsPipeline.BlendDesc.RenderTargets[0];
+    if (key.GetAlphaMode() == Diligent::GLTF::Material::ALPHA_MODE_BLEND) {
+        blend.BlendEnable = true;
+        blend.SrcBlend = Diligent::BLEND_FACTOR_ONE;
+        blend.DestBlend = Diligent::BLEND_FACTOR_INV_SRC_ALPHA;
+        blend.BlendOp = Diligent::BLEND_OPERATION_ADD;
+        blend.SrcBlendAlpha = Diligent::BLEND_FACTOR_ONE;
+        blend.DestBlendAlpha = Diligent::BLEND_FACTOR_INV_SRC_ALPHA;
+        blend.BlendOpAlpha = Diligent::BLEND_OPERATION_ADD;
+    } else {
+        blend.BlendEnable = false;
+    }
     psoInfo.AddShader(vertexShader);
     psoInfo.AddShader(pixelShader);
     // **The base class's signature, not one of ours.** It already describes the

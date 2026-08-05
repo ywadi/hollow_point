@@ -337,7 +337,7 @@ T0060 already says it must not foreclose and does not.
       amends D24. Diligent's source is never modified; we own the vertex and
       pixel shader mains and PSO creation, subclass `PBR_Renderer` for the
       plumbing, and `#include` its public `PBR_Shading.fxh` for the lighting
-- [ ] 141.10 **The standard material shader**, written against the surface stage
+- [x] 141.10 **The standard material shader**, written against the surface stage
       (was 60.2). Includes the two obligations T0060 inherited from T0134:
       un-inline `GetMaterialPSOFlags` in `SceneRenderer.cpp` the moment any
       extended-material setting is enabled, and decide `EnableEmissive`/`EnableAO`
@@ -468,9 +468,51 @@ developer who wants something the contract does not expose waits for us to
 expose it. The mitigation is a generous `HpSurfaceInput`, which is why 141.6 is
 a deliberate decision and not a list that grows by accident.
 
+### 141.10 closed 2026-08-05 — the engine draws through its own shader, pixel-identical
+
+**`SceneRenderer` now renders through `SurfacePipeline`.** The regression guard is
+`lit_surface_test.cpp`, which already existed and already documented its measured
+value: a red quad under a white light was **(211, 144, 144)** through
+DiligentFX's shader, and it is **(211, 144, 144)** through ours. Not "close" —
+the same bytes. That is the claim worth making about a renderer, and it is why
+the swap and the comparison landed together rather than one then the other.
+
+Two bugs found, both of which a submission count would have called success. The
+first version of this rendered pure clear colour with `stats.submitted == 1`, no
+validation errors and a pipeline that built cleanly.
+
+**1. The PSO key drives pipeline state, not just shader macros.**
+`PBR_Renderer::CreatePSO` reads `Key.GetCullMode()` into the rasterizer
+(`PBR_Renderer.cpp:2151`) and the alpha mode into the blend state. The first
+version consulted neither, so every draw got `GraphicsPipelineDesc`'s default of
+`CULL_MODE_BACK` — and the **double-sided** quad was back-face culled. Both are
+now taken from the key.
+
+**2. The two-sided normal flip, which cost the longest.** A double-sided surface
+seen from behind has a geometric normal pointing *away* from the viewer, so every
+`N·L` is negative, clamps to zero, and the surface renders **pure black** with
+the light present, the loop running and the material read correctly.
+`GetPerturbNormalInfo` does this on DiligentFX's path, which is why the old
+renderer lit the quad and ours did not. Fixed with `SV_IsFrontFace`.
+
+**How they were found is the reusable part.** Guessing was tried and got nowhere;
+what worked was three narrowing diagnostics that each split the space in half —
+a constant colour (does the fragment shader run at all: no), depth and cull
+disabled (which state is rejecting: cull), and forcing `HP_UNSHADED` (is the
+material read right: yes, so it is the lighting). The last one output the light
+count and `N·L` **as colours**, which said light count 1 and `N·L` 0 in a single
+frame. A shader has no log; the target is the only instrument, and using it
+deliberately beats reading the code again.
+
+**`HP_UNSHADED` is verified working** as a side effect of that third diagnostic:
+forcing it produced exactly `(255, 0, 0)`, the authored base colour with no
+lighting applied. 141.15 is the PSO permutation for it, not the shader path.
+
 ## Where this stands (2026-08-05)
 
-**Done and verified on hardware** — RTX 2080, Vulkan, zero skipped tests:
+**Done and verified on hardware** — RTX 2080, Vulkan, zero skipped tests. **The
+engine now draws every mesh through its own pixel shader**, pixel-identical to
+what it drew before:
 
 - **141.0** — the decision, recorded as **D26**.
 - **141.6** — `HpMaterial.fxh`, the contract, recorded as **D27**. `HP_UNSHADED`
@@ -483,32 +525,17 @@ a deliberate decision and not a list that grows by accident.
   `GetSurfaceReflectanceMR` / `ApplyPunctualLight` / `ResolveLighting`, with the
   `HP_UNSHADED` branch compiling beside it.
 
-**Not done, and the engine's output is unchanged so far.** `SceneRenderer` still
-draws through `PBR_Renderer`'s own pipeline; nothing in the render path uses
-`SurfacePipeline`. Everything above is proven to build and be accepted — none of
-it is proven to *draw the right thing*, and those are different claims.
-
-### The next step, and why it is shaped this way
-
-**Switch `SceneRenderer` over, together with a pixel assertion that the new path
-matches the old one.** Not one then the other: "it renders" and "it renders the
-same thing" are different claims, and only the second is worth making about a
-renderer. The gpu bucket runs here, so this can be a real pixel comparison rather
-than a submission count — which is exactly the guard T0134 could not write and
-141.11 exists to provide.
-
-Only after that do 141.7 (parallax) and 141.8 (triplanar) mean anything, because
-until the engine draws through this shader they would be changing a code path
-nothing executes.
+**The surface stage is live**, so 141.7 (parallax) and 141.8 (triplanar) now have
+a code path to act in — which they did not before the swap, and which is why they
+were sequenced after it.
 
 ### Remaining, in dependency order
 
 | | | Blocked on |
 |---|---|---|
-| **141.10 close** | swap `SceneRenderer` over | — |
-| **141.11** | textured-render pixel guard | the swap |
-| **141.12** | draw the missing-material checkerboard | the swap |
-| **141.7 / 141.8** | parallax + height, triplanar | the swap |
+| **141.11** | textured-render pixel guard | — (the swap is done) |
+| **141.12** | draw the missing-material checkerboard | — |
+| **141.7 / 141.8** | parallax + height, triplanar | — |
 | **141.13** | VFS-backed shader source | — |
 | **141.1 / 141.2** | custom shader asset, parameter reflection | 141.13 |
 | **141.15** | `HP_UNSHADED` as a PSO permutation | 141.1 |

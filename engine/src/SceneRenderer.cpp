@@ -1,5 +1,7 @@
 #include <hp/SceneRenderer.hpp>
 
+#include "SurfacePipeline.hpp"
+
 #include <hp/Light.hpp>
 
 #include <hp/Assets.hpp>
@@ -105,16 +107,26 @@ constexpr Diligent::PBR_Renderer::PSO_FLAGS kEnabledFeatures =
 struct SceneRenderer::Impl {
     Diligent::IRenderDevice* device = nullptr;
 
-    std::unique_ptr<Diligent::PBR_Renderer> renderer;
+    /// **`SurfacePipeline`, not `PBR_Renderer`** (T0141.10, D26). It *is* a
+    /// `PBR_Renderer` -- every buffer, SRB and helper call below is the base
+    /// class's and unchanged -- but its pipelines run the engine's own pixel
+    /// shader instead of DiligentFX's private one. That single substitution is
+    /// what makes parallax, triplanar and unshaded reachable at all.
+    std::unique_ptr<SurfacePipeline> renderer;
 
     /// Camera and frame-wide shader data. One buffer, rewritten per frame.
     Diligent::RefCntAutoPtr<Diligent::IBuffer> frameAttribs;
 
-    /// Pipeline states, **built with the engine's depth convention**. This is
-    /// the whole reason `PBR_Renderer` is driven directly rather than
-    /// `GLTF_PBR_Renderer`, which builds this itself and leaves the comparison
-    /// at `LESS`.
-    Diligent::PBR_Renderer::PsoCacheAccessor psoCache;
+    /// Target formats, depth state and topology, **built with the engine's depth
+    /// convention**. This is the whole reason `PBR_Renderer` is driven directly
+    /// rather than `GLTF_PBR_Renderer`, which builds this itself and leaves the
+    /// comparison at `LESS`.
+    ///
+    /// Held rather than handed to `GetPsoCacheAccessor`: that accessor's cache
+    /// builds pipelines from *DiligentFX's* shaders, which is precisely what
+    /// D26 replaced. `SurfacePipeline::pipeline` takes this per call and caches
+    /// on it together with the PSO key.
+    Diligent::GraphicsPipelineDesc graphics;
 
     /// One SRB per material per model, keyed by the mesh asset's GUID.
     ///
@@ -316,8 +328,7 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                 Diligent::PBR_Renderer::RenderPassType::Main, flags,
                 material.DoubleSided ? Diligent::CULL_MODE_NONE : Diligent::CULL_MODE_BACK};
 
-            Diligent::IPipelineState* pso =
-                psoCache.Get(key, Diligent::PBR_Renderer::PsoCacheAccessor::GET_FLAG_CREATE_IF_NULL);
+            Diligent::IPipelineState* pso = renderer->pipeline(graphics, key);
             if (pso == nullptr) {
                 continue;
             }
@@ -446,7 +457,7 @@ bool SceneRenderer::create(Diligent::IRenderDevice* device, Diligent::IDeviceCon
         static_cast<Diligent::Uint32>(Diligent::GLTF::DefaultVertexAttributes.size()));
     info.InputLayout = inputLayout;
 
-    impl->renderer = std::make_unique<Diligent::PBR_Renderer>(device, nullptr, context, info);
+    impl->renderer = std::make_unique<SurfacePipeline>(device, nullptr, context, info);
 
     Diligent::CreateUniformBuffer(device, impl->renderer->GetPRBFrameAttribsSize(),
                                   "hp PBR frame attribs", &impl->frameAttribs);
@@ -455,7 +466,7 @@ bool SceneRenderer::create(Diligent::IRenderDevice* device, Diligent::IDeviceCon
         return false;
     }
 
-    Diligent::GraphicsPipelineDesc pipeline;
+    Diligent::GraphicsPipelineDesc& pipeline = impl->graphics;
     pipeline.NumRenderTargets = 1;
     pipeline.RTVFormats[0] = toDiligentFormat(colour);
     // `TEX_FORMAT_UNKNOWN` is how a pipeline state says "no depth target", and it
@@ -482,8 +493,6 @@ bool SceneRenderer::create(Diligent::IRenderDevice* device, Diligent::IDeviceCon
     pipeline.DepthStencilDesc.DepthWriteEnable = depth.has_value();
     pipeline.DepthStencilDesc.DepthFunc = Diligent::COMPARISON_FUNC_GREATER_EQUAL;
     static_assert(kReverseZ, "the depth comparison above assumes T0130's reverse-Z");
-
-    impl->psoCache = impl->renderer->GetPsoCacheAccessor(pipeline);
 
     impl_ = std::move(impl);
     HP_LOG_INFO(kLog, "scene renderer ready, {}",
