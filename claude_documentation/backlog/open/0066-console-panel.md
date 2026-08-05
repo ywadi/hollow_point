@@ -8,7 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 670 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0054, T0114, [0140-in-editor-code-editing.md](0140-in-editor-code-editing.md) |
+| **Refs** | T0054, T0114, [0141-custom-shader-materials.md](0141-custom-shader-materials.md), [0140-in-editor-code-editing.md](0140-in-editor-code-editing.md) |
 
 ## Why
 
@@ -105,3 +105,14 @@ able to open there**, so keep whatever parses build output into `(file, line)`
 reachable rather than formatting it straight into a string. The seam returns
 false when no editor is configured, which the panel treats as "nothing
 happened" — never as an error worth a dialog.
+
+### From T0141 (2026-08-05) — this panel is where a broken shader gets explained
+
+A material or shader that fails renders as a magenta checkerboard, which tells a
+developer *that* something is wrong and deliberately not *what*. **This panel is
+the other half of that contract**: the cause, the shader's name and the
+compiler's message arrive as an error in the log, and a developer who sees checks
+in the viewport comes here to find out why. Two consequences: a compiler message
+is multi-line and must survive being displayed as such, and filtering by category
+has to make renderer errors findable rather than buried in a frame's worth of
+routine logging.

@@ -64,6 +64,78 @@ cache, which is the wrong dependency to accept.
       listed in that ticket's Done-when already. What this ticket owes T0045 is
       the material *identity and blend mode* to sort and bucket on
 
+## Decided 2026-08-05, with the owner, before writing code
+
+### Per-surface material slots, like Godot
+
+`MeshRenderer` carries a **vector** of material GUIDs, one per surface, not a
+single override:
+
+```cpp
+struct MeshRenderer {
+    Guid mesh;
+    std::vector<Guid> materials;   // per surface; a default entry = use the import
+    LayerMask layers;
+};
+```
+
+```yaml
+MeshRenderer:
+  mesh: 4f8a12c0d3e5b678
+  materials: [91aa2b3c4d5e6f70, 0000000000000000, c3d4e5f60718293a]
+```
+
+**Why a vector rather than the single `material` field that exists today.** A
+glTF with five materials is the normal case, not the exotic one — a character
+whose body, eyes and hair differ is one mesh with three surfaces. A single
+override can only replace *all* of them or none, which is wrong for most real
+assets, and discovering that after materials serialize means changing the
+component, the schema and every file written with it.
+
+The renderer already carries `primitive.MaterialId` per draw
+(`SceneRenderer.cpp`), so the index the slot vector needs is the index the model
+already has. A default entry means "use what the model imported", which keeps an
+untouched import writing an **empty** vector rather than a list of zeros.
+
+Rejected: slots on the `MeshAsset` with a separate override component. Cheaper
+per entity when a thousand objects share a model, and closest to how glTF stores
+it — but changing one object's material then means editing shared data or adding
+a second component, and that is a worse authoring experience than a vector that
+is usually empty.
+
+### A missing material renders as the checkerboard, and that is not the same as unassigned
+
+**Three states, and conflating the first two would make every unassigned mesh
+look broken:**
+
+| State | Meaning | What renders |
+|---|---|---|
+| Slot is a **default GUID** | Nothing assigned. Legitimate and common | The model's imported material |
+| Slot names an asset that **is not in the pool or failed to load** | An error | **The missing-material pattern** |
+| A custom shader **fails to compile** | A different error, same appearance | **The same pattern**, via T0141 |
+
+The pattern is **magenta and black checks, reusing `makePlaceholderTexture`**
+(T0023.6) rather than inventing a second convention — that function exists for
+exactly this reason and its comment already argues the case: *"a missing texture
+that renders as white or as nothing is a bug someone ships; one that renders as
+loud checks is a bug someone fixes before lunch."*
+
+**T0141 renders the same pattern for a shader that will not compile**, decided
+with the owner on 2026-08-05. One visual convention across every "something is
+wrong here" — the *log* says which, not the pixels. So whatever this ticket
+builds to produce the fallback must be reachable from there rather than being
+private to the material path.
+
+Two properties it must have, and the second is the one that gets missed:
+
+- **Unlit**, or emissive enough that lighting cannot dim it. A magenta surface
+  standing in shadow reads as plausible art; an unlit one cannot.
+- **Visible, never invisible.** T0023 already established that a failed load
+  yields a valid GUID so a scene referencing a broken asset resolves to a
+  placeholder rather than silently detaching every entity. The same rule here:
+  the mesh still draws, loudly wrong, rather than disappearing — a missing object
+  is a much harder bug to find than an ugly one.
+
 ## Notes / findings
 
 ### Inherited from T0134 / D24 (2026-08-05) — materials map onto `PBRMaterialShaderAttribs`

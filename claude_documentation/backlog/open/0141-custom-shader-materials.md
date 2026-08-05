@@ -34,8 +34,9 @@ compiler cache, which is the wrong dependency to accept.
       parameter interface
 - [ ] Custom shader parameters appear in the inspector automatically
 - [ ] Shader compilation is cached, not repeated every launch
-- [ ] A shader that fails to compile falls back visibly — never a crash, never a
-      silently wrong surface
+- [ ] A shader that fails to compile renders the **same magenta checkerboard** a
+      missing material does, **and** logs the compiler's error — never a crash,
+      never a silently wrong surface
 - [ ] Shader hot reload in the editor
 - [ ] **Custom shaders receive engine intermediates** — visibility (T0093),
       screen position, depth, world position — not just a finished colour
@@ -47,9 +48,45 @@ compiler cache, which is the wrong dependency to accept.
 - [ ] 141.1 Custom shader material with a declared parameter interface (was 60.3)
 - [ ] 141.2 Reflect shader parameters for the inspector (was 60.4)
 - [ ] 141.3 PSO management via `RenderStateCache` and `BytecodeCache` (was 60.5)
-- [ ] 141.4 Error shader — unmissable magenta — on compile failure (was 60.7)
+- [ ] 141.4 Error shader on compile failure: the shared checkerboard, plus a
+      console error naming the shader and the compiler's message (was 60.7)
 - [ ] 141.5 Shader hot reload (was 60.8)
 - [ ] 141.6 Document the engine intermediates a custom shader may read
+
+## Decided 2026-08-05, with the owner — one pattern, three causes, and the console tells you which
+
+A shader that fails to compile renders **the same magenta-and-black checkerboard**
+as a missing or unloadable material (T0060), and writes an **error to the log**
+naming the shader and the compiler's message.
+
+**One visual convention, not three.** Missing material, unloadable material and
+failed compile all look identical on the surface. That is deliberate: what a
+developer needs from the *pixels* is "something here is wrong, go read the log" —
+they do not need to diagnose the cause by squinting at it, and a second pattern
+is a distinction nobody remembers under pressure. The console carries the detail,
+which is what the console is for.
+
+Reuses `makePlaceholderTexture` (T0023.6) exactly as T0060's fallback does, so
+there is one function producing this pattern in the whole engine.
+
+### The trap: log on the transition, never per draw
+
+**A failed shader logged every frame at 60 Hz produces 3,600 lines a minute and
+makes the console useless** — which is precisely the opposite of "look at the
+logs", and it would arrive as a fix for the very feature that caused it.
+
+So the error is logged **when the compile is attempted and fails**, once per
+shader, not from the draw path that substitutes the fallback. The draw path must
+be silent: it runs per object per frame and has no business logging at all. A
+recompile — a hot reload (141.5), or a first load after a fix — is a new attempt
+and logs again, which is correct and is how a developer sees it clear.
+
+### Cheap variant, not taken
+
+Tinting the checks differently per cause — magenta for a missing asset, red for a
+failed compile — is about one line and keeps the at-a-glance distinction. Not
+taken, because the owner asked for one pattern and the log already answers "which".
+Recorded so it is a decision someone can revisit rather than an option nobody saw.
 
 ## Inherited notes, moved from T0060 rather than re-derived
 
