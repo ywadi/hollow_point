@@ -193,6 +193,34 @@ fn wslInteropEnabled(b: *Build) Interop {
     return if (std.mem.indexOf(u8, data, "enabled") != null) .enabled else .disabled;
 }
 
+/// Whether this host reaches its GPU through WSL's D3D12 gallium path (T0135).
+///
+/// **The probe is two facts, and both are load-bearing.** Under WSL the GPU
+/// arrives as `/dev/dxg` and there is *no* DRM render node, so Mesa's normal
+/// device probe finds nothing and silently falls back to `swrast` -- which is
+/// how every gpu test in this project ran on a software rasteriser while two
+/// closed tickets claimed hardware. Naming `GALLIUM_DRIVER=d3d12` is what
+/// recovers the real adapter there.
+///
+/// **Testing for `/dev/dri` being absent is what keeps this correct on a normal
+/// Linux box**, and it is not hypothetical: this ticket was diagnosed on a WSL
+/// laptop and then worked on a bare-metal Pop!_OS desktop, where `/dev/dri`
+/// exists, `/dev/dxg` does not, and forcing d3d12 would break a path that
+/// already reaches an RTX 2080 with no environment variables at all. One
+/// machine on each side of the rule.
+fn wslGalliumNeeded(b: *Build) bool {
+    if (b.graph.host.result.os.tag != .linux) return false;
+
+    const cwd = std.Io.Dir.cwd();
+    // The WSL GPU device. Absent on a normal Linux host, and on a normal
+    // Linux host that is the end of it.
+    cwd.access(b.graph.io, "/dev/dxg", .{}) catch return false;
+    // A DRM render node means Mesa can find hardware by itself. Present here
+    // and the d3d12 override would be actively wrong.
+    cwd.access(b.graph.io, "/dev/dri", .{}) catch return true;
+    return false;
+}
+
 pub fn build(b: *Build) void {
     const config = b.option(Config, "config", "CMake build type (default: Release)") orelse .Release;
     const build_type = @tagName(config);
@@ -203,6 +231,9 @@ pub fn build(b: *Build) void {
     const only = b.option([]const u8, "target", "Restrict 'all'/'dist' to one target key");
     const test_sel = b.option([]const u8, "test", "Test bucket: fast|integration|gpu|perf|all (default: fast). 'all' builds the gpu bucket but runs it only when named explicitly, because it needs a real graphics device.") orelse "fast";
     const test_filter = b.option([]const u8, "test-filter", "Run only tests whose name matches this pattern");
+    // T0135. Both only affect the gpu bucket's run step.
+    const gpu_adapter = b.option([]const u8, "gpu-adapter", "Substring naming which GPU the gpu bucket should use (e.g. NVIDIA). Only meaningful on the WSL D3D12 path, where the default is whichever adapter Mesa picks first -- on a two-GPU laptop that is the integrated one.");
+    const gpu_require_hardware = b.option(bool, "gpu-require-hardware", "Fail the gpu bucket if a backend comes up on a software rasteriser (default: report it and pass)") orelse false;
 
     checkPinnedZig(b);
 
@@ -387,6 +418,31 @@ pub fn build(b: *Build) void {
                 break :blk r;
             };
             if (test_filter) |f| run.addArg(b.fmt("--test-case={s}", .{f}));
+
+            // T0135 -- the gpu bucket, and only it, gets a device environment.
+            //
+            // Scoped to this bucket deliberately: `GALLIUM_DRIVER` set globally
+            // would also apply to any other suite that happens to touch GL, and
+            // the point is to influence the device under test rather than the
+            // machine.
+            if (std.mem.eql(u8, bucket, "gpu")) {
+                if (wslGalliumNeeded(b)) {
+                    // Recovers hardware on WSL, where Mesa otherwise falls back
+                    // to swrast because there is no DRM render node.
+                    run.setEnvironmentVariable("GALLIUM_DRIVER", "d3d12");
+                    std.debug.print(
+                        "note: WSL D3D12 path detected (/dev/dxg present, /dev/dri absent) -- " ++
+                            "setting GALLIUM_DRIVER=d3d12 for the gpu bucket (T0135)\n",
+                        .{},
+                    );
+                }
+                if (gpu_adapter) |name| {
+                    run.setEnvironmentVariable("MESA_D3D12_DEFAULT_ADAPTER_NAME", name);
+                }
+                if (gpu_require_hardware) {
+                    run.setEnvironmentVariable("HP_GPU_REQUIRE_HARDWARE", "1");
+                }
+            }
             // The name carries the runner, so `--summary all` says how a suite
             // was executed. Inferring it from an incidental wine warning is how
             // T0125 went unnoticed.

@@ -144,31 +144,58 @@ tickets: black differs from a blue clear colour, so "did geometry arrive" passed
 while nothing about shading was tested at all. T0028's headline evidence is still
 true and still proves less than it reads.
 
-### GPU testing — hardware coverage is partial, and was zero until today ⚠️
+### GPU testing — hardware coverage, and how to know what you got ✅/⚠️ (T0135)
 
-**Read this before treating a green `gpu` bucket as hardware coverage.**
+**You no longer have to read this to find out what the gpu bucket ran on — the
+bucket says so itself.** Every `-Dtest=gpu` run prints a banner naming each
+backend, its adapter, and whether that adapter is a software rasteriser:
 
-| Backend | Device | Status |
-|---|---|---|
-| OpenGL | `D3D12 (NVIDIA GeForce RTX 4070 Laptop GPU)` | ✅ hardware |
-| Vulkan | `llvmpipe (LLVM 20.1.2, 256 bits)` | ⚠️ **software** |
-
-Hardware needs naming, because Mesa cannot find it on its own — there is no
-`/dev/dri` node, so the device probe falls back to `swrast`:
-
-```sh
-GALLIUM_DRIVER=d3d12 MESA_D3D12_DEFAULT_ADAPTER_NAME=NVIDIA zig build test -Dtest=gpu
 ```
+[hp gpu] ---- adapters this run (T0135) ----
+[hp gpu] Vulkan  -> NVIDIA GeForce RTX 2080  [hardware]
+[hp gpu] OpenGL  -> NVIDIA GeForce RTX 2080/PCIe/SSE2  [hardware]
+[hp gpu] ------------------------------------
+```
+
+Add **`-Dgpu-require-hardware`** to turn a software adapter into a failure —
+use it before closing a rendering ticket. It is opt-in rather than the default
+because one of this project's two development machines has no Vulkan hardware
+path at all, and a permanently-red bucket is one people stop running. The
+reasoning and the rejected alternatives are on T0135.
+
+**Coverage depends on the machine, and the two differ completely.** Both are
+real and both are supported; the harness detects which it is on.
+
+| Host | Backend | Device | Status |
+|---|---|---|---|
+| Pop!_OS desktop (bare metal) | Vulkan | `NVIDIA GeForce RTX 2080` | ✅ hardware |
+| Pop!_OS desktop (bare metal) | OpenGL | `NVIDIA GeForce RTX 2080/PCIe/SSE2` | ✅ hardware |
+| WSL laptop | OpenGL | `D3D12 (NVIDIA GeForce RTX 4070 Laptop GPU)` | ✅ hardware, needs the d3d12 path |
+| WSL laptop | Vulkan | `llvmpipe` | ⚠️ **software — no hardware path exists** |
+
+On the desktop, **both backends reach hardware with no environment variables at
+all**; 14 gpu cases and 652 assertions pass there, which is the first hardware
+evidence this project has had on the **Vulkan** backend.
+
+On WSL, Mesa cannot find the GPU on its own — there is no `/dev/dri` node, so
+the probe falls back to `swrast` — and the harness now sets `GALLIUM_DRIVER=d3d12`
+automatically when it detects that host (`/dev/dxg` present, `/dev/dri` absent).
+`-Dgpu-adapter=NVIDIA` names which GPU on a two-GPU laptop, where Mesa's default
+is the integrated one. **Neither is applied on a host with a DRM node**, where
+they would be wrong.
 
 **Vulkan has no hardware path in WSL at all**, and it is not a misconfiguration:
 NVIDIA's WSL package ships D3D12 and CUDA but **no Vulkan ICD**, and Mesa's Dozen
-is not in Ubuntu's `mesa-vulkan-drivers`. The only loadable ICD is lavapipe. Real
-Vulkan needs a native Windows run — the exes are cross-compiled and staged, so
-that is available, just not automated. **T0135** owns making this not silently
-misleading.
+is not in Ubuntu's `mesa-vulkan-drivers`. The only loadable ICD is lavapipe.
 
 **Two closed tickets claimed hardware they never had** (T0027 said "a real GPU",
 T0028 said "an NVIDIA RTX 4070"); both are corrected in place.
+
+**One thing the desktop cannot test:** forcing its *OpenGL* path to software.
+`LIBGL_ALWAYS_SOFTWARE=1` is a Mesa variable and NVIDIA's proprietary GL driver
+ignores it, so the software-classification path was proven on Vulkan (via
+`VK_ICD_FILENAMES=…/lvp_icd.json`, which correctly failed under
+`-Dgpu-require-hardware`) and not on OpenGL.
 
 ### What the editor shows ⚠️
 

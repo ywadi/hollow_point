@@ -379,7 +379,7 @@ and llvmpipe are conformant, so the result below stands; it is simply not
 hardware coverage. **Amended again the same day (T0135): the OpenGL backend now has
 hardware coverage** on an RTX 4070 via Mesa's `d3d12` gallium driver, with results
 pixel-identical to software; Vulkan still has no hardware path here. See
-[../open/0135-gpu-tests-on-real-hardware.md](../open/0135-gpu-tests-on-real-hardware.md).
+[../completed/0135-gpu-tests-on-real-hardware.md](../completed/0135-gpu-tests-on-real-hardware.md).
 So `PBR_Renderer`
 compiles its shaders and builds pipeline states against `GREATER_EQUAL` on both
 — the substitution for `GLTF_PBR_Renderer` works, and reverse-Z is not something
