@@ -61,6 +61,31 @@ add_custom_command(
 
 add_custom_target(hp_build_id DEPENDS "${HP_BUILD_ID_HEADER}")
 
+# --- embedded shaders (T0141, D26) -------------------------------------------
+#
+# The engine's own shaders are compiled into the binary rather than read from
+# disk -- see cmake/hp_embed_shaders.cmake for why, and why Diligent's own
+# generator is not reused. Regenerated when a shader changes, because the
+# sources are declared inputs here.
+set(HP_ENGINE_SHADERS_HEADER "${CMAKE_BINARY_DIR}/generated/hp/EngineShaders.h")
+
+file(GLOB _hp_shader_sources CONFIGURE_DEPENDS
+     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.vsh"
+     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.psh"
+     "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.fxh")
+
+add_custom_command(
+    OUTPUT "${HP_ENGINE_SHADERS_HEADER}"
+    COMMAND "${CMAKE_COMMAND}"
+            -DHP_SHADER_DIR=${CMAKE_CURRENT_SOURCE_DIR}/shaders
+            -DHP_SHADER_OUTPUT=${HP_ENGINE_SHADERS_HEADER}
+            -P "${CMAKE_SOURCE_DIR}/cmake/hp_embed_shaders.cmake"
+    DEPENDS ${_hp_shader_sources} "${CMAKE_SOURCE_DIR}/cmake/hp_embed_shaders.cmake"
+    COMMENT "Embedding engine shaders (T0141)"
+    VERBATIM)
+
+add_custom_target(hp_engine_shaders DEPENDS "${HP_ENGINE_SHADERS_HEADER}")
+
 add_library(hp_engine SHARED
     src/Module.cpp
     src/ModuleHost.cpp
@@ -81,6 +106,7 @@ add_library(hp_engine SHARED
     src/Render.cpp
     src/RenderStack.cpp
     src/Scene.cpp
+    src/ShaderSources.cpp
     src/SceneSerialize.cpp
     src/SceneRenderer.cpp
     src/SceneRenderLayer.cpp
@@ -107,7 +133,7 @@ target_include_directories(hp_engine PUBLIC
 
 # The generated header is an input to compiling the engine, so say so rather
 # than relying on target ordering.
-add_dependencies(hp_engine hp_build_id)
+add_dependencies(hp_engine hp_build_id hp_engine_shaders)
 
 # PRIVATE: consumers must see the *import* side of HP_API, never the export
 # side. Making this PUBLIC would have every app and module claim to define the
@@ -312,3 +338,21 @@ target_link_libraries(hp_engine PRIVATE
 # would otherwise break -- ImGui is linked into the *runtime* binary too, not
 # only the editor. So this spends a decision already made rather than a new one.
 target_link_libraries(hp_engine PRIVATE DiligentFX)
+
+# --- shader sources (T0141, D26) ---------------------------------------------
+#
+# `Diligent-GraphicsTools` supplies `CreateMemoryShaderSourceFactory` and
+# `CreateCompoundShaderSourceFactory`, which are what let an engine shader
+# `#include` a DiligentFX public header without either side being modified. It
+# is a separate target from `DiligentFX` and from the graphics engines, so
+# linking it is deliberate rather than inherited -- and it is also where
+# `RenderStateCache` lives, which T0141.3 will want for PSO caching.
+target_link_libraries(hp_engine PRIVATE Diligent-GraphicsTools)
+
+# DiligentFX exports its root as PUBLIC, which reaches `PBR/interface` and the
+# shader tree but **not** `Utilities/interface`, where
+# `DiligentFXShaderSourceStreamFactory` lives. Named explicitly rather than
+# reaching through the root with a longer relative path, so a move upstream is a
+# build error here rather than a silently wrong include.
+target_include_directories(hp_engine PRIVATE
+    "${CMAKE_SOURCE_DIR}/third_party/DiligentEngine/DiligentFX/Utilities/interface")

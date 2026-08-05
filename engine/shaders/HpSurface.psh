@@ -1,0 +1,41 @@
+// The engine's own pixel shader (T0141, D26).
+//
+// **This file is why D26 exists.** DiligentFX's `RenderPBR.psh` is private and
+// has no hook before texture sampling, so parallax, height mapping and triplanar
+// are unreachable through it at any setting. Rather than patch a vendored
+// submodule, the engine owns this half and calls DiligentFX's *public* shading
+// library for the lighting -- surface properties in, radiance out.
+//
+// The split, and it is the same one Godot and Unreal draw:
+//
+//   surface stage (ours)  ->  read textures, displace UVs, blend layers
+//   lighting     (theirs) ->  BRDF, punctual lights, IBL, shadows
+//
+// Included from DiligentFX, all public, none of it modified:
+//   PBR_Structures.fxh   the shared constant-buffer layouts
+//   PBR_Shading.fxh      the lighting functions (T0141.10)
+//   Shadows.fxh, PCF.fxh shadow sampling and filtering (T0086)
+
+#include "PBR_Structures.fxh"
+
+// Grown deliberately rather than written whole: this compiles and renders
+// before it does anything interesting, so that the *plumbing* -- our source
+// reaching the compiler, and a DiligentFX public header resolving from it --
+// is proven separately from the shading. A shader that compiles and draws the
+// wrong thing is the failure T0134 spent a ticket on, and the two are much
+// easier to tell apart when they land in different commits.
+
+struct HpSurfaceProbeVSOutput
+{
+    float4 Pos : SV_POSITION;
+};
+
+/// Writes the missing-material colour (T0060.10): magenta, unlit.
+///
+/// Deliberately the *fallback* colour rather than an arbitrary one, so that the
+/// first thing this shader ever draws is a value the engine already gives a
+/// meaning to, and a test asserting it is asserting something real.
+float4 main(in HpSurfaceProbeVSOutput In) : SV_TARGET
+{
+    return float4(1.0, 0.0, 1.0, 1.0);
+}

@@ -426,6 +426,68 @@ The same applies to the omission recorded in `11-material-format.md`:
 becomes ours, that justification is no longer automatic and should be restated
 rather than inherited.
 
+## Notes / findings
+
+### D26's mechanism is proven on hardware, 2026-08-05 — first increment of 141.10
+
+**The load-bearing assumption held**, and it was worth checking before building a
+renderer on it: a shader in `engine/shaders/` compiles on a real device and
+`#include`s a DiligentFX **public** header, with neither side modified.
+
+Measured on an **RTX 2080 under Vulkan**, not asserted — and the skip path was
+checked too, because a gpu test that quietly skips also passes. Zero skips, and
+the negative case logs `shader 'ThisShaderDoesNotExist.psh' did not compile`.
+
+**GPU tests run on this machine**, which changes what "verified" can mean for the
+rest of this ticket: 141.10 and 141.11 can assert *pixels* rather than "it
+compiled". That matters more here than anywhere else in the engine — a shader
+that compiles and draws the wrong thing is exactly the failure T0134 spent a
+ticket on.
+
+What landed:
+
+- `cmake/hp_embed_shaders.cmake` — engine shaders are **compiled into the
+  binary**, the same way DiligentFX embeds its own. So D13 stays true by there
+  being no read at all, `dist` has nothing extra to install, and a missing shader
+  is a build error rather than a black screen. **Diligent's own generator is not
+  reused**: it shells out to a Python `file2string` and calls
+  `find_package(Python3 REQUIRED)`, which the engine build does not currently
+  need and the offline-configure CI job would have to grow. CMake does the same
+  job with a **raw string literal** and no escaping.
+- `hp::createEngineShaderFactory` — a compound factory, **ours first then
+  DiligentFX's**, so a name collision resolves to ours deliberately and not by
+  accident after an upgrade.
+- `hp::compileEngineShader` — a validation pass, not the render path. It is also
+  the seed of **141.3's warm-up**: the same walk over the embedded set is what
+  fills a `RenderStateCache` before the first frame instead of hitching on it.
+
+Two things deliberately *not* done, so nobody mistakes this for the shader:
+
+- **`HpSurface.psh` does nothing yet.** It returns the missing-material magenta
+  and includes `PBR_Structures.fxh` and nothing more. Grown deliberately: the
+  plumbing and the shading fail in completely different ways, and they are far
+  easier to tell apart when they land in separate commits.
+- **`PBR_Shading.fxh` is not included yet.** It needs the macro set
+  `PBR_Renderer::DefineMacros` produces, which arrives with the PSO work in
+  141.10 proper.
+
+**No test includes a Diligent RHI header**, and this one does not either. D21
+exports only the math subset to consumers, and widening that for a test's
+convenience would erode a boundary the engine keeps on purpose — so the device
+pointer passes straight through `compileEngineShader` without being dereferenced
+on the test's side. That is why the API is shaped as it is rather than handing
+back an `IShader*`.
+
+### Build wiring worth knowing
+
+`Diligent-GraphicsTools` is now linked: it supplies
+`CreateMemoryShaderSourceFactory` and `CreateCompoundShaderSourceFactory`, and it
+is also where `RenderStateCache` lives, which **141.3** will want. DiligentFX
+exports its root PUBLIC, which reaches `PBR/interface` but **not**
+`Utilities/interface` where `DiligentFXShaderSourceStreamFactory` lives, so that
+one directory is named explicitly — a move upstream becomes a build error here
+rather than a silently wrong include.
+
 ## Inherited notes, moved from T0060 rather than re-derived
 
 **`RenderStateCache.hpp` and `BytecodeCache.h` already exist in

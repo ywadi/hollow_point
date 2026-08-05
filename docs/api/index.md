@@ -64,12 +64,13 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/SceneView.hpp>`](SceneView.md) | 18 | 18 |
 | [`<hp/Serialize.hpp>`](Serialize.md) | 6 | 6 |
 | [`<hp/Settings.hpp>`](Settings.md) | 28 | 28 |
+| [`<hp/ShaderSources.hpp>`](ShaderSources.md) | 4 | 4 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Vfs.hpp>`](Vfs.md) | 23 | 23 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 47 | 47 |
 
-**714 public declarations across 38 headers, 597 documented.**
+**718 public declarations across 39 headers, 601 documented.**
 
 ## Every symbol
 
@@ -679,6 +680,10 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `SettingsStore::setString` | [`Settings.hpp`](Settings.md) |
 | `SettingsStore::readLayerNames` | [`Settings.hpp`](Settings.md) |
 | `SettingsStore::writeLayerNames` | [`Settings.hpp`](Settings.md) |
+| `ShaderStage` | [`ShaderSources.hpp`](ShaderSources.md) |
+| `createEngineShaderFactory` | [`ShaderSources.hpp`](ShaderSources.md) |
+| `embeddedShaderCount` | [`ShaderSources.hpp`](ShaderSources.md) |
+| `compileEngineShader` | [`ShaderSources.hpp`](ShaderSources.md) |
 | `Clock` | [`Time.hpp`](Time.md) |
 | `Clock::Clock` | [`Time.hpp`](Time.md) |
 | `Clock::tick` | [`Time.hpp`](Time.md) |
