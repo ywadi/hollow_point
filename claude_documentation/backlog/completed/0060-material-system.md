@@ -11,6 +11,13 @@
 | **Refs** | [0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) — **must reconcile this ticket's material model with `PBR_Renderer`'s material attribs, or diverge deliberately and say so.** T0028 adopted DiligentFX's PBR renderer; read T0134.1 before designing materials. [../inprogress/0141-custom-shader-materials.md](../inprogress/0141-custom-shader-materials.md) — **took the renderer half of this ticket on 2026-08-05**; see "Re-cut" below. [../open/0059-prefabs.md](../open/0059-prefabs.md) 59.10 |
 | **Scope** | **The material data model only.** Anything that decides how a surface is *shaded* is T0141's, including the standard material shader |
 
+**From T0143 (2026-08-06): `hp::Material` gains fields after this ticket closed.**
+The owner has asked for parity with everything DiligentFX's PBR supports, which
+amends D24 — so clearcoat, sheen, anisotropy, iridescence, transmission and
+volume become authorable in a `.hpmat`. **T0143.5 owns that**, and it must follow
+the per-slot pattern this ticket established rather than inventing a second one.
+`11-material-format.md` gains a section at the same time.
+
 ## Why
 
 Diligent's `PBR_Renderer` shades glTF materials, but there is no material

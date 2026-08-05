@@ -295,19 +295,32 @@ T0060 already says it must not foreclose and does not.
 
 ## Subtasks
 
-- [ ] 141.1 Custom shader material with a declared parameter interface (was 60.3)
-- [ ] 141.2 Reflect shader parameters for the inspector (was 60.4)
+- [→] 141.1 **Moved to T0142.** A custom shader material is a `.slang`
+      module implementing `IHpMaterial` (D28); the asset shape follows from the
+      language, so designing it against HLSL would be work done twice
+- [→] 141.2 **Moved to T0142.9.** Slang reflects parameters from *source*,
+      so the inspector works before a shader compiles — and Diligent already
+      reflects constant-buffer contents at runtime
+      (`LoadConstantBufferReflection`, one bool, currently false). Both beat
+      annotating and parsing, which was this subtask's plan
 - [ ] 141.3 PSO management via `RenderStateCache` and `BytecodeCache` (was 60.5)
 - [ ] 141.4 Error shader on compile failure: the shared checkerboard, plus a
       console error naming the shader and the compiler's message (was 60.7)
-- [ ] 141.5 Shader hot reload (was 60.8)
-- [ ] 141.6 **Define `HpMaterial.fxh` — the contract a game shader compiles
+- [→] 141.5 **Moved to T0142.8** — Slang's runtime API is built for it
+- [x] 141.6 **`HpMaterial.fxh` — the contract a game shader compiles
       against** (D27). `HpSurfaceInput` is a *promise*: adding to it later is
       easy, removing from it breaks shipped games, so the list is decided
       deliberately. Must cover at least UVs, world position, normal, view
       direction, depth, and **T0093's per-pixel visibility**, which is the one
-      most likely to be forgotten and most expensive to retrofit
-- [ ] 141.15 **Unshaded as a game-facing option** — `#define HP_UNSHADED 1`,
+      most likely to be forgotten and most expensive to retrofit.
+      **Delivered as HLSL, and superseded in form by T0142.2** (D28): the field
+      list, the "adding is free, removing breaks shipped games" promise and the
+      "nothing is exposed before the system behind it exists" rule all carry over
+      unchanged — only the language does not
+- [→] 141.15 **Moved to T0142** — under D28 this is an interface method with a
+      default implementation, not a PSO permutation bit and not a macro, so the
+      design below is superseded even though the requirement is not.
+      **Original:** **Unshaded as a game-facing option** — `#define HP_UNSHADED 1`,
       Godot's `render_mode unshaded`. Requested by the owner 2026-08-05 and
       declared in `HpMaterial.fxh` already, so the contract does not have to
       change to add it. **Compile-time, never a runtime branch**: an `if` still
@@ -323,7 +336,10 @@ T0060 already says it must not foreclose and does not.
       side already has: `HpSurface.psh` is no more public than `engine/src/*.cpp`.
       **Not before 141.6 settles** — a generator written against a contract that
       is still moving is work done twice
-- [ ] 141.13 **A VFS-backed shader source**, so a game's shader is content like
+- [→] 141.13 **Moved to T0142** — the resolution order below still holds
+      (engine, then game, then DiligentFX; engine and DiligentFX names reserved),
+      but it is enforced through `ISlangFileSystem` rather than Diligent's
+      factory, because Slang compiles first. **Original:** **A VFS-backed shader source**, so a game's shader is content like
       any other (D13). Resolution order is **engine, then game, then DiligentFX**
       — a project must not be able to shadow `HpMaterial.fxh` and redefine the
       contract — which makes engine and DiligentFX header names reserved

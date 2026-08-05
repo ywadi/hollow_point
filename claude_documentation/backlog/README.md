@@ -20,25 +20,33 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-06** — every item is code; the one decision this list carried
-(141.0) was answered on 2026-08-05 and is recorded as **D26**. The owner's reason
-for this section: *"This way we know what needs to happen next even if the
-context and session restart."* The [Board](#board) below is every ticket there
-is; this is the three items in flight **now**, in order.
+**Set 2026-08-06, revised the same day after D28** — the engine's shader language
+changed. Everything shader-side written before **T0142** lands would be written
+twice, which is why it sits first rather than the ticket already in progress. The
+owner's reason for this section: *"This way we know what needs to happen next
+even if the context and session restart."* The [Board](#board) below is every
+ticket there is; this is the five items in flight **now**, in order.
 
 **Just landed, and therefore not upcoming:** all of **T0060** (the material
-asset — `hp::Material`, `.hpmat`, `AssetKind::Material`, UV channels — plus a
-generic enum-by-name fix in the serialization leaf layer), and from **T0141**:
-141.0 (D26), 141.6 (`HpMaterial.fxh`, D27), **141.10** (the engine draws every
-mesh through its own pixel shader) and **141.11** (the textured-render guard —
-the surface stage samples real textures and its pixels are asserted). They are
-named because item 1 reads as barely started without them.
+asset), and from **T0141**: 141.0 (D26), 141.6 (the contract, D27), **141.10**
+(the engine draws every mesh through its own shader — byte-identical to
+DiligentFX's) and **141.11** (the textured-render guard, plus per-channel debug
+views). Also **D28**, measured on hardware: a Slang shader including DiligentFX's
+unmodified headers, compiled to SPIR-V and run by Diligent, produced their
+arithmetic to the byte.
+
+**Two decisions were amended this week and both are load-bearing.** **D26** no
+longer claims the engine owns texture sampling — it owns `main` and calls their
+getters, which is 63 fewer lines and the same pixels. **D24** is amended by
+item 3: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Ticket | Kind | Why it sits here |
 |---|---|---|---|
-| 1 | [T0141](inprogress/0141-custom-shader-materials.md) | code | The surface stage. 141.10 and 141.11 are **done** — the engine's own shader samples the material's textures and a pixel guard holds it. What is left, in order: fallback rendering (141.12), parallax and height (141.7), triplanar (141.8), then the custom-shader half — VFS shader source (141.13), the shader asset and its parameters (141.1, 141.2), unshaded as a permutation (141.15) |
-| 2 | [T0045](open/0045-culling-and-render-queues.md) | code | Culling, sorting and render queues. **Shader-independent**, so it may slot anywhere after item 1 — see below |
-| 3 | [T0086](open/0086-shadows.md) | code | Shadows. Last because it is **blocked by item 1's surface stage**, not because it matters least — and its `ShadowFactor` is the next field `HpMaterial.fxh` gains |
+| 1 | [T0142](open/0142-slang-shader-language.md) | code | **Slang becomes the engine's shader language** (D28). First, and ahead of the ticket already in progress, because parallax, triplanar, the fallback shader and every extended feature are shader code — writing them in HLSL now means writing them again later. Proven on hardware; what is unproven is Windows, D3D12 and performance |
+| 2 | [T0141](inprogress/0141-custom-shader-materials.md) | code | The surface stage's **rendering** remainder, once there is a language to write it in: the missing-material fallback (141.12), parallax and height (141.7), triplanar (141.8). Its authoring half moved to item 1 |
+| 3 | [T0143](open/0143-extended-material-features.md) | code | **Everything DiligentFX's PBR has, plus the ability to override it** — clearcoat, sheen, anisotropy, iridescence, transmission, volume. Amends D24. Wiring rather than new maths, because their getters are already included and callable |
+| 4 | [T0045](open/0045-culling-and-render-queues.md) | code | Culling, sorting and render queues. **Shader-independent**, so it may slot anywhere — see below. It is also the hedge if item 1 stalls |
+| 5 | [T0086](open/0086-shadows.md) | code | Shadows. Last because it needs the surface stage *and* adds `ShadowFactor` to the material contract, so it wants that contract settled in Slang first |
 
 ### T0045 is the movable one, and that is the useful thing to know about it
 
@@ -158,6 +166,8 @@ wrong in the confident voice of a document that is normally right.
 | 440 | [T0045](open/0045-culling-and-render-queues.md) | Culling, sorting and render queues | 4 — Render layer | 🔜 TODO | High | Complex |
 | 445 | [T0134](completed/0134-pbr-renderer-adoption.md) | How far DiligentFX's PBR renderer goes, and what inherits it | 4 — Render layer | ✅ DONE | High | Moderate |
 | 450 | [T0060](completed/0060-material-system.md) | Material assets | 4 — Render layer | ✅ DONE | High | Moderate |
+| 415 | [T0142](open/0142-slang-shader-language.md) | Slang as HollowPoint's shader language | 4 — Render layer | 🔜 TODO | High | Large |
+| 425 | [T0143](open/0143-extended-material-features.md) | Everything DiligentFX's PBR has, and the ability to extend it | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 455 | [T0141](inprogress/0141-custom-shader-materials.md) | The surface stage: standard and custom material shaders | 4 — Render layer | 🚧 IN PROGRESS | High | Complex |
 | 460 | [T0096](open/0096-hdr-pipeline-and-tonemapping.md) | HDR pipeline, tonemapping and the linear-workflow policy | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 470 | [T0079](completed/0079-lighting-system.md) | Lights and per-object light selection | 4 — Render layer | ✅ DONE | High | Complex |

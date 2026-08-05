@@ -1195,44 +1195,55 @@ writing our own is a decision to be argued per function, not the starting point.
 already accepted for `RenderPBR_Structures.fxh`. A signature change upstream
 breaks this build loudly, which is the failure mode worth having.
 
-### Considered 2026-08-06 and rejected: adopting Slang
+### Slang was evaluated, rejected on a wrong premise, then **measured and adopted** — see D28
 
-The owner proposed Slang — it has interfaces, `extension`, generics and default
-implementations, consumes HLSL, and can emit HLSL, DXIL or SPIR-V that Diligent
-accepts. The integration story is genuinely clean and vendoring is easy: prebuilt
-per-platform archives (23–78 MB) fit `bootstrap.sh`'s pinned-checksum pattern
-exactly, build-time only, never shipped in a game.
+**Recorded here because the reasoning failed twice before it worked**, and both
+failures are the kind that repeat.
 
-**It was rejected because the mechanism does not reach.** Slang's `extension`
-declarations *"can only apply to structure types"*. DiligentFX's shading code is
-**free functions calling free functions by static name** — `ResolveLighting`
-calls `ApplyPunctualLight(Shading, ...)`, not `Shading.ApplyPunctualLight(...)`.
-Extending `SurfaceShadingInfo` with methods puts nothing on the call path.
-`extension` only helps where the original author routed call sites through
-generic-typed parameters, and DiligentFX did not — a property that cannot be
-retrofitted from outside without editing their interior, which is the thing this
-decision exists to avoid.
+**First rejection, and it was wrong.** A research pass found that Slang's
+`extension` declarations *"can only apply to structure types"*, and DiligentFX's
+shading code is free functions calling free functions by static name — so an
+`extension` has nothing to attach to. That is **true**, and it is **not the
+mechanism that matters**. The conclusion drawn from it — "Slang cannot help" —
+was wrong, and it was written into this log as a rejection before anyone had run
+the compiler.
 
-Two further findings: Slang's `import` does **not** share preprocessor state, and
-their headers carry ~52 compile-time switches; plain `#include` still works but
-is exactly what we already do. And DiligentCore issues #698, #717 and #718 are
-all users piping `slangc` output into Diligent and hitting reflection-naming bugs
-that required upstream fixes.
+**What actually works is `interface` + default implementations.** The engine
+declares an interface whose default methods *are* the standard material; a game
+material implements the interface and marks its overrides with `override`. No
+struct inheritance is involved anywhere. Which matters, because Slang is
+**removing struct inheritance**: `warning[E30816]: support for inheritance is
+unstable and will be removed in future language versions, consider using
+composition instead`. A design built on subclassing would have been built on
+something already deprecated.
 
-**Not verified by compilation.** The `extension` limitation is quoted from
-Slang's documentation; nobody has run `slangc` against `PBR_Shading.fxh` in this
-tree. If the decision is ever revisited, that is the experiment to run first.
+**Measured, not read.** `slangc 2026.14.1`, against this tree's own submodule:
 
-Slang remains a reasonable *authoring* language on its own merits — modules,
-generics over types we define, one source to every target, reflection without a
-device. It simply cannot inherit from DiligentFX's HLSL, which was the entire
-premise.
+| Question | Result |
+|---|---|
+| Does Slang compile `PBR_Shading.fxh` (992 lines) unmodified? | **yes**, zero errors |
+| `PBR_Textures.fxh` (934, private, global resources)? | **yes**, with the permutation macros passed as `-D` |
+| Can a Slang method call their free functions? | **yes** |
+| Do interface defaults + `override` work? | **yes**, and `override` is *required* — omitting it is a compile error, so nothing is shadowed by accident |
+| Dynamic dispatch? | **none** — generics specialise statically; the emitted code calls `MyGameMaterial_getBaseColor_0` directly |
+| SPIR-V accepted by Diligent? | **yes**, via `ShaderCreateInfo::ByteCode` |
+| Do resource names survive? | **yes** — `g_BaseColorMap`, `g_BaseColorMap_sampler`, `cbMaterialAttribs` |
+| The `SLANG_ParameterGroup_*_std140` trap (DiligentCore #698)? | **already handled by the pinned submodule** — `SPIRVShaderResources.cpp:331` tests `spv::SourceLanguageSlang` and prefers the instance name |
 
-**The cheap alternative, if finer override is wanted:** macro-indirected seams in
-*our own* wrap layer — `#define HP_GET_BASE_COLOR MyGetBaseColor` around the
-handful of their calls our `main` makes. That is per-call-site override, needs no
-toolchain, and is what Unity's Surface Shaders and Godot's `light()` hook are
-underneath.
+Two things it needs that we already have: Diligent's own `HLSLDefinitions.fxh`
+prelude, and the permutation macros — which is exactly what
+`PBR_Renderer::DefineMacros` already produces.
+
+**Proven on hardware, end to end.** A Slang shader including their unmodified
+`PBR_Shading.fxh` and calling `GetSurfaceReflectanceMR` through an interface
+method, compiled by `slangc` to SPIR-V, handed to Diligent as bytecode, built
+into a pipeline and drawn on an RTX 2080, returned **(245, 122, 49)** — which is
+`BaseColor(1.0, 0.5, 0.2) * 0.96`, *their* arithmetic, to the byte.
+
+**The lesson worth keeping:** the research was accurate about `extension` and
+wrong about the conclusion, and the log recorded the conclusion. A rejection
+written from documentation, about something this tree can compile in ten minutes,
+is exactly what "anything measurable here, measure it" exists to prevent.
 
 ### What was adopted
 
@@ -1343,3 +1354,140 @@ later is easy; removing from it breaks games.
 - **HLSL**, per D2 — OpenGL is the only fallback on Windows and Diligent's
   portable path is HLSL. T0141.1 must also record which HLSL subset survives the
   GL converter, because that subset is what a game shader may actually use.
+
+---
+
+## D28 — **Slang is HollowPoint's shader language.** HLSL/SPIR-V is the interchange with Diligent
+
+**Slang is the default and the only language shaders are authored in** — the
+engine's own material, every sample, and every game's custom material. HLSL
+appears in this repository only as *DiligentFX's* headers, which Slang consumes,
+and as a cooked output format. A new shader is a `.slang` file; there is no
+second path to keep working.
+
+**Decided 2026-08-06 on T0141, by the owner**, after the mechanism was measured
+rather than read: *"we use the Diligent HLSL as is and solve our problem all in
+all"*, and *"anything from OUR engine is Slang, anything going to Diligent is
+HLSL"*.
+
+**The problem it solves is D27's stated cost.** D27 chose Godot's model — a game
+writes `HpSurface(in, inout)` and the engine owns the `main` around it — and
+named the price in as many words: *"a developer who wants something the contract
+does not expose has to wait for the engine to expose it."* Every field is
+all-or-nothing, the contract has to anticipate every need, and widening it is a
+ticket. That is a real ceiling and the owner hit it the same day.
+
+**HLSL cannot express the alternative.** It has no inheritance, no override, no
+partial types. Shader Model 5's `class`/`interface` dynamic linkage was the only
+mechanism that ever came close, and it is D3D11-only, unsupported by DXC/SM6 and
+absent from SPIR-V. Reuse in HLSL is `#include`, macros, and shadowing a filename
+— nothing else.
+
+### What was adopted
+
+**A game material implements an engine `interface` whose default methods are the
+standard material**, and overrides only what it wants:
+
+```slang
+interface IHpMaterial {
+    float4 getBaseColor(float2 uv);                   // the game must supply this
+    float  getRoughness(float2 uv) { return 0.5; }    // engine default
+    float3 shade(...) { ... GetSurfaceReflectanceMR(...) ... }   // theirs, called from ours
+}
+
+struct MyGameMaterial : IHpMaterial {
+    float4 getBaseColor(float2 uv) { ... }
+    override float getRoughness(float2 uv) { return 0.05; }
+}
+```
+
+**`override` is mandatory** — omitting it on a method that shadows a default is a
+compile error. So no game accidentally replaces engine behaviour it meant to
+inherit, which is the failure mode a permissive scheme would have.
+
+**Generics specialise statically.** `render<T : IHpMaterial>(T m, ...)` emits a
+direct call to `MyGameMaterial_getBaseColor_0` — no dynamic dispatch, no
+indirection, no register cost. Slang does silently fall back to dynamic dispatch
+when a call site is too polymorphic to specialise; the engine's use is
+monomorphic per pipeline, so it does not arise, but it is worth knowing.
+
+### Two capabilities this brings that HLSL has no answer for
+
+**A module system, so include order stops being a hazard.** Slang's `import`
+resolves modules from search paths, once, without the header-ordering discipline
+`#include` demands — `HpSurface.psh` currently has a comment explaining why
+`RenderPBR_Structures.fxh` must precede the generated structs, and that class of
+comment disappears. Modules also carry their own preprocessor state rather than
+leaking it, so one shader cannot silently change another's compilation. `slangd`
+gives the editor real completion and diagnostics over the same modules, which is
+what makes a game developer's shader authoring tolerable.
+
+**Reflection without a device, which is what the editor needs.** Diligent already
+reflects constant-buffer *contents* — name, type, offset, array size, nested
+members — via `IShader::GetConstantBufferDesc()`, and that covers T0141.2 on the
+runtime side. What it cannot do is answer before the shader compiles for a
+device. Slang's reflection API reads the parameters straight from source, so the
+editor can build a material inspector for a shader that has never been compiled,
+and can do it while the developer is still typing.
+
+**On reflection and the ECS, stated precisely so it is not mis-read later.**
+These are two different systems and Slang does not replace `entt::meta`:
+component reflection is C++ types keyed on stable names (D12, T0095) and Slang
+cannot see a `MeshRenderer`. What they share is the **inspector**. A material is
+an asset referenced by a component, so the editor must present reflected
+*component* fields and reflected *shader* parameters in one panel, from two
+sources. The intended direction is that the inspector consumes a single
+description regardless of which reflection produced it — that is a T0142 concern,
+and it is a unification of presentation, not of mechanism.
+
+### The boundary, which is the whole decision
+
+| | authoring | editor | cooked | shipped runtime |
+|---|---|---|---|---|
+| language | **Slang** | Slang + reflection | **HLSL or SPIR-V** | consumed by Diligent |
+| `slangc` linked? | — | **yes** | yes (cook tool) | **no** |
+
+**Diligent never learns Slang exists.** It receives HLSL text or SPIR-V bytecode,
+both of which it already accepts, and its macros, generated structs, resource
+signature and reflection all keep working untouched. The submodule stays
+pristine, which is the owner's original constraint from D26.
+
+**And no fork is needed.** Slang compiles DiligentFX's headers *as they are*, so
+the ~5,000-line transitive closure — `PBR_Common`, `PCF`, `ToneMapping`,
+`AtlasSampling`, `Iridescence` — stays upstream's and keeps receiving upstream
+fixes. Forking was seriously considered and would have meant owning all of it,
+including shadow filtering and tonemapping that T0086 and T0096 have not started.
+
+### What was rejected
+
+| | Verdict |
+|---|---|
+| **Fork DiligentFX's shaders into our tree** | **Rejected.** ~5,000 lines across 18 files, and a fork restructured into Slang stops being mergeable — every upstream fix becomes a hand re-application to a different shape, not a text merge |
+| **Rewrite their PBR in Slang** | **Rejected**, for the reason D26 already gave: it reimplements split-sum IBL, PCF, tonemapping and the BRDF, and a wrong BRDF still looks like a material. Their physics stays theirs |
+| **Struct inheritance** | **Rejected by Slang itself** — being removed from the language |
+| **Slang as a runtime dependency** | **Rejected.** Cooking to HLSL/SPIR-V keeps `slangc` a build-machine tool; a shipped game links Diligent only |
+
+### Costs accepted, and stated plainly
+
+- **A second shader compiler in the toolchain.** Prebuilt per-platform archives
+  (23–78 MB) pinned in `.harness/` the way zig, cmake and ninja already are, with
+  no configure-time fetch. Build-time only.
+- **Two compile steps** where there was one, on the HLSL path.
+- **Depending on their private headers from Slang**, the same trade D26 already
+  accepted — a signature change upstream breaks the build loudly.
+- **Cooked shaders are a compiled *asset*, not a cache.** `Cook.hpp`'s invariant
+  is that anything cooked can always be re-cooked from its source; that does
+  **not** hold here, because an exported game has neither `slangc` nor the
+  `.slang` source. A missing cooked shader is fatal, not recoverable, and the
+  cook layer must say so rather than inherit the wrong contract.
+
+### Not verified
+
+- No permutation of a *real* engine shader has been compiled through Slang — only
+  their headers plus a probe. The `.generated` interface structs would need
+  feeding to Slang's include path rather than Diligent's factory.
+- No compile-time or runtime performance measurement.
+- Nothing on Windows or D3D12/DXIL; the probe was Linux and Vulkan.
+- `RenderPBR.psh` itself has not been compiled through Slang.
+
+**T0142 owns the adoption** and carries each of these as work.

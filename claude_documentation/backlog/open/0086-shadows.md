@@ -11,6 +11,20 @@
 | **Blocked by** | [../inprogress/0141-custom-shader-materials.md](../inprogress/0141-custom-shader-materials.md) **141.10** — the standard material shader. **141.0 is decided (D26): the engine owns the surface stage and Diligent is never modified**, so shadow sampling must be written against *our* pixel shader rather than `RenderPBR.psh`. Waiting is what stops it being built twice |
 | **Refs** | T0078, T0085, T0091, T0092, T0093, [../completed/0060-material-system.md](../completed/0060-material-system.md) — needs **cutout** materials (`AlphaMode::Mask`) for alpha-tested shadow casters, delivered by 60.1 |
 
+**From T0142/D28 (2026-08-06): the material contract is Slang now.** `ShadowFactor`
+is the next field the contract gains, and `HpMaterial.fxh` names this ticket as
+its owner. Under D28 that field is added to the **`IHpMaterial` interface** as a
+method with a default implementation, not to an HLSL struct — and the D27 rule
+still governs it: *nothing is exposed before the system behind it exists*, so the
+field arrives **with** working shadows and not before. A `ShadowFactor` that
+returns 1.0 because this ticket has not landed is worse than no field, because a
+game shader written against it fails silently.
+
+Also note `EnableShadows` is currently **false** in `SurfacePipeline::configure`,
+and turning it on needs three things moved together — the `CreateInfo` flag, the
+PSO flag, and the shadow-map bindings. T0143's notes record what happens when
+only one of the three moves.
+
 ## Why
 
 Split out of T0079 because shadows are their own substantial problem — resource

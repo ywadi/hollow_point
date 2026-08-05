@@ -6,7 +6,7 @@
 #include <hp/ShaderSources.hpp>
 ```
 
-5 public declaration(s), 5 documented.
+6 public declaration(s), 6 documented.
 
 ## `ShaderStage`
 
@@ -107,3 +107,29 @@ bool buildEngineSurfacePipeline(Diligent::IRenderDevice * device, Diligent::IDev
  @param context the immediate context, which `PBR_Renderer` needs to
         initialise its buffers and default textures.
  @returns whether the device accepted the pipeline.
+
+## `probePrecompiledSpirvPipeline`
+
+```cpp
+bool probePrecompiledSpirvPipeline(Diligent::IRenderDevice * device, Diligent::IDeviceContext * context, const void * vertexSpirv, std::size_t vertexSize, const void * pixelSpirv, std::size_t pixelSize, std::vector<std::uint8_t> & outRgba)
+```
+
+ **EXPERIMENT (T0141, Slang evaluation) — not part of the engine's design.**
+
+ Builds a pipeline from **precompiled SPIR-V** and renders one fullscreen
+ triangle into an RGBA8_UNORM target, so the bytecode path can be exercised
+ end to end with real pixels rather than inferred from a header.
+
+ The question it answers: **does Diligent accept SPIR-V produced by a
+ compiler that is not its own, reflect it correctly, build a pipeline from it,
+ and run it?** Reading resource names out of a `.spv` with `strings` proves
+ none of that.
+
+ @param device the render device. Must not be null.
+ @param context the immediate context. Must not be null.
+ @param vertexSpirv SPIR-V for the vertex stage.
+ @param vertexSize its size in bytes; must be a multiple of 4.
+ @param pixelSpirv SPIR-V for the pixel stage.
+ @param pixelSize its size in bytes; must be a multiple of 4.
+ @param outRgba receives the 8x8 readback as RGBA bytes.
+ @returns whether the pipeline built and rendered.

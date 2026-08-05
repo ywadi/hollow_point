@@ -6,7 +6,9 @@
 
 #include <hp/Log.hpp>
 
+#include <cstring>
 #include <string>
+#include <vector>
 
 #include <DiligentFXShaderSourceStreamFactory.hpp>
 #include <GraphicsTypes.h>
@@ -113,6 +115,119 @@ bool compileEngineShader(Diligent::IRenderDevice* device, std::string_view name,
         HP_LOG_ERROR(kLog, "shader '{}' did not compile", path);
         return false;
     }
+    return true;
+}
+
+bool probePrecompiledSpirvPipeline(Diligent::IRenderDevice* device,
+                                   Diligent::IDeviceContext* context, const void* vertexSpirv,
+                                   std::size_t vertexSize, const void* pixelSpirv,
+                                   std::size_t pixelSize, std::vector<std::uint8_t>& outRgba) {
+    if (device == nullptr || context == nullptr || vertexSpirv == nullptr || pixelSpirv == nullptr) {
+        return false;
+    }
+    // Diligent asserts on this rather than failing gracefully, so it is checked
+    // here where the caller can be told why.
+    if (vertexSize == 0 || pixelSize == 0 || vertexSize % 4 != 0 || pixelSize % 4 != 0) {
+        HP_LOG_ERROR(kLog, "SPIR-V size must be a non-zero multiple of 4 ({} / {})", vertexSize,
+                     pixelSize);
+        return false;
+    }
+
+    // **`ByteCode`, not `Source`** — the two are mutually exclusive and their
+    // size fields are a union, so setting the wrong one sends HLSL text down the
+    // bytecode path or vice versa.
+    const auto makeShader = [&](const void* code, std::size_t size, Diligent::SHADER_TYPE type,
+                                const char* name) {
+        Diligent::ShaderCreateInfo info;
+        info.ByteCode = code;
+        info.ByteCodeSize = size;
+        info.Desc = {name, type, /*UseCombinedTextureSamplers = */ false};
+        info.EntryPoint = "main";
+        Diligent::RefCntAutoPtr<Diligent::IShader> shader;
+        device->CreateShader(info, &shader);
+        return shader;
+    };
+
+    Diligent::RefCntAutoPtr<Diligent::IShader> vertexShader =
+        makeShader(vertexSpirv, vertexSize, Diligent::SHADER_TYPE_VERTEX, "slang probe VS");
+    Diligent::RefCntAutoPtr<Diligent::IShader> pixelShader =
+        makeShader(pixelSpirv, pixelSize, Diligent::SHADER_TYPE_PIXEL, "slang probe PS");
+    if (!vertexShader || !pixelShader) {
+        HP_LOG_ERROR(kLog, "the device refused the precompiled SPIR-V ({} / {})",
+                     vertexShader ? "vs ok" : "vs failed", pixelShader ? "ps ok" : "ps failed");
+        return false;
+    }
+
+    constexpr Diligent::Uint32 kSize = 8;
+    // **UNORM, not sRGB.** The probe asserts an exact colour, and an sRGB target
+    // would re-encode it — turning a correctness check into a gamma quiz.
+    constexpr Diligent::TEXTURE_FORMAT kFormat = Diligent::TEX_FORMAT_RGBA8_UNORM;
+
+    Diligent::GraphicsPipelineStateCreateInfoX psoInfo{"slang probe"};
+    psoInfo.GraphicsPipeline.NumRenderTargets = 1;
+    psoInfo.GraphicsPipeline.RTVFormats[0] = kFormat;
+    psoInfo.GraphicsPipeline.PrimitiveTopology = Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    psoInfo.GraphicsPipeline.RasterizerDesc.CullMode = Diligent::CULL_MODE_NONE;
+    psoInfo.GraphicsPipeline.DepthStencilDesc.DepthEnable = false;
+    psoInfo.AddShader(vertexShader);
+    psoInfo.AddShader(pixelShader);
+
+    Diligent::RefCntAutoPtr<Diligent::IPipelineState> pso;
+    device->CreateGraphicsPipelineState(psoInfo, &pso);
+    if (!pso) {
+        HP_LOG_ERROR(kLog, "the device refused a pipeline built from precompiled SPIR-V");
+        return false;
+    }
+
+    Diligent::TextureDesc targetDesc;
+    targetDesc.Name = "slang probe target";
+    targetDesc.Type = Diligent::RESOURCE_DIM_TEX_2D;
+    targetDesc.Width = kSize;
+    targetDesc.Height = kSize;
+    targetDesc.Format = kFormat;
+    targetDesc.BindFlags = Diligent::BIND_RENDER_TARGET | Diligent::BIND_SHADER_RESOURCE;
+    Diligent::RefCntAutoPtr<Diligent::ITexture> target;
+    device->CreateTexture(targetDesc, nullptr, &target);
+
+    Diligent::TextureDesc stagingDesc = targetDesc;
+    stagingDesc.Name = "slang probe staging";
+    stagingDesc.Usage = Diligent::USAGE_STAGING;
+    stagingDesc.BindFlags = Diligent::BIND_NONE;
+    stagingDesc.CPUAccessFlags = Diligent::CPU_ACCESS_READ;
+    Diligent::RefCntAutoPtr<Diligent::ITexture> staging;
+    device->CreateTexture(stagingDesc, nullptr, &staging);
+    if (!target || !staging) {
+        return false;
+    }
+
+    Diligent::ITextureView* rtv = target->GetDefaultView(Diligent::TEXTURE_VIEW_RENDER_TARGET);
+    context->SetRenderTargets(1, &rtv, nullptr,
+                              Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    const float clear[] = {0.0F, 0.0F, 1.0F, 1.0F};
+    context->ClearRenderTarget(rtv, clear, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    context->SetPipelineState(pso);
+    context->Draw(Diligent::DrawAttribs{3, Diligent::DRAW_FLAG_VERIFY_ALL});
+
+    Diligent::CopyTextureAttribs copy{target, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
+                                      staging,
+                                      Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION};
+    context->CopyTexture(copy);
+    context->SetRenderTargets(0, nullptr, nullptr,
+                              Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    context->WaitForIdle();
+
+    Diligent::MappedTextureSubresource mapped;
+    context->MapTextureSubresource(staging, 0, 0, Diligent::MAP_READ, Diligent::MAP_FLAG_DO_NOT_WAIT,
+                                   nullptr, mapped);
+    if (mapped.pData == nullptr) {
+        return false;
+    }
+    outRgba.resize(static_cast<std::size_t>(kSize) * kSize * 4);
+    for (Diligent::Uint32 y = 0; y < kSize; ++y) {
+        const auto* row = static_cast<const std::uint8_t*>(mapped.pData) + y * mapped.Stride;
+        std::memcpy(outRgba.data() + static_cast<std::size_t>(y) * kSize * 4, row, kSize * 4);
+    }
+    context->UnmapTextureSubresource(staging, 0, 0);
     return true;
 }
 
