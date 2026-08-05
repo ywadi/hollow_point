@@ -75,9 +75,9 @@ produced a whole-file diff containing no change at all*. It is tested.
 
 | Key | Required | Meaning |
 |---|---|---|
-| `guid` | **yes** | Stable identity, 16 hex digits |
+| `guid` | no | Stable identity, 16 hex digits. Generated when absent; **refused when present and malformed** — see "Authoring mode" |
 | `name` | no | The editor label. Defaults to `Entity` |
-| `parent` | no | The parent's **GUID**. Absent means a root |
+| `parent` | no | The parent's **GUID**, or its `name`. Absent means a root |
 | `components` | no | Map of type name to that component's fields |
 
 ### `guid` is yours to choose, and is never regenerated
@@ -93,9 +93,8 @@ against it.
 
 Two rules:
 
-- it must **parse** — an entity whose `guid` is unusable is skipped with a
-  warning rather than silently receiving a random one, because a random identity
-  is indistinguishable from a correct one until something fails to resolve;
+- a `guid` that is **present** must parse — see the asymmetry below, which is
+  what makes omitting it safe;
 - it must be **unique within the scene** — a duplicate is refused with a log
   rather than making a GUID lookup ambiguous.
 
@@ -131,6 +130,60 @@ moment somebody added a property to `Hierarchy`.
 A file that names one of them under `components` anyway is **ignored with a
 warning**, not preserved: writing it back would resurrect exactly the corrupt key
 the schema exists to keep out.
+
+## Authoring mode: writing a scene from nothing
+
+A file the engine wrote and a file a person (or a model) typed have different
+needs. The format serves both by being **strict about the one thing that cannot
+be recovered** — an identity recorded wrongly — and **lenient about the one that
+was never recorded at all**.
+
+This is a complete, valid scene:
+
+```yaml
+version: 1
+entities:
+  - name: Sun
+    components:
+      Light: { type: Directional, intensity: 3 }
+  - name: Player
+    components:
+      Transform: { position: [0, 0, 0] }
+  - name: Weapon
+    parent: Player
+    components:
+      Transform: { position: [0.3, 1.2, 0] }
+```
+
+Two leniencies make that work, and both are narrow on purpose.
+
+**An entity with no `guid` receives a fresh one.** Nothing could have referenced
+an identity that was never written down, so issuing one breaks nothing.
+
+**A `guid` that is present and malformed is still refused**, and the entity is
+skipped with a warning. That is not an inconsistency — it is what makes the
+first rule safe. Absent means *"I did not record an identity"*; present-and-wrong
+means *"I did, and mistyped it"*, and generating there would turn a typo into a
+new entity while silently orphaning every `parent` that named the value the
+author meant.
+
+**`parent` may name an entity** when the value is not 16 hex digits, so a
+hierarchy can be authored without inventing identities. Deliberately narrow:
+
+- **a GUID always wins**, so a file the engine wrote never takes this path —
+  which keeps `Tag`'s documented "nothing looks entities up by it" true
+  everywhere but this one key;
+- **an ambiguous name is refused**, not resolved to the first match. Names are
+  not unique, and silently picking one would make the hierarchy depend on file
+  order — a bug that is impossible to reason about from the symptom. The child
+  is left a root and the name is logged;
+- it applies to `parent` and **nothing else**. References between *components*
+  are T0071's and will decide their own representation.
+
+**Save always writes GUIDs.** A hand-authored file is normalised the first time
+it is saved — full identities everywhere, `parent` by GUID — so name references
+exist at the edge of the system and never inside it, and the normalised document
+is byte-stable from then on.
 
 ## Components, and how a type gets into the file
 

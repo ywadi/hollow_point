@@ -114,6 +114,26 @@ SceneLoadResult loadSceneFromString(Scene & scene, std::string_view text, std::s
  reference into the scene from outside and corrupts a project subtly enough
  to be worth an explicit test.
 
+ ## Authoring mode (T0139)
+
+ A file written by hand — or by a model — may omit what it does not care
+ about, and two leniencies exist for exactly that:
+
+   * **an entity with no `guid` receives a fresh one.** Nothing could have
+     referenced an identity that was never written down, so issuing one breaks
+     nothing. A `guid` that is *present and malformed* is still refused, and
+     that refusal is what makes this safe rather than merely convenient: it
+     stops a typo from silently becoming a new entity and orphaning every
+     `parent` that named the value the author meant;
+   * **`parent` may name an entity instead of naming a GUID**, when the value
+     is not 16 hex digits. A GUID always wins, so a file this engine wrote
+     never takes that path, and a name carried by more than one entity is
+     refused rather than resolved to whichever came first.
+
+ Both are edge affordances only. **Save always writes GUIDs**, so a
+ hand-authored file is normalised the first time it is saved and name
+ references never exist inside the engine.
+
  @param scene the scene to fill. Cleared first.
  @param text the document.
  @param name a name for log messages, e.g. the virtual path.

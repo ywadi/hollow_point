@@ -206,8 +206,18 @@ SceneLoadResult loadSceneFromString(Scene& scene, std::string_view text,
     // **Two passes, and the second is what makes forward references work.** A
     // parent may appear after its child in the file, so every entity must exist
     // before any link is resolved.
-    std::vector<std::pair<Guid, Guid>> links;   // child -> parent
+    //
+    // The parent is kept as **text**, not as a parsed `Guid`, because a
+    // hand-authored file may name its parent (T0139) and deciding which it is
+    // needs the whole set of entities to exist first.
+    std::vector<std::pair<Guid, std::string>> links;   // child -> parent, as written
     links.reserve(entities.size());
+
+    // Names, for the same reason, with duplicates recorded rather than resolved.
+    // `entt::null` marks a name more than one entity carries: `Tag` is documented
+    // as not unique, so an ambiguous reference is refused instead of silently
+    // depending on file order.
+    std::unordered_map<std::string, entt::entity> byName;
 
     for (std::size_t i = 0; i < entities.size(); ++i) {
         YamlNode node = entities.at(i);
@@ -215,26 +225,44 @@ SceneLoadResult loadSceneFromString(Scene& scene, std::string_view text,
             continue;
         }
 
-        const std::string guidText = node[kGuidKey].read(std::string{});
-        const std::optional<Guid> guid = Guid::parse(guidText);
-        if (!guid) {
-            HP_LOG_WARN(kLog, "'{}' entity {} has no usable guid ('{}'); skipping it", name, i,
-                        guidText);
-            continue;
-        }
+        const std::string entityName = node[kNameKey].read(std::string{"Entity"});
 
-        Entity entity = scene.createWithGuid(*guid, node[kNameKey].read(std::string{"Entity"}));
+        // **Absent and malformed are different, and the distinction is what
+        // makes generating safe.** No `guid` at all means the author never
+        // recorded an identity, so nothing can refer to one and issuing a fresh
+        // one breaks nothing — that is authoring mode (T0139). A `guid` that is
+        // present and wrong means the author *did* care and mistyped it;
+        // generating there would turn a typo into a new entity and quietly
+        // orphan every `parent` that named the value they meant.
+        Entity entity;
+        if (!node.has(kGuidKey)) {
+            entity = scene.create(entityName);
+        } else {
+            const std::string guidText = node[kGuidKey].read(std::string{});
+            const std::optional<Guid> guid = Guid::parse(guidText);
+            if (!guid) {
+                HP_LOG_WARN(kLog,
+                            "'{}' entity {} has a guid that is not 16 hex digits ('{}'); "
+                            "skipping it. Omit the key entirely to have one generated",
+                            name, i, guidText);
+                continue;
+            }
+            entity = scene.createWithGuid(*guid, entityName);
+        }
         if (!entity.valid()) {
             HP_LOG_WARN(kLog, "'{}' entity {} could not be created; a duplicate guid?", name, i);
             continue;
         }
         ++result.entities;
 
-        if (const std::string parentText = node[kParentKey].read(std::string{});
+        if (const auto [it, inserted] = byName.try_emplace(entityName, entity.handle());
+            !inserted) {
+            it->second = entt::null;
+        }
+
+        if (std::string parentText = node[kParentKey].read(std::string{});
             !parentText.empty()) {
-            if (const std::optional<Guid> parent = Guid::parse(parentText)) {
-                links.emplace_back(*guid, *parent);
-            }
+            links.emplace_back(entity.guid(), std::move(parentText));
         }
 
         YamlNode components = node[kComponentsKey];
@@ -306,12 +334,29 @@ SceneLoadResult loadSceneFromString(Scene& scene, std::string_view text,
         }
     }
 
-    for (const auto& [childGuid, parentGuid] : links) {
+    for (const auto& [childGuid, parentText] : links) {
         const std::optional<Entity> child = scene.find(childGuid);
-        const std::optional<Entity> parent = scene.find(parentGuid);
+
+        // **A GUID always wins**, so a file the engine wrote never takes the
+        // name path — which is what keeps `Tag`'s "nothing looks entities up by
+        // it" true everywhere except this one authoring affordance.
+        std::optional<Entity> parent;
+        if (const std::optional<Guid> parentGuid = Guid::parse(parentText)) {
+            parent = scene.find(*parentGuid);
+        } else if (const auto it = byName.find(parentText); it != byName.end()) {
+            if (it->second == entt::null) {
+                HP_LOG_WARN(kLog,
+                            "'{}' more than one entity is named '{}', so it cannot be used as a "
+                            "parent; leaving {} a root. Give the parent a guid and refer to that",
+                            name, parentText, childGuid.toString());
+                continue;
+            }
+            parent = Entity{scene, it->second};
+        }
+
         if (!child || !parent) {
-            HP_LOG_WARN(kLog, "'{}' parent {} of {} is not in this scene; leaving it a root",
-                        name, parentGuid.toString(), childGuid.toString());
+            HP_LOG_WARN(kLog, "'{}' parent '{}' of {} is not in this scene; leaving it a root",
+                        name, parentText, childGuid.toString());
             continue;
         }
         // `KeepLocal`: the file stores a *local* transform, so reparenting must

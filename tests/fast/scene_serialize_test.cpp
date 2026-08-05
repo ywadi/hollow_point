@@ -22,12 +22,20 @@
 #include <hp/Scene.hpp>
 #include <hp/SceneSerialize.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
 
 namespace {
+
+/// `entt::null` as an `entt::entity`.
+///
+/// doctest wraps the left operand of a `CHECK` in an expression-decomposition
+/// type, and comparing *that* with `entt::null_t` is ambiguous — entt supplies
+/// both a member and a free operator. Entity-to-entity is not.
+constexpr entt::entity kNoParent = entt::null;
 
 /// A scene with a parent, two children and one component of every serialized
 /// engine type, so a round trip has something to lose.
@@ -195,6 +203,161 @@ entities:
     REQUIRE(parent.has_value());
     REQUIRE(child.has_value());
     CHECK(scene.registry().get<const hp::Hierarchy>(child->handle()).parent == parent->handle());
+}
+
+// --- authoring mode (T0139) ------------------------------------------------
+//
+// A file the engine wrote and a file a person typed have different needs, and
+// the format serves both by being strict about the one thing that cannot be
+// recovered — an identity that was recorded wrongly — and lenient about the one
+// that was never recorded at all.
+
+TEST_CASE("a scene can be written from nothing, with no GUIDs anywhere") {
+    // The goal case, verbatim: no identities, a hierarchy by name, flow-style
+    // components. Nothing here is what `saveSceneToString` would produce.
+    const std::string authored = R"(version: 1
+entities:
+  - name: Sun
+    components:
+      Light: { type: Directional, intensity: 3 }
+  - name: Player
+    components:
+      Transform: { position: [0, 0, 0] }
+  - name: Weapon
+    parent: Player
+    components:
+      Transform: { position: [0.3, 1.2, 0] }
+)";
+
+    hp::Scene scene;
+    const hp::SceneLoadResult result = hp::loadSceneFromString(scene, authored);
+    REQUIRE(result.status == hp::SceneLoadStatus::Ok);
+    CHECK(result.entities == 3);
+
+    entt::entity player = kNoParent;
+    entt::entity weapon = kNoParent;
+    for (const entt::entity handle : scene.registry().view<const hp::Tag>()) {
+        const std::string& tag = scene.registry().get<const hp::Tag>(handle).name;
+        if (tag == "Player") {
+            player = handle;
+        } else if (tag == "Weapon") {
+            weapon = handle;
+        }
+    }
+    REQUIRE(player != kNoParent);
+    REQUIRE(weapon != kNoParent);
+    CHECK(scene.registry().get<const hp::Hierarchy>(weapon).parent == player);
+
+    SUBCASE("and every entity still got a distinct identity") {
+        std::vector<hp::Guid> guids;
+        for (const entt::entity handle : scene.registry().view<const hp::Id>()) {
+            const hp::Guid guid = scene.registry().get<const hp::Id>(handle).guid;
+            CHECK_FALSE(guid == hp::Guid{});
+            guids.push_back(guid);
+        }
+        REQUIRE(guids.size() == 3);
+        std::sort(guids.begin(), guids.end(),
+                  [](hp::Guid a, hp::Guid b) { return a.value() < b.value(); });
+        CHECK(std::adjacent_find(guids.begin(), guids.end()) == guids.end());
+    }
+
+    SUBCASE("saving normalises it: GUIDs everywhere, parent by GUID") {
+        const std::string saved = hp::saveSceneToString(scene);
+        CHECK(saved.find("guid:") != std::string::npos);
+        // The name reference is gone from the saved form — it exists at the edge
+        // of the system and never inside it.
+        CHECK(saved.find("parent: Player") == std::string::npos);
+        CHECK(saved.find("parent:") != std::string::npos);
+
+        // And the normalised file is stable, so authoring once does not leave a
+        // document that churns on every later save.
+        hp::Scene reloaded;
+        REQUIRE(hp::loadSceneFromString(reloaded, saved).status == hp::SceneLoadStatus::Ok);
+        CHECK(hp::saveSceneToString(reloaded) == saved);
+    }
+}
+
+TEST_CASE("a malformed guid is refused, because a typo is not a new entity") {
+    // **The asymmetry that makes generating safe.** Absent means "no identity
+    // was recorded", and nothing can refer to one that was never written.
+    // Present-and-wrong means the author cared and mistyped — generating there
+    // would orphan every `parent` naming the value they meant, silently.
+    const std::string text = R"(version: 1
+entities:
+  - guid: not-a-guid
+    name: Typo
+  - guid: 00000000000000a1
+    name: Fine
+)";
+
+    hp::Scene scene;
+    const hp::SceneLoadResult result = hp::loadSceneFromString(scene, text);
+    CHECK(result.status == hp::SceneLoadStatus::Ok);
+    CHECK(result.entities == 1);
+    CHECK(scene.find(*hp::Guid::parse("00000000000000a1")).has_value());
+}
+
+TEST_CASE("an ambiguous parent name is refused rather than resolved by luck") {
+    // `Tag` is documented as not unique and nothing looks entities up by it.
+    // Picking the first match would make the hierarchy depend on file order,
+    // which is a bug nobody can reason about from the symptom.
+    const std::string text = R"(version: 1
+entities:
+  - name: Slot
+  - name: Slot
+  - name: Child
+    parent: Slot
+)";
+
+    hp::Scene scene;
+    REQUIRE(hp::loadSceneFromString(scene, text).entities == 3);
+
+    for (const entt::entity handle : scene.registry().view<const hp::Tag>()) {
+        if (scene.registry().get<const hp::Tag>(handle).name != "Child") {
+            continue;
+        }
+        CHECK(scene.registry().get<const hp::Hierarchy>(handle).parent == kNoParent);
+    }
+}
+
+TEST_CASE("a guid always beats a name when resolving a parent") {
+    // So a file the engine wrote never takes the name path, whatever an entity
+    // happens to be called.
+    const std::string text = R"(version: 1
+entities:
+  - guid: 00000000000000a1
+    name: 00000000000000b1
+  - guid: 00000000000000b1
+    name: Decoy
+  - guid: 00000000000000c1
+    name: Child
+    parent: 00000000000000b1
+)";
+
+    hp::Scene scene;
+    REQUIRE(hp::loadSceneFromString(scene, text).entities == 3);
+
+    const auto child = scene.find(*hp::Guid::parse("00000000000000c1"));
+    const auto byGuid = scene.find(*hp::Guid::parse("00000000000000b1"));
+    REQUIRE(child.has_value());
+    REQUIRE(byGuid.has_value());
+    // The entity *named* "00000000000000b1" is a different one; the GUID wins.
+    CHECK(scene.registry().get<const hp::Hierarchy>(child->handle()).parent
+          == byGuid->handle());
+}
+
+TEST_CASE("a parent that is neither a guid nor a name leaves a root") {
+    const std::string text = R"(version: 1
+entities:
+  - name: Orphan
+    parent: NoSuchEntity
+)";
+
+    hp::Scene scene;
+    REQUIRE(hp::loadSceneFromString(scene, text).entities == 1);
+    for (const entt::entity handle : scene.registry().view<const hp::Hierarchy>()) {
+        CHECK(scene.registry().get<const hp::Hierarchy>(handle).parent == kNoParent);
+    }
 }
 
 TEST_CASE("component values survive exactly") {
