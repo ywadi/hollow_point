@@ -261,6 +261,40 @@ renders a progress bar from these counts, so ticking them as you go is what make
 progress visible in real time. Batching them into one commit at the end defeats
 the entire point.
 
+**There are three states, and only two are legal in a closed ticket.**
+
+| | Meaning | Legal in a ✅ DONE ticket? |
+|---|---|---|
+| `- [x]` | Done and verified | yes |
+| `- [~]` | **Partly** achieved, with the shortfall stated inline | yes |
+| `- [ ]` | Not done | **no** |
+
+`check_backlog.py` enforces the last row: an unticked box in `completed/` is an
+error. That is not pedantry — a ticket sitting at DONE with half its boxes empty
+reads as abandoned rather than finished, and it makes the board claim something
+untrue. It happened to T0085 and to fourteen others before the rule existed.
+
+So when closing a ticket, every remaining `- [ ]` is one of two things:
+
+- **Partly achieved** → `- [~]`, and say what is missing on the same line. The
+  honest use, from T0027: gameplay implementing its own render layer is *"proven
+  in principle by D22's link measurement and not in fact"*. It really was partly
+  done.
+- **Somebody else's** → **delete the line** and record it under a
+  `## Descoped` heading: a `| Was | Went to | Because |` table, plus the
+  obligation written onto the receiving ticket so the linkage reads both ways.
+  See `completed/0085-layers-and-masks.md` for the shape to copy.
+
+"Moving the remainder" means the item **leaves this checklist**. Leaving it here
+unticked forever is the thing the rule forbids.
+
+**Never tick a box to make a number look better.** If it cannot be established
+from evidence that something was done, it was not done — and if it is genuinely
+undone and still this ticket's, the ticket is not DONE.
+
+`❌ SUPERSEDED` and `❌ DROPPED` tickets are exempt, and deliberately: unfinished
+work is precisely what those states mean.
+
 **3. Append findings to `## Notes / findings` as you discover them.**
 
 Especially anything surprising, anything that turned out to be wrong, and
