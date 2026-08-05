@@ -62,6 +62,23 @@ It displays the render layer's offscreen texture, received via the
 
 ## Notes / findings
 
+### Inherited from T0111 / D25 (2026-08-05) — the panel is native, the scene may not be
+
+**The editor viewport is the first place D25's sizing rule bites.** The rule is:
+world and post-process targets size from **output x renderScale**; UI, HUD and
+editor panels are **always native**.
+
+So this panel displays a texture that **may not be panel-sized** — at render scale
+0.7 the scene texture is smaller and must be upscaled into the panel, and at scale
+above 1 (SSAA) it is larger and downsampled. Sampling it in a shader, which this
+ticket does anyway to fix T0028's Vulkan format mismatch, handles both — but the
+filter is then a choice rather than an accident, and the panel must not assume
+`sceneTexture.size == panel.size`.
+
+D25 also records that **T0027.5's single-target compositing collides with
+UI-at-native**, and that the fix is the same seam as a tonemap pass. If this
+ticket reaches that seam first, it owns it. See [../completed/0111-anti-aliasing-and-render-scale.md](../completed/0111-anti-aliasing-and-render-scale.md).
+
 **Resize needs debouncing.** Recreating the render target on every pixel of a
 drag will stutter badly and thrash GPU memory. Resize on drag-end, or throttle.
 

@@ -75,6 +75,28 @@ because they share one description.
 
 ## Notes / findings
 
+### Resolved by T0111 / D25 (2026-08-05) — this ticket's blocker, answered
+
+**T0111 declared `Blocks: T0046` and was worked after it**, which is recorded
+plainly rather than tidied away: the "decide before the formats freeze" window
+had closed by the time the decision was made. It cost nothing, and here is why.
+
+**The decision for this ticket is "no change".**
+
+- **No sample counts.** MSAA is out (D25 — it antialiases coverage, not shading,
+  and its cost lands on every pass that reads scene depth). So `TargetFormat` gains
+  nothing and `formatFor` stays as it is. Had MSAA been chosen, this ticket's
+  declarations and both pipeline descriptions in `SceneRenderer` would have needed
+  a sample count threaded through them.
+- **No new format for TAA history.** `declarePingPong` is already the right shape
+  for history buffers.
+- **`FrameTargetDesc::scale` turns out to be the render-scale mechanism.** It was
+  added here for half-resolution bloom buffers, and D25 adopts it unchanged: world
+  targets size from output x renderScale. **Scale above 1 is SSAA**, with no
+  further work — which is the main reason ruling MSAA out costs so little.
+
+See [../completed/0111-anti-aliasing-and-render-scale.md](../completed/0111-anti-aliasing-and-render-scale.md).
+
 **The gpu bucket broke Windows CI the first time it ran there, and the fix was
 to stop running it there.** `hp_tests_gpu.exe` exited with code 5 having printed
 nothing at all — not doctest's banner, not a skip message — which is what a

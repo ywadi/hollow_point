@@ -62,6 +62,33 @@ simulated white squares.
 
 ## Notes / findings
 
+### Inherited from T0111 / D25 (2026-08-05) — GPU particles will smear under TAA
+
+**A real cost against D15, recorded before it is discovered visually.**
+
+D25 makes TAA the engine's antialiasing. TAA reprojects the previous frame using
+**motion vectors**, and anything without correct ones ghosts. **D15 makes
+particles GPU-driven and cosmetic**, so they have no CPU-side previous position —
+which means that unless the particle simulation writes motion vectors itself, every
+particle smears behind its own motion.
+
+Three options, all this ticket's to weigh:
+
+1. **Write motion vectors from the simulation** — the compute pass knows last
+   frame's position, so this is cheap if designed in and awkward if retrofitted.
+2. **Use the reactive mask.** Diligent's temporal upscalers accept a per-pixel
+   reactive mask *"useful for alpha-blended objects, particles, or areas with
+   inaccurate motion vectors"*, recommended clamped to about 0.9. TAA proper has
+   no equivalent input.
+3. **Accept the smearing** on cosmetic particles, which D15's framing might allow.
+
+**Also relevant: MSAA is out** (D25), which removes a cost this ticket was carrying.
+106.5's soft particles need scene depth readable while drawing transparents, and
+under MSAA that would have become a per-sample read. It stays a plain single-sample
+depth read.
+
+See [../completed/0111-anti-aliasing-and-render-scale.md](../completed/0111-anti-aliasing-and-render-scale.md).
+
 **This reverses a decision in T0097.** That ticket says "texture *arrays* and
 atlases are out of scope; Diligent has `DynamicTextureAtlas` if they are ever
 wanted." It was written before VFX were considered, and flipbooks are precisely

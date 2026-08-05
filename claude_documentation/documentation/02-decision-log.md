@@ -1050,3 +1050,75 @@ names as the precondition for an abstraction, and it would reopen this rather
 than being layered on top of it. The seam that would hurt is **not** the draw
 call: it is `MeshAsset::model()` returning `Diligent::GLTF::Model*` from a public
 header, which T0023 committed to and which no renderer interface would touch.
+
+---
+
+## D25 — Temporal antialiasing is the target, MSAA is out, and upscaling is adopted as an abstraction rather than a backend
+
+**Decided 2026-08-05 on T0111**, before a lit scene exists — deliberately, because
+the alternative is the silent default this engine already paid for once with
+`VK_PRESENT_MODE_IMMEDIATE_KHR` (see T0110).
+
+**MSAA is out, and not because it is bad.** It is the best answer for geometric
+edges — exact, deterministic, no ghosting — and the usual objection does not
+apply here, since `PBR_Renderer` is a **forward** renderer, which is where MSAA is
+cheapest and most natural. It is out because it **antialiases coverage, not
+shading**: the pixel shader runs once per pixel, so specular shimmer and
+normal-map crawl — the dominant aliasing in a PBR renderer — are untouched. And
+its cost lands precisely on the passes this engine is accumulating: anything
+sampling scene depth becomes a per-sample read (T0106.5's soft particles are
+already specified to need depth while drawing transparents), and DiligentFX's
+post-process stack expects single-sample textures, forcing a resolve before
+tonemapping — where bright samples dominate the average and produce fireflies.
+
+Consequence: `TargetFormat` gains no sample count and `FrameTargets::formatFor`
+stays as it is.
+
+**TAA is the target.** DiligentFX ships a competent middle-tier implementation —
+variance clipping, Catmull-Rom bicubic history, disocclusion rejection — and it is
+the only technique that antialiases shading. No FXAA/SMAA-class filter ships in
+Diligent at all, so the cheap tier would have to be written; rejected for now on
+that basis rather than on quality. Three prerequisites are **named and not
+built**: motion vectors (T0101.5 — `PrevCamera` is already written every frame),
+sub-pixel jitter (T0081, and `CameraSystem.hpp` already documents the seam by
+name), and history buffers (T0046 — `declarePingPong` is already the right shape).
+
+The risk that decides whether TAA looks good is motion vectors, and two cases are
+hard: **skinned meshes** need previous *joint* matrices, not just previous
+transforms, and **GPU-driven particles** (D15) have no CPU-side previous position,
+so they smear unless the simulation writes its own.
+
+**Upscaling is adopted as `ISuperResolutionFactory`, not as a technique.**
+DiligentCore ships a unified abstraction over NVIDIA DLSS, Microsoft DirectSR,
+AMD FSR and Apple MetalFX, discovering the available implementations from the
+render device at factory-creation time. The engine asks and uses the best
+available; it never hardcodes one. **This is an engine for several games on
+several machines, and what one developer's build happens to compile is not an
+engine capability decision** — a player with an NVIDIA GPU should get DLSS, and
+the engine's job is to have asked.
+
+This costs nothing beyond TAA's prerequisites: temporal upscalers need exactly
+depth, motion vectors and jitter, so **one piece of work opens TAA, DLSS,
+DirectSR, FSR2 and MetalFX Temporal together.** Spatial FSR needs only the colour
+texture and is the guaranteed floor on every API — but it provides **no
+antialiasing at all**, which is why TAA is decided separately rather than assumed
+to arrive with the upscaler.
+
+**Render scale is accepted**, with the sizing rule: world and post-process targets
+size from **output x renderScale**; UI, HUD and editor panels are **always
+native**; the upscale happens once, between them. `FrameTargetDesc::scale` already
+implements the mechanism, having been added for half-resolution bloom buffers.
+
+**That rule collides with T0027.5's single-target compositing**, and the collision
+is recorded rather than resolved: `RenderStack` composites every layer into one
+colour target, so a HUD layer inherits the world's render scale and its text is
+upscaled. The fix is a two-phase stack, or UI layers owning their own target —
+**the same seam a tonemap pass needs**, so T0096 must not invent a second one.
+
+**Revisit if** an MSVC-based Windows build is ever added. The current toolchain
+targets Windows through the MinGW ABI, and `MINGW_BUILD = TRUE` is measured to
+gate DLSS and DirectSR off — the same root cause that rules out D3D11/D3D12, since
+DiligentCore gates those on ATL. Unlocking them means giving up the
+single-toolchain hermetic cross-compile the harness is built around, which is a
+real price. It is written down here so it can be weighed, rather than discovered
+later as "the engine does not support DLSS".

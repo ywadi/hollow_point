@@ -240,6 +240,33 @@ how one of them keeps the stride bug the other fixed.
 
 ## Notes / findings
 
+### Obligation from T0111 / D25 (2026-08-05) — render scale collides with 27.5
+
+**27.5 chose single-target compositing, and D25's render-scale rule contradicts it
+for UI.** Recorded here because this ticket is closed and whoever implements
+render scale will read 27.5, not T0111.
+
+`RenderStack::render` takes **one** `ITextureView* colour` for every layer. D25's
+sizing rule is *world and post-process targets size from output x renderScale; UI,
+HUD and editor panels are always native*. Both cannot hold in one target: a HUD
+layer inherits the world's render scale, and its text is upscaled.
+
+Three resolutions, none picked yet because the cost is only payable once there is
+UI to look at:
+
+1. **Two-phase stack** — world layers into the scaled target, an upscale/composite
+   step, then UI layers into a native-size target.
+2. **UI layers own their target and blit** — already this ticket's documented
+   escape hatch: *"a layer that needs its own target renders into one it owns and
+   blits"*.
+3. **Accept UI at render scale** — cheapest, wrong for text.
+
+**Whichever is taken, it is the same seam as a tonemap pass (T0096) and the
+upscale itself.** Do not build three. Note the collision **inverts harmlessly**
+for scale above 1 (SSAA): the UI is merely supersampled too.
+
+See [../completed/0111-anti-aliasing-and-render-scale.md](../completed/0111-anti-aliasing-and-render-scale.md).
+
 **The stack must accept layers implemented outside the engine** (T0094). Fog of
 war accumulation, minimaps, portal views and custom post effects are all
 gameplay-owned passes, and the engine deliberately does not implement those

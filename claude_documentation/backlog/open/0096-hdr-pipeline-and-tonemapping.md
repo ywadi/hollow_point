@@ -64,7 +64,29 @@ work here is wiring and policy, not writing a tonemapper.
 - [ ] 96.7 Leave the hook where Bloom/TAA slot in later, behind quality
       settings (T0078) — do not integrate them yet
 
-## Notes / findings
+### Inherited from T0111 / D25 (2026-08-05) — you own the composite seam
+
+**Three separate things all want the same pass, and D25's instruction is: do not
+build three.**
+
+1. **Tonemap** — D24 already recommends a pass over an HDR target rather than
+   `PSO_FLAG_ENABLE_TONE_MAPPING`.
+2. **The render-scale upscale** — D25 sizes world targets from
+   `output x renderScale`, so something must resolve them to native.
+3. **UI at native resolution** — T0027.5 composites every layer into one target, so
+   a HUD inherits the world's render scale unless the stack becomes two-phase.
+
+All three sit between the world layers and the UI layers. Whichever ticket reaches
+this seam first should build it so the others plug in.
+
+Also from D25: **MSAA is out**, which removes the resolve-before-tonemap trap this
+ticket would otherwise have to handle (resolving multisampled HDR before tonemapping
+lets bright samples dominate the average and produce fireflies). And `AverageLogLum`
+in `PBRRendererShaderParameters` is the auto-exposure hook, with **T0130.4 already
+deciding exposure lives on the camera** — auto-exposure writes `Camera::exposureEv100`
+rather than shadowing it.
+
+See [../completed/0111-anti-aliasing-and-render-scale.md](../completed/0111-anti-aliasing-and-render-scale.md).
 
 ### Inherited from T0134 / D24 (2026-08-05) — and this ticket's Refs stated a false premise
 

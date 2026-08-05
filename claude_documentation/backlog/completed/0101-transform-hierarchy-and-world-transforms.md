@@ -62,6 +62,28 @@ missing engine code between T0021's component and T0028's renderer.
 
 ## Notes / findings
 
+### Obligation from T0111 / D25 (2026-08-05) — 101.5's motion-vector hook is now committed
+
+**D25 makes TAA the engine's antialiasing, so motion vectors stop being a
+"hook TAA might want" and become a prerequisite.** They also feed every temporal
+upscaler (DLSS, DirectSR, FSR2), which D25 adopts as an abstraction — so one
+implementation serves both.
+
+State today, measured: `PSO_FLAG_COMPUTE_MOTION_VECTORS` is masked off in
+`SceneRenderer`'s `kFeatureMask`, but **`PBRFrameAttribs::PrevCamera` is already
+written every frame**, so the camera half costs nothing.
+
+**The two hard cases, which decide whether TAA looks good or smeared:**
+
+- **Skinned meshes need previous *joint* matrices**, not just a previous world
+  transform. `PBR_Renderer` has `MaxJointCount` and a joints buffer; the previous
+  frame's contents must be kept. Get this wrong and animated characters ghost —
+  the most visible object in most games.
+- **Static geometry is the easy case** and is the whole of what a naive
+  implementation covers.
+
+See [../completed/0111-anti-aliasing-and-render-scale.md](../completed/0111-anti-aliasing-and-render-scale.md).
+
 
 ### Frame anatomy — phases 7 and 9 — transform propagation (T0100, D17)
 

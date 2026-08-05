@@ -83,6 +83,28 @@ because the two cases are easy to confuse and one of them is genuinely untested.
 
 ## Notes / findings
 
+### Obligation from T0111 / D25 (2026-08-05) — the jitter seam is now committed
+
+`CameraSystem.hpp` already documents this seam by name — *"`buildView` assembles
+the projection in one place, which is where T0111.2's sub-pixel jitter for TAA
+belongs"*. **D25 confirms TAA as the engine's antialiasing**, so that seam is now
+a commitment rather than a possibility.
+
+What lands here when TAA is built:
+
+- `TemporalAntiAliasing::GetJitterOffset(accumulationBufferIdx)` supplies the
+  offset; `buildView` applies it to the projection. **Nothing else may** — a
+  second jitter site, or jitter applied to the camera entity's transform, breaks
+  the audio listener and T0100's late update for the same reason 81.9's view
+  offset exists.
+- The jitter must be **excluded from the matrices used for motion vectors**, or
+  the jitter itself is reprojected as motion. This is the classic TAA integration
+  bug.
+- The **same offset feeds temporal upscalers** (DLSS, DirectSR, FSR2), which D25
+  adopts as an abstraction — so this seam serves both and must be built once.
+
+See [../completed/0111-anti-aliasing-and-render-scale.md](../completed/0111-anti-aliasing-and-render-scale.md).
+
 ## Blocked on — 2026-08-05
 
 Eight of ten subtasks are done and the remaining work is **not this ticket's to
