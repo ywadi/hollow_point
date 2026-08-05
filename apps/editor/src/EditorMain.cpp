@@ -16,11 +16,14 @@
 #include <hp/Log.hpp>
 #include <hp/ModuleHost.hpp>
 #include <hp/Paths.hpp>
+#include <hp/Light.hpp>
 #include <hp/Render.hpp>
+#include <hp/Vfs.hpp>
 
 #include <hp/EntryPoint.hpp>
 
 #include <filesystem>
+#include <fstream>
 #include <memory>
 #include <string>
 
@@ -81,6 +84,9 @@ public:
 
     /// @returns the scene, so the editor can populate it.
     hp::Scene& scene() { return scene_; }
+
+    /// @returns the asset pool the scene's GUIDs resolve against.
+    hp::AssetPool& assets() { return assets_; }
 
     void onRender() override {
         if (!render_.ready()) {
@@ -205,7 +211,101 @@ private:
             // identical, and "did it clear?" is the only question this layer
             // can currently answer.
             render.setClearColour(0.16F, 0.22F, 0.34F, 1.0F);
+
+            populateDemoScene(render);
         }
+    }
+
+    /// Puts something in the scene so the window shows more than a clear colour.
+    ///
+    /// **A throwaway, and labelled as one**, exactly like the `SceneLayer` it
+    /// fills: T0033's viewport panel replaces this, and T0042's runtime will
+    /// load real content through a project (T0024). It exists because the
+    /// renderer was complete end to end for a whole phase while showing nothing,
+    /// which makes every rendering change unreviewable by eye.
+    ///
+    /// The mesh is **generated at startup into a temp directory** rather than
+    /// committed, for two reasons: there is no content pipeline yet, and a
+    /// binary asset in the repository would be the first one — a decision worth
+    /// making deliberately on T0024, not as a side effect of wanting a picture.
+    ///
+    /// @param render the render layer owning the device.
+    /// @returns nothing.
+    void populateDemoScene(hp::RenderLayer& render) {
+        if (scene_ == nullptr || !render.ready()) {
+            return;
+        }
+
+        const std::filesystem::path root =
+            std::filesystem::temp_directory_path() / "hp_editor_demo";
+        std::error_code ec;
+        std::filesystem::create_directories(root / "models", ec);
+
+        // A quad facing the camera. Rough and non-metallic, because a smooth
+        // metal surface reflects nothing without an environment map (T0087) and
+        // would look exactly like a bug.
+        const float vertices[] = {
+            -1.5F, -1.5F, 4.0F, 0.0F, 0.0F, -1.0F,
+             1.5F, -1.5F, 4.0F, 0.0F, 0.0F, -1.0F,
+             1.5F,  1.5F, 4.0F, 0.0F, 0.0F, -1.0F,
+            -1.5F,  1.5F, 4.0F, 0.0F, 0.0F, -1.0F,
+        };
+        const std::uint16_t indices[] = {0, 1, 2, 0, 2, 3};
+        {
+            std::ofstream bin(root / "models" / "quad.bin", std::ios::binary);
+            bin.write(reinterpret_cast<const char*>(vertices), sizeof vertices);
+            bin.write(reinterpret_cast<const char*>(indices), sizeof indices);
+        }
+        {
+            std::ofstream gltf(root / "models" / "quad.gltf", std::ios::binary);
+            gltf << R"({"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],)"
+                 << R"("nodes":[{"mesh":0}],"meshes":[{"primitives":[{)"
+                 << R"("attributes":{"POSITION":0,"NORMAL":1},"indices":2,"material":0}]}],)"
+                 << R"("materials":[{"doubleSided":true,"pbrMetallicRoughness":{)"
+                 << R"("baseColorFactor":[0.85,0.35,0.25,1.0],"metallicFactor":0.0,)"
+                 << R"("roughnessFactor":0.6}}],)"
+                 << R"("buffers":[{"uri":"quad.bin","byteLength":108}],)"
+                 << R"("bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":96,"byteStride":24},)"
+                 << R"({"buffer":0,"byteOffset":96,"byteLength":12}],)"
+                 << R"("accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,)"
+                 << R"("count":4,"type":"VEC3","min":[-1.5,-1.5,4.0],"max":[1.5,1.5,4.0]},)"
+                 << R"({"bufferView":0,"byteOffset":12,"componentType":5126,"count":4,)"
+                 << R"("type":"VEC3"},{"bufferView":1,"byteOffset":0,"componentType":5123,)"
+                 << R"("count":6,"type":"SCALAR"}]})";
+        }
+
+        if (!hp::Vfs::init(nullptr) || !hp::Vfs::mount(root.string())) {
+            HP_LOG_WARN(kLog, "could not mount the demo content; the viewport stays empty");
+            return;
+        }
+
+        auto mesh = hp::loadMesh(render.device(), render.context(), "models/quad.gltf");
+        if (!mesh || !mesh->valid()) {
+            HP_LOG_WARN(kLog, "demo mesh did not load; the viewport stays empty");
+            return;
+        }
+
+        hp::Scene& scene = scene_->scene();
+        const hp::Guid meshGuid = hp::Guid::generate();
+        scene_->assets().store<hp::MeshAsset>(meshGuid, mesh);
+
+        scene.create("Camera").add<hp::Camera>(hp::Camera{});
+
+        hp::Entity quad = scene.create("Quad");
+        hp::MeshRenderer renderer;
+        renderer.mesh = meshGuid;
+        quad.add<hp::MeshRenderer>(renderer);
+
+        // Behind the quad, shining back towards the camera — the geometry T0079
+        // measured, where an identity transform points a light down -Z.
+        hp::Entity sun = scene.create("Sun");
+        hp::Light light;
+        light.type = hp::LightType::Directional;
+        light.intensity = 3.0F;
+        sun.add<hp::Light>(light);
+
+        scene.propagateTransforms();
+        HP_LOG_INFO(kLog, "demo scene ready: a lit quad. Run with --backend=opengl to see it.");
     }
 
     /// Loads the sample gameplay module, if it is where one of the layouts puts
