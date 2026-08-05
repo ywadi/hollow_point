@@ -2,13 +2,13 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Large |
 | **Phase** | 4 — Render layer |
 | **Order** | 415 |
 | **Created** | 2026-08-06 |
-| **Refs** | **D28** (the decision), D26, D27, [T0141](../inprogress/0141-custom-shader-materials.md) — this supersedes how 141.1, 141.2, 141.5, 141.13 and 141.15 are built; [T0143](0143-extended-material-features.md) — the extended lineup is authored in Slang once this lands; T0087, T0096, T0086 — each adds shading their own shader work must reach |
+| **Refs** | **D28** (the decision), D26, D27, [T0141](../inprogress/0141-custom-shader-materials.md) — this supersedes how 141.1, 141.2, 141.5, 141.13 and 141.15 are built; [T0143](../open/0143-extended-material-features.md) — the extended lineup is authored in Slang once this lands; T0087, T0096, T0086 — each adds shading their own shader work must reach |
 
 ## Why
 

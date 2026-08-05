@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 425 |
 | **Created** | 2026-08-06 |
-| **Refs** | **Amends D24**; D26, D27, **D28** (authored in Slang); [T0142](0142-slang-shader-language.md) — this is written in Slang and waits for it; [T0141](../inprogress/0141-custom-shader-materials.md) — the surface stage this plugs into; [T0060](../completed/0060-material-system.md) — `hp::Material` gains the authoring fields; T0087 — several of these are only *visible* with environment lighting |
+| **Refs** | **Amends D24**; D26, D27, **D28** (authored in Slang); [T0142](../inprogress/0142-slang-shader-language.md) — this is written in Slang and waits for it; [T0141](../inprogress/0141-custom-shader-materials.md) — the surface stage this plugs into; [T0060](../completed/0060-material-system.md) — `hp::Material` gains the authoring fields; T0087 — several of these are only *visible* with environment lighting |
 
 ## Why
 
