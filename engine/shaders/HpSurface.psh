@@ -72,145 +72,27 @@ cbuffer cbMaterialAttribs
     PBRMaterialShaderInfo g_Material;
 }
 
-// ---------------------------------------------------------------------------
-// Material textures
+// **Their texture sampling, included rather than rewritten (D26, revised).**
 //
-// **Declared here rather than included from `PBR_Textures.fxh`, and that is
-// D26.** Their header is private, and more to the point it is the *only* place
-// a texture sample happens on their path -- so parallax (141.7) and triplanar
-// (141.8), which both work by changing the UV before the sample, have nowhere
-// to go in it. Owning the declarations is what makes the sample ours to
-// displace.
+// `PBR_Textures.fxh` declares every material texture and provides a getter per
+// slot -- `GetBaseColor`, `GetPhysicalDesc`, `GetMicroNormal`, and eleven more
+// covering clearcoat, sheen, anisotropy, iridescence, transmission and volume.
+// That is 934 lines of atlas handling, UV-set selection, wrap modes, mip bias
+// and colour conversion, already correct on every backend.
 //
-// The names are not free choices: `PBR_Renderer::CreateSignature` registers
-// `g_BaseColorMap` and `g_BaseColorMap_sampler` by exactly those spellings, so
-// the pipeline only binds if we match. `SHADER_TEXTURE_ARRAY_MODE_NONE` (the
-// setting `SceneRenderer` leaves at its default) is the mode that gives each
-// slot its own variable; the array modes would fold them into
-// `g_MaterialTextures[]` instead.
+// **The surface stage does not require owning the sampling**, which is the
+// correction that matters here. It requires owning `main` -- the ability to
+// change the UV *before* the sample and the surface properties *after* it. Every
+// getter below takes `VSOutput` **by value**, so parallax (141.7) and triplanar
+// (141.8) displace a local copy's texture coordinates and call theirs with it.
+// The hook D26 exists for survives intact.
 //
-// **`Texture2DArray`, not `Texture2D`.** The signature declares 2D arrays so
-// that a texture atlas can be dropped in later without a shader change, and the
-// glTF loader creates every texture as `RESOURCE_DIM_TEX_2D_ARRAY` to match.
-// A `Texture2D` here fails to bind rather than sampling wrongly, which is the
-// good outcome.
-// ---------------------------------------------------------------------------
-
-#if USE_COLOR_MAP
-    Texture2DArray g_BaseColorMap;
-    SamplerState   g_BaseColorMap_sampler;
-#endif
-
-#if USE_PHYS_DESC_MAP
-    Texture2DArray g_PhysicalDescriptorMap;
-    SamplerState   g_PhysicalDescriptorMap_sampler;
-#endif
-
-#if USE_NORMAL_MAP
-    Texture2DArray g_NormalMap;
-    SamplerState   g_NormalMap_sampler;
-#endif
-
-/// Picks the texture coordinate set a slot was authored against.
-///
-/// **A `lerp` and not a branch**, because `HpSurfaceInput` always carries both
-/// sets — zero-filled when the mesh has only one, which `HpMaterial.fxh`
-/// promises. DiligentFX's `SelectUV` needs four preprocessor cases for the same
-/// job precisely because their `VSOutput` does not make that promise.
-float2 HpSelectUv(HpSurfaceInput In, float selector)
-{
-    return lerp(In.UV0, In.UV1, selector);
-}
-
-/// Samples one material texture, honouring its UV set, transform and wrap mode.
-///
-/// **`fallback` is returned untouched when the material has no texture in this
-/// slot**, and that is what makes the always-on pipeline permutations safe:
-/// `SceneRenderer` compiles every material with the colour, normal and
-/// physical-descriptor maps enabled, so this shader is reached by materials that
-/// fill none of them. Their UV selector is then -1 — `PackedProps` is zero for
-/// an absent texture — and the sample never happens.
-///
-/// The texture is still *bound* in that case, with the renderer's white or
-/// default-normal stand-in; see `SceneRenderer::ensureBindings` for why both
-/// halves are needed and not either one alone.
-///
-/// @param tex the texture array.
-/// @param texSampler its sampler.
-/// @param In the surface input, for the texture coordinates.
-/// @param attribs this slot's packed properties, UV transform and array slice.
-/// @param fallback what to return when the slot is empty.
-/// The coordinate a slot samples at, after UV-set selection and the material's
-/// transform.
-///
-/// **Separate from the sample because the normal-mapping path needs the
-/// coordinate itself**, not just the value read through it: `PerturbNormal`
-/// builds its tangent frame from the screen-space derivatives of the *normal
-/// map's* UV, so it has to see the transformed coordinate. This is also the
-/// function 141.7's parallax displaces — it is the one place a UV is decided.
-///
-/// @param In the surface input, for the texture coordinates.
-/// @param attribs this slot's packed properties and UV transform.
-/// @param uv receives the coordinate; meaningful only when this returns true.
-/// @returns whether the material actually fills this slot.
-bool HpMaterialTextureUv(HpSurfaceInput In, PBRMaterialTextureAttribs attribs, out float2 uv)
-{
-    float selector = UnpackPBRMaterialTextureUVSelector(attribs.PackedProps);
-    // **Clamped before use, and computed even when the slot is empty.** The
-    // coordinate feeds `ddx`/`ddy` on the normal-map path, and derivatives are a
-    // quad-wide operation — computing one under a branch some lanes of the quad
-    // did not take is undefined. Costing two instructions on an empty slot is
-    // the cheaper half of that trade.
-    uv = HpSelectUv(In, max(selector, 0.0));
-
-#if ENABLE_TEXCOORD_TRANSFORM
-    // Scale, rotation and offset, as authored on the material. Off unless the
-    // pipeline key asks for it, so a material that does not transform its UVs
-    // pays nothing.
-    uv = mul(uv, MatrixFromRows(attribs.UVScaleAndRotation.xy, attribs.UVScaleAndRotation.zw)) +
-         float2(attribs.UBias, attribs.VBias);
-#endif
-
-    return selector >= 0.0;
-}
-
-float4 HpSampleMaterialTexture(Texture2DArray            tex,
-                               SamplerState              texSampler,
-                               HpSurfaceInput            In,
-                               PBRMaterialTextureAttribs attribs,
-                               float4                    fallback)
-{
-    float2 uv;
-    if (!HpMaterialTextureUv(In, attribs, uv))
-    {
-        return fallback;
-    }
-
-    // **The sampler wraps; clamping is done by hand.** The signature installs
-    // one *immutable* sampler per slot, so the wrap mode cannot follow the
-    // material — it is a property of the pipeline, not of the draw. Clamping the
-    // coordinate to half a texel inside the edge produces the same result for
-    // the clamp case without a second sampler. Mirror is not supported, the same
-    // limitation DiligentFX carries.
-    uint wrapU = UnpackPBRMaterialTextureWrapUMode(attribs.PackedProps);
-    uint wrapV = UnpackPBRMaterialTextureWrapVMode(attribs.PackedProps);
-    const uint kClamp = 3u; // TEXTURE_ADDRESS_CLAMP
-    if (wrapU == kClamp || wrapV == kClamp)
-    {
-        float2 size;
-        float  slices;
-        tex.GetDimensions(size.x, size.y, slices);
-        uv.x = (wrapU == kClamp) ? clamp(uv.x, 0.5 / size.x, 1.0 - 0.5 / size.x) : uv.x;
-        uv.y = (wrapV == kClamp) ? clamp(uv.y, 0.5 / size.y, 1.0 - 0.5 / size.y) : uv.y;
-    }
-
-    // **`SampleBias`, and the bias is not decoration.** `PBRFrameAttribs::Renderer`
-    // went unwritten until T0134 and the garbage it left here was invisible
-    // precisely because nothing had drawn a textured surface yet — every mesh
-    // sampled an 8x8 default with one mip level, where any bias selects the same
-    // texel. 141.11 is the test that would have caught it.
-    return tex.SampleBias(texSampler, float3(uv, attribs.TextureSlice), g_Frame.Renderer.MipBias);
-}
+// This header is private, and that is a real cost accepted deliberately: a
+// signature change upstream breaks this build loudly, which is the failure mode
+// worth having. The alternative was reimplementing it -- which is what this file
+// did until the owner asked why, and the honest answer was that including it had
+// never been evaluated.
+#include "PBR_Textures.fxh"
 
 /// The standard material's surface function.
 ///
@@ -320,95 +202,63 @@ PSOutput main(in VSOutput VSOut,
     surfaceOut.Occlusion = basic.OcclusionFactor;
 
     // -----------------------------------------------------------------------
-    // The material's textures, multiplied into the factors above.
+    // The material's textures, read through DiligentFX's own getters.
     //
-    // **This is the surface stage doing its job**, and the reason D26 chose to
-    // own a pixel shader rather than call one. Every line here is a place a game
-    // shader will eventually be able to intervene, and the two that matter most
-    // -- parallax (141.7) and triplanar (141.8) -- act on the coordinate, which
-    // is why `HpMaterialTextureUv` exists as its own function.
-    //
-    // Each block is guarded by the same macro that declared its texture, so a
-    // permutation without the map neither declares nor reads it.
+    // **`VSOut` is passed by value, and that is the hook.** 141.7's parallax and
+    // 141.8's triplanar will build a displaced copy of it here -- overwriting
+    // `UV0`/`UV1` with the offset coordinates -- and hand *that* to the getters
+    // below. Owning `main` is what makes the surface stage; owning the sampling
+    // never was.
     // -----------------------------------------------------------------------
 
-#if USE_COLOR_MAP
+    const float mipBias = g_Frame.Renderer.MipBias;
+
+    // Base colour, with the sRGB decode and the vertex-colour multiply already
+    // applied inside. The factor is the default it returns for an unfilled slot,
+    // so an untextured material comes back with exactly the factor.
+    surfaceOut.BaseColor = GetBaseColor(VSOut, g_Material, mipBias, basic.BaseColorFactor);
+
+    // Roughness in green and metallic in blue, glTF's packing. `GetPhysicalDesc`
+    // returns all ones when the slot is empty, so multiplying by the factors is
+    // correct either way.
     {
-        float4 sampled = HpSampleMaterialTexture(g_BaseColorMap, g_BaseColorMap_sampler, surfaceIn,
-                                                 g_Material.Textures[BaseColorTextureAttribId],
-                                                 float4(1.0, 1.0, 1.0, 1.0));
-        // **The sRGB decode, and it belongs here rather than in the view.**
-        // `TO_LINEAR` comes from `PBR_Shading.fxh` and collapses to nothing
-        // unless `TexColorConversionMode` asks for it -- `SceneRenderer` does,
-        // because the sRGB texture *view* that would do this for free is behind
-        // a file-static helper of DiligentFX's that nothing outside their .cpp
-        // can call. Getting this wrong is not subtle: skipping it leaves every
-        // albedo washed out, applying it twice leaves it muddy.
-        surfaceOut.BaseColor *= float4(TO_LINEAR(sampled.rgb), sampled.a);
+        float4 physicalDesc = GetPhysicalDesc(VSOut, g_Material, mipBias);
+        surfaceOut.Metallic = physicalDesc.b * basic.MetallicFactor;
+        surfaceOut.Roughness = physicalDesc.g * basic.RoughnessFactor;
     }
+
+#if USE_AO_MAP
+    surfaceOut.Occlusion = GetOcclusion(VSOut, g_Material, mipBias);
 #endif
 
-#if USE_PHYS_DESC_MAP
-    {
-        // **Linear data, so no `TO_LINEAR`.** Roughness and metalness are
-        // measurements, not colours; decoding them through the sRGB curve would
-        // be a silent, plausible-looking error.
-        float4 sampled =
-            HpSampleMaterialTexture(g_PhysicalDescriptorMap, g_PhysicalDescriptorMap_sampler,
-                                    surfaceIn,
-                                    g_Material.Textures[PhysicalDescriptorTextureAttribId],
-                                    float4(1.0, 1.0, 1.0, 1.0));
-        // glTF packs **roughness in green and metallic in blue**, which is also
-        // what the renderer's default 0x0000FF00 stand-in encodes. Swapping them
-        // produces an image that still looks like a material, which is exactly
-        // why the textured-render guard uses a set with real metalness in it.
-        surfaceOut.Roughness *= sampled.g;
-        surfaceOut.Metallic *= sampled.b;
-    }
+#if USE_EMISSIVE_MAP
+    surfaceOut.Emissive = GetEmissive(VSOut, g_Material, mipBias);
 #endif
 
-#if USE_NORMAL_MAP
+    // The normal map, through their tangent-frame reconstruction. Both are
+    // public in `PBR_Shading.fxh`; `GetMicroNormal` decodes and scales the map
+    // and is the one piece that comes from `PBR_Textures.fxh`.
+    //
+    // `GetPerturbNormalInfo` takes the **unflipped** normal and applies the
+    // two-sided flip itself from `IsFrontFace` -- handing it `surfaceIn.Normal`
+    // would flip twice and invert the lighting on back faces only.
     {
-        float2 normalUv;
-        bool hasNormalMap =
-            HpMaterialTextureUv(surfaceIn, g_Material.Textures[NormalTextureAttribId], normalUv);
-        // **Taken outside the branch on purpose.** `ddx`/`ddy` read the value
-        // from neighbouring lanes in the same quad, so evaluating them where some
-        // lanes did not follow the same path is undefined -- and the failure mode
-        // is seams along triangle edges rather than anything that looks like a
-        // bug in this code.
-        float2 dUv_dx = ddx(normalUv);
-        float2 dUv_dy = ddy(normalUv);
+        PerturbNormalInfo normalInfo = GetPerturbNormalInfo(
+            surfaceIn.WorldPos, geometricNormal, IsFrontFace, g_Frame.Camera.fHandness);
 
-        if (hasNormalMap)
-        {
-            float3 tangentNormal =
-                g_NormalMap.SampleBias(g_NormalMap_sampler,
-                                       float3(normalUv,
-                                              g_Material.Textures[NormalTextureAttribId].TextureSlice),
-                                       g_Frame.Renderer.MipBias)
-                    .xyz;
-            // From [0,1] storage to a [-1,1] direction, then scaled. **NormalGL,
-            // green pointing +Y** -- the convention T0141 fixed on and the one
-            // glTF mandates; a DirectX-style map renders with its lighting
-            // inverted along one axis and reads as "the light is in the wrong
-            // place".
-            tangentNormal = tangentNormal * 2.0 - 1.0;
-            tangentNormal.xy *= basic.NormalScale;
-
-            // **Their tangent frame, derived from screen-space gradients rather
-            // than a vertex attribute.** `PerturbNormal` is public in
-            // `PBR_Shading.fxh` and needs no TANGENT stream at all, which is why
-            // `HpSurfaceInput::Tangent` can stay zero without costing normal
-            // mapping anything -- and why a mesh authored without tangents still
-            // gets a correct result here.
-            PerturbNormalInfo normalInfo = GetPerturbNormalInfo(
-                surfaceIn.WorldPos, geometricNormal, IsFrontFace, g_Frame.Camera.fHandness);
-            surfaceOut.Normal =
-                PerturbNormal(normalInfo, dUv_dx, dUv_dy, tangentNormal, /*HasUV = */ true);
-        }
-    }
+#if USE_TEXCOORD0 || USE_TEXCOORD1
+        float2 normalUv = SelectUV(
+            VSOut, UnpackPBRMaterialTextureUVSelector(
+                       g_Material.Textures[NormalTextureAttribId].PackedProps));
+        float3 microNormal = GetMicroNormal(g_Material, normalUv, normalUv, ddx(normalUv),
+                                            ddy(normalUv), mipBias);
+        surfaceOut.Normal =
+            PerturbNormal(normalInfo, ddx(normalUv), ddy(normalUv), microNormal,
+                          /*HasUV = */ true);
+#else
+        surfaceOut.Normal = normalInfo.Normal;
 #endif
+    }
 
     // **The surface stage.** Everything above is the engine's default; a game's
     // shader replaces whatever it likes here, and this is the point parallax,
@@ -416,6 +266,69 @@ PSOutput main(in VSOutput VSOut,
     HpSurface(surfaceIn, surfaceOut);
 
     PSOutput Out;
+
+    // -----------------------------------------------------------------------
+    // Debug views (T0141) — one channel on its own, instead of the shaded image.
+    //
+    // **A surface has half a dozen inputs and one output**, so a wrong input is
+    // invisible: a normal map that is never applied, an occlusion channel read
+    // from the wrong component and a roughness pinned at 1 all produce an image
+    // that still looks like a lit material. This is how each becomes something
+    // you can look at.
+    //
+    // **A runtime branch, unlike `HP_UNSHADED`, and deliberately so.** Unshaded
+    // is a *material* property that a game ships, so paying for it in registers
+    // on every draw would be wrong. A debug view is an editor control that flips
+    // between frames, and making it a PSO permutation would mean a pipeline
+    // rebuild — a visible stall — every time someone changed the dropdown. It
+    // also multiplies the variant count by nine for something no shipped game
+    // ever sets. The cost is one compare against a constant-buffer value, which
+    // is uniform across the draw and costs nothing measurable.
+    //
+    // Values are `hp::SurfaceDebugView`, which restates DiligentFX's
+    // `DebugViewType` numbering so the two cannot drift.
+    // -----------------------------------------------------------------------
+    if (g_Frame.Renderer.DebugView != 0)
+    {
+        float4 debug = float4(0.0, 0.0, 0.0, 1.0);
+        if (g_Frame.Renderer.DebugView == 1) // Texcoord0
+        {
+            debug.rg = frac(surfaceIn.UV0);
+        }
+        else if (g_Frame.Renderer.DebugView == 3) // BaseColor
+        {
+            debug.rgb = surfaceOut.BaseColor.rgb;
+        }
+        else if (g_Frame.Renderer.DebugView == 5) // Occlusion
+        {
+            debug.rgb = float3(surfaceOut.Occlusion, surfaceOut.Occlusion, surfaceOut.Occlusion);
+        }
+        else if (g_Frame.Renderer.DebugView == 6) // Emissive
+        {
+            debug.rgb = surfaceOut.Emissive;
+        }
+        else if (g_Frame.Renderer.DebugView == 7) // Metallic
+        {
+            debug.rgb = float3(surfaceOut.Metallic, surfaceOut.Metallic, surfaceOut.Metallic);
+        }
+        else if (g_Frame.Renderer.DebugView == 8) // Roughness
+        {
+            debug.rgb = float3(surfaceOut.Roughness, surfaceOut.Roughness, surfaceOut.Roughness);
+        }
+        else if (g_Frame.Renderer.DebugView == 12) // MeshNormal
+        {
+            // The geometric normal, *before* the normal map -- which is the
+            // point: on a flat quad this is one constant colour, so a
+            // ShadingNormal that looks identical proves the map is not applied.
+            debug.rgb = normalize(surfaceIn.Normal) * 0.5 + 0.5;
+        }
+        else if (g_Frame.Renderer.DebugView == 13) // ShadingNormal
+        {
+            debug.rgb = normalize(surfaceOut.Normal) * 0.5 + 0.5;
+        }
+        Out.Color = debug;
+        return Out;
+    }
 
 #if HP_UNSHADED
     // Straight out, no BRDF, no light loop, no IBL. **A compile-time branch and

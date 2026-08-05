@@ -33,7 +33,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Api.hpp>`](Api.md) | 0 | 0 |
 | [`<hp/Application.hpp>`](Application.md) | 22 | 12 |
 | [`<hp/Assets.hpp>`](Assets.md) | 57 | 57 |
-| [`<hp/Camera.hpp>`](Camera.md) | 10 | 10 |
+| [`<hp/Camera.hpp>`](Camera.md) | 11 | 11 |
 | [`<hp/CameraSystem.hpp>`](CameraSystem.md) | 11 | 11 |
 | [`<hp/Cook.hpp>`](Cook.md) | 14 | 14 |
 | [`<hp/DepthConvention.hpp>`](DepthConvention.md) | 4 | 4 |
@@ -70,7 +70,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 47 | 47 |
 
-**719 public declarations across 39 headers, 602 documented.**
+**720 public declarations across 39 headers, 603 documented.**
 
 ## Every symbol
 
@@ -159,6 +159,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `AspectPolicy` | [`Camera.hpp`](Camera.md) |
 | `ViewportRect` | [`Camera.hpp`](Camera.md) |
 | `ViewportRect::valid` | [`Camera.hpp`](Camera.md) |
+| `SurfaceDebugView` | [`Camera.hpp`](Camera.md) |
 | `Camera` | [`Camera.hpp`](Camera.md) |
 | `verticalFovFromFocalLength` | [`Camera.hpp`](Camera.md) |
 | `focalLengthFromVerticalFov` | [`Camera.hpp`](Camera.md) |

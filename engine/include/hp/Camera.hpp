@@ -120,6 +120,66 @@ struct ViewportRect {
     }
 };
 
+/// What a view draws instead of the shaded image (T0141).
+///
+/// **A surface has half a dozen inputs and one output, so a wrong one is
+/// invisible in the shaded frame.** A normal map that is never applied, an
+/// occlusion channel read from the wrong component, a roughness that is always
+/// 1 — each of those produces an image that still looks like a lit material,
+/// and none of them can be told apart by eye or by an average colour. Rendering
+/// a single channel on its own is how each becomes a thing you can look at, and
+/// it is what every engine with a material editor provides.
+///
+/// **The values match DiligentFX's `PBR_Renderer::DebugViewType`**, which is
+/// what `PBRRendererShaderParameters::DebugView` is declared to carry. The
+/// engine cannot name that enum in a public header (D21 keeps Diligent types
+/// out), so it is restated — and restated *with their numbering*, so the two
+/// cannot disagree about what a stored `3` means. Only the modes the engine's
+/// shader actually implements appear here; the gaps in the sequence are theirs,
+/// and a mode is added when the thing it shows exists.
+enum class SurfaceDebugView : std::uint8_t {
+    /// The shaded image. The default, and the only one a game ever ships.
+    None = 0,
+
+    /// The first texture coordinate set as red and green.
+    ///
+    /// **The one to reach for first when a texture looks wrong**, because it
+    /// separates "the sampler is broken" from "the mesh's UVs are not what you
+    /// think". A correct unit quad is a black-to-yellow gradient corner to
+    /// corner; anything else is a mesh problem, and no amount of staring at the
+    /// shaded frame would have told you that.
+    Texcoord0 = 1,
+
+    /// Base colour after the texture and every factor, before any lighting.
+    BaseColor = 3,
+
+    /// The occlusion channel, as greyscale.
+    Occlusion = 5,
+
+    /// Emissive colour.
+    Emissive = 6,
+
+    /// Metalness, as greyscale. 0 is a dielectric and 1 is a metal.
+    Metallic = 7,
+
+    /// Roughness, as greyscale. 0 is a mirror and 1 is fully rough.
+    Roughness = 8,
+
+    /// The interpolated geometric normal, before any normal map.
+    ///
+    /// Shown as `normal * 0.5 + 0.5`, the usual encoding, so +X is red, +Y is
+    /// green and +Z is blue.
+    MeshNormal = 12,
+
+    /// The normal the lighting actually used, after the normal map.
+    ///
+    /// **Meaningful only next to `MeshNormal`.** A flat quad's mesh normal is
+    /// one constant colour, so if this looks the same, the normal map is not
+    /// being applied — which is exactly the failure that is invisible in a
+    /// shaded frame.
+    ShadingNormal = 13,
+};
+
 /// A point of view. Which camera renders, and into what viewport, is not
 /// decided here (T0081).
 struct Camera {
@@ -241,6 +301,19 @@ struct Camera {
     /// carrying its slot, so a world layer and a HUD layer each get their own
     /// without either knowing about the other's cameras.
     std::uint8_t viewSlot{0};
+
+    /// What this view draws instead of the shaded image (T0141).
+    ///
+    /// **On the camera rather than on the renderer**, because it is a property
+    /// of *a view* and not of the engine: an editor showing a shaded viewport
+    /// beside a normals viewport is one scene with two cameras, and a global
+    /// switch could not express that. It also costs nothing to plumb —
+    /// `ResolvedView` already carries a copy of the lens.
+    ///
+    /// Serialised, so a debug view survives a save. That is deliberate rather
+    /// than an oversight: a viewport left in a debug mode and reopened shaded
+    /// would look like the mode had silently failed.
+    SurfaceDebugView debugView{SurfaceDebugView::None};
 };
 
 /// Converts a photographic focal length to the vertical field of view it

@@ -6,7 +6,7 @@
 #include <hp/Camera.hpp>
 ```
 
-10 public declaration(s), 10 documented.
+11 public declaration(s), 11 documented.
 
 ## `kDefaultSensorHeightMm`
 
@@ -70,6 +70,42 @@ bool valid() const
 ```
 
  @returns whether the rectangle covers a non-empty area inside the target.
+
+## `SurfaceDebugView`
+
+```cpp
+enum class SurfaceDebugView
+```
+
+| Enumerator | Value |
+|---|---|
+| `None` | 0 |
+| `Texcoord0` | 1 |
+| `BaseColor` | 3 |
+| `Occlusion` | 5 |
+| `Emissive` | 6 |
+| `Metallic` | 7 |
+| `Roughness` | 8 |
+| `MeshNormal` | 12 |
+| `ShadingNormal` | 13 |
+
+ What a view draws instead of the shaded image (T0141).
+
+ **A surface has half a dozen inputs and one output, so a wrong one is
+ invisible in the shaded frame.** A normal map that is never applied, an
+ occlusion channel read from the wrong component, a roughness that is always
+ 1 — each of those produces an image that still looks like a lit material,
+ and none of them can be told apart by eye or by an average colour. Rendering
+ a single channel on its own is how each becomes a thing you can look at, and
+ it is what every engine with a material editor provides.
+
+ **The values match DiligentFX's `PBR_Renderer::DebugViewType`**, which is
+ what `PBRRendererShaderParameters::DebugView` is declared to carry. The
+ engine cannot name that enum in a public header (D21 keeps Diligent types
+ out), so it is restated — and restated *with their numbering*, so the two
+ cannot disagree about what a stored `3` means. Only the modes the engine's
+ shader actually implements appear here; the gaps in the sequence are theirs,
+ and a mode is added when the thing it shows exists.
 
 ## `Camera`
 

@@ -30,6 +30,7 @@
 #include <hp/Vfs.hpp>
 #include <hp/Window.hpp>
 
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -99,6 +100,23 @@ std::filesystem::path findTextureDir() {
     return {};
 }
 
+/// How far in front of the camera the quad sits, in metres.
+constexpr float kQuadDistance = 3.0F;
+
+/// Half the quad's width, chosen so it **exactly fills the square frame**.
+///
+/// **Not a round number, and it must not become one.** A quad larger than the
+/// frame is not a rendering error, so nothing fails — but the image then shows a
+/// *crop* of the texture, and every judgement made by eye against the source is
+/// silently comparing different regions. The first version of this test used a
+/// half-size of 4 at this distance, which shows the middle 43% at 2.3x, and it
+/// read as a sampler bug for exactly as long as it took to notice.
+///
+/// Derived from the camera rather than hard-coded, so changing the default field
+/// of view cannot quietly reintroduce the crop. Vertical half-height equals
+/// horizontal half-width here because the target is square.
+const float kQuadHalf = kQuadDistance * std::tan(hp::Camera{}.verticalFov * 0.5F);
+
 /// A quad with texture coordinates and tangents, referencing external images.
 ///
 /// **Tangents are written explicitly.** A normal map without them has no basis
@@ -110,11 +128,13 @@ void writeTexturedQuadGltf(const std::filesystem::path& directory, const std::st
     std::filesystem::create_directories(directory, ec);
 
     // position(3) normal(3) tangent(4) uv(2) = 12 floats per vertex.
+    const float h = kQuadHalf;
+    const float z = kQuadDistance;
     const float vertices[] = {
-        -4.0F, -4.0F, 3.0F,  0.0F, 0.0F, -1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  0.0F, 1.0F,
-         4.0F, -4.0F, 3.0F,  0.0F, 0.0F, -1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  1.0F, 1.0F,
-         4.0F,  4.0F, 3.0F,  0.0F, 0.0F, -1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  1.0F, 0.0F,
-        -4.0F,  4.0F, 3.0F,  0.0F, 0.0F, -1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  0.0F, 0.0F,
+        -h, -h, z,  0.0F, 0.0F, -1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  0.0F, 1.0F,
+         h, -h, z,  0.0F, 0.0F, -1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  1.0F, 1.0F,
+         h,  h, z,  0.0F, 0.0F, -1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  1.0F, 0.0F,
+        -h,  h, z,  0.0F, 0.0F, -1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  0.0F, 0.0F,
     };
     const std::uint16_t indices[] = {0, 1, 2, 0, 2, 3};
 
@@ -165,7 +185,10 @@ void writeTexturedQuadGltf(const std::filesystem::path& directory, const std::st
   ],
   "accessors": [
     { "bufferView": 0, "byteOffset": 0,  "componentType": 5126, "count": 4, "type": "VEC3",
-      "min": [-4.0, -4.0, 3.0], "max": [4.0, 4.0, 3.0] },
+      "min": [)" + std::to_string(-kQuadHalf) + R"(, )" + std::to_string(-kQuadHalf) +
+        R"(, )" + std::to_string(kQuadDistance) + R"(],
+      "max": [)" + std::to_string(kQuadHalf) + R"(, )" + std::to_string(kQuadHalf) +
+        R"(, )" + std::to_string(kQuadDistance) + R"(] },
     { "bufferView": 0, "byteOffset": 12, "componentType": 5126, "count": 4, "type": "VEC3" },
     { "bufferView": 0, "byteOffset": 24, "componentType": 5126, "count": 4, "type": "VEC4" },
     { "bufferView": 0, "byteOffset": 40, "componentType": 5126, "count": 4, "type": "VEC2" },
@@ -259,7 +282,12 @@ double variationOf(const std::vector<std::uint8_t>& rgba) {
 }
 
 /// Renders one textured quad and returns the frame.
-bool renderTextured(Device& device, const std::string& prefix, std::vector<std::uint8_t>& pixels) {
+/// @param device the brought-up device.
+/// @param prefix which texture set: "rock" or "metal".
+/// @param pixels receives the frame as RGBA.
+/// @param debugView which channel to draw instead of the shaded image.
+bool renderTextured(Device& device, const std::string& prefix, std::vector<std::uint8_t>& pixels,
+                    hp::SurfaceDebugView debugView = hp::SurfaceDebugView::None) {
     const std::filesystem::path textures = findTextureDir();
     if (textures.empty()) {
         return false;
@@ -294,7 +322,9 @@ bool renderTextured(Device& device, const std::string& prefix, std::vector<std::
 
     hp::Scene scene;
     hp::Entity cameraEntity = scene.create("camera");
-    cameraEntity.add<hp::Camera>(hp::Camera{});
+    hp::Camera camera;
+    camera.debugView = debugView;
+    cameraEntity.add<hp::Camera>(camera);
 
     hp::Entity quad = scene.create("quad");
     hp::MeshRenderer renderer;
@@ -307,7 +337,43 @@ bool renderTextured(Device& device, const std::string& prefix, std::vector<std::
     sun.colour = hp::float3{1.0F, 1.0F, 1.0F};
     sun.intensity = 3.0F;
     lightEntity.add<hp::Light>(sun);
+    // **Raked, and a head-on light is why this needed saying.** A light entity
+    // with an identity transform points straight down +Z (`Light.cpp` takes the
+    // local Z axis and negates it), which here is coincident with both the view
+    // direction and the quad's normal — so `N·L` is 1 across the whole surface.
+    //
+    // That is the **worst possible angle for judging a normal map**: the visible
+    // effect of perturbing a normal scales with how much it changes `N·L`, and at
+    // perpendicular incidence that derivative is at its minimum. A bumpy surface
+    // and a flat one render nearly identically, and the frame comes back evenly
+    // veiled with no directional cue — which reads as a broken sampler and is
+    // not one. It cost an afternoon of looking for a bug in the shader.
+    //
+    // Rotated about X and then Y so the light arrives from above and to one
+    // side, the way a product shot is lit. Relief now casts short shadows on the
+    // side away from it, which is the thing a normal-map test has to be able to
+    // see.
+    // **Sign checked by measurement, not by eye.** `ResolvedLight::direction` is
+    // the direction light *travels* (`PBR_Shading.fxh` computes `L = -lightDir`),
+    // so a **positive Y** component means light heading upward — that is, coming
+    // from *below*. The first version of this had exactly that, and produced the
+    // under-lit look of a torch held at floor level. The probe below asserts the
+    // sign so it cannot silently invert again.
+    constexpr float kRake = 0.7F; // ~40 degrees
+    lightEntity.get<hp::Transform>().rotation =
+        hp::Quaternion::RotationFromAxisAngle(hp::float3{0.0F, 1.0F, 0.0F}, -kRake) *
+        hp::Quaternion::RotationFromAxisAngle(hp::float3{1.0F, 0.0F, 0.0F}, -kRake);
     scene.propagateTransforms();
+    {
+        // **The sign is asserted, not eyeballed.** `direction` is the way light
+        // *travels* (`PBR_Shading.fxh` does `L = -lightDir`), so a positive Y
+        // means it comes from *below* — which is what the first version of this
+        // did, and which under-lights every surface in a way that reads as a
+        // broken normal map. One assertion is cheaper than rediscovering it.
+        const hp::LightList probe = hp::gatherLights(scene);
+        REQUIRE(probe.size() == 1);
+        CHECK(probe[0].direction.y < 0.0F);
+    }
 
     hp::SceneView view;
     if (!view.create(device.render->device(), device.render->context(), kSize, kSize)) {
@@ -328,6 +394,115 @@ bool renderTextured(Device& device, const std::string& prefix, std::vector<std::
 }
 
 } // namespace
+
+/// Every surface channel, drawn on its own (T0141).
+///
+/// **This is the test that makes the other one trustworthy.** A shaded frame
+/// mixes base colour, normal, roughness, metalness and occlusion into three
+/// numbers per pixel, so a channel wired to the wrong texture, the wrong
+/// component, or nothing at all still produces something that looks like a lit
+/// material. Every bug found in this ticket had exactly that shape — the
+/// `TextureAttribIndices` array that defaulted to -1 disabled three subsystems
+/// and changed the image not at all.
+///
+/// Each channel is written out as a PPM as well as asserted, because the
+/// assertions can only check relationships and the image is what shows *which*
+/// relationship is wrong.
+TEST_CASE("each surface channel can be inspected on its own") {
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+    if (findTextureDir().empty()) {
+        MESSAGE("test_assets/derived not found; skipping");
+        tearDown(device);
+        return;
+    }
+
+    struct Channel {
+        const char* name;
+        hp::SurfaceDebugView view;
+    };
+    const Channel channels[] = {
+        {"basecolor", hp::SurfaceDebugView::BaseColor},
+        {"roughness", hp::SurfaceDebugView::Roughness},
+        {"metallic", hp::SurfaceDebugView::Metallic},
+        {"occlusion", hp::SurfaceDebugView::Occlusion},
+        {"meshnormal", hp::SurfaceDebugView::MeshNormal},
+        {"shadingnormal", hp::SurfaceDebugView::ShadingNormal},
+        {"texcoord0", hp::SurfaceDebugView::Texcoord0},
+    };
+
+    std::vector<std::uint8_t> meshNormal;
+    std::vector<std::uint8_t> shadingNormal;
+
+    for (const Channel& channel : channels) {
+        std::vector<std::uint8_t> pixels;
+        REQUIRE(renderTextured(device, "rock", pixels, channel.view));
+        const Rgb centre = centreOf(pixels);
+        const double variation = variationOf(pixels);
+        const std::filesystem::path image =
+            writePpm(std::string("channel_") + channel.name, pixels);
+        MESSAGE(channel.name << ": centre " << centre.text() << ", variation " << variation
+                             << " -> " << image.string());
+
+        if (channel.view == hp::SurfaceDebugView::MeshNormal) {
+            meshNormal = pixels;
+        } else if (channel.view == hp::SurfaceDebugView::ShadingNormal) {
+            shadingNormal = pixels;
+        }
+    }
+
+    SUBCASE("occlusion comes from the texture, not the material factor") {
+        // **This regressed silently for the entire ticket.** `EnableAO` was off,
+        // so `USE_AO_MAP` was 0, `GetOcclusion` was never compiled in, and
+        // `Occlusion` sat at `basic.OcclusionFactor` = 1.0 — a flat white channel
+        // while a real AO map sat bound and unread. Zero variation is the
+        // signature, and nothing else in the engine could show it.
+        std::vector<std::uint8_t> pixels;
+        REQUIRE(renderTextured(device, "rock", pixels, hp::SurfaceDebugView::Occlusion));
+        const double variation = variationOf(pixels);
+        MESSAGE("occlusion variation " << variation);
+        CHECK(variation > 1.0);
+    }
+
+    SUBCASE("metalness comes from the blue channel, and only the metal set has any") {
+        // **The check the shaded frame could never make.** Rock is a dielectric,
+        // so its ORM blue channel is zero and a metallic term wired to green, to
+        // red, or to nothing at all produces the same black image. Metal has real
+        // metalness. Asserting one is zero and the other is not is what pins the
+        // channel down.
+        std::vector<std::uint8_t> rockMetal;
+        std::vector<std::uint8_t> metalMetal;
+        REQUIRE(renderTextured(device, "rock", rockMetal, hp::SurfaceDebugView::Metallic));
+        REQUIRE(renderTextured(device, "metal", metalMetal, hp::SurfaceDebugView::Metallic));
+        writePpm("channel_metallic_metal", metalMetal);
+        const Rgb rockCentre = centreOf(rockMetal);
+        const Rgb metalCentre = centreOf(metalMetal);
+        MESSAGE("metallic: rock " << rockCentre.text() << ", metal " << metalCentre.text());
+        CHECK(rockCentre.r == 0);
+        CHECK(metalCentre.r > 0);
+    }
+
+    SUBCASE("the normal map is actually applied") {
+        // **The decisive check, and it needs both frames.** The quad is flat, so
+        // its mesh normal is one constant colour across every pixel. If the
+        // shading normal is *also* flat, the normal map is not reaching the
+        // lighting — which is invisible in a shaded frame and is exactly what a
+        // head-on light hides.
+        REQUIRE_FALSE(meshNormal.empty());
+        REQUIRE_FALSE(shadingNormal.empty());
+        const double flat = variationOf(meshNormal);
+        const double perturbed = variationOf(shadingNormal);
+        MESSAGE("mesh normal variation " << flat << ", shading normal variation " << perturbed);
+        CHECK(flat < 1.0);
+        CHECK(perturbed > 5.0);
+    }
+
+    tearDown(device);
+}
 
 TEST_CASE("a textured surface renders its texture, not an average of it") {
     Device device = bringUp();
@@ -375,7 +550,19 @@ TEST_CASE("a textured surface renders its texture, not an average of it") {
                                  << image.string());
 
         CHECK(centre.b < 250);
-        CHECK(variation > 8.0);
+        // **Deliberately lower than rock's, and not a fudged number.** A metal
+        // has no diffuse response, so with `EnableIBL = false` there is no
+        // environment for it to reflect and the frame is dominated by near-black
+        // with specular glints — genuinely less detail than a dielectric, not a
+        // worse texture path. The original 8.0 here was calibrated against a
+        // frame that turned out to be 2.3x magnified, which inflates variation;
+        // it failed the moment the framing was corrected.
+        //
+        // **The real metalness check is not here.** "Each surface channel can be
+        // inspected on its own" asserts rock's metallic channel is exactly 0 and
+        // metal's is not, which is the assertion a shaded frame cannot make.
+        // T0087's environment lighting is what will make this one meaningful.
+        CHECK(variation > 3.0);
     }
 
     tearDown(device);

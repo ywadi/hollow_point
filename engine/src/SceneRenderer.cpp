@@ -343,7 +343,14 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                 static_cast<Diligent::PBR_Renderer::PSO_FLAGS>(
                     Diligent::PBR_Renderer::PSO_FLAG_USE_COLOR_MAP |
                     Diligent::PBR_Renderer::PSO_FLAG_USE_NORMAL_MAP |
-                    Diligent::PBR_Renderer::PSO_FLAG_USE_PHYS_DESC_MAP);
+                    Diligent::PBR_Renderer::PSO_FLAG_USE_PHYS_DESC_MAP |
+                    // Enabled with `EnableAO`/`EnableEmissive` in
+                    // `SurfacePipeline::configure`, and the two must move
+                    // together: the setting builds the signature slot, the flag
+                    // compiles the shader that reads it. One without the other
+                    // is either an unread texture or an unbound sampler.
+                    Diligent::PBR_Renderer::PSO_FLAG_USE_AO_MAP |
+                    Diligent::PBR_Renderer::PSO_FLAG_USE_EMISSIVE_MAP);
             const Diligent::PBR_Renderer::PSO_FLAGS flags =
                 (vertexFlags | kMaterialFlags | kEnabledFeatures) & kFeatureMask;
 
@@ -585,6 +592,12 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
                 // blurs, and T0111's render-scale decision is where a non-zero one
                 // would come from, not here.
                 params.MipBias = 0.0F;
+
+                // **Per view, from the camera** (T0141). `SurfaceDebugView`
+                // restates DiligentFX's `DebugViewType` numbering precisely so
+                // this cast is the whole conversion — if the two ever disagree,
+                // they disagree loudly at the one place that knows both.
+                params.DebugView = static_cast<int>(view.camera.debugView);
 
                 // **Zero until T0079.** The shader clamps its light loop to this, so
                 // it is what makes "no lights" mean no lights rather than reading

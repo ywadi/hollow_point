@@ -88,8 +88,17 @@ void SurfacePipeline::configure(CreateInfo& info) {
     // demands resources the engine has no way to supply yet -- IBL wants a
     // precomputed environment, lights want a populated light buffer.
     info.EnableIBL = false;
-    info.EnableAO = false;
-    info.EnableEmissive = false;
+    // **On, and the debug views are why.** Both were off, and both were invisible:
+    // the rock test set packs a real ambient-occlusion map into its ORM red
+    // channel, `ensureBindings` bound it, and `GetOcclusion` was never called
+    // because `USE_AO_MAP` was 0 -- so `Occlusion` stayed at the material factor
+    // of 1.0 and the channel rendered flat white. Loaded, packed, bound, ignored.
+    //
+    // Nothing in a shaded frame could have shown that. It was found the first
+    // minute `SurfaceDebugView::Occlusion` existed, which is the argument for
+    // having built it.
+    info.EnableAO = true;
+    info.EnableEmissive = true;
     info.EnableShadows = false;
     // **Sizes the frame attributes buffer**, which is
     // `CameraAttribs * 2 + renderer params + PBRLightAttribs * MaxLightCount`.
@@ -233,7 +242,11 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
         // Empty, and it has to exist: `RenderPBR.vsh` includes it
         // unconditionally, and a missing include is a compile error rather than
         // an empty expansion.
-        {"PSMainFooter.generated", ""},
+        {"PSMainFooter.generated", R"(
+    PSOutput PSOut;
+    PSOut.Color = OutColor;
+    return PSOut;
+)"},
     };
     Diligent::RefCntAutoPtr<Diligent::IShaderSourceInputStreamFactory> generated;
     Diligent::CreateMemoryShaderSourceFactory(

@@ -114,7 +114,22 @@ void registerCoreComponents() {
         .property<&Camera::priority>("priority")
         .property<&Camera::enabled>("enabled")
         .property<&Camera::cullingMask>("cullingMask")
-        .property<&Camera::viewSlot>("viewSlot");
+        .property<&Camera::viewSlot>("viewSlot")
+        .property<&Camera::debugView>("debugView");
+    // Same rule as `LightType` below: named enumerators, by hand, or a file
+    // stores `debugView: 13` and an inspector shows a bare integer. The values
+    // are DiligentFX's, so this list must gain a line whenever
+    // `SurfaceDebugView` does.
+    reflect<SurfaceDebugView>("SurfaceDebugView")
+        .value<SurfaceDebugView::None>("None")
+        .value<SurfaceDebugView::Texcoord0>("Texcoord0")
+        .value<SurfaceDebugView::BaseColor>("BaseColor")
+        .value<SurfaceDebugView::Occlusion>("Occlusion")
+        .value<SurfaceDebugView::Emissive>("Emissive")
+        .value<SurfaceDebugView::Metallic>("Metallic")
+        .value<SurfaceDebugView::Roughness>("Roughness")
+        .value<SurfaceDebugView::MeshNormal>("MeshNormal")
+        .value<SurfaceDebugView::ShadingNormal>("ShadingNormal");
     // **The enum, so it serialises as `type: Spot` rather than `type: 2`.**
     // Reflected separately from the component that holds it, because that is
     // what enum reflection is: entt cannot enumerate an enum's enumerators and

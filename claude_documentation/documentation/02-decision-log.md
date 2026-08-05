@@ -1150,6 +1150,90 @@ in the PBR pipeline.
 | **Patch DiligentFX's shaders** (a hook before sampling) | Looked like a few lines | **Rejected on the *vendoring*, not the diff.** `third_party/DiligentEngine` is a **git submodule pointing at upstream** and this tree has **no patch mechanism at all**. So it costs either a fork of a large engine, owned indefinitely by a small studio, or new build machinery that must run before configure everywhere — and CI's build-tree cache is keyed on `git submodule status --recursive` (T0121), so a patch would have to enter that key or a changed patch silently reuses a tree compiled without it. It also **cannot reach tessellation**, because there the missing piece is C++ PSO construction rather than shader text |
 | **Write our own uber-shader outright** | Total control | **Rejected.** Reimplements split-sum IBL, punctual lighting, shadow filtering, tonemapping, every alpha mode and the glTF extensions — precisely the body of work D24 declined to write |
 
+### Revised 2026-08-06 — we own `main`, **not** the sampling
+
+**The first implementation of this decision wrote its own texture sampling, and
+that was wrong.** ~100 lines reimplementing UV-set selection, the UV transform,
+wrap-mode clamping and `SampleBias`, for three of the seventeen slots DiligentFX
+already covers.
+
+The owner asked the question that undid it: *"why are we not #including their
+implementation and building on it?"* The honest answer was that the option had
+**never been evaluated**. This entry had considered *shadowing*
+`PBR_Textures.fxh` — shipping a file with that name so *their* shader includes
+*ours* — and correctly rejected it. It never considered simply **including**
+theirs and calling it, which is a different thing entirely and strictly better.
+
+`PBR_Textures.fxh` provides fifteen getters covering every slot, including all
+six extended features D24 turns off: `GetBaseColor`, `GetPhysicalDesc`,
+`GetOcclusion`, `GetEmissive`, `GetMicroNormal`, `GetClearcoatFactor`,
+`GetSheenColor`, `GetAnisotropy`, `GetIridescence`, `GetTransmission`,
+`GetVolumeThickness` and the rest.
+
+**The surface stage never required owning the sampling. It requires owning
+`main`.** Every getter takes `VSOutput` **by value**, so parallax (141.7) and
+triplanar (141.8) build a displaced copy of it and pass that in — the hook this
+decision exists for is completely intact. Measured: switching to their getters
+cut `HpSurface.psh` from 228 code lines to 165, and the rendered frame stayed
+**byte-identical** to what `RenderPBR.psh` produces on the same scene.
+
+So the split is one level finer than first written:
+
+| | Owner |
+|---|---|
+| the pixel shader's `main`, and what it calls | **ours** |
+| texture sampling (`PBR_Textures.fxh`) | **theirs**, included |
+| lighting (`PBR_Shading.fxh`) | **theirs**, included |
+| the game's hook (`HpSurface`) | ours (D27) |
+
+**Override granularity is per function call, and it is ours to choose.** For any
+single one of their functions we can decline to call it and call our own instead,
+in our file, without forking or shadowing theirs. The default is to call theirs;
+writing our own is a decision to be argued per function, not the starting point.
+
+`PBR_Textures.fxh` is **private**, and taking it is deliberate — the same trade
+already accepted for `RenderPBR_Structures.fxh`. A signature change upstream
+breaks this build loudly, which is the failure mode worth having.
+
+### Considered 2026-08-06 and rejected: adopting Slang
+
+The owner proposed Slang — it has interfaces, `extension`, generics and default
+implementations, consumes HLSL, and can emit HLSL, DXIL or SPIR-V that Diligent
+accepts. The integration story is genuinely clean and vendoring is easy: prebuilt
+per-platform archives (23–78 MB) fit `bootstrap.sh`'s pinned-checksum pattern
+exactly, build-time only, never shipped in a game.
+
+**It was rejected because the mechanism does not reach.** Slang's `extension`
+declarations *"can only apply to structure types"*. DiligentFX's shading code is
+**free functions calling free functions by static name** — `ResolveLighting`
+calls `ApplyPunctualLight(Shading, ...)`, not `Shading.ApplyPunctualLight(...)`.
+Extending `SurfaceShadingInfo` with methods puts nothing on the call path.
+`extension` only helps where the original author routed call sites through
+generic-typed parameters, and DiligentFX did not — a property that cannot be
+retrofitted from outside without editing their interior, which is the thing this
+decision exists to avoid.
+
+Two further findings: Slang's `import` does **not** share preprocessor state, and
+their headers carry ~52 compile-time switches; plain `#include` still works but
+is exactly what we already do. And DiligentCore issues #698, #717 and #718 are
+all users piping `slangc` output into Diligent and hitting reflection-naming bugs
+that required upstream fixes.
+
+**Not verified by compilation.** The `extension` limitation is quoted from
+Slang's documentation; nobody has run `slangc` against `PBR_Shading.fxh` in this
+tree. If the decision is ever revisited, that is the experiment to run first.
+
+Slang remains a reasonable *authoring* language on its own merits — modules,
+generics over types we define, one source to every target, reflection without a
+device. It simply cannot inherit from DiligentFX's HLSL, which was the entire
+premise.
+
+**The cheap alternative, if finer override is wanted:** macro-indirected seams in
+*our own* wrap layer — `#define HP_GET_BASE_COLOR MyGetBaseColor` around the
+handful of their calls our `main` makes. That is per-call-site override, needs no
+toolchain, and is what Unity's Surface Shaders and Godot's `light()` hook are
+underneath.
+
 ### What was adopted
 
 **Our vertex and pixel shader mains, our PSO creation, their lighting library.**

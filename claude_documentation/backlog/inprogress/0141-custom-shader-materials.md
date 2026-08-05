@@ -642,6 +642,88 @@ makes that testable**, and this ticket should be referenced from there.
 the claim, but the table should be corrected when 141.6's contract is next
 touched.
 
+### 2026-08-06, second session — the sampling is theirs, and three bugs the debug views found
+
+**`HpSurface.psh` now includes `PBR_Textures.fxh` and calls their getters.** The
+owner asked why we were not including their implementation and building on it,
+and the answer was that the option had never been evaluated — this ticket had
+considered *shadowing* their header and rejected it, and never considered simply
+*including* it. 228 code lines to **165**, output still byte-identical to
+`RenderPBR.psh`. Recorded as the D26 revision.
+
+The hook survives: every getter takes `VSOutput` **by value**, so 141.7 and 141.8
+displace a copy's UVs and pass that in.
+
+**Slang was evaluated and rejected** — its `extension` mechanism applies only to
+struct types, and DiligentFX is free functions calling free functions by static
+name, so there is no seam to attach to. Full reasoning in the decision log,
+including what was *not* verified.
+
+#### `SurfaceDebugView` — and the three things it caught immediately
+
+A per-view debug channel on `Camera`, reflected, written to
+`PBRRendererShaderParameters::DebugView`, implemented in `HpSurface.psh` as a
+**runtime** branch (unlike `HP_UNSHADED`, which is compile-time: a debug view is
+an editor control that flips between frames, and making it a PSO permutation
+would mean a pipeline rebuild per dropdown change and nine times the variants).
+
+Within minutes of working it found:
+
+1. **Occlusion was never read.** `EnableAO` was false, so `USE_AO_MAP` was 0,
+   `GetOcclusion` was never compiled in, and `Occlusion` sat at the material
+   factor of 1.0 — while a real AO map sat loaded, packed and *bound*. Flat white
+   channel, zero variation. Now on, variation **6.37**, guarded by a test.
+2. **The test light was head-on.** An identity-transform light points down +Z,
+   coincident with the view axis and the quad normal, so `N·L` was 1 everywhere —
+   the worst possible angle for judging a normal map, and the reason the frame
+   looked evenly veiled and "washed out". It read as a sampler bug for an
+   afternoon. Now raked ~40°.
+3. **Then the rake pointed the wrong way.** `ResolvedLight::direction` is the
+   direction light *travels* (`PBR_Shading.fxh` does `L = -lightDir`), so the
+   first fix gave `direction.y = +0.644` — lighting from *below*. The owner spotted
+   it from the shadow direction. The test now **asserts** `direction.y < 0`.
+
+**And the quad was 2.3x too big for the frame.** Half-size 4 at distance 3 with a
+60° vertical FOV shows the middle 43%, magnified — so every by-eye comparison
+against the source texture was comparing different regions, and the `variation >
+8.0` threshold was calibrated against magnified detail. The quad is now sized from
+the camera's own FOV, and that threshold has been replaced.
+
+#### Verified per channel, on hardware
+
+| channel | result |
+|---|---|
+| BaseColor | the albedo, correct scale |
+| MeshNormal vs ShadingNormal | **7e-11** vs **12.17** — the normal map provably reaches the lighting |
+| Roughness | varies (8.96) — texture, not factor |
+| Metallic | rock **0**, metal **249** — pins metalness to the blue channel |
+| Occlusion | varies (6.37) after the fix |
+| Texcoord0 | clean corner-to-corner gradient |
+
+`zig build test -Dtest=all` — **302 fast + 89 integration + 22 gpu, both targets,
+zero failures.**
+
+#### Not done, and stated plainly
+
+- **The debug output is sRGB-encoded**, because the target is `RGBA8_UNORM_SRGB`.
+  A channel value of 0.5 reads as ~188, not 128. Fine for looking at, wrong for
+  reading exact values off.
+- **The extended features are still off** — clearcoat, sheen, anisotropy,
+  iridescence, transmission, volume. The owner has asked for full parity ("all
+  what they have and the ability to add to it"), which **amends D24** and needs
+  its own ticket. Their getters are now already included and callable, so the
+  remaining work is `CreateInfo` flags, the texture slots, the
+  `SurfaceShadingInfo` sub-structs, and — the piece that makes "modify for custom
+  too" real — **growing `HpSurfaceOutput`** so a game shader can write them.
+- **`LoadConstantBufferReflection` is off.** Diligent already reflects constant
+  buffer *contents* — name, type, offset, array size, nested members — via
+  `IShader::GetConstantBufferDesc()`. That is what **141.2** needs, and it is one
+  bool away. The ticket's current plan to annotate and parse source should be
+  reconsidered against it.
+- **Metal is still unproven in a shaded frame** and its threshold is now 3.0, not
+  8.0. Metal without an environment is near-black whatever the metallic channel
+  says; T0087 owns that check and carries the note.
+
 ### Remaining, in dependency order
 
 | | | Blocked on |
