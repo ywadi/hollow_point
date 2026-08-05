@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 470 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0085, T0093 |
+| **Refs** | T0085, T0093, [0134-pbr-renderer-adoption.md](0134-pbr-renderer-adoption.md) — **decide whether this ticket configures DiligentFX's lighting or supersedes it**, rather than discovering the overlap mid-implementation |
 
 ## Why
 

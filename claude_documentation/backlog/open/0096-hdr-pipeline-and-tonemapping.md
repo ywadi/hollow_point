@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 460 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0027, T0046, T0060, T0087, T0089, T0111, [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md) |
+| **Refs** | T0027, T0046, T0060, T0087, T0089, T0111, [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), [0134-pbr-renderer-adoption.md](0134-pbr-renderer-adoption.md) — **DiligentFX ships its own `ToneMapping` component; this ticket's policy must say whether it is used** |
 
 ## Why
 

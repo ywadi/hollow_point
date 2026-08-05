@@ -8,6 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 490 |
 | **Created** | 2026-08-03 |
+| **Refs** | [0134-pbr-renderer-adoption.md](0134-pbr-renderer-adoption.md) — **decide whether this ticket configures DiligentFX's IBL or supersedes it.** T0028 adopted `GLTF_PBR_Renderer`, which ships an IBL path |
 
 ## Why
 

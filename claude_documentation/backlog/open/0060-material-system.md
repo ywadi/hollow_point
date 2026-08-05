@@ -8,6 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 450 |
 | **Created** | 2026-08-03 |
+| **Refs** | [0134-pbr-renderer-adoption.md](0134-pbr-renderer-adoption.md) — **must reconcile this ticket's material model with `PBR_Renderer`'s material attribs, or diverge deliberately and say so.** T0028 adopted DiligentFX's PBR renderer; read T0134.1 before designing materials |
 
 ## Why
 
