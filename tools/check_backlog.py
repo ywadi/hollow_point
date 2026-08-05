@@ -26,6 +26,12 @@ Anything else belongs to another ticket, in which case the line leaves this
 checklist entirely and goes in a `## Descoped` section naming where it went --
 "moved" has to mean moved, or the box sits unticked forever. SUPERSEDED and
 DROPPED tickets are exempt: unfinished work is what those words mean.
+
+Finally it checks the `## Current ticket sequence` at the top of the board. That
+section exists so a session that lost its context knows what happens next, which
+means it is acted on *without* being verified -- so a stale one is worse than
+none. Two ways it rots silently and both are checkable: no date to judge it by,
+and an item whose ticket has already closed.
 """
 import pathlib
 import re
@@ -48,6 +54,59 @@ ROW = re.compile(
 STATUS = re.compile(r"\| \*\*Status\*\* \| ([^|]+?) \|")
 LINK = re.compile(r"\]\(([^)#\s]+\.md)\)")
 UNTICKED = re.compile(r"^\s*[-*] \[ \]")
+
+SEQ_HEADING = "## Current ticket sequence"
+SEQ_DATE = re.compile(r"^\*\*Set (\d{4}-\d{2}-\d{2})", re.M)
+# Only the numbered rows of the sequence table, never a ticket named in its prose
+# -- the prose cites completed tickets on purpose and flagging those would train
+# everyone to ignore this check.
+SEQ_ROW = re.compile(
+    r"^\| \d+ \| \[(T\d{4})(?:\.\d+)?\]\((open|inprogress|completed)/([^)]+)\)", re.M
+)
+
+
+def check_sequence(readme: str) -> list[str]:
+    """The sequence at the top of the board says what happens next, in order."""
+    start = readme.find(SEQ_HEADING)
+    if start < 0:
+        return [
+            f"the board has no '{SEQ_HEADING}' section -- it is what a session "
+            "reads first after a context reset, so restore it rather than "
+            "deleting it; an empty sequence is a sentence, not a missing heading"
+        ]
+    section = readme[start + len(SEQ_HEADING):]
+    end = section.find("\n## ")
+    if end >= 0:
+        section = section[:end]
+
+    problems: list[str] = []
+    if not SEQ_DATE.search(section):
+        problems.append(
+            "the current ticket sequence has no '**Set YYYY-MM-DD' line -- an "
+            "undated sequence cannot be judged stale, and this one is trusted "
+            "without being checked; re-date it whenever you change it"
+        )
+
+    rows = SEQ_ROW.findall(section)
+    if not rows:
+        problems.append(
+            "the current ticket sequence lists no tickets -- if there genuinely "
+            "is no sequence, say so in prose; an empty table reads as an "
+            "oversight rather than a state"
+        )
+    for tid, folder, fname in rows:
+        if not (BACKLOG / folder / fname).exists():
+            problems.append(
+                f"{tid}: the current ticket sequence points at {folder}/{fname}, "
+                "which does not exist"
+            )
+        elif folder == "completed":
+            problems.append(
+                f"{tid}: the current ticket sequence lists it as upcoming, but it "
+                "sits in completed/ -- drop the row and re-date the sequence, or "
+                "the next session works something already done"
+            )
+    return problems
 
 
 def main() -> int:
@@ -88,6 +147,8 @@ def main() -> int:
             if tid not in seen:
                 problems.append(f"{tid}: {folder}/{path.name} has no row in the board table")
 
+    problems += check_sequence(readme)
+
     for md in DOCS.rglob("*.md"):
         for target in LINK.findall(md.read_text()):
             if not (md.parent / target).resolve().exists():
@@ -100,7 +161,8 @@ def main() -> int:
         return 1
     print(
         f"backlog consistent: {len(seen)} tickets, folder/Status/board agree, "
-        "links resolve, no DONE ticket has an unticked box"
+        "links resolve, no DONE ticket has an unticked box, the current "
+        "sequence is dated and nothing in it is already closed"
     )
     return 0
 

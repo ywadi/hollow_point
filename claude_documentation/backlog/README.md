@@ -18,6 +18,88 @@ these folders directly, so the board can never disagree with the repository.
 This is the work. For what is already proven to work — and what only appears to
 — see [../documentation/05-verification-status.md](../documentation/05-verification-status.md).
 
+## Current ticket sequence
+
+**Set 2026-08-05.** The owner's reason for this section: *"This way we know what
+needs to happen next even if the context and session restart."* The
+[Board](#board) below is every ticket there is; this is the six items in flight
+**now**, in order.
+
+**Just landed, and therefore not upcoming:** T0060.1 — the material asset
+(`hp::Material`, `.hpmat`, `AssetKind::Material`, UV channels), plus a generic
+enum-by-name fix in the serialization leaf layer. It is named because items 1
+and 5 read as half-finished without it.
+
+**`decision` is not `code`.** One item below is a question for the **owner**, not
+work to implement, and an agent that reaches it stops and asks rather than
+picking a branch. Choosing on the owner's behalf is worse than not starting: the
+answer is load-bearing — T0086's shadow sampling is built on top of it — so a
+branch taken by an agent becomes a thing to undo before anyone knew there had
+been a choice.
+
+| # | Ticket | Kind | Why it sits here |
+|---|---|---|---|
+| 1 | [T0060.6](inprogress/0060-material-system.md) | code | Per-surface material slots: `MeshRenderer::material` (a single `Guid`) becomes `materials` (`std::vector<Guid>`), through `DrawItem`, `DrawSubmission.cpp`, the scene schema and the affected tests. First because T0045 and T0086 both need per-surface material identity, and it is **safe under every branch of item 3** — pure data model, not one line of shader |
+| 2 | [T0060.10](inprogress/0060-material-system.md) | code | The missing-material fallback **convention** — the three-state table already recorded on T0060. A policy, so it is shader-independent too. **T0060 closes here**; the *rendering* of the fallback is 141.12, in item 4 |
+| 3 | [T0141.0](open/0141-custom-shader-materials.md) | **decision — the owner's, not an agent's** | C1 (a vendored patch adding a surface-stage hook to DiligentFX's shaders), C2 (subclass `PBR_Renderer` and own PSO creation — **the only route to tessellation**) or C3 (upstream the hook). Must amend **D24** explicitly, whichever way it goes. **Blocks T0086**, which is the whole reason it sits this early: shadow sampling built on `RenderPBR.psh` is rebuilt if the standard material later moves onto our own pixel shader |
+| 4 | [T0141](open/0141-custom-shader-materials.md) | code | The surface stage: the standard material shader (141.10), the textured-render regression test (141.11), fallback rendering (141.12), parallax and height (141.7), triplanar (141.8). Every one of them is shaped by item 3's answer, so none of it starts before that |
+| 5 | [T0045](open/0045-culling-and-render-queues.md) | code | Culling, sorting and render queues. **Shader-independent**, so it may slot anywhere after item 1 — see below |
+| 6 | [T0086](open/0086-shadows.md) | code | Shadows. Last because it is **blocked by item 3**, not because it matters least |
+
+### T0045 is the movable one, and that is the useful thing to know about it
+
+What it needs from the material work is **identity and blend mode** — `Guid` plus
+`AlphaMode` — which 60.1 delivered and 60.6 completes, and nothing at all from
+the surface stage; its own dependency note says so. It is listed fifth only
+because the T0141 chain carries the blocking relationships and should not queue
+behind it. Moving it earlier costs nothing, so **if item 3 is waiting on the
+owner, this is what to pick up instead of stalling.**
+
+### This is not the `Order` column, and where they disagree they do so on purpose
+
+[Execution order](#execution-order) is the derived order across the whole
+backlog and is not being replaced. The visible disagreement is T0045: it carries
+**Order 440**, so it sorts *above* T0060 (450) and T0141 (455) on the board,
+while this sequence takes it after both. Neither view is wrong — 440 is still
+where T0045 belongs in the long-run derivation, and this is what is in flight.
+If the sequence position turns out to be the permanent one, **re-sequence the
+ticket and say why in the ticket**, rather than leaving the two views to drift
+apart quietly.
+
+### What is deliberately not here
+
+Nothing else in Phase 4 — T0096, T0087, T0117 and the rest — and that is not a
+judgement that they matter less. These six have blocking relationships **to each
+other**; the rest do not, so listing them would be the Order column again, one
+scroll higher.
+
+Inside T0141, item 4 is not the whole ticket either: custom-shader authoring
+(141.1–141.6) and tessellation (141.9) are outside the sequence. Item 4 is the
+standard material plus the two surface-stage techniques that prove the ceiling
+is lifted, which is what the rest of this list depends on.
+
+### Keeping it true
+
+**A stale sequence is worse than no sequence, because it is trusted.** It is the
+same rule as a ticket that overstates what it achieved: the entire value here is
+that a session with no context can act on this *without* checking it, so the
+moment it stops being true it is not merely out of date — it is wrong, and it is
+wrong in the confident voice of a document that is normally right.
+
+- **Re-date the `Set` line on every edit.** That date is what tells a reader
+  whether to trust the rest. An undated sequence, or one dated well behind the
+  board, should be treated as wrong until checked.
+- **Remove an item when it finishes, not at the end of the run.**
+  `check_backlog.py` fails either way if a sequenced ticket closes: the link
+  breaks when the file moves to `completed/`, and pointing the link there
+  instead is flagged as a finished ticket still listed as upcoming. A finished
+  *subtask* is invisible to it, and that one is yours to remove.
+- **Re-ordering is a change, not a tidy-up.** The order encodes blocking
+  relationships, so if you move an item the reason belongs in the ticket that
+  moved. This table is the view; the tickets are the record.
+- **An empty sequence is a legitimate state.** Say so in a sentence rather than
+  leaving the last one standing to be read as current.
+
 ## Board
 
 | Order | ID | Task | Phase | State | Priority | Complexity |

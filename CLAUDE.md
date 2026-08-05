@@ -14,7 +14,7 @@ you in the first ten minutes.
 
 | Question | File |
 |---|---|
-| What am I supposed to work on next? | [`claude_documentation/backlog/README.md`](claude_documentation/backlog/README.md) |
+| What am I supposed to work on next? | [`claude_documentation/backlog/README.md`](claude_documentation/backlog/README.md#current-ticket-sequence) — the **Current ticket sequence** sits at the top, and one of its items is a decision rather than code |
 | Why is it built this way? Can I change X? | [`claude_documentation/documentation/02-decision-log.md`](claude_documentation/documentation/02-decision-log.md) |
 | How do I write code here? | [`claude_documentation/documentation/06-engine-conventions.md`](claude_documentation/documentation/06-engine-conventions.md) |
 | What actually works vs. what is assumed? | [`claude_documentation/documentation/05-verification-status.md`](claude_documentation/documentation/05-verification-status.md) |
