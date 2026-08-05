@@ -97,6 +97,49 @@ every shipped build.
 `tests/integration/assets_test.cpp`, 16 cases. Integration suite 89/89 (515
 assertions) on Linux; full both-target run recorded on the commit.
 
+## 23.3 — Diligent's loaders can be fed from the VFS, verified (2026-08-05)
+
+**The obvious worry about this ticket turns out not to apply.** D13 requires
+every read to go through `hp::Vfs`, and Diligent's loaders open files
+themselves — which looked like a straight conflict between reusing them and
+honouring the rule. It is not: both take input the engine controls.
+
+**Textures** — `TextureLoader.h`:
+
+```cpp
+void CreateTextureLoaderFromDataBlob(RefCntAutoPtr<IDataBlob> pDataBlob, ...);
+```
+
+Hand it VFS bytes wrapped in an `IDataBlob`. No file access at all.
+
+**glTF** — `GLTFLoader.hpp` / `GLTFDocument.hpp`, on `ModelCreateInfo`:
+
+```cpp
+using FileExistsCallbackType    = std::function<bool(const char* FilePath)>;
+using ReadWholeFileCallbackType = std::function<bool(const char* FilePath,
+                                                     std::vector<unsigned char>& Data,
+                                                     std::string& Error)>;
+
+FileExistsCallbackType    FileExistsCallback    = nullptr;
+ReadWholeFileCallbackType ReadWholeFileCallback = nullptr;
+```
+
+This is the important one. The loader calls back for **every** file it needs —
+the `.gltf` itself, its `.bin` buffers, and each referenced image — so a pair of
+three-line lambdas over `hp::Vfs::exists` and `hp::Vfs::read` routes an entire
+model through the virtual filesystem. Relative paths inside the document arrive
+at the callback and resolve against the mount tree like anything else, which is
+what makes a model inside a pack work identically to one on disk.
+
+So 23.3's "do not reimplement parsing" and D13's "every read goes through the
+VFS" are both satisfiable with no parser code and no fork of Diligent. Wire the
+callbacks; do not write a loader.
+
+**Not yet done, only established.** Nothing calls either API. What remains for
+23.2/23.3 is extension dispatch, the two lambdas, and a gpu-bucket test — the
+loaders need a device, and `zig build test -Dtest=all` builds that bucket without
+running it, so the test must be exercised locally on hardware.
+
 ## Not done
 
 - **23.2 and 23.3 — import — are not started.** Extension dispatch and
