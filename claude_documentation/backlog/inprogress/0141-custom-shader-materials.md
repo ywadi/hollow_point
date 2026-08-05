@@ -529,11 +529,50 @@ what it drew before:
 a code path to act in — which they did not before the swap, and which is why they
 were sequenced after it.
 
+### The surface stage does not sample textures yet — found 2026-08-06, with pictures
+
+The owner supplied two ambientCG sets (rock, metal), which are now downscaled and
+ORM-packed into `test_assets/derived/` by `tools/pack_test_textures.py`. A
+textured quad rendered through them comes back **flat grey, exactly one unique
+colour in the whole frame, variation 0.00**.
+
+That is the signature of sampling a **1x1 default** texture, and the cause is
+plain once stated: `HpSurface.psh` reads `BaseColorFactor`, `MetallicFactor` and
+`RoughnessFactor` and **never samples a texture at all**. The surface stage
+exists and shades correctly from constants; the sampling half of it was never
+written. `SceneRenderer` binds the model's textures into the SRB as it always
+did, and our shader simply does not read them.
+
+**So `HpSurface.psh` must declare and sample the material textures**, which means
+matching the resource names `PBR_Renderer`'s signature already uses — the same
+names `PBR_Textures.fxh` declares on their path. That is the next piece of work
+and it is what makes 141.11's assertions pass.
+
+**The test is written and correct and is deliberately not committed yet**
+(`tests/gpu/textured_surface_test.cpp`, held back), because a red suite is worse
+than an absent test and a test weakened to pass is worse than both. It lands with
+the sampling.
+
+Its assertion is worth keeping when it does: **variation, not colour**. An
+average colour cannot tell a photograph of rock from a flat brown square, so it
+cannot tell a working texture path from one sampling a single texel — which is
+exactly what T0134's garbage `MipBias` produces. Detail is the signal.
+
+**Both sets exist for a reason**: rock is a dielectric, so its ORM blue channel
+is zero, and a texture set that is entirely non-metallic cannot catch a metallic
+term wired to the wrong channel. Metal has real metalness.
+
+The gpu bucket now writes each frame to `test-frames/*.ppm` (gitignored). A
+shading bug is far easier to recognise by eye than by channel arithmetic, and the
+assertions check relationships rather than exact values — the image is what turns
+"this passed" into "this is right".
+
 ### Remaining, in dependency order
 
 | | | Blocked on |
 |---|---|---|
-| **141.11** | textured-render pixel guard | — (the swap is done) |
+| **texture sampling in `HpSurface.psh`** | declare and sample the material textures | — **next** |
+| **141.11** | textured-render pixel guard | the sampling |
 | **141.12** | draw the missing-material checkerboard | — |
 | **141.7 / 141.8** | parallax + height, triplanar | — |
 | **141.13** | VFS-backed shader source | — |

@@ -29,3 +29,11 @@ hp_log_test_output.txt
 
 # Engine build outputs are covered by /build/ and /dist/ above; nothing else
 # under engine/, apps/ or samples/ is generated.
+
+# The 2K texture originals (test_assets/README.md): 26 MB that would live in
+# history permanently, in exchange for detail no assertion reads. The derived
+# 512px set beside them is committed instead.
+test_assets/textures/
+
+# Rendered frames written by the gpu bucket for visual inspection.
+test-frames/
