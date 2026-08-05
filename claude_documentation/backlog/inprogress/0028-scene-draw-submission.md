@@ -253,6 +253,39 @@ dropped entity that is *counted* is what lets an empty frame explain itself. A
 test asserts an entity with no `MeshRenderer` is not merely absent from the list
 but is never *considered*, or the report would count every entity in the scene.
 
+### The `PBR_Renderer` path is viable on public API alone (verified 2026-08-05)
+
+Checked member by member before writing anything, because "drive the base class
+instead" is only a good answer if it does not need a subclass, a patch or a
+friend declaration. It needs none — every piece is public on `PBR_Renderer`
+(public section runs to line 892) or static on `GLTF_PBR_Renderer`:
+
+| Need | Call | Where |
+|---|---|---|
+| Pipeline states **with our depth state** | `GetPsoCacheAccessor(const GraphicsPipelineDesc&)` | `PBR_Renderer.hpp:795` |
+| Frame constant buffer size | `GetPRBFrameAttribsSize()` | `:830` region |
+| An SRB per material | `CreateResourceBinding(&srb, idx)` | `:536` region |
+| Bind frame attribs into it | `InitCommonSRBVars(srb, frameAttribsCB)` | public |
+| Material textures | `SetMaterialTexture(srb, srv, texId)` | public |
+| Per-primitive constant buffer | `GetPBRPrimitiveAttribsCB()` | `:472` |
+| Joints buffer (skinning, T0049) | `GetJointsBuffer()` | `:474` |
+| The attribs memory layout | `GLTF_PBR_Renderer::WritePBRPrimitiveShaderAttribs(...)` — **static** | `GLTF_PBR_Renderer.hpp:237` |
+
+So the whole of the expensive machinery — shader generation, PSO creation and
+caching, SRB layout, material attribs packing — is reused, and what this ticket
+writes is the traversal: scene → nodes → mesh → primitives, with
+`ModelTransforms::NodeGlobalMatrices` indexed by `Node.Index`, binding vertex and
+index buffers and issuing the draw.
+
+**No patch, no subclass, no `friend`.** That matters beyond convenience: it means
+a Diligent upgrade cannot silently break this through a private detail, which is
+precisely what would have happened had the answer been "reach into
+`m_PbrPSOCache`".
+
+**Not yet verified**, and not to be claimed until it is: that the pipeline states
+actually build on both backends here, and that the traversal draws correctly.
+Both need `zig build test -Dtest=gpu`, which `all` builds and never runs.
+
 ### Camera
 
 **T0081 built the camera resolution; this ticket is what calls it each frame.**

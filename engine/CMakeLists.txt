@@ -287,3 +287,21 @@ endif()
 target_link_libraries(hp_engine PRIVATE
     Diligent-TextureLoader
     Diligent-AssetLoader)
+
+# DiligentFX, for `GLTF_PBR_Renderer` (T0028, decided on T0134). STATIC and
+# PRIVATE, so it lives inside libhp_engine and no consumer sees its headers.
+#
+# **This is what makes the renderer swappable, and it is enforced by the linker
+# rather than by review.** The rule above -- PRIVATE unless a public engine
+# header names a Diligent type -- means the renderer appears in exactly one
+# translation unit, behind a pimpl, so replacing it touches that file and
+# nothing else. That is why no `IRenderBackend` interface was written: **D22**
+# says an abstraction over an abstraction buys nothing until there is a concrete
+# second target, and one implementation behind an interface is that abstraction.
+#
+# **It drags in Diligent-Imgui**, which DiligentFX links PUBLIC and calls from
+# ScreenSpaceReflection, Bloom, ToneMapping and friends. That is a cost already
+# accounted for: **D6** records it explicitly, and corrects the assumption it
+# would otherwise break -- ImGui is linked into the *runtime* binary too, not
+# only the editor. So this spends a decision already made rather than a new one.
+target_link_libraries(hp_engine PRIVATE DiligentFX)
