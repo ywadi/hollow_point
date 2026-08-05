@@ -547,7 +547,7 @@ TEST_CASE("a camera round-trips every field it gained from T0130") {
     original.focusDistance = 3.5F;
     original.priority = 42;
     original.enabled = false;
-    original.cullingMask = 0x00FF00FFU;
+    original.cullingMask = hp::LayerMask{0x00FF00FFU};
     original.viewSlot = 3;
 
     hp::YamlDocument doc;
@@ -756,7 +756,7 @@ TEST_CASE("YAML and binary agree on the same object") {
     original.verticalFov = 0.9F;
     original.orthographic = true;
     original.priority = -5;
-    original.cullingMask = 0xABCD1234U;
+    original.cullingMask = hp::LayerMask{0xABCD1234U};
     original.viewSlot = 2;
     original.depthOfField = true;
 

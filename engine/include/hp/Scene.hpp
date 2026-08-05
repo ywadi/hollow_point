@@ -33,6 +33,7 @@
 // being split across two headers that have to agree.
 #include <hp/Camera.hpp>
 #include <hp/Guid.hpp>
+#include <hp/Layers.hpp>
 #include <hp/Math.hpp>
 #include <hp/Reflect.hpp>
 
@@ -147,6 +148,20 @@ struct MeshRenderer {
     /// material, so a mesh with no material assigned is still visible rather
     /// than silently absent.
     Guid material;
+
+    /// Which object layers this renderer is on (T0085).
+    ///
+    /// Tested against a camera's `cullingMask` in `parseScene` and against a
+    /// light's illumination mask during light selection — one AND, in the
+    /// hottest loop in the renderer, which is why it lives here rather than in
+    /// a separate component: `parseScene` already has `MeshRenderer` in its
+    /// view, so the test costs nothing to reach.
+    ///
+    /// Defaults to layer 0, so an object nobody has assigned is visible to a
+    /// camera nobody has configured. **An empty mask means invisible to
+    /// everything**, which is a legitimate way to hide something without
+    /// destroying it.
+    LayerMask layers = defaultObjectLayers();
 };
 
 /// A cheap, non-owning handle to one entity in one scene.

@@ -47,6 +47,25 @@ to the project, or a project setting gets overwritten per machine.
 
 ## Notes / findings
 
+### Inherited from T0085 (2026-08-05) — layers need names, and nothing else will give them names
+
+**85.1 moved here**, and it is the single biggest gap T0085 left. The layer
+*mechanism* is built — `hp::LayerMask`, 32 layers, honoured in `parseScene` — but
+there is **no name table**, so `layer 7` appears in code as `7`.
+
+T0085's own Done-when says *"named in project settings, not bare numbers"*, and
+that is unmet until this ticket exists. What it needs to provide:
+
+- A fixed table of up to `hp::kMaxLayers` (32) names, in project settings.
+- Enough for an inspector (T0032) to show a multi-select of names rather than an
+  integer, and for `Serialize.cpp` to write **names instead of numbers** — the
+  `writeLeaf` branch for `LayerMask` carries a comment marking the line to
+  change.
+
+The same names are shared by cameras (T0085), lights (T0079), shadows (T0086) and
+physics collision layers (T0051), so this table is the single definition all four
+read. See [../completed/0085-layers-and-masks.md](../completed/0085-layers-and-masks.md).
+
 **Getting the split wrong is the actual risk here**, and it shows up as friction
 rather than bugs: user preferences committed to the repo cause churn and merge
 conflicts on every window resize; project settings stored per-user mean the team

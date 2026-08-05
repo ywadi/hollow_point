@@ -34,11 +34,23 @@
 // world layer would fill the whole frame and the control case would have no blue
 // in it at all.
 //
-// **The two layers draw two separate scenes, and that is a finding rather than a
-// convenience.** A view slot picks the *camera*; it does not filter *objects*.
-// Both layers run `parseScene` over whatever scene they are given, so one shared
-// scene would have each layer drawing the other's geometry. Filtering objects per
-// layer is `Camera::cullingMask`, which is stored and honoured nowhere — T0045.
+// **Both layers draw one shared scene, filtered by object layer (T0085).**
+//
+// This test originally needed *two separate* `Scene`s, and the reason was a real
+// gap: a view slot picks the **camera**, and it does not filter **objects**. Both
+// layers run `parseScene` over whatever scene they hold, so a shared scene had
+// each layer drawing the other's geometry.
+//
+// T0085 closed that — `parseScene` now takes the resolved camera's
+// `cullingMask` and rejects anything whose `MeshRenderer::layers` does not
+// intersect it, before any other work. So the world camera masks to layer 0, the
+// HUD camera to layer 1, and one scene is enough — which is what "a HUD is just
+// a camera on another view slot" always implied.
+//
+// Keeping it this way is deliberate: **this is the end-to-end proof of the layer
+// filter on a device**, rather than only in the fast bucket. If the mask were
+// ignored, each camera would draw both quads and the two halves would stop
+// telling the layers apart.
 
 #include <doctest/doctest.h>
 
@@ -48,6 +60,7 @@
 #include <hp/Log.hpp>
 #include <hp/Render.hpp>
 #include <hp/RenderStack.hpp>
+#include <hp/Layers.hpp>
 #include <hp/Scene.hpp>
 #include <hp/SceneRenderLayer.hpp>
 #include <hp/Vfs.hpp>
@@ -253,31 +266,40 @@ void exerciseComposite(hp::RenderBackend backend, const char* backendName) {
         pool.store<hp::MeshAsset>(quadMesh, loaded);
     }
 
-    const auto addQuad = [&](hp::Scene& scene, const char* name) {
-        hp::Entity quad = scene.create(name);
+    const auto addQuad = [&](hp::Scene& target, const char* name, hp::LayerMask layers) {
+        hp::Entity quad = target.create(name);
         hp::MeshRenderer renderer;
         renderer.mesh = quadMesh;
+        renderer.layers = layers;
         quad.add<hp::MeshRenderer>(renderer);
     };
 
-    // --- the two scenes ------------------------------------------------------
+    // --- one scene, two object layers (T0085) --------------------------------
+    //
+    // **This used to be two separate `Scene`s**, because a view slot picks the
+    // *camera* and did not filter *objects*, so each layer drew the other's
+    // geometry. T0085 made `parseScene` honour the camera's culling mask, and
+    // one scene is now enough -- which is what "a HUD is just a camera on
+    // another view slot" always implied. Running it this way is the end-to-end
+    // proof of that filter, on a device, rather than only in the fast bucket.
 
-    hp::Scene worldScene;
+    constexpr int kWorldLayer = 0;
+    constexpr int kHudLayer = 1;
+
+    hp::Scene scene;
     {
-        hp::Entity camera = worldScene.create("world camera");
+        hp::Entity camera = scene.create("world camera");
         hp::Camera lens;
         lens.viewSlot = 0;
         // **The left half of the target.** Perspective, 60 degrees, and the quad
         // overfills it at z = 3.
         lens.viewport = hp::ViewportRect{0.0F, 0.0F, 0.5F, 1.0F};
+        lens.cullingMask = hp::LayerMask::layer(kWorldLayer);
         camera.add<hp::Camera>(lens);
-        addQuad(worldScene, "world quad");
-        worldScene.propagateTransforms();
+        addQuad(scene, "world quad", hp::LayerMask::layer(kWorldLayer));
     }
-
-    hp::Scene hudScene;
     {
-        hp::Entity camera = hudScene.create("hud camera");
+        hp::Entity camera = scene.create("hud camera");
         hp::Camera lens;
         lens.viewSlot = 1;
         lens.orthographic = true;
@@ -285,10 +307,11 @@ void exerciseComposite(hp::RenderBackend backend, const char* backendName) {
         // than leaving bands of world showing through the HUD's own half.
         lens.orthographicSize = 2.0F;
         lens.viewport = hp::ViewportRect{0.5F, 0.0F, 0.5F, 1.0F};
+        lens.cullingMask = hp::LayerMask::layer(kHudLayer);
         camera.add<hp::Camera>(lens);
-        addQuad(hudScene, "hud quad");
-        hudScene.propagateTransforms();
+        addQuad(scene, "hud quad", hp::LayerMask::layer(kHudLayer));
     }
+    scene.propagateTransforms();
 
     // --- the targets and the stack -------------------------------------------
 
@@ -305,7 +328,7 @@ void exerciseComposite(hp::RenderBackend backend, const char* backendName) {
     world.clearColour[2] = 1.0F;
     world.clearColour[3] = 1.0F;
     REQUIRE(world.create(device.render->device(), device.render->context()));
-    world.setScene(&worldScene, &pool);
+    world.setScene(&scene, &pool);
 
     hp::SceneRenderLayer hud("hud");
     // **Configured before created, and that ordering is load-bearing** — the
@@ -315,7 +338,7 @@ void exerciseComposite(hp::RenderBackend backend, const char* backendName) {
     hp::configureAsHud(hud);
     REQUIRE_FALSE(hud.useDepth);
     REQUIRE(hud.create(device.render->device(), device.render->context()));
-    hud.setScene(&hudScene, &pool);
+    hud.setScene(&scene, &pool);
 
     hp::RenderStack stack;
     // Added in the wrong order on purpose: the stack sorts, callers do not.

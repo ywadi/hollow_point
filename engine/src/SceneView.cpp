@@ -204,8 +204,11 @@ Diligent::ITextureView* SceneView::render(Diligent::IDeviceContext* context, Sce
     context->SetViewports(1, &viewport, impl.targets.width(), impl.targets.height());
 
     DrawParseStats parsed;
-    impl.drawList = parseScene(scene, &parsed);
+    // The resolved camera's mask, so an object on a layer this camera does not
+    // render is never submitted (T0085).
+    impl.drawList = parseScene(scene, view->camera.cullingMask, &parsed);
     counted.considered = parsed.considered;
+    counted.culledByLayer = parsed.culledByLayer;
 
     DrawSubmitStats submitted;
     impl.renderer.render(context, impl.drawList, *view, pool, &submitted);

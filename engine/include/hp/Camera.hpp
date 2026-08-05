@@ -41,6 +41,7 @@
 
 #include <hp/Api.hpp>
 #include <hp/DepthConvention.hpp>
+#include <hp/Layers.hpp>
 #include <hp/Math.hpp>
 #include <hp/Render.hpp>
 
@@ -226,9 +227,13 @@ struct Camera {
     /// culling. A weapon viewmodel uses both: its own compositing layer, and a
     /// mask selecting only viewmodel objects.
     ///
-    /// **Nothing tests this yet** — culling is T0045. It is stored now because
-    /// adding it after cameras are authored costs a component migration.
-    std::uint32_t cullingMask{0xFFFFFFFFU};
+    /// **Honoured by `parseScene` since T0085**, which is where the filter
+    /// belongs — its output is already the explicit list a cull pass (T0045) is
+    /// meant to be inserted around. An entity is drawn when this mask intersects
+    /// its `MeshRenderer::layers`.
+    ///
+    /// All layers by default, so a camera nobody has configured sees everything.
+    LayerMask cullingMask{LayerMask::all()};
 
     /// Which composited view this camera feeds (T0081.2).
     ///

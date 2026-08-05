@@ -40,7 +40,7 @@ TEST_CASE("an entity with a world transform and a mesh is collected") {
     scene.propagateTransforms();
 
     hp::DrawParseStats stats;
-    const hp::DrawList list = hp::parseScene(scene, &stats);
+    const hp::DrawList list = hp::parseScene(scene, hp::LayerMask::all(), &stats);
 
     REQUIRE(list.size() == 1);
     CHECK(list[0].entity == entity.raw());
@@ -56,7 +56,7 @@ TEST_CASE("an entity with no mesh renderer is not collected") {
     scene.propagateTransforms();
 
     hp::DrawParseStats stats;
-    const hp::DrawList list = hp::parseScene(scene, &stats);
+    const hp::DrawList list = hp::parseScene(scene, hp::LayerMask::all(), &stats);
 
     CHECK(list.empty());
     // Not merely absent from the list: it must not even be *considered*, or the
@@ -75,7 +75,7 @@ TEST_CASE("an unset mesh GUID is dropped, and counted rather than treated as an 
     scene.propagateTransforms();
 
     hp::DrawParseStats stats;
-    const hp::DrawList list = hp::parseScene(scene, &stats);
+    const hp::DrawList list = hp::parseScene(scene, hp::LayerMask::all(), &stats);
 
     REQUIRE(list.size() == 1);
     CHECK(list[0].mesh == meshGuid(7));
@@ -142,7 +142,7 @@ TEST_CASE("an empty scene parses to an empty list rather than failing") {
     scene.propagateTransforms();
 
     hp::DrawParseStats stats;
-    const hp::DrawList list = hp::parseScene(scene, &stats);
+    const hp::DrawList list = hp::parseScene(scene, hp::LayerMask::all(), &stats);
 
     CHECK(list.empty());
     CHECK(stats.considered == 0);

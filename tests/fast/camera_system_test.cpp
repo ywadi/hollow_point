@@ -438,10 +438,10 @@ TEST_CASE("a resolved view carries the culling mask for T0045") {
     // that adding it after cameras are authored does not cost a migration.
     hp::Scene scene;
     hp::Entity entity = makeCamera(scene, "camera", 0);
-    entity.get<hp::Camera>().cullingMask = 0x00000005U;
+    entity.get<hp::Camera>().cullingMask = hp::LayerMask{0x00000005U};
     scene.propagateTransforms();
 
     const auto view = hp::buildView(entity, 800, 600, zeroToOne());
     REQUIRE(view.has_value());
-    CHECK(view->camera.cullingMask == 0x00000005U);
+    CHECK(view->camera.cullingMask == hp::LayerMask{0x00000005U});
 }

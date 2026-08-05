@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 440 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0050, T0085, T0086, T0089, T0120, [../completed/0081-camera-system.md](../completed/0081-camera-system.md), [../completed/0027-render-stack.md](../completed/0027-render-stack.md) — **this ticket must honour `Camera::cullingMask`**; until it does, a world layer and a HUD layer cannot share a `Scene` |
+| **Refs** | T0050, T0085, T0086, T0089, T0120, [../completed/0081-camera-system.md](../completed/0081-camera-system.md), [../completed/0027-render-stack.md](../completed/0027-render-stack.md), [../completed/0085-layers-and-masks.md](../completed/0085-layers-and-masks.md) — **the `cullingMask` obligation is discharged**; T0085 honours it in `parseScene`, leaving frustum culling and sorting here |
 
 ## Why
 
@@ -45,6 +45,24 @@ closing early because the whole renderer's shape depends on it.
 
 ## Notes / findings
 
+### Discharged by T0085 (2026-08-05) — the mask filter is done; frustum culling is not
+
+**The obligation this ticket was given by T0027 is met, and it was met
+elsewhere.** `Camera::cullingMask` is now honoured in **`parseScene`**, which is
+where T0085's own preamble said it belonged, so a world layer and a HUD layer can
+share one `Scene` — the limitation T0027's composite test had to work around with
+two scenes.
+
+What that leaves for this ticket is unchanged and is the harder half: **frustum
+culling, sorting and render queues**. The layer test is one AND per entity and
+still runs over *every* drawable entity, so it makes excluded objects cheap, not
+free. Insert spatial culling around the same loop; `parseScene`'s output is
+deliberately an explicit list so that can happen without restructuring.
+
+Order matters when it lands: the **layer test runs first** and is asserted to,
+because it is far cheaper than a frustum test and rejects more in the common
+split-camera case. See [../completed/0085-layers-and-masks.md](../completed/0085-layers-and-masks.md).
+
 **T0081 supplies the frustum, and it must not be recomputed here.**
 `hp::extractFrustum(viewProjection, clip)` returns the six world-space planes,
 normalised so `intersectsSphere` distances are real distances. Computing a
@@ -52,10 +70,12 @@ frustum in a second place is how culling and LOD selection (T0040) drift and
 start disagreeing about what is visible — which presents as objects popping in
 one system and not the other.
 
-**`Camera::cullingMask` is stored and nothing reads it yet.** It is a bitmask
-over *object* layers (T0085), tested per object during culling — **not** a
-`RenderStack` layer, which is a compositing pass. Confusing the two is the trap
-T0081's header comment calls out. Consuming this mask is this ticket's job.
+**`Camera::cullingMask` is honoured as of T0085** — superseding what this
+paragraph used to say, which was that nothing read it and consuming it was this
+ticket's job. It is filtered in `parseScene`, before any other check. It remains
+a bitmask over *object* layers — **not** a `RenderStack` layer, which is a
+compositing pass, and confusing the two is the trap T0081's header comment calls
+out.
 
 
 **Transparent objects must not be depth-sorted the same way as opaque.** Opaque

@@ -44,6 +44,17 @@ get shadows, at what resolution, and making them look right is ours.
 
 ## Notes / findings
 
+### Inherited from T0085 (2026-08-05) — the shadow-casting mask is yours
+
+**85.5 moved here.** An object can be **lit by a light without casting its
+shadow** — common for characters, foliage and anything with a cheap fake shadow —
+so illumination and shadow casting need **two** masks, not one.
+
+`hp::LayerMask` is the type; use it rather than a bare `uint32_t`. T0079 owns the
+illumination mask on the light; this ticket owns the casting mask, and the two
+must stay separable. Note `PBRLightAttribs::ShadowMapIndex` (D24) is already the
+per-light linkage. See [../completed/0085-layers-and-masks.md](../completed/0085-layers-and-masks.md).
+
 ### Inherited from T0134 / D24 (2026-08-05) — the shadow plumbing already exists
 
 Recorded so this ticket does not re-survey what T0134 enumerated. Per D24, the

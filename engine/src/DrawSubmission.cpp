@@ -4,7 +4,7 @@
 
 namespace hp {
 
-DrawList parseScene(const Scene& scene, DrawParseStats* stats) {
+DrawList parseScene(const Scene& scene, LayerMask cullingMask, DrawParseStats* stats) {
     HP_PROFILE_ZONE();
 
     DrawParseStats counted;
@@ -21,6 +21,16 @@ DrawList parseScene(const Scene& scene, DrawParseStats* stats) {
 
     for (auto [entity, world, renderer] : view.each()) {
         ++counted.considered;
+
+        // **One AND, and it is first** (T0085). An object the camera does not
+        // render costs nothing else -- no GUID check, no list entry, and above
+        // all no draw call. Filtering here rather than in a shader is the whole
+        // point: a per-pixel mask test wastes the entire cost of drawing the
+        // object it then discards.
+        if (!renderer.layers.intersects(cullingMask)) {
+            ++counted.culledByLayer;
+            continue;
+        }
 
         if (!renderer.mesh.isValid()) {
             // A legitimate state, not an error -- see `DrawParseStats`.

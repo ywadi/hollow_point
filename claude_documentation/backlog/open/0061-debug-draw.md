@@ -53,6 +53,18 @@ wants skeletons, and the editor wants selection outlines and grids.
 
 ## Notes / findings
 
+### Inherited from T0085 (2026-08-05) — visualising what a camera or light actually affects
+
+**85.8 moved here.** With layer masks honoured, "why is this object not
+rendering?" gains a new answer that is invisible from the viewport: *its layer is
+not in the camera's mask*.
+
+`DrawParseStats::culledByLayer` already counts it, separately from "no mesh" and
+"nothing in the scene" precisely because the three look identical on screen. A
+debug view that lists or highlights what a given camera or light actually affects
+is what turns that count into an answer. Same for lights once T0079 lands. See
+[../completed/0085-layers-and-masks.md](../completed/0085-layers-and-masks.md).
+
 **T0081.8 is blocked on this ticket, and is the only thing it is blocked on.**
 `hp::extractFrustum(viewProjection, clip)` already returns the six world-space
 planes with normals pointing inwards and distances normalised, so drawing a

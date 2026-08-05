@@ -42,6 +42,27 @@ usable authoring story.
 
 ## Notes / findings
 
+### Inherited from T0085 (2026-08-05) — the mask type exists; the light field does not
+
+**85.4 moved here.** `hp::LayerMask` is built, honoured by `parseScene` for
+cameras, reflected and serialised. What is missing is the field on a light
+component, because lights do not exist yet.
+
+Two things to get right when 79.1 and 79.3 land:
+
+- **The light carries a mask, the object carries layers**, matching
+  `Camera::cullingMask` against `MeshRenderer::layers`. Use `hp::LayerMask` —
+  **do not add a bare `uint32_t`**, which is exactly the second vocabulary T0085
+  removed from `Camera`.
+- **Apply it during per-object light selection (79.3), never in the shader.** A
+  per-pixel mask test wastes the whole cost of shading the object it discards.
+  The selection loop already has to run per object, so the test is one AND in a
+  loop that exists.
+
+T0086 owns a **separate** shadow-casting mask (85.5) — "lit by this light but
+does not cast its shadow" is a common requirement, so do not collapse the two
+into one field. See [../completed/0085-layers-and-masks.md](../completed/0085-layers-and-masks.md).
+
 ### Inherited from T0134 / D24 (2026-08-05) — configure DiligentFX's lights, do not supersede them
 
 **This ticket's Refs asked the question; D24 answers it: configure.** And the

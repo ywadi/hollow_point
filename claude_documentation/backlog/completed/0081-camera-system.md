@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 420 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0111, T0120, [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), **blocked on** [../open/0061-debug-draw.md](../open/0061-debug-draw.md) only — T0028 cleared 2026-08-05, [../open/0045-culling-and-render-queues.md](../open/0045-culling-and-render-queues.md), [../open/0085-layers-and-masks.md](../open/0085-layers-and-masks.md) |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0111, T0120, [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), **blocked on** [../open/0061-debug-draw.md](../open/0061-debug-draw.md) only — T0028 cleared 2026-08-05, [../open/0045-culling-and-render-queues.md](../open/0045-culling-and-render-queues.md), [../completed/0085-layers-and-masks.md](../completed/0085-layers-and-masks.md) |
 
 ## Why
 
@@ -26,7 +26,7 @@ switches between them, or how the render stack's layers get their own cameras
 - [x] Switching cameras from gameplay is one call
 - [x] Viewport rect per camera, so split-screen or picture-in-picture is possible
 - [ ] An object culling mask, so a camera can render only some object layers —
-      **not done, moved to [T0085](../open/0085-layers-and-masks.md)**, which
+      **not done, moved to [T0085](../completed/0085-layers-and-masks.md)**, which
       owns what an object layer *is*
 - [~] A camera with no valid target degrades visibly rather than rendering nothing
 - [x] The editor camera (T0063) is explicitly outside this system
@@ -38,7 +38,7 @@ switches between them, or how the render stack's layers get their own cameras
       `hp::SceneView::render`, per view slot
 - [x] 81.3 Projection and view matrix computation from the transform
 - [x] 81.4 Viewport rect support
-- [ ] 81.5 **Object culling mask → [T0085](../open/0085-layers-and-masks.md).**
+- [ ] 81.5 **Object culling mask → [T0085](../completed/0085-layers-and-masks.md).**
       The `Camera` component carries the mask field; nothing filters on it,
       because what an object layer *means* is T0085's to define
 - [x] 81.6 Frustum extraction shared with culling (T0045)
@@ -66,7 +66,7 @@ existed to honour it.
 finished camera system behind them — the T0095 → T0105 pattern. Both are
 recorded on the receiving ticket:
 
-- **81.5, the object culling mask → [T0085](../open/0085-layers-and-masks.md).**
+- **81.5, the object culling mask → [T0085](../completed/0085-layers-and-masks.md).**
   `Camera` carries the mask field; nothing filters on it, and nothing can until
   T0085 defines what an object layer *is*. Implementing a filter here would mean
   inventing that vocabulary in the wrong ticket.
@@ -118,7 +118,7 @@ do**. Both blockers are tickets that do not exist yet:
 Two further items are stored-but-unconsumed by design, and are *not* blockers on
 this ticket — they are obligations on the tickets that consume them:
 
-- `Camera::cullingMask` is read by nothing until [T0045](../open/0045-culling-and-render-queues.md), against object layers from [T0085](../open/0085-layers-and-masks.md).
+- `Camera::cullingMask` is read by nothing until [T0045](../open/0045-culling-and-render-queues.md), against object layers from [T0085](../completed/0085-layers-and-masks.md).
 - Exposure is applied by nothing until T0096.
 
 Both obligations are recorded on those tickets, not only here.

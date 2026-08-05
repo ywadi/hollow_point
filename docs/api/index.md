@@ -45,6 +45,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Guid.hpp>`](Guid.md) | 13 | 5 |
 | [`<hp/Input.hpp>`](Input.md) | 39 | 39 |
 | [`<hp/Layer.hpp>`](Layer.md) | 28 | 16 |
+| [`<hp/Layers.hpp>`](Layers.md) | 15 | 15 |
 | [`<hp/Log.hpp>`](Log.md) | 22 | 12 |
 | [`<hp/Math.hpp>`](Math.md) | 6 | 6 |
 | [`<hp/Module.hpp>`](Module.md) | 6 | 6 |
@@ -64,7 +65,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 45 | 45 |
 
-**631 public declarations across 33 headers, 514 documented.**
+**646 public declarations across 34 headers, 529 documented.**
 
 ## Every symbol
 
@@ -381,6 +382,21 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `LayerStack::size` | [`Layer.hpp`](Layer.md) |
 | `LayerStack::overlayCount` | [`Layer.hpp`](Layer.md) |
 | `LayerStack::at` | [`Layer.hpp`](Layer.md) |
+| `kMaxLayers` | [`Layers.hpp`](Layers.md) |
+| `kDefaultLayer` | [`Layers.hpp`](Layers.md) |
+| `LayerMask` | [`Layers.hpp`](Layers.md) |
+| `LayerMask::LayerMask` | [`Layers.hpp`](Layers.md) |
+| `LayerMask::LayerMask` | [`Layers.hpp`](Layers.md) |
+| `LayerMask::all` | [`Layers.hpp`](Layers.md) |
+| `LayerMask::none` | [`Layers.hpp`](Layers.md) |
+| `LayerMask::layer` | [`Layers.hpp`](Layers.md) |
+| `LayerMask::intersects` | [`Layers.hpp`](Layers.md) |
+| `LayerMask::has` | [`Layers.hpp`](Layers.md) |
+| `LayerMask::add` | [`Layers.hpp`](Layers.md) |
+| `LayerMask::remove` | [`Layers.hpp`](Layers.md) |
+| `LayerMask::empty` | [`Layers.hpp`](Layers.md) |
+| `LayerMask::operator==` | [`Layers.hpp`](Layers.md) |
+| `defaultObjectLayers` | [`Layers.hpp`](Layers.md) |
 | `LogLevel` | [`Log.hpp`](Log.md) |
 | `logLevelName` | [`Log.hpp`](Log.md) |
 | `LogCategory` | [`Log.hpp`](Log.md) |

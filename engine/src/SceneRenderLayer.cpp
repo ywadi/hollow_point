@@ -121,7 +121,9 @@ void SceneRenderLayer::onRenderLayer(const RenderPassContext& pass) {
     viewport.MaxDepth = 1.0F;
     pass.context->SetViewports(1, &viewport, pass.width, pass.height);
 
-    drawList_ = parseScene(*scene_);
+    // The resolved camera's mask (T0085), so a world layer and a HUD layer can
+    // share one scene and each draw only its own objects.
+    drawList_ = parseScene(*scene_, view->camera.cullingMask);
     renderer_.render(pass.context, drawList_, *view, *pool_, &lastFrame);
 }
 

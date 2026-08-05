@@ -1,6 +1,7 @@
 #include <hp/Serialize.hpp>
 
 #include <hp/Guid.hpp>
+#include <hp/Layers.hpp>
 #include <hp/Log.hpp>
 #include <hp/Math.hpp>
 #include <hp/Profiling.hpp>
@@ -101,6 +102,16 @@ bool writeLeaf(YamlNode parent, std::string_view key, const entt::meta_any& valu
         parent.set(key, v->toString());
         return true;
     }
+    if (const auto* v = value.try_cast<LayerMask>()) {
+        // As a plain integer, so the on-disk shape is what it was before
+        // `cullingMask` became a typed mask (T0085) rather than a nested
+        // `{bits: N}` map. **Names, not numbers, is the eventual goal** — T0085.1
+        // puts layer names in project settings, and that is the point at which
+        // this should write a sequence of names instead. Recorded here because
+        // this is the line that would have to change.
+        parent.set(key, static_cast<std::uint64_t>(v->bits));
+        return true;
+    }
     if (const auto* v = value.try_cast<float>()) {
         parent.set(key, static_cast<double>(*v));
         return true;
@@ -184,6 +195,14 @@ bool readLeaf(YamlNode node, entt::meta_any& value) {
             return false;
         }
         *v = *parsed;
+        return true;
+    }
+    if (auto* v = value.try_cast<LayerMask>()) {
+        std::uint64_t n = 0;
+        if (!node.tryRead(n)) {
+            return false;
+        }
+        v->bits = static_cast<std::uint32_t>(n);
         return true;
     }
     if (auto* v = value.try_cast<float>()) {
@@ -479,6 +498,13 @@ bool cookLeaf(const entt::meta_any& value, std::vector<std::byte>& out) {
         writeU64(out, v->value());
         return true;
     }
+    if (const auto* v = value.try_cast<LayerMask>()) {
+        // U64 rather than U32, matching every other integer in this format:
+        // widths are uniform here so the reader never has to know which one a
+        // field used.
+        writeU64(out, static_cast<std::uint64_t>(v->bits));
+        return true;
+    }
     if (const auto* v = value.try_cast<float>()) {
         writeFloat(out, *v);
         return true;
@@ -555,6 +581,14 @@ bool uncookLeaf(const std::vector<std::byte>& bytes, std::size_t& cursor, entt::
             return false;
         }
         *v = Guid{raw};
+        return true;
+    }
+    if (auto* v = value.try_cast<LayerMask>()) {
+        std::uint64_t raw = 0;
+        if (!readU64(bytes, cursor, raw)) {
+            return false;
+        }
+        v->bits = static_cast<std::uint32_t>(raw);
         return true;
     }
     if (auto* v = value.try_cast<float>()) {

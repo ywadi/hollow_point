@@ -36,7 +36,7 @@ struct DrawParseStats
 ## `parseScene`
 
 ```cpp
-int parseScene(const Scene & scene, DrawParseStats * stats)
+int parseScene(const Scene & scene, LayerMask cullingMask, DrawParseStats * stats)
 ```
 
  Collects everything drawable in a scene.
@@ -47,6 +47,16 @@ int parseScene(const Scene & scene, DrawParseStats * stats)
  (T0101), so parsing off `Transform` would silently draw everything at its
  local position the first frame a hierarchy is built.
 
+ **Object layers are filtered here** (T0085), before anything else is checked,
+ because this is the cheapest place they can be: one AND against a mask the
+ caller already has, and an excluded object costs nothing further. Filtering
+ in a shader instead would pay the entire cost of drawing an object in order
+ to discard it.
+
  @param scene the scene to walk. Not modified.
+ @param cullingMask which object layers to keep, normally a camera's
+        `cullingMask`. An entity is kept when this intersects its
+        `MeshRenderer::layers`. Defaults to every layer, so a caller with no
+        opinion sees everything.
  @param stats optional; filled with what the pass saw. Null to ignore.
  @returns the draw list, empty when nothing is drawable.

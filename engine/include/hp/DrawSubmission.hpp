@@ -80,6 +80,16 @@ struct DrawParseStats {
     /// to draw", which is a legitimate state -- an entity can exist before its
     /// asset is assigned. Counted so a scene that draws nothing can say why.
     std::size_t withoutMesh = 0;
+
+    /// Entities rejected because the camera's culling mask does not intersect
+    /// their `MeshRenderer::layers` (T0085).
+    ///
+    /// **Counted separately from every other rejection on purpose.** "The scene
+    /// is empty", "the mesh is not assigned" and "this camera does not render
+    /// that layer" look identical from the outside -- a viewport showing
+    /// nothing -- and a layer mask set wrongly is by far the hardest of the
+    /// three to guess at.
+    std::size_t culledByLayer = 0;
 };
 
 /// Collects everything drawable in a scene.
@@ -90,9 +100,21 @@ struct DrawParseStats {
 /// (T0101), so parsing off `Transform` would silently draw everything at its
 /// local position the first frame a hierarchy is built.
 ///
+/// **Object layers are filtered here** (T0085), before anything else is checked,
+/// because this is the cheapest place they can be: one AND against a mask the
+/// caller already has, and an excluded object costs nothing further. Filtering
+/// in a shader instead would pay the entire cost of drawing an object in order
+/// to discard it.
+///
 /// @param scene the scene to walk. Not modified.
+/// @param cullingMask which object layers to keep, normally a camera's
+///        `cullingMask`. An entity is kept when this intersects its
+///        `MeshRenderer::layers`. Defaults to every layer, so a caller with no
+///        opinion sees everything.
 /// @param stats optional; filled with what the pass saw. Null to ignore.
 /// @returns the draw list, empty when nothing is drawable.
-[[nodiscard]] HP_API DrawList parseScene(const Scene& scene, DrawParseStats* stats = nullptr);
+[[nodiscard]] HP_API DrawList parseScene(const Scene& scene,
+                                         LayerMask cullingMask = LayerMask::all(),
+                                         DrawParseStats* stats = nullptr);
 
 } // namespace hp

@@ -44,6 +44,22 @@ than to retrofit.
 
 ## Notes / findings
 
+### Inherited from T0085 (2026-08-05) — use the same layer definitions, not a parallel set
+
+**85.7 moved here.** The collision matrix must be built on `hp::LayerMask` and the
+layer names T0078 will provide — **the same definitions** cameras, lights and
+shadows use. A second physics-only layer enum is exactly the drift that type
+exists to prevent, and it is invisible until something collides that visually
+should not.
+
+**Storage is separate and that is correct**: `MeshRenderer::layers` holds a
+renderer's layers, and a collider is not a renderer, so a collider carries its own
+field. T0085's requirement is a shared *vocabulary*, not shared storage.
+
+Note Jolt has its own `ObjectLayer` / `BroadPhaseLayer` concepts; mapping
+`hp::LayerMask` onto them is this ticket's job, and the mapping must be **one
+place**, not per-call-site. See [../completed/0085-layers-and-masks.md](../completed/0085-layers-and-masks.md).
+
 
 ### Frame anatomy — phases 3c and 3d — inside the fixed-step loop (T0100, D17)
 

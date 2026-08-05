@@ -44,6 +44,12 @@ struct SceneViewStats {
     /// Items whose mesh was not loaded. Drawn as nothing, deliberately.
     std::size_t missingMesh = 0;
 
+    /// Entities the camera's culling mask rejected (T0085).
+    ///
+    /// Reported because "this camera does not render that layer" and "the scene
+    /// is empty" look identical from the outside.
+    std::size_t culledByLayer = 0;
+
     /// Whether a camera was found for the requested view slot.
     ///
     /// **False is not an error and not a crash** — it is a scene nobody has put
