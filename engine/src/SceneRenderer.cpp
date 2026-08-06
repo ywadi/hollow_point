@@ -326,6 +326,19 @@ struct SceneRenderer::Impl {
 
         /// PSO bits this material adds: unshaded, the UV-transform math.
         Diligent::PBR_Renderer::PSO_FLAGS extraFlags = Diligent::PBR_Renderer::PSO_FLAG_NONE;
+
+        /// The material's custom shader module (T0142.15), pinned for the
+        /// same lifetime reasons as the textures. Null for the standard
+        /// material.
+        std::shared_ptr<ShaderAsset> shaderSource;
+
+        /// The module's virtual path, handed to `SurfacePipeline::pipeline`.
+        /// Empty for the standard material.
+        std::string shaderPath;
+
+        /// The material names a shader that is not in the pool -- the
+        /// material-level miss, drawn as the checkerboard (T0141.12).
+        bool shaderMissing = false;
     };
 
     /// Assigned materials, keyed by asset GUID.
@@ -593,6 +606,23 @@ bool SceneRenderer::Impl::buildMaterialBinding(Diligent::IDeviceContext* context
         out.extraFlags |= SurfacePipeline::kPsoFlagTriplanar;
     }
 
+    // The custom shader module (T0142.15). Resolved to a *path* here; the
+    // compiler re-reads it through the VFS at pipeline-build time, so the
+    // bytes compiled are the bytes mounted.
+    if (material.shader.isValid()) {
+        if (pool != nullptr) {
+            out.shaderSource = pool->get<ShaderAsset>(material.shader);
+        }
+        if (out.shaderSource && out.shaderSource->valid()) {
+            out.shaderPath = out.shaderSource->virtualPath();
+        } else {
+            // Named and not loaded: the same three-state logic as a missing
+            // material, decided here once rather than per draw. The caller
+            // substitutes the fallback binding.
+            out.shaderMissing = true;
+        }
+    }
+
     if (!barriers.empty() && context != nullptr) {
         context->TransitionResourceStates(static_cast<Diligent::Uint32>(barriers.size()),
                                           barriers.data());
@@ -741,13 +771,30 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
             // **The three-state table, drawn** (T0060.10 decides it, this
             // spends it). `Imported` keeps the model's own material -- the
             // common case and byte-identical to what drew before this existed.
+            const char* customModule = nullptr;
             const ResolvedMaterial resolved =
                 resolveMaterialSlot(pool, item.materials, primitive.MaterialId);
             if (resolved.state == MaterialSlot::Assigned) {
-                if (MaterialBinding* binding = ensureMaterialBinding(context, pool, resolved)) {
+                MaterialBinding* binding = ensureMaterialBinding(context, pool, resolved);
+                if (binding != nullptr && binding->shaderMissing) {
+                    // The material names a shader the pool does not hold --
+                    // the same convention as a missing material (T0142.15):
+                    // loud checks, and the log says which asset, once.
+                    if (reportedMissing.insert(resolved.material->shader).second) {
+                        HP_LOG_WARN(kLog,
+                                    "shader {} is not loaded; rendering the missing-material "
+                                    "pattern for the material that names it",
+                                    resolved.material->shader.toString());
+                    }
+                    binding = ensureFallbackBinding(context);
+                }
+                if (binding != nullptr) {
                     material = &binding->gltf;
                     srb = binding->srb;
                     extraFlags = binding->extraFlags;
+                    if (!binding->shaderPath.empty()) {
+                        customModule = binding->shaderPath.c_str();
+                    }
                 }
                 // A failed binding falls back to the imported material rather
                 // than dropping the draw; the failure was logged when the
@@ -835,7 +882,7 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                 static_cast<Diligent::PBR_Renderer::ALPHA_MODE>(material->Attribs.AlphaMode),
                 doubleSided ? Diligent::CULL_MODE_NONE : Diligent::CULL_MODE_BACK};
 
-            Diligent::IPipelineState* pso = renderer->pipeline(graphics, key);
+            Diligent::IPipelineState* pso = renderer->pipeline(graphics, key, customModule);
             if (pso == nullptr) {
                 continue;
             }

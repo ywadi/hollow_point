@@ -443,6 +443,30 @@ struct HpStandardMaterial : IHpMaterial
 {
 };
 
+// ---------------------------------------------------------------------------
+// The custom material module (T0142.15, D28's authoring surface).
+//
+// `HpMaterialModule.generated` is emitted per pipeline by `SurfacePipeline`:
+// a comment for standard pipelines, `#include "<the material's .slang>"` for
+// pipelines whose material names a shader asset -- resolved through the VFS
+// source (T0142.14), so the module is content like everything else.
+//
+// The module defines `struct HpMaterial : IHpMaterial` and overrides what it
+// wants; `override` is mandatory (omitting it is a compile error), and every
+// method it does not override keeps the standard material's behaviour above.
+// It is included **here**, after the interface and DiligentFX's getters, so
+// an override may call `GetBaseColor` and friends without including anything
+// itself -- D27's "we include them, they include us", one level deeper.
+//
+// The include sits outside the `#if` for the *hasher's* sake and inside it
+// for the compiler's: content hashing walks `#include` lines textually,
+// before preprocessing, so the file must always resolve -- which is why the
+// generated file always exists, even when this macro leaves it unused.
+// ---------------------------------------------------------------------------
+#if HP_CUSTOM_MATERIAL
+#include "HpMaterialModule.generated"
+#endif
+
 /// Evaluates one fragment through a material (T0142.2).
 ///
 /// Generic over the material and **statically specialised** -- `main` below
@@ -708,6 +732,14 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(TMaterial material, VSOutput V
 PSOutput main(in VSOutput VSOut,
               in bool IsFrontFace : SV_IsFrontFace)
 {
+#if HP_CUSTOM_MATERIAL
+    // The module's conformance (T0142.15). The name is the contract: a
+    // custom material module defines `HpMaterial`, and this is the one line
+    // that instantiates it -- statically specialised like the standard one,
+    // so an override costs a direct call, not a dispatch.
+    HpMaterial material;
+#else
     HpStandardMaterial material;
+#endif
     return evaluateSurface(material, VSOut, IsFrontFace);
 }

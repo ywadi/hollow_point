@@ -254,6 +254,21 @@ struct Material {
     /// pattern, which is the trade triplanar makes everywhere it is used.
     float triplanarScale = 1.0F;
 
+    /// The custom shader module this material is shaded by (T0142.15, D28).
+    ///
+    /// **Default means the standard material** — every other field below and
+    /// above still applies, because the module *extends* the standard
+    /// material rather than replacing the pipeline: it defines
+    /// `struct HpMaterial : IHpMaterial` and overrides the methods it wants,
+    /// with `override` mandatory, and everything it does not override keeps
+    /// the engine's behaviour, textures and factors included.
+    ///
+    /// Names a `ShaderAsset` (a `.slang` file imported like any content).
+    /// A GUID that does not resolve renders the missing-material pattern
+    /// (T0141.12); a module that does not compile renders the same pattern
+    /// with the compiler's error in the log (T0141.4).
+    Guid shader;
+
     /// The first UV channel's transform, used by every slot whose selector is 0.
     UvChannel uv0;
 

@@ -68,6 +68,10 @@ constexpr std::array<std::string_view, 2> kMeshExtensions{"gltf", "glb"};
 /// same extension is how one of them goes stale.
 constexpr std::string_view kMaterialExtensionBody{kMaterialExtension + 1};
 
+/// The shader-module extension (T0142.15). D28 makes `.slang` the only
+/// authoring language, so it is the only shader extension the importer knows.
+constexpr std::string_view kShaderExtensionBody{"slang"};
+
 } // namespace
 
 AssetKind assetKindForPath(std::string_view path) {
@@ -88,6 +92,9 @@ AssetKind assetKindForPath(std::string_view path) {
     if (ext == kMaterialExtensionBody) {
         return AssetKind::Material;
     }
+    if (ext == kShaderExtensionBody) {
+        return AssetKind::Shader;
+    }
     return AssetKind::Unknown;
 }
 
@@ -99,10 +106,57 @@ std::string_view assetKindName(AssetKind kind) {
         return "Mesh";
     case AssetKind::Material:
         return AssetTraits<Material>::name;
+    case AssetKind::Shader:
+        return AssetTraits<ShaderAsset>::name;
     case AssetKind::Unknown:
         break;
     }
     return "Unknown";
+}
+
+struct ShaderAsset::Impl {
+    std::string virtualPath;
+    std::string source;
+};
+
+ShaderAsset::ShaderAsset() : impl_(std::make_unique<Impl>()) {}
+ShaderAsset::~ShaderAsset() = default;
+ShaderAsset::ShaderAsset(ShaderAsset&& other) noexcept = default;
+ShaderAsset& ShaderAsset::operator=(ShaderAsset&& other) noexcept = default;
+
+bool ShaderAsset::valid() const {
+    return impl_ && !impl_->virtualPath.empty();
+}
+
+const std::string& ShaderAsset::virtualPath() const {
+    static const std::string empty;
+    return impl_ ? impl_->virtualPath : empty;
+}
+
+const std::string& ShaderAsset::source() const {
+    static const std::string empty;
+    return impl_ ? impl_->source : empty;
+}
+
+std::shared_ptr<ShaderAsset> loadShader(std::string_view virtualPath) {
+    HP_PROFILE_ZONE();
+
+    const std::string path(virtualPath);
+    // Through the VFS like every read (D13). Text is read now to prove the
+    // module exists and to feed 142.9's reflection later; the *compiler*
+    // re-reads the path at pipeline-build time through the same mount tree.
+    std::optional<std::string> text = Vfs::readText(path);
+    if (!text) {
+        HP_LOG_ERROR(kLog, "shader '{}' could not be read through the VFS", path);
+        return nullptr;
+    }
+
+    auto asset = std::make_shared<ShaderAsset>();
+    asset->impl_->virtualPath = path;
+    asset->impl_->source = std::move(*text);
+    HP_LOG_INFO(kLog, "loaded shader module '{}' ({} bytes)", path,
+                asset->impl_->source.size());
+    return asset;
 }
 
 struct TextureAsset::Impl {
@@ -435,6 +489,19 @@ ImportResult importAsset(Diligent::IRenderDevice* device, Diligent::IDeviceConte
             // returns null for this GUID, which is exactly the signal the
             // renderer substitutes the fallback on.
             HP_LOG_ERROR(kLog, "'{}' failed to load; meshes using it will render the "
+                               "missing-material pattern", virtualPath);
+        }
+        return result;
+    }
+    case AssetKind::Shader: {
+        if (auto shader = loadShader(virtualPath)) {
+            pool.store(result.guid, std::move(shader));
+            result.loaded = true;
+        } else {
+            // Like a material: nothing stored, so the pool lookup misses and
+            // the renderer substitutes the missing-material pattern for any
+            // material that names this GUID (T0141.12).
+            HP_LOG_ERROR(kLog, "'{}' failed to load; materials using it will render the "
                                "missing-material pattern", virtualPath);
         }
         return result;

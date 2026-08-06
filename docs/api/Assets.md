@@ -6,7 +6,7 @@
 #include <hp/Assets.hpp>
 ```
 
-57 public declaration(s), 57 documented.
+69 public declaration(s), 69 documented.
 
 ## `AssetTraits`
 
@@ -253,6 +253,7 @@ enum class AssetKind
 | `Texture` | 1 |
 | `Mesh` | 2 |
 | `Material` | 3 |
+| `Shader` | 4 |
 
  What kind of asset a file holds, decided by its extension (23.2).
 
@@ -450,6 +451,140 @@ std::shared_ptr<TextureAsset> makePlaceholderTexture(Diligent::IRenderDevice * d
  is a bug someone fixes before lunch. Costs 16x16 pixels.
  @param device the device to create on.
  @returns the placeholder, or nullptr when the device refuses it.
+
+## `ShaderAsset`
+
+```cpp
+class ShaderAsset
+```
+
+ A shader module: a `.slang` file as content (T0142.15, D28).
+
+ **Device-free, deliberately.** What the renderer needs from this asset is
+ an *identity* and a *path*: the compiler re-reads the path through the VFS
+ source factory at pipeline-build time, so the bytes compiled are the bytes
+ currently mounted — which is also what makes an edited shader picked up by
+ the next pipeline build without this asset changing. The source text is
+ kept from load time for validity ("the file existed and read") and for the
+ reflection work 142.9 will do without a device.
+
+ The module's contract: it defines `struct HpMaterial : IHpMaterial` and
+ overrides the methods it wants, `override` mandatory (D28). It includes
+ nothing — the engine's `HpSurface.slang` includes *it*, after the interface
+ and DiligentFX's getters are in scope (D27: we include them; they include
+ us — one level deeper).
+
+## `ShaderAsset::ShaderAsset`
+
+```cpp
+ShaderAsset()
+```
+
+ Constructs an empty asset that holds no shader.
+
+## `ShaderAsset::ShaderAsset`
+
+```cpp
+ShaderAsset(const ShaderAsset &)
+```
+
+ Not copyable, matching the other asset types: the pool shares one
+ instance per GUID and copies would fork the identity.
+
+## `ShaderAsset::operator=`
+
+```cpp
+ShaderAsset & operator=(const ShaderAsset &)
+```
+
+ Not copyable; see the copy constructor.
+ @returns nothing -- deleted.
+
+## `ShaderAsset::ShaderAsset`
+
+```cpp
+ShaderAsset(ShaderAsset && other)
+```
+
+ Moves the asset.
+ @param other the asset to move from.
+
+## `ShaderAsset::operator=`
+
+```cpp
+ShaderAsset & operator=(ShaderAsset && other)
+```
+
+ Moves the asset.
+ @param other the asset to move from.
+ @returns this asset.
+
+## `ShaderAsset::valid`
+
+```cpp
+bool valid() const
+```
+
+ @returns whether a shader module was loaded.
+
+## `ShaderAsset::virtualPath`
+
+```cpp
+const std::string & virtualPath() const
+```
+
+ @returns the virtual path the compiler resolves this module by, or an
+          empty string when empty.
+
+## `ShaderAsset::source`
+
+```cpp
+const std::string & source() const
+```
+
+ @returns the module's source text as read at load time, or an empty
+          string. **Not necessarily the text the compiler will see** —
+          the compiler re-reads the path at pipeline-build time.
+
+## `ShaderAsset::loadShader`
+
+```cpp
+std::shared_ptr<ShaderAsset> loadShader(std::string_view virtualPath)
+```
+
+ Loads a shader module through the VFS (T0142.15).
+
+ No device and no compile: whether the module *compiles* is answered at
+ pipeline-build time, where a failure renders the same checkerboard a
+ missing material does (T0141.4) rather than failing the load.
+ @param virtualPath the module's path in the mount tree.
+ @returns the shader, or nullptr when the file is missing or unreadable.
+          **Not fatal**: a material whose shader is missing renders the
+          missing-material pattern.
+
+## `AssetTraits`
+
+```cpp
+struct AssetTraits
+```
+
+ The stable pool name for a shader module.
+
+## `loadShader`
+
+```cpp
+std::shared_ptr<ShaderAsset> loadShader(std::string_view virtualPath)
+```
+
+ Loads a shader module through the VFS (T0142.15).
+
+ No device and no compile: whether the module *compiles* is answered at
+ pipeline-build time, where a failure renders the same checkerboard a
+ missing material does (T0141.4) rather than failing the load.
+ @param virtualPath the module's path in the mount tree.
+ @returns the shader, or nullptr when the file is missing or unreadable.
+          **Not fatal**: a material whose shader is missing renders the
+          missing-material pattern.
 
 ## `MeshAsset`
 

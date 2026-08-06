@@ -32,7 +32,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 |---|---|---|
 | [`<hp/Api.hpp>`](Api.md) | 0 | 0 |
 | [`<hp/Application.hpp>`](Application.md) | 22 | 12 |
-| [`<hp/Assets.hpp>`](Assets.md) | 57 | 57 |
+| [`<hp/Assets.hpp>`](Assets.md) | 69 | 69 |
 | [`<hp/Camera.hpp>`](Camera.md) | 11 | 11 |
 | [`<hp/CameraSystem.hpp>`](CameraSystem.md) | 11 | 11 |
 | [`<hp/Cook.hpp>`](Cook.md) | 14 | 14 |
@@ -71,7 +71,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 47 | 47 |
 
-**721 public declarations across 40 headers, 604 documented.**
+**733 public declarations across 40 headers, 616 documented.**
 
 ## Every symbol
 
@@ -140,6 +140,18 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `AssetTraits` | [`Assets.hpp`](Assets.md) |
 | `loadTexture` | [`Assets.hpp`](Assets.md) |
 | `makePlaceholderTexture` | [`Assets.hpp`](Assets.md) |
+| `ShaderAsset` | [`Assets.hpp`](Assets.md) |
+| `ShaderAsset::ShaderAsset` | [`Assets.hpp`](Assets.md) |
+| `ShaderAsset::ShaderAsset` | [`Assets.hpp`](Assets.md) |
+| `ShaderAsset::operator=` | [`Assets.hpp`](Assets.md) |
+| `ShaderAsset::ShaderAsset` | [`Assets.hpp`](Assets.md) |
+| `ShaderAsset::operator=` | [`Assets.hpp`](Assets.md) |
+| `ShaderAsset::valid` | [`Assets.hpp`](Assets.md) |
+| `ShaderAsset::virtualPath` | [`Assets.hpp`](Assets.md) |
+| `ShaderAsset::source` | [`Assets.hpp`](Assets.md) |
+| `ShaderAsset::loadShader` | [`Assets.hpp`](Assets.md) |
+| `AssetTraits` | [`Assets.hpp`](Assets.md) |
+| `loadShader` | [`Assets.hpp`](Assets.md) |
 | `MeshAsset` | [`Assets.hpp`](Assets.md) |
 | `MeshAsset::MeshAsset` | [`Assets.hpp`](Assets.md) |
 | `MeshAsset::MeshAsset` | [`Assets.hpp`](Assets.md) |

@@ -36,8 +36,12 @@ RTX 2080 — their arithmetic, to the byte.
 
 ## Done when
 
-- [ ] A game can write a `.slang` material, override part of the engine's
+- [x] A game can write a `.slang` material, override part of the engine's
       standard material, and see it render — without the engine changing.
+      *(142.15, 2026-08-06: a three-line module overriding `baseColor` renders
+      exactly (255, 0, 0) unshaded, and exactly (0, 0, 0) shaded with no light
+      — the un-overridden lighting default still governing is the partial-
+      override claim, measured.)*
 - [ ] The engine's own shaders are `.slang`, and no hand-written HLSL remains in
       `engine/shaders/`.
 - [ ] `slangc` is pinned in `.harness/`, offline after bootstrap, on both hosts.
@@ -186,13 +190,30 @@ RTX 2080 — their arithmetic, to the byte.
       mounted beside it, and stops resolving when the mount goes. DiligentFX
       names remain a documented-only reservation — their factory cannot be
       enumerated.*
-- [ ] 142.15 **The `.slang` material asset, and a `shader` field on
+- [x] 142.15 **The `.slang` material asset, and a `shader` field on
       `Material`** (was T0141.1, numbered 2026-08-06 — same orphan). A material
       must be able to name a shader before anything can cook (142.7), reload
       (142.8) or reflect (142.9) one; T0060 deliberately did not foreclose the
       field. The module implements `IHpMaterial` (142.2) and arrives through
       142.14. A material whose shader is missing renders T0141.12's
       checkerboard; one whose shader will not compile is T0141.4's case.
+      *Done 2026-08-06. `ShaderAsset` (`.slang`, `AssetKind::Shader`,
+      device-free — identity plus path plus load-time source, with the
+      compiler re-reading the path through the VFS at pipeline-build time, so
+      an edited module is picked up by the next build); `Material::shader`
+      (Guid, reflected, so serialization came free); the module rides into
+      `HpSurface.slang` through a per-pipeline generated one-line include
+      (`HpMaterialModule.generated`) rather than `#include MACRO`, which is
+      what lets the content hasher recurse into the module's own text and
+      keeps the SPIR-V cache honest when a game edits its shader. The
+      authoring shape is `struct HpMaterial : IHpMaterial` with `override`
+      mandatory; the pipeline cache keys on the module path beside the PSO
+      key. Missing-shader renders the fallback (gpu-tested; on a UV-less mesh
+      it degrades to flat magenta, the documented form). **What this is not
+      yet**: no parameters of its own (142.9's ParameterBlock work), no hot
+      reload (142.8 — though a changed file is picked up whenever a new
+      pipeline builds), and the gameplay-authoring doc gains its section when
+      142.13 retires the HLSL contract file rather than before.*
 - [ ] 142.16 **Unshaded as a game-facing option** (was T0141.15, numbered
       2026-08-06 — same orphan). Under D28 an interface method with a default —
       not a PSO permutation bit and not a macro, though `Material::unlit`'s

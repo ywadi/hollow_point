@@ -118,11 +118,16 @@ public:
     ///
     /// @param graphics render-target formats, depth state and topology.
     /// @param key which shader features this draw needs.
+    /// @param customModule virtual path of the material's shader module
+    ///        (T0142.15), or null for the standard material. Part of the cache
+    ///        key: two materials with different modules are different
+    ///        pipelines whatever their flags say.
     /// @returns the pipeline, or nullptr when it could not be created. **Not
     ///          fatal** — the caller skips the draw, and the compile failure is
     ///          logged here, on the attempt, never from the draw path (T0141).
     [[nodiscard]] Diligent::IPipelineState* pipeline(const Diligent::GraphicsPipelineDesc& graphics,
-                                                     const PSOKey& key);
+                                                     const PSOKey& key,
+                                                     const char* customModule = nullptr);
 
     /// The stand-in view for a texture slot a material does not fill.
     ///
@@ -165,7 +170,8 @@ private:
 
     /// Builds one pipeline. Called only on a cache miss.
     [[nodiscard]] Diligent::RefCntAutoPtr<Diligent::IPipelineState>
-    build(const Diligent::GraphicsPipelineDesc& graphics, const PSOKey& key);
+    build(const Diligent::GraphicsPipelineDesc& graphics, const PSOKey& key,
+          const char* customModule);
 
     /// Keyed on the PSO key's own hash combined with the graphics description's
     /// formats. `PSOKey` has a hasher; the formats are folded in by hand because

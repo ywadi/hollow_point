@@ -81,6 +81,7 @@ void registerMaterialTypes() {
         .property<&Material::heightScale>("heightScale")
         .property<&Material::triplanar>("triplanar")
         .property<&Material::triplanarScale>("triplanarScale")
+        .property<&Material::shader>("shader")
         .property<&Material::uv0>("uv0")
         .property<&Material::uv1>("uv1")
         .property<&Material::baseColourUv>("baseColourUv")

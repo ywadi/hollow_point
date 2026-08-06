@@ -18,6 +18,10 @@ TEST_CASE("extensions dispatch to the right kind") {
 
     CHECK(hp::assetKindForPath("meshes/barrel.gltf") == hp::AssetKind::Mesh);
     CHECK(hp::assetKindForPath("meshes/barrel.glb") == hp::AssetKind::Mesh);
+
+    // Shader modules are content too (T0142.15, D28) -- and `.slang` is the
+    // only shader extension there is, because D28 made it the only language.
+    CHECK(hp::assetKindForPath("materials/custom.slang") == hp::AssetKind::Shader);
 }
 
 TEST_CASE("the extension check is case-insensitive") {

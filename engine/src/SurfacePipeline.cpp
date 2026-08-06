@@ -53,7 +53,7 @@ constexpr const char* kPixelShader = "HpSurface.slang";
 /// render pass, which Vulkan reports as an incompatibility rather than drawing
 /// something slightly wrong -- loud, but a long way from the cause.
 std::size_t cacheKey(const Diligent::GraphicsPipelineDesc& graphics,
-                     const Diligent::PBR_Renderer::PSOKey& key) {
+                     const Diligent::PBR_Renderer::PSOKey& key, const char* customModule) {
     std::size_t hash = Diligent::PBR_Renderer::PSOKey::Hasher{}(key);
     const auto mix = [&hash](std::size_t value) {
         hash ^= value + 0x9E3779B97F4A7C15ULL + (hash << 6U) + (hash >> 2U);
@@ -66,6 +66,11 @@ std::size_t cacheKey(const Diligent::GraphicsPipelineDesc& graphics,
     mix(static_cast<std::size_t>(graphics.PrimitiveTopology));
     mix(static_cast<std::size_t>(graphics.DepthStencilDesc.DepthFunc));
     mix(graphics.DepthStencilDesc.DepthEnable ? 1U : 0U);
+    // The material's shader module (T0142.15): two materials with different
+    // modules are different pipelines whatever their flags say.
+    if (customModule != nullptr) {
+        mix(std::hash<std::string_view>{}(customModule));
+    }
     return hash;
 }
 
@@ -166,15 +171,16 @@ void SurfacePipeline::CreateCustomSignature(Diligent::PipelineResourceSignatureD
 }
 
 Diligent::IPipelineState* SurfacePipeline::pipeline(const Diligent::GraphicsPipelineDesc& graphics,
-                                                    const PSOKey& key) {
+                                                    const PSOKey& key,
+                                                    const char* customModule) {
     HP_PROFILE_ZONE();
 
-    const std::size_t hash = cacheKey(graphics, key);
+    const std::size_t hash = cacheKey(graphics, key, customModule);
     if (const auto found = pipelines_.find(hash); found != pipelines_.end()) {
         return found->second;
     }
 
-    Diligent::RefCntAutoPtr<Diligent::IPipelineState> built = build(graphics, key);
+    Diligent::RefCntAutoPtr<Diligent::IPipelineState> built = build(graphics, key, customModule);
     // **Cached even when null.** A shader that will not compile does not compile
     // any better on the next frame, and retrying would turn one logged failure
     // into one per frame -- which is the trap T0141 records against the *draw*
@@ -312,7 +318,8 @@ Diligent::ITextureView* SurfacePipeline::defaultTexture(TEXTURE_ATTRIB_ID id) co
 }
 
 Diligent::RefCntAutoPtr<Diligent::IPipelineState>
-SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSOKey& key) {
+SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSOKey& key,
+                       const char* customModule) {
     HP_PROFILE_ZONE();
 
     Diligent::RefCntAutoPtr<Diligent::IPipelineState> pso;
@@ -330,6 +337,8 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
     macros.Add("HP_UNSHADED", (key.GetFlags() & kPsoFlagUnshaded) != 0 ? 1 : 0);
     macros.Add("HP_USE_HEIGHT_MAP", (key.GetFlags() & kPsoFlagHeightMap) != 0 ? 1 : 0);
     macros.Add("HP_TRIPLANAR", (key.GetFlags() & kPsoFlagTriplanar) != 0 ? 1 : 0);
+    const bool custom = customModule != nullptr && customModule[0] != '\0';
+    macros.Add("HP_CUSTOM_MATERIAL", custom ? 1 : 0);
 
     // The generated interface structs, which the shaders include by name --
     // exactly as `RenderPBR.psh` does. Reusing the base class's generators is
@@ -368,11 +377,23 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
     PSOut.Color = OutColor;
     return PSOut;
 )";
+    // The material's shader module, routed through a generated one-line
+    // include (T0142.15). **Always emitted, even when empty**, and both
+    // consumers require that: the content hasher walks `#include` lines
+    // textually before preprocessing, so `HpSurface.slang`'s include of this
+    // file must resolve for every pipeline -- and routing the module through
+    // a literal include line, rather than an `#include MACRO`, is what lets
+    // the hasher recurse into the module's own text, which is what makes the
+    // SPIR-V cache key change when a game edits its shader.
+    const std::string materialModule =
+        custom ? std::string("#include \"") + customModule + "\"\n"
+               : std::string("// no custom material module for this pipeline\n");
     const Diligent::MemoryShaderSourceFileInfo generatedSources[] = {
         {"VSInputStruct.generated", vsInputStructSlang},
         {"VSOutputStruct.generated", vsOutputStruct},
         {"PSOutputStruct.generated", psOutputStruct},
         {"PSMainFooter.generated", kPsMainFooter},
+        {"HpMaterialModule.generated", materialModule},
     };
     Diligent::RefCntAutoPtr<Diligent::IShaderSourceInputStreamFactory> generated;
     Diligent::CreateMemoryShaderSourceFactory(

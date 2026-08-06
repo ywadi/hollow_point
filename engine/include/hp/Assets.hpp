@@ -231,6 +231,11 @@ enum class AssetKind : std::uint8_t {
     /// imported from a DCC tool**, which is what makes it the first kind here
     /// whose file the engine also writes — see `hp/Material.hpp`.
     Material,
+
+    /// A shader module, `.slang` (T0142.15). Content like any other asset
+    /// (D13): a material names one by GUID, and the compiler resolves it
+    /// through the VFS at pipeline-build time.
+    Shader,
 };
 
 /// @param path a virtual path, or any path with an extension.
@@ -331,6 +336,83 @@ struct AssetTraits<TextureAsset> {
 /// @returns the placeholder, or nullptr when the device refuses it.
 [[nodiscard]] HP_API std::shared_ptr<TextureAsset> makePlaceholderTexture(
     Diligent::IRenderDevice* device);
+
+/// A shader module: a `.slang` file as content (T0142.15, D28).
+///
+/// **Device-free, deliberately.** What the renderer needs from this asset is
+/// an *identity* and a *path*: the compiler re-reads the path through the VFS
+/// source factory at pipeline-build time, so the bytes compiled are the bytes
+/// currently mounted — which is also what makes an edited shader picked up by
+/// the next pipeline build without this asset changing. The source text is
+/// kept from load time for validity ("the file existed and read") and for the
+/// reflection work 142.9 will do without a device.
+///
+/// The module's contract: it defines `struct HpMaterial : IHpMaterial` and
+/// overrides the methods it wants, `override` mandatory (D28). It includes
+/// nothing — the engine's `HpSurface.slang` includes *it*, after the interface
+/// and DiligentFX's getters are in scope (D27: we include them; they include
+/// us — one level deeper).
+class HP_API ShaderAsset {
+public:
+    /// Constructs an empty asset that holds no shader.
+    ShaderAsset();
+
+    /// Destroys the asset.
+    ~ShaderAsset();
+
+    /// Not copyable, matching the other asset types: the pool shares one
+    /// instance per GUID and copies would fork the identity.
+    ShaderAsset(const ShaderAsset&) = delete;
+
+    /// Not copyable; see the copy constructor.
+    /// @returns nothing -- deleted.
+    ShaderAsset& operator=(const ShaderAsset&) = delete;
+
+    /// Moves the asset.
+    /// @param other the asset to move from.
+    ShaderAsset(ShaderAsset&& other) noexcept;
+
+    /// Moves the asset.
+    /// @param other the asset to move from.
+    /// @returns this asset.
+    ShaderAsset& operator=(ShaderAsset&& other) noexcept;
+
+    /// @returns whether a shader module was loaded.
+    [[nodiscard]] bool valid() const;
+
+    /// @returns the virtual path the compiler resolves this module by, or an
+    ///          empty string when empty.
+    [[nodiscard]] const std::string& virtualPath() const;
+
+    /// @returns the module's source text as read at load time, or an empty
+    ///          string. **Not necessarily the text the compiler will see** —
+    ///          the compiler re-reads the path at pipeline-build time.
+    [[nodiscard]] const std::string& source() const;
+
+private:
+    friend HP_API std::shared_ptr<ShaderAsset> loadShader(std::string_view virtualPath);
+
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
+
+/// The stable pool name for a shader module.
+template <>
+struct AssetTraits<ShaderAsset> {
+    /// Matches `assetKindName(AssetKind::Shader)`.
+    static constexpr const char* name = "Shader";
+};
+
+/// Loads a shader module through the VFS (T0142.15).
+///
+/// No device and no compile: whether the module *compiles* is answered at
+/// pipeline-build time, where a failure renders the same checkerboard a
+/// missing material does (T0141.4) rather than failing the load.
+/// @param virtualPath the module's path in the mount tree.
+/// @returns the shader, or nullptr when the file is missing or unreadable.
+///          **Not fatal**: a material whose shader is missing renders the
+///          missing-material pattern.
+[[nodiscard]] HP_API std::shared_ptr<ShaderAsset> loadShader(std::string_view virtualPath);
 
 /// A loaded glTF model.
 ///
