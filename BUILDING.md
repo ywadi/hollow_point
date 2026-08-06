@@ -243,6 +243,28 @@ public API must be documented from its first commit. Do not add a new defect to
 the baseline to make a failure go away; `-Ddocs-baseline` exists for the
 deliberate case of recording that gaps were *fixed*.
 
+## The shader contract reference
+
+`docs/shaders/` is the same idea for the surface a game's **material shader** is
+written against — `HpSurfaceInput`, `HpSurfaceOutput`, `HP_UNSHADED` and the
+`IHpMaterial` interface a game overrides (T0141.14, D27/D28). Same step
+(`zig build docs`), same CI gate, same "regenerate then fail on a dirty tree".
+
+Two differences worth knowing:
+
+- **It needs python3 only, not libclang**, so it still runs on a host where the
+  C++ generator is skipped.
+- **What is public is declared in the source, not inferred from a path.**
+  `engine/shaders/` has no `include/` vs `src/` split, so every `.slang` file
+  carries `// hp-shader-doc: public` or `// hp-shader-doc: private`, and
+  `gen_shader_docs.py` **refuses to run** if one does not. A single declaration
+  inside a private file can be published with `// hp-shader-doc: export`, which
+  is how `IHpMaterial` is documented without publishing the engine's own shader
+  around it. A new file is private until somebody decides otherwise.
+
+There is no baseline: the contract is small and fully documented, so a missing
+comment is an error from the first commit.
+
 **Without python3 and libclang** the build prints a warning and carries on
 without regenerating. Install them with `pip install libclang` if you touch
 public headers; CI's `api-docs-current` job regenerates and fails on any drift,

@@ -1,3 +1,5 @@
+// hp-shader-doc: public
+//
 // The contract a game's shader compiles against (T0141.6, D27; Slang since
 // T0142.13, D28).
 //
@@ -15,13 +17,13 @@
 // what it wants (D28, T0142.15). `override` is mandatory, so nothing the engine
 // does is replaced by accident:
 //
-//   struct HpMaterial : IHpMaterial
-//   {
-//       override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
-//       {
-//           return float4(1.0, 0.0, 0.0, 1.0);
-//       }
-//   }
+//     struct HpMaterial : IHpMaterial
+//     {
+//         override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+//         {
+//             return float4(1.0, 0.0, 0.0, 1.0);
+//         }
+//     }
 //
 // **The module includes nothing.** The engine includes *it*, into
 // `HpSurface.slang` after this contract and after DiligentFX's getters, through

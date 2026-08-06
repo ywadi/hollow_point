@@ -361,13 +361,24 @@ T0060 already says it must not foreclose and does not.
       that is why it is decided now — variant count is what grows without limit
       here. Distinct from `Material::unlit`, which says the same for a
       *standard* material as data; both end in the same place
-- [ ] 141.14 **Generate the shader contract's reference from `HpMaterial.slang`,
+- [x] 141.14 **Generate the shader contract's reference from `HpMaterial.slang`,
       and gate it in CI** — the same mechanism `tools/gen_api_docs.py` and the
       "API reference is up to date" job give `engine/include/hp/`. Scoped to
       **public shader headers only**, mirroring the include/src split the C++
       side already has: `HpSurface.psh` is no more public than `engine/src/*.cpp`.
       **Not before 141.6 settles** — a generator written against a contract that
-      is still moving is work done twice
+      is still moving is work done twice.
+      **Done 2026-08-06, once 142.13 had settled the contract file.**
+      `tools/gen_shader_docs.py` → `docs/shaders/`, wired into `zig build docs`
+      and gated by the same CI job, which now checks `docs/` rather than
+      `docs/api` and uses `git status --porcelain` so a *new* page counts as
+      drift. The boundary is **declared in the source and mechanically
+      enforced** — every `.slang` carries `// hp-shader-doc: public|private` or
+      the generator refuses to run — because there is no include/src split in
+      `engine/shaders/` to infer it from. Two findings in the notes: the
+      contract genuinely spans two files, and the generator's first output was
+      confidently wrong in exactly the way `gen_api_docs.py`'s stale-param
+      check exists to catch
 - [→] 141.13 **Moved to T0142.14** *(numbered 2026-08-06; was an orphan)* —
       the resolution order below still holds
       (engine, then game, then DiligentFX; engine and DiligentFX names reserved),
@@ -809,13 +820,84 @@ zero failures.**
 
 | | | Blocked on |
 |---|---|---|
-| **141.14** | generated shader-contract docs, gated in CI | 141.6 settling |
+| **141.14** | generated shader-contract docs, gated in CI | ~~141.6 settling~~ — **done 2026-08-06** |
 | **141.9** | tessellation | deferred: *when a silhouette must change* |
 
 Moved to T0142 and tracked there: 141.1 → **142.15**, 141.2 → **142.9**,
 141.5 → **142.8**, 141.13 → **142.14**, 141.15 → **142.16**.
 
 ## Notes / findings
+
+### 141.14 landed 2026-08-06 — the shader contract is generated, and drawing its boundary found two things
+
+**What landed.** `tools/gen_shader_docs.py` → `docs/shaders/`
+(`index.md`, `HpMaterial.md`, `IHpMaterial.md`): 4 declarations, 23 members,
+all documented. It runs inside `zig build docs`, on every route to a build,
+and CI's *API reference is up to date* job now regenerates and diffs `docs/`
+rather than `docs/api`. Measured: 4 declaration(s), 23 member(s) across 2
+page(s); `zig build docs` converges to `cached`; `rm -rf docs/shaders && zig
+build docs` restores it (the generated markdown is declared as an input, the
+lesson T0123 paid for on the C++ side).
+
+**Finding 1 — the include/src split this subtask told itself to mirror does
+not exist in `engine/shaders/`, and pretending it does would have been the
+wrong boundary.** The subtask said "`HpSurface.psh` is no more public than
+`engine/src/*.cpp`", which is true of the *file* and false of one declaration
+inside it: **`interface IHpMaterial` is the thing a game actually implements**
+(D28) and it lives in the private file, because its default implementations
+*are* the standard material and they call DiligentFX's getters and the
+engine's own resources. It cannot move into `HpMaterial.slang` without making
+the contract file depend on resources declared in the implementation — which
+is a worse boundary, not a tidier one.
+
+So publicness is **declared in the source** rather than inferred from a path:
+
+| marker | meaning |
+|---|---|
+| `// hp-shader-doc: public` | the whole file is contract |
+| `// hp-shader-doc: private` | the whole file is implementation |
+| `// hp-shader-doc: export` | (in a private file) the next declaration is contract, and only that one |
+
+**A `.slang` file carrying neither file marker is a hard error**, the same
+shape as `hp_embed_shaders.cmake` refusing a stray `.psh` — verified in both
+directions: the clean tree generates, a `Stray.slang` with no marker fails the
+`docs` step naming the file and D27, and removing it goes green again. A new
+file is private until somebody decides otherwise, which is the safe direction.
+
+**Finding 2 — the first generated output was confidently wrong, and it is the
+exact failure `gen_api_docs.py`'s stale-param check exists to prevent.** Every
+one of `IHpMaterial`'s seven methods rendered as *"No default — every material
+must implement this"*, directly above prose beginning *"Default: ..."*. The
+cause is that this project writes the opening brace on its own line, and the
+detector tested `"{" in <the signature text>`. A reader would have concluded
+that a three-line material is impossible. Fixed by looking for the terminator
+*after* the signature — `{` means a default, `;` means a requirement — and the
+distinction is load-bearing, since "adding a method with a default is free" is
+the whole of D28's promise.
+
+**A stale paragraph was found and corrected rather than published.** The block
+above `IHpMaterial` still said the interface was *"not yet a game-deliverable
+authoring surface ... until that lands, the only conformance in the build is
+the engine's own `HpStandardMaterial`"*. 142.15 landed; a game's module has
+been a conformance since. Because the generator reproduces the source's own
+prose, that sentence would have become the shader reference's answer to "can I
+ship a material?" — which is precisely the re-introduction of stale guidance
+the amended D27 warns about. `HpSurface.slang` now says what is true, with the
+correction noted in place.
+
+**One hole closed in the *existing* gate on the way**: the job checked
+`git diff --quiet -- docs/api`, and `git diff` does not see an untracked file.
+A generator that can add a *page* — marking a second shader file public does
+exactly that — could therefore have left a new page uncommitted and green. It
+is `git status --porcelain -- docs` now.
+
+**Not done, and stated plainly:** the parser is hand-rolled (Slang has no
+libclang) and covers `struct`, `interface` and `#define` at file scope. It
+fails loudly on anything it cannot parse inside a public region rather than
+omitting it silently, which is the mitigation, not a substitute for the
+limitation. There is deliberately **no baseline**: the contract is small and
+fully documented today, so a missing comment is an error from the first commit
+— if that ever becomes untenable, add the ratchet deliberately.
 
 ### 141.8 landed 2026-08-06 — triplanar, and the second data point agrees with the first
 

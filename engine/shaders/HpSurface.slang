@@ -1,3 +1,5 @@
+// hp-shader-doc: private
+//
 // The engine's own pixel shader (T0141, D26; a `.slang` file since T0142, D28).
 //
 // **This file is why D26 exists.** DiligentFX's `RenderPBR.psh` is private and
@@ -301,12 +303,21 @@ void HpSurface(in HpSurfaceInput In, inout HpSurfaceOutput Out)
 // documented vocabulary; `VSOutput` is the per-permutation wire format, and a
 // material that touches it accepts that its fields come and go with the mesh.
 //
-// What this is **not yet**: a game-deliverable authoring surface. A `.slang`
-// material arriving through the VFS as an asset is T0141.1/T0142.7-8
-// territory; until that lands, the only conformance in the build is the
-// engine's own `HpStandardMaterial` below, and it doubles as the reference
-// implementation (142.3).
+// **A game delivers a conformance as content** (T0142.15): a `.slang` module
+// reaching the compiler through the VFS (T0142.14), named by
+// `Material::shader`, included below as `HpMaterialModule.generated` and
+// defining `struct HpMaterial : IHpMaterial`. The engine's own
+// `HpStandardMaterial` is the empty conformance beside it, and doubles as the
+// reference implementation (142.3).
+//
+// *(Corrected 2026-08-06 by T0141.14. This paragraph said the opposite —
+// "not yet a game-deliverable authoring surface ... until that lands" — which
+// stopped being true when 142.15 landed and 142.13 rewrote the contract file
+// around it. It is corrected here rather than only in the ticket because
+// this text is the generated shader reference's prose: `docs/shaders/` would
+// have published it to every agent writing a material.)*
 // ---------------------------------------------------------------------------
+// hp-shader-doc: export
 interface IHpMaterial
 {
     /// The surface-stage coordinate hook (T0141.7, 141.8): whatever this

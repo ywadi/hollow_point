@@ -354,24 +354,40 @@ jobs:
       # the consumer is a coding agent, and an outdated reference makes it write
       # calls to functions that do not exist (T0118).
       - name: Regenerate, lint and check for drift
-        # `zig build docs` does two things, both enforced here rather than
-        # available: it *checks* the documentation against a ratchet baseline
-        # (missing doc comments, missing @param, and -- the one that matters --
-        # an @param naming a parameter that no longer exists), and it
-        # regenerates the reference. The dirty-tree test below then catches
-        # anyone who changed a header without regenerating.
+        # `zig build docs` does three things, all enforced here rather than
+        # available: it *checks* the C++ documentation against a ratchet
+        # baseline (missing doc comments, missing @param, and -- the one that
+        # matters -- an @param naming a parameter that no longer exists), it
+        # regenerates `docs/api`, and it regenerates `docs/shaders` from the
+        # shader contract (T0141.14). The dirty-tree test below then catches
+        # anyone who changed a header or the contract without regenerating.
+        #
+        # `docs`, not `docs/api`: the shader reference is gated by the same job
+        # because it fails the same way. A game's material shader is written
+        # against `HpMaterial.slang` and `IHpMaterial`, and an agent reading a
+        # stale copy of either writes a shader that does not compile -- or
+        # worse, one that compiles against a hook whose meaning moved.
         #
         # Both failures are correctness failures for the consumer: the reader is
         # a coding agent, and documentation that is confidently wrong makes it
         # write confidently wrong code (T0118).
+        #
+        # `git status --porcelain`, not `git diff`: a *new* page is untracked
+        # rather than modified, and `git diff` does not see it at all. That
+        # matters now that a generator can add a page -- marking a second
+        # shader file public produces one -- and it was a hole in the old
+        # check nobody had hit only because a new C++ header always lands
+        # beside an edited index.
         run: |
           zig build docs
-          if ! git diff --quiet -- docs/api; then
-            echo "::error::docs/api is out of date -- run 'zig build docs' and commit the result"
-            git diff --stat -- docs/api
+          drift=$(git status --porcelain -- docs)
+          if [ -n "$drift" ]; then
+            echo "::error::docs/ is out of date -- run 'zig build docs' and commit the result"
+            echo "$drift"
+            git diff --stat -- docs
             exit 1
           fi
-          echo "API reference matches the headers"
+          echo "API reference matches the headers, and the shader reference matches the contract"
 
   offline-configure:
     name: Configure with FetchContent disconnected
