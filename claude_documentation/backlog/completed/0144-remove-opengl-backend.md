@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
@@ -34,14 +34,35 @@ unreachable until GL is gone.
 
 ## Done when
 
-- [ ] No OpenGL device can be created, and nothing references one.
-- [ ] `zig build test -Dtest=all` and `-Dtest=gpu` pass on both targets. **The GPU
+- [x] No OpenGL device can be created, and nothing references one.
+      *`DILIGENT_NO_OPENGL` removes the backend's targets from the build;
+      a repo-wide grep finds no `RenderBackend::OpenGL`, `openGLContext`,
+      `IsGLDevice` or `GraphicsEngineOpenGL` outside history and comments.*
+- [x] `zig build test -Dtest=all` and `-Dtest=gpu` pass on both targets. **The GPU
       case count will drop** — the suite currently runs many cases twice, once
       per backend. That is the expected outcome, not a regression; record the
       before and after numbers.
-- [ ] A machine without Vulkan gets a clear logged message, never a crash.
-- [ ] `zig build docs` clean, `check_backlog.py` clean, `dist` still runs with
+      *Before: fast 302/214,663, integration 89/515, gpu 22/803. After: fast
+      302/214,660 (one case swapped for the projection-pinning case),
+      integration 89/515 unchanged, gpu 15/492 — the seven `on OpenGL` cases
+      and the GL half of the adapter report. All green, both targets,
+      RTX 2080, wine for the Windows suite; guard pixels digit-identical
+      across baseline → removal → depth simplification.*
+- [x] A machine without Vulkan gets a clear logged message, never a crash.
+      *Simulated with `VK_ICD_FILENAMES=/nonexistent-icd.json`: one ERROR
+      naming D29, the likely causes and the fix; the editor then ran 716
+      frames on an inert renderer and exited 0 on close — 15 log lines
+      total.*
+- [x] `zig build docs` clean, `check_backlog.py` clean, `dist` still runs with
       the build tree deleted.
+      *Both dist editors ran with `build/` renamed away: Linux natively and
+      Windows under wine, each bringing up Vulkan on the RTX 2080, loading
+      the sandbox module and the slang runtime from inside `dist/`, and
+      shutting down cleanly. Stale GL artifacts from the pre-removal build
+      tree had leaked into `dist` through the glob (T0128's exact
+      complaint); the orphaned outputs were deleted and `dist` restaged
+      GL-free. `opengl32` also left the toolchain's import-library list —
+      zero references in the generated build.ninja.*
 
 ## Subtasks
 
@@ -52,7 +73,7 @@ unreachable until GL is gone.
 - [x] 144.2 **Remove GL device creation and window setup** in `Render.cpp` and
       `Window.cpp`. `RenderLayer` must fail with a clear logged message when
       Vulkan is unavailable — **never a crash, never silence**.
-- [ ] 144.3 **Simplify `DepthConvention`.** The `[-1, 1]` clip case exists only
+- [x] 144.3 **Simplify `DepthConvention`.** The `[-1, 1]` clip case exists only
       for GL. **Reverse-Z (T0130) must survive unchanged** — verify with the
       existing depth tests before and after, and do not fold the two changes
       together. If the simplification looks like it alters depth behaviour at
@@ -68,7 +89,7 @@ unreachable until GL is gone.
 - [x] 144.6 **Remove GL cases from the tests.** Several GPU tests parameterise
       over both backends; `gpu_adapter_report_test.cpp` reports both. Remove the
       GL half rather than leaving skipped cases.
-- [ ] 144.7 **Update the documents.** `01-project-overview.md`'s backend table
+- [x] 144.7 **Update the documents.** `01-project-overview.md`'s backend table
       says "Vulkan, OpenGL" for both targets. `Render.hpp`'s own comments
       describe the fallback. `05-verification-status.md` may reference GL
       coverage. D1 is amended by D29 — add the cross-reference **in D1**, not

@@ -203,9 +203,11 @@ if(HP_TARGET MATCHES "windows")
         # MSVC-named copies there.
         #
         # Only reachable non-D3D names are listed; the D3D ones sit behind
-        # backend guards that are off for this toolchain.
+        # backend guards that are off for this toolchain, and `opengl32` left
+        # the list with the OpenGL backend (D29/T0144) -- nothing names it any
+        # more, measured as zero references in the generated build.ninja.
         get_filename_component(_hp_build_root "${HP_SHIM_DIR}" DIRECTORY)
-        foreach(_l dwmapi winmm shcore ninput opengl32 Shlwapi)
+        foreach(_l dwmapi winmm shcore ninput Shlwapi)
             _hp_import_lib("${_l}" "${_hp_build_root}/${_l}.lib")
         endforeach()
     endif()

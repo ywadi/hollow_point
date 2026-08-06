@@ -20,9 +20,11 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-06, revised the same day after D28, then D29** — the engine's shader language
-changed. Everything shader-side written before **T0142** lands would be written
-twice, which is why it sits first rather than the ticket already in progress. The
+**Set 2026-08-06, revised through the day: after D28, after D29, and again when
+T0144 closed the same night** — the engine's shader language changed, then its
+second graphics backend was removed. Everything shader-side written before
+**T0142** lands would be written twice, which is why it sits first rather than
+the ticket already in progress. The
 owner's reason for this section: *"This way we know what needs to happen next
 even if the context and session restart."* The [Board](#board) below is every
 ticket there is; this is the five items in flight **now**, in order.
@@ -33,29 +35,30 @@ asset), and from **T0141**: 141.0 (D26), 141.6 (the contract, D27), **141.10**
 DiligentFX's) and **141.11** (the textured-render guard, plus per-channel debug
 views). Also **D28**, measured on hardware: a Slang shader including DiligentFX's
 unmodified headers, compiled to SPIR-V and run by Diligent, produced their
-arithmetic to the byte.
+arithmetic to the byte. And **D29, executed**: **T0144** removed the OpenGL
+backend — Vulkan only, the gpu suite runs each case once (15 cases), and the
+engine's shader source is freed from the HLSL-compatible subset.
 
 **Two decisions were amended this week and both are load-bearing.** **D26** no
 longer claims the engine owns texture sampling — it owns `main` and calls their
 getters, which is 63 fewer lines and the same pixels. **D24** is amended by
-item 3: the engine will have every feature DiligentFX's PBR has, not a subset.
+T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Ticket | Kind | Why it sits here |
 |---|---|---|---|
-| 1 | [T0144](inprogress/0144-remove-opengl-backend.md) | code | **Remove OpenGL; Vulkan only** (D29, amends D1). First because it is small and it **unblocks item 2's whole point** — GL binds resources by name, Slang renames them, so while GL exists the engine's shader is pinned to the HLSL subset and `IHpMaterial` cannot be written at all |
-| 2 | [T0142](inprogress/0142-slang-shader-language.md) | code | **Slang is the engine's shader language** (D28). The plumbing landed and the pixels are byte-identical — but **no Slang construct is in use yet**, because of item 1. 142.2 (`IHpMaterial`) is the point of the ticket and starts once GL is gone |
-| 3 | [T0141](inprogress/0141-custom-shader-materials.md) | code | The surface stage's **rendering** remainder, once there is a language to write it in: the missing-material fallback (141.12), parallax and height (141.7), triplanar (141.8). Its authoring half moved to item 1 |
-| 4 | [T0143](open/0143-extended-material-features.md) | code | **Everything DiligentFX's PBR has, plus the ability to override it** — clearcoat, sheen, anisotropy, iridescence, transmission, volume. Amends D24. Wiring rather than new maths, because their getters are already included and callable |
-| 5 | [T0045](open/0045-culling-and-render-queues.md) | code | Culling, sorting and render queues. **Shader-independent**, so it may slot anywhere — see below. It is also the hedge if item 1 stalls |
-| 6 | [T0086](open/0086-shadows.md) | code | Shadows. Last because it needs the surface stage *and* adds `ShadowFactor` to the material contract, so it wants that contract settled in Slang first |
+| 1 | [T0142](inprogress/0142-slang-shader-language.md) | code | **Slang is the engine's shader language** (D28). The plumbing landed and the pixels are byte-identical, and **T0144 removed the GL backend that pinned the shader to the HLSL subset** — so 142.2 (`IHpMaterial`), the point of the ticket, is now unblocked and next |
+| 2 | [T0141](inprogress/0141-custom-shader-materials.md) | code | The surface stage's **rendering** remainder, once there is a language to write it in: the missing-material fallback (141.12), parallax and height (141.7), triplanar (141.8). Its authoring half moved to T0142 |
+| 3 | [T0143](open/0143-extended-material-features.md) | code | **Everything DiligentFX's PBR has, plus the ability to override it** — clearcoat, sheen, anisotropy, iridescence, transmission, volume. Amends D24. Wiring rather than new maths, because their getters are already included and callable |
+| 4 | [T0045](open/0045-culling-and-render-queues.md) | code | Culling, sorting and render queues. **Shader-independent**, so it may slot anywhere — see below. It is also the hedge if T0142 stalls |
+| 5 | [T0086](open/0086-shadows.md) | code | Shadows. Last because it needs the surface stage *and* adds `ShadowFactor` to the material contract, so it wants that contract settled in Slang first |
 
 ### T0045 is the movable one, and that is the useful thing to know about it
 
 What it needs from the material work is **identity and blend mode** — `Guid` plus
 `AlphaMode` — which 60.1 delivered and 60.6 completes, and nothing at all from
-the surface stage; its own dependency note says so. It is listed fifth only
+the surface stage; its own dependency note says so. It is listed fourth only
 because the T0141 chain carries the blocking relationships and should not queue
-behind it. Moving it earlier costs nothing, so **if item 3 is waiting on the
+behind it. Moving it earlier costs nothing, so **if T0141 is waiting on the
 owner, this is what to pick up instead of stalling.**
 
 ### This is not the `Order` column, and where they disagree they do so on purpose
@@ -72,12 +75,12 @@ apart quietly.
 ### What is deliberately not here
 
 Nothing else in Phase 4 — T0096, T0087, T0117 and the rest — and that is not a
-judgement that they matter less. These six have blocking relationships **to each
+judgement that they matter less. These five have blocking relationships **to each
 other**; the rest do not, so listing them would be the Order column again, one
 scroll higher.
 
-Inside T0141, item 4 is not the whole ticket either: custom-shader authoring
-(141.1–141.6) and tessellation (141.9) are outside the sequence. Item 4 is the
+Inside T0141, item 2 is not the whole ticket either: custom-shader authoring
+(141.1–141.6) and tessellation (141.9) are outside the sequence. Item 2 is the
 standard material plus the two surface-stage techniques that prove the ceiling
 is lifted, which is what the rest of this list depends on.
 
@@ -167,7 +170,7 @@ wrong in the confident voice of a document that is normally right.
 | 440 | [T0045](open/0045-culling-and-render-queues.md) | Culling, sorting and render queues | 4 — Render layer | 🔜 TODO | High | Complex |
 | 445 | [T0134](completed/0134-pbr-renderer-adoption.md) | How far DiligentFX's PBR renderer goes, and what inherits it | 4 — Render layer | ✅ DONE | High | Moderate |
 | 450 | [T0060](completed/0060-material-system.md) | Material assets | 4 — Render layer | ✅ DONE | High | Moderate |
-| 412 | [T0144](inprogress/0144-remove-opengl-backend.md) | Remove the OpenGL backend; Vulkan only | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
+| 412 | [T0144](completed/0144-remove-opengl-backend.md) | Remove the OpenGL backend; Vulkan only | 4 — Render layer | ✅ DONE | High | Moderate |
 | 415 | [T0142](inprogress/0142-slang-shader-language.md) | Slang as HollowPoint's shader language | 4 — Render layer | 🚧 IN PROGRESS | High | Large |
 | 425 | [T0143](open/0143-extended-material-features.md) | Everything DiligentFX's PBR has, and the ability to extend it | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 455 | [T0141](inprogress/0141-custom-shader-materials.md) | The surface stage: standard and custom material shaders | 4 — Render layer | 🚧 IN PROGRESS | High | Complex |
