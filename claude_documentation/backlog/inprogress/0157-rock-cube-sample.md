@@ -2,14 +2,14 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | Medium |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
 | **Order** | 463 |
 | **Created** | 2026-08-06 |
 | **Blocked by** | [0156-parallax-under-triplanar.md](../completed/0156-parallax-under-triplanar.md) — triplanar and POM together is the thing being shown. **Closed 2026-08-06** — parallax under triplanar landed, so this is buildable now |
-| **Refs** | [../completed/0022-scene-serialization.md](../completed/0022-scene-serialization.md) — **this is the first non-test consumer of its loader**; [../completed/0139-hand-authored-scenes.md](../completed/0139-hand-authored-scenes.md) — hand-authoring is the claim being tested; [../completed/0060-material-system.md](../completed/0060-material-system.md) — the material as an asset file; [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) 141.7/141.8 — POM and triplanar; [0062-entity-behaviours.md](0062-entity-behaviours.md) — **157.6 may be a finding for it**; T0109 — a sample is not a game; **D12** (gameplay in lockstep), **D13** (VFS), T0104 (the build-id handshake) ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) |
+| **Refs** | [../completed/0022-scene-serialization.md](../completed/0022-scene-serialization.md) — **this is the first non-test consumer of its loader**; [../completed/0139-hand-authored-scenes.md](../completed/0139-hand-authored-scenes.md) — hand-authoring is the claim being tested; [../completed/0060-material-system.md](../completed/0060-material-system.md) — the material as an asset file; [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) 141.7/141.8 — POM and triplanar; [0062-entity-behaviours.md](../open/0062-entity-behaviours.md) — **157.6 may be a finding for it**; T0109 — a sample is not a game; **D12** (gameplay in lockstep), **D13** (VFS), T0104 (the build-id handshake) ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) |
 
 ## Why
 
