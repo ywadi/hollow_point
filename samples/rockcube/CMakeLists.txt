@@ -34,7 +34,8 @@ set(_rockcube_textures "${CMAKE_SOURCE_DIR}/test_assets/derived")
 
 # The rock set only. `metal_*` exists for the gpu suite's metallic cases and
 # would be 900 KB of copy for a sample that never names it.
-set(_rockcube_texture_files rock_basecolour.png rock_orm.png rock_height.png)
+set(_rockcube_texture_files rock_basecolour.png rock_orm.png rock_height.png
+                            rock_normal.png)
 
 set(_rockcube_sources)
 file(GLOB_RECURSE _rockcube_sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/content/*")

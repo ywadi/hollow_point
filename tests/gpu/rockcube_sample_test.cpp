@@ -44,6 +44,7 @@
 #include <hp/Vfs.hpp>
 #include <hp/Window.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -211,8 +212,8 @@ TEST_CASE("the rock cube sample renders its committed content") {
 
     hp::AssetPool pool;
     for (const char* path : {"textures/rock_basecolour.png", "textures/rock_orm.png",
-                             "textures/rock_height.png", "materials/rock.hpmat",
-                             "models/cube.gltf"}) {
+                             "textures/rock_height.png", "textures/rock_normal.png",
+                             "materials/rock.hpmat", "models/cube.gltf"}) {
         const hp::ImportResult result =
             hp::importAsset(device.render->device(), device.render->context(), pool, path);
         CAPTURE(path);
@@ -238,19 +239,29 @@ TEST_CASE("the rock cube sample renders its committed content") {
     const hp::SceneLoadResult loaded =
         hp::loadSceneFromString(scene, *text, "scenes/rockcube.hpscene");
     REQUIRE(loaded.status == hp::SceneLoadStatus::Ok);
-    CHECK(loaded.entities == 3);
+    CHECK(loaded.entities == 4);
     // `RockCubeSpin` belongs to the gameplay module, which is not loaded here.
     // Preserved, not dropped, and not fatal (D23).
     CHECK(loaded.unknownComponents == 1);
 
-    // The light must arrive from above and from the camera's side. Same
-    // assertion the textured-surface test makes about the same rake, and it is
-    // here because the sample authors that rotation as four hand-written
-    // numbers in a file where a sign error is invisible.
+    // Both lights must arrive from above and from the camera's side, and from
+    // *opposite* horizontal sides. This is here because the sample authors
+    // each rotation as four hand-written numbers in a file where a sign error
+    // is invisible to read and obvious on screen.
+    //
+    // The fill exists because there is no ambient or environment lighting yet
+    // (T0087): with one lamp and a normal map, a face angled away from it
+    // renders solid black — measured, and the reason the scene has two.
     const hp::LightList lights = hp::gatherLights(scene);
-    REQUIRE(lights.size() == 1);
-    CHECK(lights[0].direction.y < 0.0F); // travelling down, therefore from above
-    CHECK(lights[0].direction.z > 0.0F); // travelling away, therefore from the camera's side
+    REQUIRE(lights.size() == 2);
+    for (std::size_t i = 0; i < lights.size(); ++i) {
+        CAPTURE(i);
+        CHECK(lights[i].direction.y < 0.0F); // travelling down, therefore from above
+        CHECK(lights[i].direction.z > 0.0F); // travelling away, from the camera's side
+    }
+    // Key from the +X side, fill from the -X side. Same sign and they stop
+    // being a key and a fill and become one brighter lamp.
+    CHECK(lights[0].direction.x * lights[1].direction.x < 0.0F);
 
     hp::SceneView view;
     REQUIRE(view.create(device.render->device(), device.render->context(), kSize, kSize));
@@ -314,8 +325,8 @@ TEST_CASE("the rock cube's faces cull from inside, so they wind outward") {
 
     hp::AssetPool pool;
     for (const char* path : {"textures/rock_basecolour.png", "textures/rock_orm.png",
-                             "textures/rock_height.png", "materials/rock.hpmat",
-                             "models/cube.gltf"}) {
+                             "textures/rock_height.png", "textures/rock_normal.png",
+                             "materials/rock.hpmat", "models/cube.gltf"}) {
         (void)hp::importAsset(device.render->device(), device.render->context(), pool, path);
     }
 
@@ -366,3 +377,118 @@ TEST_CASE("the rock cube's faces cull from inside, so they wind outward") {
     hp::Vfs::shutdown();
     tearDown(device);
 }
+
+TEST_CASE("the cube's lighting is anchored to the world, not to the mesh") {
+    // **The rotation test a still frame cannot make.**
+    //
+    // At yaw 0, 90, 180 and 270 degrees a cube presents an identical square to
+    // the camera: the same world-space normals face the same way, only *which*
+    // face — and therefore which UV island — is in front. So if shading is
+    // world-anchored, the frame's brightness distribution must be near
+    // identical at all four, and only the rock pattern differs. If normals were
+    // left in object space, the lit side would swing with the mesh and one face
+    // would appear to be the only one reacting to light.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+    const std::filesystem::path root = findRepoRoot();
+    if (root.empty()) {
+        MESSAGE("samples/rockcube/content not found; skipping");
+        tearDown(device);
+        return;
+    }
+    REQUIRE(mountContent(root));
+
+    hp::AssetPool pool;
+    for (const char* path : {"textures/rock_basecolour.png", "textures/rock_orm.png",
+                             "textures/rock_height.png", "textures/rock_normal.png",
+                             "materials/rock.hpmat", "models/cube.gltf"}) {
+        (void)hp::importAsset(device.render->device(), device.render->context(), pool, path);
+    }
+    const auto text = hp::Vfs::readText("scenes/rockcube.hpscene");
+    REQUIRE(text.has_value());
+    hp::Scene scene;
+    REQUIRE(hp::loadSceneFromString(scene, *text, "scene").status == hp::SceneLoadStatus::Ok);
+
+    const auto cubeGuid = hp::Guid::parse("1570000000000103");
+    REQUIRE(cubeGuid.has_value());
+    const auto cube = scene.find(*cubeGuid);
+    REQUIRE(cube.has_value());
+
+    hp::SceneView view;
+    REQUIRE(view.create(device.render->device(), device.render->context(), kSize, kSize));
+    view.setClearColour(kClear[0], kClear[1], kClear[2], kClear[3]);
+
+    // Mean luminance of the left and right halves of the covered pixels.
+    const auto halves = [](const std::vector<std::uint8_t>& rgba) {
+        double left = 0.0;
+        double right = 0.0;
+        long long leftN = 0;
+        long long rightN = 0;
+        for (int y = 0; y < kSize; ++y) {
+            for (int x = 0; x < kSize; ++x) {
+                const std::size_t i = (static_cast<std::size_t>(y) * kSize + x) * 4;
+                if (rgba[i] == 0 && rgba[i + 1] == 0 && rgba[i + 2] == 255) {
+                    continue;
+                }
+                const double luma =
+                    0.2126 * rgba[i] + 0.7152 * rgba[i + 1] + 0.0722 * rgba[i + 2];
+                if (x < kSize / 2) {
+                    left += luma;
+                    ++leftN;
+                } else {
+                    right += luma;
+                    ++rightN;
+                }
+            }
+        }
+        return std::pair<double, double>{leftN > 0 ? left / leftN : 0.0,
+                                         rightN > 0 ? right / rightN : 0.0};
+    };
+
+    std::vector<double> means;
+    for (int step = 0; step < 4; ++step) {
+        const float yaw = static_cast<float>(step) * 3.14159265358979F / 2.0F;
+        hp::Transform placement;
+        placement.position = {0.0F, 0.0F, 5.0F};
+        placement.rotation =
+            hp::Quaternion::RotationFromAxisAngle(hp::float3{0.0F, 1.0F, 0.0F}, yaw);
+        scene.setLocalTransform(*cube, placement);
+        scene.propagateTransforms();
+
+        std::vector<std::uint8_t> pixels;
+        REQUIRE(view.render(device.render->context(), scene, pool, 0, nullptr) != nullptr);
+        REQUIRE(view.readback(device.render->context(), pixels));
+        writePpm("rockcube_yaw_" + std::to_string(step * 90), pixels, kSize);
+
+        const auto [left, right] = halves(pixels);
+        MESSAGE("yaw " << step * 90 << " deg: left " << left << ", right " << right
+                       << ", right/left " << (left > 0.0 ? right / left : 0.0));
+        means.push_back((left + right) / 2.0);
+    }
+
+    // **The four frames must agree.** Not approximately-in-spirit: the same
+    // world normals face the same way at every 90-degree step, so the only
+    // legitimate difference is which patch of rock is in front.
+    //
+    // The first cube failed this by a factor of five — 26 at one yaw and 140 at
+    // the yaw opposite it — because its per-face tangent bases were not
+    // consistently oriented, so the normal map tilted bumps toward the light on
+    // one face and away on another. Every other assertion in this suite passed
+    // while that was true.
+    const double low = *std::min_element(means.begin(), means.end());
+    const double high = *std::max_element(means.begin(), means.end());
+    MESSAGE("mean luminance across the four yaws: " << low << " .. " << high);
+    REQUIRE(low > 0.0);
+    // 25% covers the genuine variation between four different patches of a
+    // detailed rock texture. A basis inconsistency is an order of magnitude
+    // larger than that, which is what makes the bound worth stating loosely.
+    CHECK(high / low < 1.25);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+

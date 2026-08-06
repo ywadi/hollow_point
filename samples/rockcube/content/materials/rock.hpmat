@@ -4,20 +4,32 @@
 # not saved out of the engine. Everything absent keeps its default, which is what
 # makes a material this short a complete one.
 #
-# **Triplanar plus a height map is the pairing this sample exists to show**
-# (T0141.7, T0141.8, T0156): the textures project from world space, so the cube
-# needs no UVs at all, and the parallax march runs per projection so the relief
-# reads as carved rather than painted.
+# ## UV-mapped, not triplanar, and that was a deliberate change
 #
-# Three deliberate absences:
+# This started triplanar (T0141.8) because that is what T0156 built and a cube
+# with no UVs is the sharpest demonstration of it. It is the wrong choice for a
+# **rotating** object, and looking at it made that obvious: triplanar projects
+# from *world* space, so the rock pattern is anchored to the world and the cube
+# turns through it. The relief swims across the faces instead of travelling with
+# them. That is inherent to the technique, not a defect — it is why triplanar
+# belongs to terrain and static geometry, and why the mesh now carries a 0..1 UV
+# island per face.
 #
-#   * **normalTexture** — a triplanar material ignores it (141.8). Naming one
-#     here would put a line in the file that nothing reads, which is the mistake
-#     `Camera::cullingMask` spent three tickets being.
-#   * **metallic** — left at 1, which multiplies into the ORM texture's blue
-#     channel. The rock set's blue is zero (test_assets/README.md), so the
-#     surface is a dielectric because the *texture* says so.
-#   * **roughness** — left at 1 for the same reason, against the green channel.
+# The capability itself is unchanged and still proven by
+# `tests/gpu/triplanar_test.cpp` and `tests/gpu/triplanar_parallax_test.cpp`.
+#
+# ## What that bought, beyond the swimming
+#
+# **The normal map.** A triplanar material ignores `normalTexture` outright
+# (T0141.8), so the previous version of this file could not name one and every
+# bit of surface shading came from the flat face normal. In UV space it applies,
+# and it is the reason the rock now reads as a surface rather than a picture of
+# one.
+#
+# One absence remains deliberate: **metallic** and **roughness** are left at 1,
+# which multiplies into the ORM texture's blue and green channels. The rock set's
+# blue is zero (test_assets/README.md), so the surface is a dielectric because
+# the *texture* says so rather than because this file asserts it.
 version: 1
 material:
   baseColourTexture: 1570000000000010
@@ -25,13 +37,24 @@ material:
   # so one texture fills two slots and that is not a mistake.
   metallicRoughnessTexture: 1570000000000011
   occlusionTexture: 1570000000000011
+  # **OpenGL convention** (green is +Y), which is what glTF specifies and what
+  # `test_assets` packs. The DirectX map has green inverted and the result is not
+  # an obvious failure — it is lighting that looks subtly wrong, as though lit
+  # from the opposite vertical direction.
+  normalTexture: 1570000000000013
+  # Eased off 1.0. At full strength this rock map perturbs a large share of an
+  # already-dim face past N·L = 0, and with no ambient to fall back on those
+  # texels clamp to solid black rather than going dark — detail turning into
+  # a hole. 0.8 keeps the relief and stops the cliff.
+  normalScale: 0.8
   heightTexture: 1570000000000012
-  # In projection units under triplanar, so this is depth as a fraction of one
-  # tile — and one tile is 2 metres at the scale below. Deep enough to read as
-  # relief on a 2-metre cube, shallow enough that the march does not swim at the
-  # grazing angles a rotating cube spends half its time at.
-  heightScale: 0.05
-  triplanar: true
-  # Tiles per metre. Half a tile per metre puts exactly one tile across each
-  # 2-metre face, which is the setting T0141.8 and T0156 measured against.
-  triplanarScale: 0.5
+  # Depth in UV0 units now, not projection units — one UV tile is one face, so
+  # this is 4% of a 2-metre face, about 8 cm of apparent depth.
+  #
+  # Shallower than the 0.05 the triplanar version used, and for a reason worth
+  # keeping: POM displaces **inward only** — the polygon face is the ceiling of
+  # the relief and nothing rises above it — so deep relief behind a razor-flat
+  # silhouette reads as a window into the surface rather than as carved rock.
+  # Less depth, less window. Real protrusion needs geometry, which is T0146.7's
+  # tessellation and explicitly not this.
+  heightScale: 0.04

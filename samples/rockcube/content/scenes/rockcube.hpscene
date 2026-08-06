@@ -56,13 +56,49 @@ entities:
         # A directional light takes only its *direction* from the transform, so
         # this position is documentation rather than data — it says where the
         # lamp would be if it were one.
-        position: [3, 4, 1]
-        rotation: [-0.117579, 0.882421, 0.322109, 0.322109]
+        #
+        # **Placed against the cube's resting yaw, not in the abstract.** The
+        # cube rests at 30 degrees, so the large face the camera sees points
+        # left of the view axis; a key from the right lights a *narrow* side
+        # face brilliantly and leaves the big one dim, which reads as the light
+        # coming from behind. Measured N.L with this placement: front 0.74, top
+        # 0.62, right 0.26 — the face you are looking at is the lit one.
+        position: [-2, 4, -1]
+        rotation: [-0.914385, -0.221222, 0, 0.33906]
         scale: [1, 1, 1]
       Light:
         type: Directional
         colour: [1, 0.96, 0.9]
-        intensity: 6
+        intensity: 60
+        enabled: true
+
+  - guid: 1570000000000104
+    name: Fill
+    components:
+      Transform:
+        position: [4, 2, 2]
+        # `Rot` mapping forward (0, 0, -1) onto (-0.85, -0.20, 0.48) — light
+        # travelling left, slightly down and away, so it *arrives* from the
+        # **right**, which is the side the key leaves dark. Its job is the
+        # narrow side face: N.L is 0.98 there and effectively zero on the face
+        # the key owns, so the two lamps divide the cube rather than competing.
+        rotation: [-0.197141, 0.83785, 0, 0.509061]
+        scale: [1, 1, 1]
+      Light:
+        type: Directional
+        # Cool, against the key's warmth. A fill that matches the key's colour
+        # reads as the key being weaker rather than as a second source.
+        colour: [0.62, 0.72, 0.9]
+        # A fifth of the key. **This is not decoration and it is not "more
+        # light" for its own sake.** There is no ambient or environment lighting
+        # in this engine yet (T0087), so a surface facing away from the only
+        # lamp receives exactly zero — and a normal map, which perturbs normals
+        # per texel, pushes a large share of an already-dim face past N·L = 0
+        # and clamps it to solid black. Measured: with the normal map and one
+        # light, one whole face of this cube rendered pure black; without the
+        # map, zero fully-black pixels. A second lamp is the honest stand-in
+        # until T0087 gives the engine an environment to fall back on.
+        intensity: 10
         enabled: true
 
   - guid: 1570000000000103
@@ -70,7 +106,13 @@ entities:
     components:
       Transform:
         position: [0, 0, 5]
-        rotation: [0, 0, 0, 1]
+        # A 30-degree resting yaw, `Rot(Y, 30deg)`, so the very first frame
+        # shows two faces at an angle rather than one square face flat on. It
+        # matters more than decoration with parallax: the march's offset is
+        # proportional to the view vector's tangent-plane component, so a face
+        # seen head-on displaces almost nothing and reads as flat. The spin
+        # composes onto this rather than replacing it.
+        rotation: [0, 0.258819, 0, 0.965926]
         scale: [1, 1, 1]
       MeshRenderer:
         mesh: 15700000000000c0

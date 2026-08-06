@@ -85,6 +85,7 @@ constexpr const char* kAssets[] = {
     "textures/rock_basecolour.png",
     "textures/rock_orm.png",
     "textures/rock_height.png",
+    "textures/rock_normal.png",
     "materials/rock.hpmat",
     "models/cube.gltf",
 };

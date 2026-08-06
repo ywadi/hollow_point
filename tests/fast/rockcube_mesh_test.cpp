@@ -37,7 +37,7 @@ namespace {
 
 constexpr int kVertexCount = 24;
 constexpr int kIndexCount = 36;
-constexpr int kVertexStride = 24; ///< position (3 floats) + normal (3 floats)
+constexpr int kVertexStride = 32; ///< position + normal (3 floats each) + uv (2)
 constexpr float kHalfExtent = 1.0F;
 
 /// Walks up from the working directory to the sample's content.
@@ -113,9 +113,16 @@ TEST_CASE("the rock cube's faces wind outward, per triangle") {
     const std::vector<char> gltf = readFile(models / "cube.gltf");
     REQUIRE(!gltf.empty());
     const std::string text(gltf.data(), gltf.size());
-    CHECK(text.find("\"byteStride\": 24") != std::string::npos);
+    CHECK(text.find("\"byteStride\": 32") != std::string::npos);
     CHECK(text.find("\"POSITION\": 0") != std::string::npos);
     CHECK(text.find("\"NORMAL\": 1") != std::string::npos);
+    CHECK(text.find("\"TEXCOORD_0\": 2") != std::string::npos);
+    // No vertex tangents, and that is a claim rather than an omission:
+    // `HpParallaxUv` and DiligentFX both reconstruct the tangent frame from
+    // screen-space derivatives, so a UV-mapped parallax material must work
+    // without them. If this starts failing, something began requiring
+    // tangents and the sample is where that will show up first.
+    CHECK(text.find("TANGENT") == std::string::npos);
     // Single-sided, which is what makes winding observable at all.
     CHECK(text.find("\"doubleSided\": false") != std::string::npos);
 
@@ -192,6 +199,107 @@ TEST_CASE("the rock cube's faces wind outward, per triangle") {
                 CHECK(other.z == doctest::Approx(n.z));
             }
         }
+    }
+}
+
+TEST_CASE("each face carries its own 0..1 UV island") {
+    // **Why per-face islands rather than one unwrap**: the material is
+    // UV-mapped parallax, and the march displaces along the surface. An island
+    // shared across an edge would march a fragment on one face into texels
+    // belonging to another, which reads as the relief tearing at the seam.
+    //
+    // This is also the assertion that catches the mesh being regenerated
+    // without texture coordinates at all — in which case the material still
+    // renders, using whatever UV0 defaults to, and looks flat for a reason
+    // nobody would guess from the picture.
+    const std::filesystem::path models = findModelDir();
+    REQUIRE_MESSAGE(!models.empty(), "samples/rockcube/content/models not found");
+
+    const std::vector<char> bin = readFile(models / "cube.bin");
+    REQUIRE(bin.size() == static_cast<std::size_t>(kVertexCount) * kVertexStride +
+                              static_cast<std::size_t>(kIndexCount) * sizeof(std::uint16_t));
+
+    for (int face = 0; face < 6; ++face) {
+        float lowU = 2.0F;
+        float highU = -1.0F;
+        float lowV = 2.0F;
+        float highV = -1.0F;
+        for (int corner = 0; corner < 4; ++corner) {
+            const std::size_t base = static_cast<std::size_t>(face * 4 + corner) * kVertexStride;
+            const float u = readFloat(bin, base + 24);
+            const float v = readFloat(bin, base + 28);
+            lowU = std::min(lowU, u);
+            highU = std::max(highU, u);
+            lowV = std::min(lowV, v);
+            highV = std::max(highV, v);
+        }
+        CAPTURE(face);
+        CHECK(lowU == doctest::Approx(0.0F));
+        CHECK(highU == doctest::Approx(1.0F));
+        CHECK(lowV == doctest::Approx(0.0F));
+        CHECK(highV == doctest::Approx(1.0F));
+    }
+}
+
+TEST_CASE("the UV frame has the handedness a tangent-space normal map needs") {
+    // **`cross(dP/du, dP/dv)` must equal the face normal.**
+    //
+    // Nothing authors a tangent frame here: `HpParallaxUv` and DiligentFX both
+    // reconstruct one from screen-space derivatives, as `T = dP/du` and
+    // `B = dP/dv`. A tangent-space normal map is only interpreted correctly
+    // when that frame carries the handedness it was baked against, and this
+    // invariant is what expresses it. The gpu suite's UV parallax quad
+    // satisfies it -- normal -Z, u along +X, v along -Y, `cross(+X, -Y) = -Z`.
+    //
+    // **This test exists because the cube shipped without it and was wrong.**
+    // The first UV layout put v along -b, flipping the handedness on all six
+    // faces; the symptom was relief lit from the wrong side, with only the
+    // face most directly under the key lamp still reading correctly. It was
+    // caught by eye. Nothing about the file, the winding, the UV ranges or the
+    // rendered silhouette was affected, so no assertion that existed at the
+    // time could have caught it -- which is what makes this one worth having.
+    const std::filesystem::path models = findModelDir();
+    REQUIRE_MESSAGE(!models.empty(), "samples/rockcube/content/models not found");
+    const std::vector<char> bin = readFile(models / "cube.bin");
+    REQUIRE(bin.size() >= static_cast<std::size_t>(kVertexCount) * kVertexStride);
+
+    for (int face = 0; face < 6; ++face) {
+        // Solve for dP/du and dP/dv from the face's four corners. The island
+        // is an axis-aligned unit square in UV, so two corner differences are
+        // enough and no least-squares fit is needed.
+        Vec3 corner[4];
+        float u[4];
+        float v[4];
+        for (int c = 0; c < 4; ++c) {
+            const std::size_t base = static_cast<std::size_t>(face * 4 + c) * kVertexStride;
+            corner[c] = {readFloat(bin, base), readFloat(bin, base + 4), readFloat(bin, base + 8)};
+            u[c] = readFloat(bin, base + 24);
+            v[c] = readFloat(bin, base + 28);
+        }
+
+        // Corner 0 is (u,v) = (0,0) by construction; find the ones that differ
+        // in exactly one coordinate.
+        Vec3 dPdu{};
+        Vec3 dPdv{};
+        for (int c = 1; c < 4; ++c) {
+            const bool sameU = u[c] == doctest::Approx(u[0]);
+            const bool sameV = v[c] == doctest::Approx(v[0]);
+            if (sameV && !sameU) {
+                dPdu = sub(corner[c], corner[0]);
+            } else if (sameU && !sameV) {
+                dPdv = sub(corner[c], corner[0]);
+            }
+        }
+        CAPTURE(face);
+        REQUIRE(dot(dPdu, dPdu) > 0.0F);
+        REQUIRE(dot(dPdv, dPdv) > 0.0F);
+
+        const std::size_t base = static_cast<std::size_t>(face * 4) * kVertexStride;
+        const Vec3 n{readFloat(bin, base + 12), readFloat(bin, base + 16),
+                     readFloat(bin, base + 20)};
+        // Positive, not merely non-zero: anti-aligned is the failure being
+        // guarded against, and it has the same magnitude as correct.
+        CHECK(dot(cross(dPdu, dPdv), n) > 0.0F);
     }
 }
 

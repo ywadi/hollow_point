@@ -41,7 +41,14 @@ not a side effect.
 ## Done when
 
 - [x] A **new sample module** renders a rotating cube with the rock material,
-      **POM and triplanar together**, visible in the editor
+      **POM and triplanar together**, visible in the editor — *delivered, and
+      then deliberately changed the same day: the sample is now **UV-mapped**
+      POM, not triplanar. Triplanar anchors the texture to the world, so a
+      **rotating** cube turns through a stationary rock pattern and the relief
+      swims. The capability is unchanged and still covered by
+      `tests/gpu/triplanar_test.cpp` and `triplanar_parallax_test.cpp`; what
+      changed is which of the two this sample shows. See "The sample moved from
+      triplanar to UV-mapped POM" below*
 - [x] **The scene is a hand-authored file** loaded through the scene loader — not
       constructed in C++. If any part cannot be expressed in the format, that is
       recorded rather than worked around in code
@@ -343,6 +350,73 @@ pixels changed by more than 2                   : 41465
 - **Hot reload of `hp_rockcube` was not exercised.** It re-runs `onLoad`, which
   reloads the scene from the file — so the cube's accumulated rotation resets.
   Correct enough for a sample and untested.
+
+### The sample moved from triplanar to UV-mapped POM, and three bugs came out of it
+
+**All three were found by eye, by the owner, in the editor** — which is the
+claim this ticket's "Why" makes for its own existence, so they belong here in
+full rather than as a footnote.
+
+**1. Triplanar was the wrong technique for a rotating object.** It projects from
+world space, so the cube turns *through* a stationary pattern instead of
+carrying it. Inherent, not a defect — and the reason the mesh gained a 0..1 UV
+island per face and the material dropped `triplanar`. It also unlocked the
+**normal map**, which a triplanar material ignores outright (T0141.8), and which
+is most of why the surface now reads as a surface.
+
+**2. The per-face tangent bases were inconsistent, and every assertion passed.**
+The first UV layout picked each face's tangent and bitangent on the only
+criterion that seemed to matter — `cross(t, b) == n`, so the winding came out
+right — and let each face pick freely among the pairs satisfying it. Result:
+`u` ran along world X on the ±Z faces and along world **Y** on the ±X faces, so
+the rock appeared rotated 90° between them; and `v` pointed world-**up** on +Z
+and world-**down** on −Z, so the normal map tilted bumps *toward* the light on
+one face and *away* on the opposite one.
+
+Measured over a yaw sweep, on geometry that presents an identical square to the
+camera at every step: mean frame luminance **26 at one yaw and 140 at the yaw
+180° from it**. It reads as one face being the only one that reacts to light.
+
+*Nothing could have caught it.* The file was valid, the winding correct, the UV
+islands 0..1, the silhouette right, and `cross(dP/du, dP/dv) == n` — the
+handedness invariant — held on every face. **Handedness and orientation are
+different properties**, and only the second was wrong. The fix pins the
+bitangent to world-down and derives the tangent as `b × n`; the guard is
+`tests/gpu/rockcube_sample_test.cpp`'s yaw sweep, which requires the four means
+within 25% of each other and fails at 5.4× on the old mesh.
+
+**3. `Light::intensity` is unitless with no reference scale, and 10 is almost
+nothing.** → **T0096**
+
+The scene ran at intensity 3.5, then 6, then 10 and still looked unlit. The
+engine's own debug views settled it: rendering `BaseColor` against the shaded
+frame showed the **brightest face barely reaching its own unlit albedo** (37 vs
+33) and two of three sitting below it. Light that never lifts a surface above
+its albedo does not read as light. The scene now runs a key at **60** and a fill
+at **10**.
+
+`hp/Light.hpp` documents the field as deliberately unitless — *"a physical unit
+would be precision about a number nothing yet interprets physically; revisit
+with T0096"* — which is a defensible decision that leaves nobody any way to know
+whether 10 is bright or dark. That is the finding for T0096: whatever it does
+about exposure and tone mapping should come with a stated reference scale.
+
+**A fourth thing, which was my own error and is recorded because it nearly
+became a false bug report.** Probing the light convention with `Rot(X, +90°)`
+maps the light's forward `(0, 0, -1)` to `(0, +1, 0)` — straight **up**, not
+down — and produced a dim top face that looked like proof the engine had the
+sign inverted. The correct probe (`Rot(X, -90°)`) lights the top decisively:
+57.5 against 34.8 and 12.6. **The convention is right and the placement was
+wrong**: with the cube resting at 30° yaw its large visible face points left of
+the view axis, so a key from the right lit a narrow side face brilliantly and
+left the big one at `N·L = 0.26`, which looks exactly like backlighting. The key
+now comes from upper-front-left: front 0.74, top 0.62, right 0.26.
+
+**There is no ambient or environment lighting (T0087), and it shows.** With one
+lamp and a normal map, a face angled away from it renders **solid black** —
+measured: normal map on, one whole face black; normal map off, zero fully-black
+pixels. The scene carries a fill lamp as an explicit stand-in, documented as one
+in the file. This is the argument for T0087 having a consumer.
 
 ### What went right, and is worth keeping
 

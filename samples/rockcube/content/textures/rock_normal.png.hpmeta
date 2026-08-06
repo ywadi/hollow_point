@@ -1,0 +1,13 @@
+# Asset identity (T0023). **Hand-written, and that is the point** — a scene can
+# only reference an asset by GUID, so a hand-authored `.hpscene` can only name
+# assets whose identity is already written down. `importAsset` mints and writes
+# one when it is absent, which is right for a file dropped into a project and
+# useless for a file being authored *against*: the GUID would not exist until
+# after the scene that references it had been written.
+#
+# See T0157's findings: "a scene cannot reference an asset by path" is the
+# awkwardness this file is the workaround for, and T0024 owns it.
+version: 1
+guid: 1570000000000013
+type: Texture
+source: textures/rock_normal.png
