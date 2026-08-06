@@ -21,13 +21,25 @@
 # Both rotations are **quaternions**, because that is what `Transform::rotation`
 # is and the format has no Euler affordance. Neither was guessed:
 #
-#   * the sun's is `Rot(Y, pi - 0.7) * Rot(X, -0.7)`, the rake the gpu suite
-#     measured in `tests/gpu/textured_surface_test.cpp` — light travelling
-#     `(-0.49, -0.64, 0.59)`, which is *from* above, *from* the camera's side and
-#     *from* the +X side. A light convention is glTF's negative-Z (see
-#     `hp/Light.hpp`), so an identity rotation would rake it in from behind the
-#     cube — the exact arrangement the editor's demo scene documents as looking
-#     like a renderer bug;
+#   * the sun's quaternion rotates 140.4 degrees about the axis
+#     `(-0.972, -0.235, 0)`, and the light it produces travels
+#     **`(0.15, -0.62, 0.77)`** — from above, from the camera's side, slightly
+#     from the -X side, and **nearly frontal to the camera's view axis**. A
+#     light convention is glTF's negative-Z (see `hp/Light.hpp`), so an
+#     identity rotation would rake it in from behind the cube — the exact
+#     arrangement the editor's demo scene documents as looking like a renderer
+#     bug.
+#
+#     *(Corrected 2026-08-06 on T0159. This bullet used to claim the value was
+#     `Rot(Y, pi - 0.7) * Rot(X, -0.7)`, travelling `(-0.49, -0.64, 0.59)` —
+#     that composition produces a different quaternion than the one below, and
+#     the discrepancy was found the hard way, by solving for the light a
+#     shader was actually receiving. The N.L figures in the Sun's own comment
+#     match the direction stated here, so the scene renders the look that was
+#     reviewed and approved; only this derivation note was wrong. A frontal
+#     key also matters to anyone adding surface shading: shadows cast away
+#     from the viewer, so parallax self-shadowing reads small from this
+#     camera except where a face turns until the key grazes it.)*;
 #   * the camera's is `Rot(X, atan(1.5 / 5))`, which pitches its view down by
 #     16.7 degrees onto a cube 5 m away and 1.5 m below it. Positive X rotation
 #     pitches *down* here, and that sign is derived rather than assumed:

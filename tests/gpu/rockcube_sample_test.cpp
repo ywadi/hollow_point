@@ -172,6 +172,46 @@ double variationOfCovered(const std::vector<std::uint8_t>& rgba) {
     return deviation / static_cast<double>(luma.size());
 }
 
+/// Fraction of covered pixels that are the missing-material checkerboard's
+/// loud magenta.
+///
+/// **The guard T0158's process failure demanded** (T0159.7): a failed or
+/// missing shader renders the magenta checkerboard, and the checkerboard
+/// *passes* both the coverage and the variation assertions — measured, twice,
+/// by a magenta frame being reported as a working render. Mean RGB over the
+/// covered pixels comes out near (127, 0, 127); per pixel, half the checks are
+/// loud magenta. No shading outcome of this rock scene produces either, so a
+/// small bound on this share is what makes "the shader actually ran"
+/// assertable.
+double magentaShareOfCovered(const std::vector<std::uint8_t>& rgba) {
+    long long magenta = 0;
+    long long covered = 0;
+    for (std::size_t i = 0; i + 3 < rgba.size(); i += 4) {
+        if (rgba[i] == 0 && rgba[i + 1] == 0 && rgba[i + 2] == 255) {
+            continue;
+        }
+        ++covered;
+        if (rgba[i] > 200 && rgba[i + 2] > 200 && rgba[i + 1] < 60) {
+            ++magenta;
+        }
+    }
+    return covered > 0 ? static_cast<double>(magenta) / static_cast<double>(covered) : 0.0;
+}
+
+/// Mean luminance over the covered pixels — what a frame-wide darkening moves.
+double meanLumaOfCovered(const std::vector<std::uint8_t>& rgba) {
+    double sum = 0.0;
+    long long n = 0;
+    for (std::size_t i = 0; i + 3 < rgba.size(); i += 4) {
+        if (rgba[i] == 0 && rgba[i + 1] == 0 && rgba[i + 2] == 255) {
+            continue;
+        }
+        sum += 0.2126 * rgba[i] + 0.7152 * rgba[i + 1] + 0.0722 * rgba[i + 2];
+        ++n;
+    }
+    return n > 0 ? sum / static_cast<double>(n) : 0.0;
+}
+
 /// The sample's own content, mounted the way the sample mounts it.
 ///
 /// Two mounts rather than one, and that is the point rather than a shortcut:
@@ -299,6 +339,237 @@ TEST_CASE("the rock cube sample renders its committed content") {
     // missing material renders the checkerboard — and the checkerboard would
     // pass a coverage check happily.
     CHECK(variation > 4.0);
+
+    // **And it is not the checkerboard** (T0159.7). The variation bound above
+    // does not exclude it — the checks are high-contrast, so a failed shader
+    // sails through `variation > 4.0` — and that is not a hypothetical: a
+    // magenta frame was reported as a working render twice on 2026-08-06,
+    // from these very statistics. The checkerboard is ~50% loud magenta over
+    // the covered pixels; real rock is none.
+    const double magentaShare = magentaShareOfCovered(pixels);
+    MESSAGE("magenta share of covered pixels: " << magentaShare);
+    CHECK(magentaShare < 0.05);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
+TEST_CASE("parallax self-shadowing darkens the frame, measured against itself with it off") {
+    // **T0159.7 — the acceptance test for the opened contract.** The sample's
+    // shadow march needs everything T0159 landed at once: `[mutating]` hooks
+    // carrying the tangent frame from `surfaceCoordinates` to `surface()`, and
+    // a light read from `g_Frame.Lights[]` under the amended D27. If either
+    // regresses, the shadow term collapses to zero — which is *exactly* the
+    // silent failure that opened the ticket — so this case renders the same
+    // scene twice, with the march's strength at its committed 1.0 and forced
+    // to 0.0, and requires a real difference.
+    //
+    // The off-switch is the VFS, not a second shader: the committed module is
+    // patched textually (`kShadowStrength = 1.0` -> `0.0`) and Prepend-mounted
+    // over the sample's copy — the same per-file override a patch or a
+    // developer's working directory uses (D13). Everything else — scene,
+    // lights, camera, textures, GUIDs — is byte-identical between the two
+    // renders. A fresh pool and view per variant, because the pipeline cache
+    // keys on the module's *path*, which does not change.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+    const std::filesystem::path root = findRepoRoot();
+    if (root.empty()) {
+        MESSAGE("samples/rockcube/content not found; skipping");
+        tearDown(device);
+        return;
+    }
+
+    const auto renderVariant = [&](bool shadowOff, float yaw, std::vector<std::uint8_t>& pixels,
+                                   const char* frameName) -> bool {
+        if (!mountContent(root)) {
+            return false;
+        }
+        if (shadowOff) {
+            // Patch the committed shader's strength constant and mount the
+            // copy in front. The assert-on-replace rule: if the constant is
+            // renamed, fail here with a message, not downstream with a
+            // meaningless zero difference.
+            const auto source = hp::Vfs::readText("shaders/rock_pom.slang");
+            REQUIRE(source.has_value());
+            const std::string needle = "kShadowStrength = 1.0";
+            const std::size_t at = source->find(needle);
+            REQUIRE_MESSAGE(at != std::string::npos,
+                            "rock_pom.slang no longer declares kShadowStrength = 1.0; "
+                            "update this test's patch alongside the shader");
+            std::string patched = *source;
+            patched.replace(at, needle.size(), "kShadowStrength = 0.0");
+
+            std::error_code ec;
+            const std::filesystem::path scratch =
+                std::filesystem::temp_directory_path() / "hp-rockcube-shadow-off";
+            std::filesystem::remove_all(scratch, ec);
+            std::filesystem::create_directories(scratch / "shaders", ec);
+            std::ofstream file(scratch / "shaders" / "rock_pom.slang", std::ios::binary);
+            file << patched;
+            file.close();
+            if (!hp::Vfs::mount(scratch.string(), {}, hp::MountOrder::Prepend)) {
+                return false;
+            }
+        }
+
+        hp::AssetPool pool;
+        for (const char* path : {"textures/rock_basecolour.png", "textures/rock_orm.png",
+                                 "textures/rock_height.png", "textures/rock_normal.png",
+                                 "shaders/rock_pom.slang", "materials/rock.hpmat",
+                                 "models/cube.gltf"}) {
+            const hp::ImportResult result =
+                hp::importAsset(device.render->device(), device.render->context(), pool, path);
+            if (!result.loaded || result.placeholder) {
+                return false;
+            }
+        }
+
+        const auto text = hp::Vfs::readText("scenes/rockcube.hpscene");
+        if (!text.has_value()) {
+            return false;
+        }
+        hp::Scene scene;
+        if (hp::loadSceneFromString(scene, *text, "scenes/rockcube.hpscene").status !=
+            hp::SceneLoadStatus::Ok) {
+            return false;
+        }
+        // **Posed, not resting.** At the scene's resting yaw the key light
+        // stands 15-48 degrees off every visible face, and this height map is
+        // smooth — the p90 rise over 12 texels is 0.078 of the range — so
+        // almost nothing occludes and the honest difference is ~0.02
+        // luminance, indistinguishable from a broken term. The yaw below
+        // turns the wide face until the key grazes it, which is the regime
+        // self-shadowing exists for and the one a viewer actually notices on
+        // the spinning cube.
+        const auto cubeGuid = hp::Guid::parse("1570000000000103");
+        if (!cubeGuid.has_value()) {
+            return false;
+        }
+        const auto cube = scene.find(*cubeGuid);
+        if (!cube.has_value()) {
+            return false;
+        }
+        hp::Transform posed;
+        posed.position = {0.0F, 0.0F, 5.0F};
+        posed.rotation = hp::Quaternion::RotationFromAxisAngle(hp::float3{0.0F, 1.0F, 0.0F}, yaw);
+        scene.setLocalTransform(*cube, posed);
+        scene.propagateTransforms();
+
+        hp::SceneView view;
+        if (!view.create(device.render->device(), device.render->context(), kSize, kSize)) {
+            return false;
+        }
+        view.setClearColour(kClear[0], kClear[1], kClear[2], kClear[3]);
+
+        hp::SceneViewStats stats;
+        if (view.render(device.render->context(), scene, pool, 0, &stats) == nullptr ||
+            stats.submitted != 1) {
+            return false;
+        }
+        if (!view.readback(device.render->context(), pixels)) {
+            return false;
+        }
+        writePpm(frameName, pixels, kSize);
+        return true;
+    };
+
+    // **Posed at yaw 0.45, where the sweep found the effect.** The key's
+    // actual travel is (0.15, -0.62, 0.77) — computed from the scene's
+    // quaternion, and nearly frontal to the camera — so self-shadowing from
+    // this viewpoint concentrates on the face the key grazes, not across the
+    // frame. At this yaw that face is visible and its light sits ~11 degrees
+    // above its horizon; the measured effect is 72 pixels darkened by more
+    // than 10 luminance (max drop 51.7) and a frame-mean difference of 0.045.
+    // The assertions below are sized to that shape: a *population* of
+    // strongly darkened pixels, not a frame-mean threshold that the small
+    // footprint would drown.
+    std::vector<std::uint8_t> withShadow;
+    std::vector<std::uint8_t> withoutShadow;
+    REQUIRE(renderVariant(/*shadowOff=*/false, 0.45F, withShadow, "rockcube_selfshadow_on"));
+    REQUIRE(renderVariant(/*shadowOff=*/true, 0.45F, withoutShadow, "rockcube_selfshadow_off"));
+
+    // **Neither frame is the checkerboard** — without this, one variant
+    // failing to compile would register as an enormous "difference" and pass.
+    // The exact trap this whole case exists to close.
+    const double magentaOn = magentaShareOfCovered(withShadow);
+    const double magentaOff = magentaShareOfCovered(withoutShadow);
+    MESSAGE("magenta shares: on " << magentaOn << ", off " << magentaOff);
+    REQUIRE(magentaOn < 0.05);
+    REQUIRE(magentaOff < 0.05);
+
+    // The shadow darkens texels; it moves none. Same silhouette, same count.
+    const long long coveredOn = covered(withShadow);
+    const long long coveredOff = covered(withoutShadow);
+    MESSAGE("covered: on " << coveredOn << ", off " << coveredOff);
+    CHECK(coveredOn == coveredOff);
+
+    double difference = 0.0;
+    long long compared = 0;
+    long long darkened = 0;
+    long long blackOn = 0;
+    long long blackOff = 0;
+    double maxDrop = 0.0;
+    for (std::size_t i = 0; i + 3 < withShadow.size() && i + 3 < withoutShadow.size(); i += 4) {
+        const bool clearOn =
+            withShadow[i] == 0 && withShadow[i + 1] == 0 && withShadow[i + 2] == 255;
+        const bool clearOff =
+            withoutShadow[i] == 0 && withoutShadow[i + 1] == 0 && withoutShadow[i + 2] == 255;
+        if (clearOn || clearOff) {
+            continue;
+        }
+        const double lumaOn = 0.2126 * withShadow[i] + 0.7152 * withShadow[i + 1] +
+                              0.0722 * withShadow[i + 2];
+        const double lumaOff = 0.2126 * withoutShadow[i] + 0.7152 * withoutShadow[i + 1] +
+                               0.0722 * withoutShadow[i + 2];
+        difference += lumaOn > lumaOff ? lumaOn - lumaOff : lumaOff - lumaOn;
+        if (lumaOff - lumaOn > 10.0) {
+            ++darkened;
+        }
+        if (lumaOff - lumaOn > maxDrop) {
+            maxDrop = lumaOff - lumaOn;
+        }
+        if (withShadow[i] < 8 && withShadow[i + 1] < 8 && withShadow[i + 2] < 8) {
+            ++blackOn;
+        }
+        if (withoutShadow[i] < 8 && withoutShadow[i + 1] < 8 && withoutShadow[i + 2] < 8) {
+            ++blackOff;
+        }
+        ++compared;
+    }
+    REQUIRE(compared > 0);
+    difference /= static_cast<double>(compared);
+
+    const double meanOn = meanLumaOfCovered(withShadow);
+    const double meanOff = meanLumaOfCovered(withoutShadow);
+    MESSAGE("mean luminance: with shadow " << meanOn << ", without " << meanOff
+                                           << "; mean abs difference " << difference
+                                           << "; darkened>10 " << darkened << "; max drop "
+                                           << maxDrop << "; black on/off " << blackOn << "/"
+                                           << blackOff);
+
+    // Darker with the march on — a shadow that brightens is a sign error.
+    CHECK(meanOn < meanOff);
+
+    // **The population of shadowed pixels, which is what a zero term has none
+    // of.** Measured 72 darkened beyond 10 luminance with a max drop of 51.7;
+    // the bounds sit at half and well under that so texture tweaks do not
+    // flake them. T0158's collapsed term — the bug this case exists to catch —
+    // measures zero on both.
+    CHECK(darkened > 30);
+    CHECK(maxDrop > 20.0);
+
+    // **Self-shadowing adds no black pixels.** The black speckle visible on
+    // the cube under POM predates the shadow march — it is the documented
+    // N-dot-L clamp with a normal map and no ambient (T0087, and the scene
+    // file's own comment) — and this pins that the march does not add to it:
+    // the count is bit-identical with the march on and off, measured at
+    // 431/431 here (and 10000/10000 at yaw 0.9, where the artefact peaks).
+    CHECK(blackOn == blackOff);
 
     hp::Vfs::shutdown();
     tearDown(device);
