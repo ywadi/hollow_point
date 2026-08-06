@@ -10,6 +10,7 @@
 // `static std::string` with no engine code in it.
 #include <doctest/doctest.h>
 
+#include <hp/Assets.hpp>
 #include <hp/Log.hpp>
 #include <hp/ModuleHost.hpp>
 #include <hp/Scene.hpp>
@@ -262,10 +263,55 @@ TEST_CASE("an exception thrown by an entry point does not escape the module" *
     CHECK(host.size() == 1);
     CHECK(host.names()[0] == "throwing");
 
+    // The phase-4 hook throws too, and it is guarded by a *different*
+    // `invokeGuarded` overload (T0062.11) -- so the load case above says
+    // nothing about it. Called several times because the point of a per-frame
+    // hook throwing is that it happens every frame: the guard must swallow
+    // each one rather than let the second escape.
+    for (int frame = 0; frame < 3; ++frame) {
+        host.update(1.0 / 60.0);
+    }
+    CHECK(host.size() == 1);
+
     // Reaching here at all is the assertion. Unload it too, since the failure
     // this guards can also present at teardown.
     host.unloadAll();
     CHECK(host.size() == 0);
+}
+
+TEST_CASE("a module's services follow the host, whenever they are set" *
+          doctest::test_suite("module")) {
+    // The ordering property `setServices` exists for. The editor cannot load a
+    // module until its render device exists and cannot build the device until
+    // the layer stack is up, so "set them before loading" is a rule the first
+    // host with a different startup shape would break. Both orders must work.
+    //
+    // **One host, both orders** — and that is forced rather than tidy. Two
+    // hosts loading the *same module file* in one process collide on Windows:
+    // each stages a working copy named `<stem>.hot<n><ext>` from its own
+    // counter, so both pick `.hot1`, and the second `copy_file` lands on a file
+    // the OS has mapped and fails with `CopyFailed`. Measured here, under wine,
+    // when this case used two hosts. See T0157's findings and `copyPathFor`.
+    hp::Scene scene;
+    hp::AssetPool pool;
+
+    hp::ModuleServices early;
+    early.scene = &scene;
+
+    hp::ModuleHost host;
+    host.setServices(early); // before any load
+    REQUIRE(host.load(sandbox_path()).ok);
+    CHECK(host.services().scene == &scene);
+    CHECK(host.services().assets == nullptr);
+
+    hp::ModuleServices late = early; // and again after one is live
+    late.assets = &pool;
+    host.setServices(late);
+    CHECK(host.services().scene == &scene);
+    CHECK(host.services().assets == &pool);
+
+    // Null is an ordinary state, not an error: a headless host has no device.
+    CHECK(host.services().device == nullptr);
 }
 
 TEST_CASE("repeated reloads of a module carrying engine statics stay clean" *

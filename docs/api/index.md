@@ -31,7 +31,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | Header | Declarations | Documented |
 |---|---|---|
 | [`<hp/Api.hpp>`](Api.md) | 0 | 0 |
-| [`<hp/Application.hpp>`](Application.md) | 22 | 12 |
+| [`<hp/Application.hpp>`](Application.md) | 24 | 14 |
 | [`<hp/Assets.hpp>`](Assets.md) | 69 | 69 |
 | [`<hp/Camera.hpp>`](Camera.md) | 11 | 11 |
 | [`<hp/CameraSystem.hpp>`](CameraSystem.md) | 11 | 11 |
@@ -51,7 +51,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Material.hpp>`](Material.md) | 15 | 15 |
 | [`<hp/Math.hpp>`](Math.md) | 6 | 6 |
 | [`<hp/Module.hpp>`](Module.md) | 6 | 6 |
-| [`<hp/ModuleHost.hpp>`](ModuleHost.md) | 20 | 20 |
+| [`<hp/ModuleHost.hpp>`](ModuleHost.md) | 25 | 25 |
 | [`<hp/Paths.hpp>`](Paths.md) | 1 | 1 |
 | [`<hp/Profiling.hpp>`](Profiling.md) | 0 | 0 |
 | [`<hp/Reflect.hpp>`](Reflect.md) | 13 | 13 |
@@ -72,7 +72,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 47 | 47 |
 
-**745 public declarations across 41 headers, 628 documented.**
+**752 public declarations across 41 headers, 635 documented.**
 
 ## Every symbol
 
@@ -97,6 +97,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Application::layers` | [`Application.hpp`](Application.md) |
 | `Application::modules` | [`Application.hpp`](Application.md) |
 | `Application::modules` | [`Application.hpp`](Application.md) |
+| `Application::setServices` | [`Application.hpp`](Application.md) |
+| `Application::services` | [`Application.hpp`](Application.md) |
 | `Application::input` | [`Application.hpp`](Application.md) |
 | `Application::input` | [`Application.hpp`](Application.md) |
 | `createApplication` | [`Application.hpp`](Application.md) |
@@ -473,6 +475,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `ModuleCompatibility` | [`Module.hpp`](Module.md) |
 | `checkModuleBuildId` | [`Module.hpp`](Module.md) |
 | `describeIncompatibility` | [`Module.hpp`](Module.md) |
+| `ModuleServices` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `ModuleContext` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `ModuleApi` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `kModuleApiSymbol` | [`ModuleHost.hpp`](ModuleHost.md) |
@@ -484,6 +487,9 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `ModuleHost::ModuleHost` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `ModuleHost::operator=` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `ModuleHost::load` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleHost::setServices` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleHost::services` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `ModuleHost::update` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `ModuleHost::reloadChanged` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `ModuleHost::reloadAll` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `ModuleHost::unloadAll` | [`ModuleHost.hpp`](ModuleHost.md) |
@@ -492,6 +498,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `ModuleHost::totalLoads` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `ModuleHost::onReloaded` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `moduleEntryPointThrew` | [`ModuleHost.hpp`](ModuleHost.md) |
+| `invokeGuarded` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `invokeGuarded` | [`ModuleHost.hpp`](ModuleHost.md) |
 | `executableDirectory` | [`Paths.hpp`](Paths.md) |
 | `PropertyMeta` | [`Reflect.hpp`](Reflect.md) |

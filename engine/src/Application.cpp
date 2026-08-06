@@ -5,6 +5,7 @@
 #include <hp/Event.hpp>
 #include <hp/Log.hpp>
 #include <hp/Profiling.hpp>
+#include <hp/Scene.hpp>
 
 namespace hp {
 namespace {
@@ -21,6 +22,17 @@ void Application::dispatch(Event& event) {
     if (!event.isConsumed()) {
         onEvent(event);
     }
+}
+
+void Application::setServices(const ModuleServices& services) {
+    // Stored on the module host rather than here. Two copies of the same four
+    // pointers is two things to keep in step, and the one that would drift is
+    // whichever the frame loop does not read.
+    modules_.setServices(services);
+}
+
+const ModuleServices& Application::services() const {
+    return modules_.services();
 }
 
 void Application::requestExit(int exitCode) {
@@ -170,6 +182,12 @@ int Application::run() {
             HP_PROFILE_ZONE_NAMED("update");
             // Bottom-up: the world simulates before the interface over it.
             layers_.update(delta);
+            // Phase 4 proper -- gameplay (T0062.11). Between the layers that
+            // host it and the application's own hook, so an app observing its
+            // world in onUpdate sees this frame's gameplay rather than last
+            // frame's. Costs one null check per loaded module when none
+            // implements the hook.
+            modules_.update(delta);
             onUpdate(delta);
         }
 
@@ -195,7 +213,16 @@ int Application::run() {
             // Phase 7 -- transform propagation (T0101), first of two. Everything
             // that moved during update gets its world transform before anything
             // reads one.
+            //
+            // Empty until T0157: the loop had no scene to propagate, because
+            // nothing told an `Application` which scene it was running. It does
+            // now (`setServices`), and without this a module moving a transform
+            // at phase 4 changes a `Transform` that no renderer ever reads --
+            // the entity sits still and nothing anywhere reports a problem.
             HP_PROFILE_ZONE_NAMED("transform propagate");
+            if (Scene* scene = services().scene; scene != nullptr) {
+                scene->propagateTransforms();
+            }
         }
 
         // Phase 8 -- late update. Followers read *final* transforms here. This
@@ -214,7 +241,14 @@ int Application::run() {
             // update moved. A camera that re-parents or moves itself here would
             // otherwise render one frame stale, which is the same bug phase 8
             // exists to prevent, moved one step later.
+            //
+            // A clean scene walks the hierarchy and writes nothing, so the
+            // second pass is not a second cost in the ordinary frame where
+            // late update moved nothing.
             HP_PROFILE_ZONE_NAMED("transform propagate (late)");
+            if (Scene* scene = services().scene; scene != nullptr) {
+                scene->propagateTransforms();
+            }
         }
 
         {

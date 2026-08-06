@@ -6,7 +6,23 @@
 #include <hp/ModuleHost.hpp>
 ```
 
-20 public declaration(s), 20 documented.
+25 public declaration(s), 25 documented.
+
+## `ModuleServices`
+
+```cpp
+struct ModuleServices
+```
+
+ What the host lends the modules it has loaded (T0062.11).
+
+ **Every pointer here is borrowed and may be null**, and null is an ordinary
+ state rather than an error: a headless host has no device, and a host that
+ has not built its scene yet has no scene. A module checks before using one.
+
+ The host refreshes these into every `ModuleContext` immediately before each
+ entry point runs, so a module never sees a stale pointer and the order in
+ which an application sets them up cannot matter.
 
 ## `ModuleContext`
 
@@ -138,6 +154,48 @@ ModuleLoadResult load(const std::string & path)
  @returns the outcome. On failure nothing was loaded and no module code
           ran; on a build-id mismatch, `message` names both ids.
 
+## `ModuleHost::setServices`
+
+```cpp
+void setServices(const ModuleServices & services)
+```
+
+ Sets what every loaded module is lent (T0062.11).
+
+ Applies to modules already loaded as well as to ones loaded afterwards,
+ so an application may call it before or after `load` and gets the same
+ result. That is not a convenience: the editor cannot load its modules
+ until the render device exists, and it cannot build the device until the
+ layer stack is up, so "set them up in the right order" is a rule that
+ would be broken by the first host with a different startup shape.
+
+ @param services the borrowed pointers. Anything null stays null.
+ @returns nothing.
+
+## `ModuleHost::services`
+
+```cpp
+const ModuleServices & services() const
+```
+
+ @returns what modules are currently lent.
+
+## `ModuleHost::update`
+
+```cpp
+void update(double deltaSeconds)
+```
+
+ Runs every live module's `onUpdate`, in load order.
+
+ **Frame phase 4**, and the caller decides that — `Application` does it
+ for you. A host driving its own loop calls this once per frame after its
+ layers have updated and before transforms propagate, or a module that
+ moves something renders one frame stale.
+
+ @param deltaSeconds the scaled frame delta.
+ @returns nothing.
+
 ## `ModuleHost::reloadChanged`
 
 ```cpp
@@ -248,5 +306,24 @@ void invokeGuarded(void (*)(ModuleContext &) fn, ModuleContext & ctx, const char
  @param fn the entry point to call. Null means the module does not implement
         it, which is allowed and is not an error.
  @param ctx the context handed to the entry point.
+ @param module_name the module's name, for the message if it throws.
+ @param entry_point the entry point's name, for the same message.
+
+## `invokeGuarded`
+
+```cpp
+void invokeGuarded(void (*)(ModuleContext &, double) fn, ModuleContext & ctx, double deltaSeconds, const char * module_name, const char * entry_point)
+```
+
+ Calls a per-frame entry point with the same guard.
+
+ An overload rather than a template: the guard must be *the* thing this
+ header offers, and a template would let a signature that is not a module
+ entry point be wrapped by it.
+
+ @param fn the entry point to call. Null means the module does not implement
+        it, which is allowed and is not an error.
+ @param ctx the context handed to the entry point.
+ @param deltaSeconds forwarded to the entry point.
  @param module_name the module's name, for the message if it throws.
  @param entry_point the entry point's name, for the same message.

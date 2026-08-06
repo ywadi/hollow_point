@@ -6,7 +6,7 @@
 #include <hp/Application.hpp>
 ```
 
-22 public declaration(s), 12 documented.
+24 public declaration(s), 14 documented.
 
 ## `ApplicationConfig`
 
@@ -177,6 +177,38 @@ const ModuleHost & modules() const
 ```
 
  The gameplay modules this application hosts, read-only.
+
+## `Application::setServices`
+
+```cpp
+void setServices(const ModuleServices & services)
+```
+
+ Declares the scene, asset pool and device this application is running
+ (T0062.11).
+
+ Two things read it, and that is why it is one call rather than two:
+ gameplay modules are lent it at every entry point, and **the frame's
+ transform phases (7 and 9) propagate the scene named here**. Those were
+ separate for exactly as long as `Application` did not know what a scene
+ was, and the cost was that nothing a module moved ever reached a world
+ matrix.
+
+ Call it from `onStartup` once the scene exists. Anything left null is a
+ legitimate state — a headless run has no device, and an application with
+ no scene is what the runtime still is.
+
+ @param services the borrowed pointers; see `ModuleServices`.
+ @returns nothing.
+
+## `Application::services`
+
+```cpp
+const ModuleServices & services() const
+```
+
+ @returns what this application declared. Stored on the module host, so
+          there is one copy rather than two that can disagree.
 
 ## `Application::input`
 

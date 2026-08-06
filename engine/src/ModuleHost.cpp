@@ -91,6 +91,16 @@ Fn platformSymbol(void* handle, const char* name) {
 /// What staying beside the original does buy is `$ORIGIN` semantics for any
 /// *other* dependency a gameplay module might link one day. That is a smaller
 /// claim, and it is the true one.
+///
+/// **The name is per host, not per process, and on Windows that is a real
+/// limit.** `generation` comes from the host's own counter, so two `ModuleHost`
+/// instances loading the *same file* in one process both ask for `.hot1`. On
+/// Linux the second copy overwrites a mapped file harmlessly; on Windows the
+/// OS holds it and the load fails with `CopyFailed`. Measured under wine
+/// (T0157) when a test used two hosts on `libhp_sandbox`. Nothing in the engine
+/// needs two hosts on one module today — the editor and the runtime are
+/// separate processes — so this is recorded rather than fixed; the fix, if it
+/// is ever needed, is a process-wide counter or the process id in the name.
 std::filesystem::path copyPathFor(const std::filesystem::path& path, std::uint32_t generation) {
     std::filesystem::path copy = path;
     copy.replace_filename(path.stem().string() + ".hot" + std::to_string(generation) +
@@ -157,6 +167,13 @@ struct ModuleHost::Impl {
     /// Distinguishes successive working copies so a new one never collides with
     /// an image the process still has mapped.
     std::uint32_t copyCounter = 0;
+    /// What every module is lent. Copied into a context immediately before each
+    /// entry point rather than at load time, so setting them up in a different
+    /// order — or later, which the editor must — cannot leave one stale.
+    ModuleServices services;
+
+    /// Refreshes a module's borrowed pointers before its code runs.
+    void lend(Loaded& module) { module.context.services = services; }
 
     /// Stages, opens and *validates* a module — without running a line of its
     /// code. Everything that can be checked cheaply is checked here: the file
@@ -287,6 +304,7 @@ ModuleLoadResult ModuleHost::Impl::open(const std::string& path, std::uint32_t g
 }
 
 void ModuleHost::Impl::activate(Loaded& module) {
+    lend(module);
     if (module.api != nullptr && module.api->onLoad != nullptr) {
         module.api->onLoad(module.context);
     }
@@ -323,6 +341,7 @@ ModuleLoadResult ModuleHost::Impl::reloadAt(std::size_t index) {
 }
 
 void ModuleHost::Impl::close(Loaded& module) {
+    lend(module);
     if (module.api != nullptr && module.api->onUnload != nullptr) {
         module.api->onUnload(module.context);
     }
@@ -357,6 +376,33 @@ ModuleLoadResult ModuleHost::load(const std::string& path) {
     impl_->activate(impl_->modules.back());
     HP_LOG_INFO(kLog, "loaded '{}' from {}", impl_->modules.back().context.name, path);
     return result;
+}
+
+void ModuleHost::setServices(const ModuleServices& services) {
+    impl_->services = services;
+    // Live modules keep their generation and name; only what they are lent
+    // moves. Doing it here as well as before each call means a module that
+    // caches the pointers in onLoad -- which it should not, and which nothing
+    // stops -- at least sees the same values the host will pass next frame.
+    for (Loaded& module : impl_->modules) {
+        impl_->lend(module);
+    }
+}
+
+const ModuleServices& ModuleHost::services() const {
+    return impl_->services;
+}
+
+void ModuleHost::update(double deltaSeconds) {
+    // Load order, matching every other traversal here except unload -- which
+    // goes newest-first because it is undoing them.
+    for (Loaded& module : impl_->modules) {
+        if (module.api == nullptr || module.api->onUpdate == nullptr) {
+            continue;
+        }
+        impl_->lend(module);
+        module.api->onUpdate(module.context, deltaSeconds);
+    }
 }
 
 std::vector<ModuleLoadResult> ModuleHost::reloadChanged() {

@@ -133,6 +133,28 @@ public:
     /// The gameplay modules this application hosts, read-only.
     const ModuleHost& modules() const { return modules_; }
 
+    /// Declares the scene, asset pool and device this application is running
+    /// (T0062.11).
+    ///
+    /// Two things read it, and that is why it is one call rather than two:
+    /// gameplay modules are lent it at every entry point, and **the frame's
+    /// transform phases (7 and 9) propagate the scene named here**. Those were
+    /// separate for exactly as long as `Application` did not know what a scene
+    /// was, and the cost was that nothing a module moved ever reached a world
+    /// matrix.
+    ///
+    /// Call it from `onStartup` once the scene exists. Anything left null is a
+    /// legitimate state — a headless run has no device, and an application with
+    /// no scene is what the runtime still is.
+    ///
+    /// @param services the borrowed pointers; see `ModuleServices`.
+    /// @returns nothing.
+    void setServices(const ModuleServices& services);
+
+    /// @returns what this application declared. Stored on the module host, so
+    ///          there is one copy rather than two that can disagree.
+    [[nodiscard]] const ModuleServices& services() const;
+
     /// The action layer (T0068).
     ///
     /// Push contexts here; query actions from gameplay. The loop feeds it raw

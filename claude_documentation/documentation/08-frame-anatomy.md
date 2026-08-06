@@ -33,16 +33,29 @@ later. That is the whole trade this document represents.
 | 3b | — `onFixedUpdate` | implemented | T0100 |
 | 3c | — physics step | named, empty | T0051 |
 | 3d | — post-physics resolution | named, empty | T0051 |
-| 4 | Variable update — `onUpdate` | implemented | T0062 |
+| 4 | Variable update — `onUpdate`, then **gameplay modules** | implemented | T0062 |
 | 5 | Structural apply — entity create/destroy | named, empty | T0021 |
 | 6 | Deferred drain — signals, message bus | named, empty | T0072, T0075 |
-| 7 | Transform propagation | named, empty | T0101 |
+| 7 | Transform propagation | implemented | T0101 |
 | 8 | **Late update** — `onLateUpdate` | implemented | T0081, T0052 |
-| 9 | Transform propagation, again | named, empty | T0101 |
+| 9 | Transform propagation, again | implemented | T0101 |
 | 10 | **Render** — see the breakdown below | implemented | T0025 |
 | 11 | Present | named, empty | T0025, T0110 |
 | 12 | **End-of-frame safe point** | named, empty | T0048, T0058, T0077 |
 | 13 | Frame end — profiler frame mark, exit checks | implemented | T0014 |
+
+**Phases 4, 7 and 9 changed together on 2026-08-06 (T0157), and the reason is
+worth reading once.** Phase 4 now calls `ModuleHost::update`, so a gameplay
+module gets a per-frame hook — and phases 7 and 9 propagate the scene the
+application named through `Application::setServices`. Those had to land in the
+same change: a module that moves a `Transform` while propagation does nothing
+changes a value no renderer ever reads, so **the entity sits still, the
+inspector shows it moving, and nothing reports a problem.** An empty phase is
+only harmless while nothing upstream of it does work.
+
+Propagation is a no-op on a clean scene — it walks the hierarchy and writes
+nothing — so phase 9 is not a second cost in the ordinary frame where late
+update moved nothing.
 
 **"Named, empty"** means the phase exists in `Application::run` as a profiler
 zone with a comment naming its owning ticket, and does nothing yet. That is

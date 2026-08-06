@@ -155,4 +155,7 @@ void onUnload(hp::ModuleContext& ctx) {
 
 } // namespace
 
-HP_GAMEPLAY_MODULE("sandbox", onLoad, onUnload)
+// `nullptr` for the phase-4 hook, and it is not an omission: the sandbox proves
+// the *boundary* — reflection, statics, reload, the build id — and has no world
+// to move. The sample that does is `samples/rockcube` (T0157).
+HP_GAMEPLAY_MODULE("sandbox", onLoad, onUnload, nullptr)

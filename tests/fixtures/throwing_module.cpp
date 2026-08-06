@@ -30,6 +30,16 @@ void onUnload(hp::ModuleContext&) {
     g_unloaded = true;
 }
 
+/// The per-frame hook throws too (T0062.11's guard).
+///
+/// It is a separate `invokeGuarded` overload — a different signature means a
+/// different function, and "the other one is guarded" is not evidence about
+/// this one. It also throws *every* frame, which is what makes the host's
+/// behaviour worth asserting: the guard must swallow rather than accumulate.
+void onUpdate(hp::ModuleContext&, double) {
+    throw std::runtime_error("a gameplay module update hook threw on purpose");
+}
+
 } // namespace
 
 extern "C" {
@@ -40,4 +50,4 @@ HP_EXPORT bool hp_throwing_module_unloaded() {
 }
 }
 
-HP_GAMEPLAY_MODULE("throwing", onLoad, onUnload)
+HP_GAMEPLAY_MODULE("throwing", onLoad, onUnload, onUpdate)

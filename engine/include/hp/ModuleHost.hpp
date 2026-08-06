@@ -40,7 +40,45 @@
 #include <string>
 #include <vector>
 
+namespace Diligent {
+struct IRenderDevice;
+struct IDeviceContext;
+} // namespace Diligent
+
 namespace hp {
+
+class AssetPool;
+class Scene;
+
+/// What the host lends the modules it has loaded (T0062.11).
+///
+/// **Every pointer here is borrowed and may be null**, and null is an ordinary
+/// state rather than an error: a headless host has no device, and a host that
+/// has not built its scene yet has no scene. A module checks before using one.
+///
+/// The host refreshes these into every `ModuleContext` immediately before each
+/// entry point runs, so a module never sees a stale pointer and the order in
+/// which an application sets them up cannot matter.
+struct ModuleServices {
+    /// The scene the application is running. **Where all persistent state
+    /// lives** — a module holds behaviour, never state (see the file comment).
+    Scene* scene = nullptr;
+
+    /// Where the scene's asset GUIDs resolve.
+    AssetPool* assets = nullptr;
+
+    /// The render device, for `loadTexture`/`loadMesh`/`importAsset`.
+    ///
+    /// **A stopgap, and worth naming as one.** Asset loading takes a device
+    /// today because T0023 stopped short of an asset *manager* that owns one;
+    /// when it exists, `assets` carries the loading interface and these two
+    /// go away. Until then a module that loads its own content needs them, and
+    /// the alternative — a module reaching for a global device — is worse.
+    Diligent::IRenderDevice* device = nullptr;
+
+    /// The immediate context, which the glTF loader needs in order to upload.
+    Diligent::IDeviceContext* deviceContext = nullptr;
+};
 
 /// Handed to a module's lifecycle entry points.
 ///
@@ -58,6 +96,9 @@ struct ModuleContext {
 
     /// The name the module declared.
     const char* name = "";
+
+    /// What the host lends this module. Refreshed before every entry point.
+    ModuleServices services;
 };
 
 /// What a gameplay module implements. The engine calls these; the module never
@@ -78,6 +119,20 @@ struct ModuleApi {
     /// must be deregistered — `entt::meta` holds function pointers and unowned
     /// name literals that live in this image (T0053).
     void (*onUnload)(ModuleContext&) = nullptr;
+
+    /// Called once per frame at **phase 4**, the variable update (T0062.11).
+    ///
+    /// One hook rather than the full set. `onFixedUpdate` and `onLateUpdate`
+    /// are real phases the loop already runs and they belong to a module too —
+    /// but they belong to them *through* T0062's behaviour layer, which decides
+    /// how a behaviour declares which phase it wants. Adding all three here
+    /// first would fix that answer before the ticket that owns it is written,
+    /// and every one of them costs a build-id bump. This one exists because
+    /// T0157 needed a module to move a transform and there was no way at all.
+    ///
+    /// @param deltaSeconds the scaled frame delta, the same value the
+    ///        application's `onUpdate` sees.
+    void (*onUpdate)(ModuleContext&, double deltaSeconds) = nullptr;
 };
 
 /// The symbol a module exports to describe itself.
@@ -152,6 +207,33 @@ public:
     /// @returns the outcome. On failure nothing was loaded and no module code
     ///          ran; on a build-id mismatch, `message` names both ids.
     ModuleLoadResult load(const std::string& path);
+
+    /// Sets what every loaded module is lent (T0062.11).
+    ///
+    /// Applies to modules already loaded as well as to ones loaded afterwards,
+    /// so an application may call it before or after `load` and gets the same
+    /// result. That is not a convenience: the editor cannot load its modules
+    /// until the render device exists, and it cannot build the device until the
+    /// layer stack is up, so "set them up in the right order" is a rule that
+    /// would be broken by the first host with a different startup shape.
+    ///
+    /// @param services the borrowed pointers. Anything null stays null.
+    /// @returns nothing.
+    void setServices(const ModuleServices& services);
+
+    /// @returns what modules are currently lent.
+    [[nodiscard]] const ModuleServices& services() const;
+
+    /// Runs every live module's `onUpdate`, in load order.
+    ///
+    /// **Frame phase 4**, and the caller decides that — `Application` does it
+    /// for you. A host driving its own loop calls this once per frame after its
+    /// layers have updated and before transforms propagate, or a module that
+    /// moves something renders one frame stale.
+    ///
+    /// @param deltaSeconds the scaled frame delta.
+    /// @returns nothing.
+    void update(double deltaSeconds);
 
     /// Reload every module whose file has changed since it was loaded.
     ///
@@ -238,6 +320,31 @@ inline void invokeGuarded(void (*fn)(ModuleContext&), ModuleContext& ctx, const 
     }
 }
 
+/// Calls a per-frame entry point with the same guard.
+///
+/// An overload rather than a template: the guard must be *the* thing this
+/// header offers, and a template would let a signature that is not a module
+/// entry point be wrapped by it.
+///
+/// @param fn the entry point to call. Null means the module does not implement
+///        it, which is allowed and is not an error.
+/// @param ctx the context handed to the entry point.
+/// @param deltaSeconds forwarded to the entry point.
+/// @param module_name the module's name, for the message if it throws.
+/// @param entry_point the entry point's name, for the same message.
+inline void invokeGuarded(void (*fn)(ModuleContext&, double), ModuleContext& ctx,
+                          double deltaSeconds, const char* module_name,
+                          const char* entry_point) noexcept {
+    if (fn == nullptr) {
+        return;
+    }
+    try {
+        fn(ctx, deltaSeconds);
+    } catch (...) {
+        moduleEntryPointThrew(module_name, entry_point);
+    }
+}
+
 } // namespace detail
 
 } // namespace hp
@@ -249,7 +356,8 @@ inline void invokeGuarded(void (*fn)(ModuleContext&), ModuleContext& ctx, const 
 /// ```cpp
 /// static void onLoad(hp::ModuleContext& ctx) { ... }
 /// static void onUnload(hp::ModuleContext& ctx) { ... }
-/// HP_GAMEPLAY_MODULE("sandbox", onLoad, onUnload)
+/// static void onUpdate(hp::ModuleContext& ctx, double dt) { ... }
+/// HP_GAMEPLAY_MODULE("sandbox", onLoad, onUnload, onUpdate)
 /// ```
 ///
 /// **The guard is the reason this is a macro rather than a documented
@@ -259,10 +367,17 @@ inline void invokeGuarded(void (*fn)(ModuleContext&), ModuleContext& ctx, const 
 /// one that escapes into foreign code is undefined behaviour. Written as a rule
 /// it would be forgotten once; written here it cannot be.
 ///
+/// **Every entry point is named, `nullptr` included** — one macro rather than
+/// one per combination of hooks. A second macro for "load and unload only"
+/// would be a second thing to keep in step with the guard, and the guard is the
+/// whole reason this exists. `nullptr` costs one word and says out loud that the
+/// module has nothing to do in that phase.
+///
 /// @param module_name string literal naming the module in diagnostics.
 /// @param load_fn function called on load, or `nullptr`.
 /// @param unload_fn function called on unload, or `nullptr`.
-#define HP_GAMEPLAY_MODULE(module_name, load_fn, unload_fn)                                        \
+/// @param update_fn function called at frame phase 4, or `nullptr`.
+#define HP_GAMEPLAY_MODULE(module_name, load_fn, unload_fn, update_fn)                             \
     namespace hp_module_detail {                                                                   \
     void guardedLoad(::hp::ModuleContext& ctx) {                                                   \
         ::hp::detail::invokeGuarded(load_fn, ctx, module_name, "onLoad");                          \
@@ -270,9 +385,13 @@ inline void invokeGuarded(void (*fn)(ModuleContext&), ModuleContext& ctx, const 
     void guardedUnload(::hp::ModuleContext& ctx) {                                                 \
         ::hp::detail::invokeGuarded(unload_fn, ctx, module_name, "onUnload");                      \
     }                                                                                              \
+    void guardedUpdate(::hp::ModuleContext& ctx, double deltaSeconds) {                            \
+        ::hp::detail::invokeGuarded(update_fn, ctx, deltaSeconds, module_name, "onUpdate");        \
+    }                                                                                              \
     }                                                                                              \
     extern "C" HP_EXPORT const ::hp::ModuleApi* hp_module_api() {                                  \
         static const ::hp::ModuleApi api{module_name, &hp_module_detail::guardedLoad,              \
-                                         &hp_module_detail::guardedUnload};                        \
+                                         &hp_module_detail::guardedUnload,                         \
+                                         &hp_module_detail::guardedUpdate};                        \
         return &api;                                                                               \
     }
