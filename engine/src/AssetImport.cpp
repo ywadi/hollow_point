@@ -143,7 +143,7 @@ std::shared_ptr<ShaderAsset> loadShader(std::string_view virtualPath) {
 
     const std::string path(virtualPath);
     // Through the VFS like every read (D13). Text is read now to prove the
-    // module exists and to feed 142.9's reflection later; the *compiler*
+    // module exists and to feed T0032.8's reflection later (was T0142.9); the *compiler*
     // re-reads the path at pipeline-build time through the same mount tree.
     std::optional<std::string> text = Vfs::readText(path);
     if (!text) {

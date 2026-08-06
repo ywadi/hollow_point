@@ -70,7 +70,8 @@ security-camera static that T0149's custom styles will name.
 - [ ] 148.3 Disposition SSAO / SSR / DoF / TAA, one decision each, with the
       named blockers
 - [ ] 148.4 The game post-effect shape: a Slang shader + parameters through
-      the same reflection path materials use (142.9), inserted via the
+      the same reflection path materials use (T0142.9, now **T0032.8** —
+      the mechanism is still undecided there), inserted via the
       RenderStack transport T0094 owns
 - [ ] 148.5 Quality settings: this is design-gaps item 4's fifth consumer —
       wire to T0078's (still unbuilt) quality section rather than inventing a

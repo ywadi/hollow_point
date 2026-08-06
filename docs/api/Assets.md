@@ -466,7 +466,8 @@ class ShaderAsset
  currently mounted — which is also what makes an edited shader picked up by
  the next pipeline build without this asset changing. The source text is
  kept from load time for validity ("the file existed and read") and for the
- reflection work 142.9 will do without a device.
+ reflection work T0032.8 will do without a device (it was T0142.9 until
+ T0142 closed and its editor half moved to the ticket that builds an editor).
 
  The module's contract: it defines `struct HpMaterial : IHpMaterial` and
  overrides the methods it wants, `override` mandatory (D28). It includes

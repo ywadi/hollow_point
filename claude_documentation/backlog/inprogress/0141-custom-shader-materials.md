@@ -303,7 +303,10 @@ T0060 already says it must not foreclose and does not.
       *(Numbered 2026-08-06 — this line previously said only "moved to T0142"
       with no subtask on the receiving end, which is the one-way-reference
       failure the backlog rules exist to prevent.)*
-- [→] 141.2 **Moved to T0142.9.** Slang reflects parameters from *source*,
+- [→] 141.2 **Moved to T0142.9, and on to T0032.8** *(2026-08-06 — T0142
+      descoped its editor half to the ticket that builds an editor; the
+      undecided mechanism question went with it as text, not as a pointer)*.
+      Slang reflects parameters from *source*,
       so the inspector works before a shader compiles — and Diligent already
       reflects constant-buffer contents at runtime
       (`LoadConstantBufferReflection`, one bool, currently false). Both beat
@@ -331,7 +334,8 @@ T0060 already says it must not foreclose and does not.
       three rendered frames, exactly one compiler error and one substitution
       line, and the draw path stays silent. Never a crash, never invisible:
       the frame is loud magenta
-- [→] 141.5 **Moved to T0142.8** — Slang's runtime API is built for it
+- [→] 141.5 **Moved to T0142.8, and on to T0032.7** *(2026-08-06, same
+      descope)* — Slang's runtime API is built for it
 - [x] 141.6 **`HpMaterial.fxh` — the contract a game shader compiles
       against** (D27). `HpSurfaceInput` is a *promise*: adding to it later is
       easy, removing from it breaks shipped games, so the list is decided
@@ -823,8 +827,10 @@ zero failures.**
 | **141.14** | generated shader-contract docs, gated in CI | ~~141.6 settling~~ — **done 2026-08-06** |
 | **141.9** | tessellation | deferred: *when a silhouette must change* |
 
-Moved to T0142 and tracked there: 141.1 → **142.15**, 141.2 → **142.9**,
-141.5 → **142.8**, 141.13 → **142.14**, 141.15 → **142.16**.
+Moved to T0142 and tracked there: 141.1 → **142.15**, 141.13 → **142.14**,
+141.15 → **142.16** — all three closed. Two went one hop further when T0142
+descoped its editor half on 2026-08-06: 141.2 → 142.9 → **T0032.8**, and
+141.5 → 142.8 → **T0032.7**. Follow the chain rather than the first arrow.
 
 ## Notes / findings
 

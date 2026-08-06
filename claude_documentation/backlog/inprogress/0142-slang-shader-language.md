@@ -77,8 +77,6 @@ RTX 2080 — their arithmetic, to the byte.
       **twice** on Linux (43.7 MB in `bin/` and again in `lib/`) and once on
       Windows (31.5 MB). Deciding what a shipping layout contains is **T0128**,
       and the reference is recorded there.*
-- [ ] The editor builds a material inspector from Slang reflection, with no
-      device and no successful compile required.
 
 ## Subtasks
 
@@ -181,20 +179,6 @@ RTX 2080 — their arithmetic, to the byte.
       byte-identical frame from a cooked archive with **zero compiles**, and a
       module edited after the cook is one loud unrecoverable line plus
       T0141.12's fallback — never a silent substitution. Evidence in notes.*
-- [ ] 142.8 **Hot reload in the editor**, via Slang's runtime API and the same
-      content hash. Supersedes 141.5.
-- [ ] 142.9 **Material inspector from Slang reflection** — parameters read from
-      *source*, so the panel works before the shader compiles and while the
-      developer is typing. Supersedes 141.2's plan to annotate and parse.
-      **Note Diligent already reflects constant-buffer contents** via
-      `IShader::GetConstantBufferDesc()` (`LoadConstantBufferReflection`, one
-      bool, currently false) — that is the runtime-side answer and may be enough
-      on its own. Decide deliberately rather than adopting Slang's by default.
-- [ ] 142.10 **One inspector over two reflection systems.** Component fields come
-      from `entt::meta`, material parameters from Slang. **These do not merge** —
-      Slang cannot see a `MeshRenderer` and never will. What unifies is the
-      *presentation*: the editor should consume one description of "a named,
-      typed, editable value" whichever side produced it.
 - [x] 142.11 **Windows and D3D12.** The D28 probe was Linux and Vulkan only.
       DXIL output, and the `SLANG_ParameterGroup_*` naming behaviour on the D3D12
       backend, are both unverified.
@@ -325,6 +309,47 @@ RTX 2080 — their arithmetic, to the byte.
       code is gone: `compileEngineShader` compiled through Diligent's HLSL front
       end and now goes through slang — which is what caught the include-resolution
       divergence in the notes.*
+
+## Descoped 2026-08-06 — the editor half went to T0032, with its open question
+
+**These are no longer this ticket's checklist.** All three need editor
+scaffolding that does not exist — there is no `EditorLayer`, no `IEditorPanel`,
+no dockspace — and T0032 is the ticket that builds it. Following `CLAUDE.md`'s
+rule and the T0095 → T0105 and T0054/T0056 → T0025 precedents: close on what
+was achieved, move the remainder to the ticket that unblocks it, rather than
+holding a ticket open near the top of the queue for work nobody can start.
+
+| Was | Went to | Because |
+|---|---|---|
+| 142.8 hot reload in the editor | **T0032 (32.7)** | There is no editor to reload *in*. The engine half is already there — a changed module is picked up whenever a new pipeline builds (142.15) — so what is missing is the panel, the watch and the rebuild trigger |
+| 142.9 material inspector from Slang reflection | **T0032 (32.8)** | There is no inspector. **And it carries a live undecided question**, which is why it moved as text rather than as a pointer — see below |
+| 142.10 one inspector over two reflection systems | **T0032 (32.9)** | Same: it is a statement about how a panel presents values, and there is no panel |
+
+The Done-when *"the editor builds a material inspector from Slang reflection,
+with no device and no successful compile required"* left with them, because it
+is 142.9 restated and would otherwise sit unticked forever on a closed ticket.
+
+**The question that had to survive the move, stated in full so it is not
+re-derived badly.** 142.9's plan was Slang's source reflection, and **Slang's
+reflection is not the automatic answer**:
+
+- **Diligent already reflects constant-buffer contents** — name, type, offset,
+  array size, nested members — through `IShader::GetConstantBufferDesc()`. It
+  is **one bool away**: `LoadConstantBufferReflection`, currently `false`. That
+  is the runtime-side answer and it may be enough on its own.
+- **Slang's reflection buys two things Diligent's cannot**: it works with **no
+  device and no successful compile**, so a panel can render while the developer
+  is still typing; and **user-defined attributes survive into it** —
+  `[Range(0.0, 1.0)] float roughness;` appears in `-reflection-json` as
+  `userAttribs: [{name: "Range", arguments: [0.0, 1.0]}]`, which is Godot's
+  `hint_range` shape carried by the compiler with no annotation parser
+  (measured on the pinned slangc; see the notes). `ParameterBlock<T>` also
+  works on SPIR-V, each block landing in its own descriptor set.
+- **Decide deliberately rather than adopting either by default**, and note that
+  141.2's original plan — annotate the source and write a parser — is beaten by
+  *both* of them.
+
+T0032 carries all of this in its own words, and its Refs point back here.
 
 ## What this changes in T0141
 
