@@ -2228,3 +2228,95 @@ be T0058's job done badly.
   by glob, because nobody decides what ships. Cooking is what makes dropping it
   *possible*; deciding what a `dist` layout contains is **T0128**, and the
   reference is recorded there.
+
+---
+
+## D35 — A game declares its own resources, by name, and the mechanism is the **same at every stage**
+
+**Decided 2026-08-07 on T0161, by the owner**, after a research pass and after
+the mistake below had been made twice.
+
+A game's shader module declares its textures, buffers and samplers as ordinary
+globals under **its own names, at whatever count it wants**. The engine reflects
+them off the compile it already performs and builds a per-module resource
+signature bound beside the engine's base one. A `.hpmat` binds them by the
+author's name. **The same mechanism serves surface, vertex, compute and
+post-process modules** — not four mechanisms that resemble each other.
+
+### The mistake this exists to prevent, stated plainly
+
+**A contract shaped by the cases in front of you fails silently on the next one.**
+
+`IHpMaterial` was designed against techniques that all happened to fit in a
+single hook — parallax fits `surfaceCoordinates`, triplanar fits sampling,
+unshaded is a bool. The first technique needing *two* hooks, parallax
+self-shadowing, could not be written; it compiled, rendered, and produced a zero
+shadow term while reading as correct in its own source (T0158, T0159).
+
+Then it happened again one layer down. T0160 gave authors named *parameters* and
+left them four engine-named texture slots — adequate for every material
+technique in the audit, and a wall in front of the first vertex, compute or
+post-process module to want a resource of its own.
+
+Both times the design was sound for what was in front of it. Both times the next
+case fell through a gap nobody had looked for, and **the failure was silent
+rather than loud**, which is what makes it expensive.
+
+### So the rule has two halves
+
+1. **A game-facing mechanism is designed stage-agnostically or not at all.** If
+   it would be rediscovered by the next stage, it is not finished. "We will
+   generalise it when the second consumer arrives" is how the second consumer
+   inherits an answer built for the first.
+2. **Before building a technique, add its row to
+   [`13-shader-capability-matrix.md`](13-shader-capability-matrix.md)** and see
+   which cells are empty. A row added afterwards is a record; a row added first
+   is a warning. That document exists because of this decision and is worthless
+   if it is only updated in arrears.
+
+### What was rejected, and why — so it is not re-litigated
+
+- **Widening the fixed slots** (8, 16 engine-named textures). Keeps the tax —
+  a slot is declared for *every* pipeline, so a plain glTF material carries
+  descriptors for a game shader's flowmap — and scales it. Keeps engine names,
+  which is the thing being fixed.
+- **A rename pass** fitting author names into the shared, pre-built signature.
+  **Circular**: reflection rides the compile, so the names are not known until
+  after the compile that would have to be told them.
+- **Bindless / descriptor indexing.** The hardware is willing and the engine
+  does not request the feature. It is the default in GPU-driven AAA renderers
+  and **no surveyed engine uses it as its authoring surface** — Godot, Bevy,
+  Unity and Unreal all give authors named declarations and reflect them, with
+  bindless as internal batching. It also solves only textures, while a compute
+  module needs buffers. It remains the right tool for **T0143's** seventeen-slot
+  budget, which is a different problem with the same word in it.
+- **Slang's `ParameterBlock<T>`.** Its value is single-descriptor-set mapping,
+  and that is **void under Diligent**, which rewrites every set and binding
+  decoration by name at PSO creation. What survives is dotted names
+  (`gGame.detailMap`) that would leak into every `.hpmat`. Measured, not assumed.
+
+### The cost, accepted rather than discovered
+
+One extra `CommitShaderResources` per draw of a **custom** material. Diligent
+already rebinds every descriptor set every draw — `cbPrimitiveAttribs` is
+`USAGE_DYNAMIC` — in a single `vkCmdBindDescriptorSets`, so the module set is
+one more handle in an array already submitted. **T0161.1 measures it before the
+design is committed to**, and if the number disagrees with that reasoning the
+number wins.
+
+Two descriptor sets are bound rather than one, against a Vulkan spec floor of 4
+(this machine: 32 on the RTX 2080, 8 on llvmpipe). The budget otherwise
+**improves**: a plain material goes from 10 sampled images and 11 immutable
+samplers to 6 and 7.
+
+### The one deliberate limit
+
+**Sampler *state* is the engine's vocabulary, not the author's.** Filtering and
+wrap come from a pre-declared palette — `HpSamplerLinearWrap` and friends —
+which the author selects by naming in code, so the choice travels inside the
+SPIR-V and a cooked build needs no metadata to carry it. Godot ships the same
+restriction. A custom sampler desc is refused **by name**, with one log line
+pointing at the palette. Lifting it later is additive.
+
+**Revisit if** a game needs comparison samplers for its own shadow sampling, or
+if profiling shows the second commit costs more than T0161.1 measured.
