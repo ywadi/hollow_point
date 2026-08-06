@@ -25,6 +25,7 @@ you in the first ten minutes.
 | What does *game* code look like? | [`claude_documentation/documentation/09-gameplay-authoring.md`](claude_documentation/documentation/09-gameplay-authoring.md) |
 | How is a scene file structured? | [`claude_documentation/documentation/10-scene-file-format.md`](claude_documentation/documentation/10-scene-file-format.md) |
 | How is a material file structured? | [`claude_documentation/documentation/11-material-format.md`](claude_documentation/documentation/11-material-format.md) |
+| Which way do triangles wind? | `engine/include/hp/WindingConvention.hpp` — **D33**, and the trap below. Read it before writing a gpu test with a quad in it |
 
 **The decision log is binding.** Entries D1–D25 record what was rejected and
 why, usually against a specific failure. If you are about to do something one of
@@ -288,6 +289,47 @@ what another task is editing concurrently, and require `git add <paths>` — nev
 push.
 
 ## Traps that will cost you an hour
+
+- **Triangle winding: the engine is glTF-conformant, and the *test assets* were
+  not.** This one has already been misdiagnosed once, confidently, in a way that
+  nearly became permanent — so read it before you touch culling, facing, shadow
+  bias, or write a gpu test with a quad in it.
+
+  **The convention is `engine/include/hp/WindingConvention.hpp` and it is
+  binding** (**D33**, ticket **T0152**): hardware facing equals glTF facing.
+  `FrontCounterClockwise = false`, *declared* rather than defaulted, and
+  single-sided geometry culls `BACK` — which is what the glTF spec means and
+  what every published shadow-bias recipe assumes.
+
+  **The engine's chain has zero winding reversals.** The left-handed view is a
+  rigid det-+1 inverse; reverse-Z writes only the projection's Z column, so it
+  is winding-neutral; Diligent folds its internal Vulkan viewport flip into
+  `FrontCounterClockwise`'s D3D semantics. The three-factor story
+  ("CCW × left-handed view × viewport flip") that T0141.12 recorded names three
+  facts, **none of which contributes a reversal**.
+
+  **What was actually wrong: the gpu test quads contradicted themselves.**
+  Indices `{0, 1, 2, 0, 2, 3}` over BL,BR,TR,TL vertices wind the front toward
+  **+Z**, away from the camera, while the authored `NORMAL` attributes say
+  **−Z**. `SV_IsFrontFace == false` on a camera-facing fragment was the
+  *correct* classification of a backwards asset. **A new gpu quad winds
+  `{0, 2, 1, 0, 3, 2}`** for a −Z-facing normal. Copy-pasting the old order is
+  exactly how this spread.
+
+  **Two traps inside the trap:**
+  - **Diligent's own GLTFViewer sets `FrontCounterClockwise = true`** — copying
+    the reference sample is wrong for us. It does that only because it applies
+    an `InvYAxis` model mirror (`GLTFViewer.cpp:241`, determinant −1) that this
+    engine does not have.
+  - **A lit test going black when you correct the winding is not a regression.**
+    Those scenes light the quad from the far side and are visible only because
+    the two-sided normal flip inverts the authored normal — and that flip fires
+    only because the winding is backwards. Re-baselining against the old light
+    positions freezes the bug in. Re-aim the light instead.
+
+  If facing ever looks wrong, suspect the asset before the engine. The failure
+  does not look like a winding bug — it looks like invisible geometry, or like a
+  normal-map handedness problem, which is how it was misread the first time.
 
 - **Submodules.** `git pull` does not fetch them. If C++ suddenly fails to find
   `doctest/doctest.h` or `SDL3/SDL.h`, run

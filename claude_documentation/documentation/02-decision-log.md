@@ -1743,6 +1743,38 @@ T0145 must land its loop **before** T0086 starts; both tickets record it.
 - The ~120-line estimate is from reading :601–721, not from a completed port.
 - No performance measurement of an overridden loop exists.
 
+### Amended 2026-08-06 — the owner accepted the maintenance, and named how to build for it
+
+The standing cost this decision commits to — roughly 120 lines mirrored from
+`ApplyPunctualLight`, re-diffed against DiligentFX on every submodule bump — was
+put to the owner in plain terms and **accepted**, with a steer that changes how
+the drift guard is built: *"Claude Code will be doing the work so we should
+optimize for the right path."*
+
+So the guard is not a minimum-effort tripwire that spares a human a chore. It is
+built to catch a real upstream change and show what moved, and **the
+architecture is not compromised to shrink a cost that is not a human one.** The
+upstream hook is still worth offering — a merged seam beats a maintained copy —
+which is T0141's C1/C3 reasoning applied one layer down.
+
+### Why rung 3 is load-bearing rather than optional: material switching cannot substitute for it
+
+Recorded because the cheaper-looking alternative is genuinely tempting and is
+what a reader will reach for first.
+
+**Swapping a material changes the surface — albedo, roughness, normals. It
+cannot change how light is applied.** Toon shading is quantised `N·L`, which
+lives in the light loop, so no amount of material assignment reaches it. The
+evidence is the comparison engines: **Unreal's shading models are fixed, so toon
+there means a post-process material or an engine-source edit; Godot's is
+achievable because it exposes `light()`.** That difference is the whole argument
+for owning the loop.
+
+The consequence for the style work is direct: T0149's styles are content
+assembled from primitives (see its own notes and the Godot/Unreal finding), and
+**rung 3 is the primitive that makes a toon style possible at all** — not an
+enhancement to it.
+
 ---
 
 ## D31 — The lighting contract **mirrors** DiligentFX's types; it never re-exports them
@@ -1850,6 +1882,21 @@ open, rather than eroded by a hook that seemed harmless.
   concede it does not cover the language. Rungs 0–1 (styles, parameters) are
   this engine's answer to "junior developer, no code"; a node graph is an
   editor-era question for the owner, not an engine gap.
+
+  **Answered 2026-08-06 — wanted eventually, with one binding constraint.** The
+  owner: *"Probably in the editor yes, but i assume thats a function of the
+  editor right?"* Mostly yes, and the part that is *not* purely the editor's is
+  worth deciding now because it costs nothing today:
+
+  > **A visual shader graph must emit an ordinary `.slang` material implementing
+  > `IHpMaterial`.** Never its own runtime evaluation path.
+
+  If the graph emits normal materials, it stays an editor feature and inherits
+  every rung, every override and every optimisation for free. If it gets its own
+  evaluation path, there are two systems doing one job — which is precisely the
+  outcome **D26** and **142.13** exist to prevent, and the shape that let the
+  `CreateInfo` duplication hide `TextureAttribIndices`. Recording the sentence
+  now is the whole cost of never having that argument.
 - **Stencil render modes.** Godot added them in 4.5, still marked
   experimental. Nothing here owns stencil-driven material effects; if a game
   needs them, that is a T0045/T0094-shaped conversation and this line is where
