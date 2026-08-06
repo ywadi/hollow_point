@@ -43,6 +43,31 @@ physically-based atmospheric scattering implementation, and the previous
 
 ## Notes / findings
 
+### Surveyed 2026-08-06 — scattering is **not** fully blocked behind compute (T0150)
+
+The natural assumption is that `EpipolarLightScattering` waits for the compute
+subsystem this engine does not have. **Measured, only its high-quality path
+does.**
+
+| Needs compute | Does not |
+|---|---|
+| LUT precompute — 6 passes, **one-time**, only for `SINGLE_SCTR_MODE_LUT` and `MULTIPLE_SCTR_MODE_UNOCCLUDED/OCCLUDED` | ray march, coordinate texture, coarse inscattering, min/max shadow map, luminance, sun disc, ambient sky light |
+| `RefineSampleLocations` — **per-frame**, only under `LIGHT_SCTR_TECHNIQUE_EPIPOLAR_SAMPLING` | — |
+
+Everything in the right column is `InitializeFullScreenTriangleTechnique`, i.e. a
+pixel shader, **including the min/max shadow-map steps despite their names**.
+
+**So a reduced configuration ships before T0150**: `LIGHT_SCTR_TECHNIQUE_BRUTE_FORCE`
++ `SINGLE_SCTR_MODE_INTEGRATION` + `MULTIPLE_SCTR_MODE_NONE` needs **zero**
+compute, at a real cost — no epipolar acceleration, no multi-scattering. Full
+quality needs T0150 first. That is a sequencing option this ticket did not have
+before, and 88.1 should decide which it targets rather than inheriting the
+assumption that it is blocked.
+
+The full settings surface — ~40 struct fields and 6 technique enums, the largest
+of anything surveyed — is inventoried in
+[../../documentation/12-vendored-capabilities.md](../../documentation/12-vendored-capabilities.md).
+
 **From D32 (2026-08-06):** when the sky shader is built, it is authored
 against an interface a game can implement — the same default-methods shape as
 `IHpMaterial` — not as a sealed engine file. One design constraint now; the

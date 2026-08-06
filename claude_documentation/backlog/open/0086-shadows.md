@@ -53,7 +53,17 @@ get shadows, at what resolution, and making them look right is ours.
 - [ ] 86.4 Point light shadows (cube or dual-paraboloid) and spot shadows
 - [ ] 86.5 Shadow atlas/array allocation across lights, by importance
 - [ ] 86.6 Depth bias and normal-offset tuning
-- [ ] 86.7 Filtering — PCF at minimum
+- [ ] 86.7 Filtering — **all four modes DiligentFX ships, exposed as a game-dev
+      choice**, not PCF alone. `SHADOW_MODE_*` in `BasicStructures.fxh`:
+      **PCF** (1), **VSM** (2, filterable and mip-mappable, light-bleeding
+      artefact), **EVSM2** (3, positive exponent), **EVSM4** (4, positive and
+      negative, less bleeding). Decided by the owner 2026-08-06 — *"we need to
+      have all since they all exist as an option to the game dev"*.
+      **The cost is not free filtering quality**: VSM and EVSM need a separate
+      *filterable* 32- or 16-bit representation derived from the raw depth
+      cascades (`ShadowMapManager::ConvertToFilterable`, and
+      `InitInfo::Is32BitFilterableFmt`), so each is a real extra texture, not a
+      shader flag. Price it, do not just enable it
 - [ ] 86.8 Cull shadow casters per light, not just per camera
 - [ ] 86.9 Quality settings wired to project/user config (T0078)
 
@@ -82,7 +92,11 @@ engine **configures** DiligentFX here rather than superseding it:
 - `PBRLightAttribs::ShadowMapIndex` is **already in the light struct** T0079 will
   populate — `-1` for a light that casts none. So the light/shadow linkage is
   decided; this ticket allocates the maps and fills the indices.
-- `CreateInfo::PCFKernelSize` (default 3) is the filtering knob.
+- `CreateInfo::PCFKernelSize` (default 3) is the *PCF* filtering knob — one of
+  four modes, see 86.7. The full surface (cascade distribution, snapping,
+  stabilisation, partitioning factor, per-light bias) is inventoried in
+  [../../documentation/12-vendored-capabilities.md](../../documentation/12-vendored-capabilities.md);
+  read it before building any of it.
 - `Components/ShadowMapManager.hpp` manages cascade textures.
 - `PSO_FLAG_ENABLE_SHADOWS` must come out of `kFeatureMask` in
   `SceneRenderer.cpp`.

@@ -26,6 +26,7 @@ you in the first ten minutes.
 | How is a scene file structured? | [`claude_documentation/documentation/10-scene-file-format.md`](claude_documentation/documentation/10-scene-file-format.md) |
 | How is a material file structured? | [`claude_documentation/documentation/11-material-format.md`](claude_documentation/documentation/11-material-format.md) |
 | Which way do triangles wind? | `engine/include/hp/WindingConvention.hpp` — **D33**, and the trap below. Read it before writing a gpu test with a quad in it |
+| **Does DiligentEngine already do this?** | [`claude_documentation/documentation/12-vendored-capabilities.md`](claude_documentation/documentation/12-vendored-capabilities.md) — **check before building anything in the render layer.** Tone mapping, bloom, DoF, SSAO, SSR, TAA, atmospheric scattering, four shadow-filter modes and a whole terrain implementation are already vendored. The check has failed twice here |
 
 **The decision log is binding.** Entries D1–D25 record what was rejected and
 why, usually against a specific failure. If you are about to do something one of
