@@ -2,14 +2,14 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
 | **Order** | 464 |
 | **Created** | 2026-08-07 |
 | **Blocked by** | nothing |
-| **Refs** | **Establishes D35** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)); [../../documentation/13-shader-capability-matrix.md](../../documentation/13-shader-capability-matrix.md) — flips the `Game-declared textures` cell from **P** to **Y**; [../completed/0160-material-declared-parameters.md](../completed/0160-material-declared-parameters.md) — **this generalises what it shipped and breaks nothing it shipped**; [0146-vertex-stage-hook.md](0146-vertex-stage-hook.md), [0150-compute-pipelines.md](0150-compute-pipelines.md), [0148-post-process-stack.md](0148-post-process-stack.md) — **all three consume this; it must land first**; [0147-engine-intermediates-for-shaders.md](0147-engine-intermediates-for-shaders.md) — the *other* side of the two-namespace line; [0143-extended-material-features.md](0143-extended-material-features.md) — untouched, but gains four descriptors back; [0151-shader-variants-and-compile-cost.md](0151-shader-variants-and-compile-cost.md) — adds **no** permutation axis; [0058-asset-lifetime-hot-reload.md](0058-asset-lifetime-hot-reload.md) — widens an already-open invalidation surface; **D13**, **D23**, **D26**, **D27** (amended), **D28**, **D34** |
+| **Refs** | **Establishes D35** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)); [../../documentation/13-shader-capability-matrix.md](../../documentation/13-shader-capability-matrix.md) — flips the `Game-declared textures` cell from **P** to **Y**; [../completed/0160-material-declared-parameters.md](../completed/0160-material-declared-parameters.md) — **this generalises what it shipped and breaks nothing it shipped**; [0146-vertex-stage-hook.md](../open/0146-vertex-stage-hook.md), [0150-compute-pipelines.md](../open/0150-compute-pipelines.md), [0148-post-process-stack.md](../open/0148-post-process-stack.md) — **all three consume this; it must land first**; [0147-engine-intermediates-for-shaders.md](../open/0147-engine-intermediates-for-shaders.md) — the *other* side of the two-namespace line; [0143-extended-material-features.md](../open/0143-extended-material-features.md) — untouched, but gains four descriptors back; [0151-shader-variants-and-compile-cost.md](../open/0151-shader-variants-and-compile-cost.md) — adds **no** permutation axis; [0058-asset-lifetime-hot-reload.md](../open/0058-asset-lifetime-hot-reload.md) — widens an already-open invalidation surface; **D13**, **D23**, **D26**, **D27** (amended), **D28**, **D34** |
 
 ## Why
 
@@ -63,7 +63,7 @@ The engine pre-declares `HpSamplerLinearWrap`, `HpSamplerLinearClamp`, `HpSample
 
 ## Subtasks
 
-- [ ] 161.1 **Measure first — this is the gate.** Wall-clock CPU frame time for a scene of N custom-material draws, base signature vs base + per-module, on this machine and on llvmpipe. The architecture argument says the marginal cost is one handle in an existing bind call; this project's rule is that an argument is not a number. **If it is expensive, stop and report rather than proceeding.**
+- [x] 161.1 **Measure first — this is the gate.** Wall-clock CPU frame time for a scene of N custom-material draws, base signature vs base + per-module, on this machine and on llvmpipe. The architecture argument says the marginal cost is one handle in an existing bind call; this project's rule is that an argument is not a number. **If it is expensive, stop and report rather than proceeding.**
 - [ ] 161.2 **The sampler palette** in the base signature and the contract, replacing the hardcoded `Sam_LinearWrap` on module slots
 - [ ] 161.3 **Generalise reflection**: keep *every* author-named resource rather than matching the four reserved names. Dev-time slang reflection sees resource **dimension**; Diligent's `ShaderResourceDesc` does not — so **check dimension there, loudly, by name**, or a `Texture2D`/`Texture2DArray` mismatch surfaces as a raw Vulkan validation error in cooked builds
 - [ ] 161.4 **Build the per-module signature** at PSO-creation time, cached by the module's content hash so two materials sharing a module share the signature
@@ -80,6 +80,39 @@ The engine pre-declares `HpSamplerLinearWrap`, `HpSamplerLinearClamp`, `HpSample
 - **The other stages' hooks.** T0146, T0150 and T0148 own their own pipelines; this ticket owes them a stage-neutral helper, not their implementations.
 
 ## Notes / findings
+
+### 161.1 — the gate passed, measured 2026-08-07
+
+`tests/gpu/module_signature_cost_test.cpp`, raw Diligent against the engine's
+device: two pipelines drawing 1000 tiny draws per frame into a 64x64 offscreen
+target, each draw mapping a dynamic constant buffer with DISCARD, committing
+and drawing — the engine's exact per-draw shape. Variant A: one signature, one
+`CommitShaderResources`. Variant B: base + a module signature at binding 1
+(texture + `HpMaterialParams` cbuffer), **two** commits **and a second
+per-draw dynamic map** (what `writeShaderParams` does), so the delta is the
+whole T0161 cost, not the commit alone. Median over 120 frames after 16 warm-up.
+
+| device | base ms/frame | base+module | base rerun | **delta/draw** |
+|---|---|---|---|---|
+| RTX 2080 | 0.108 | 0.143 | 0.096 | **34 ns** |
+| llvmpipe (LLVM 15) | 0.242 | 0.282 | 0.248 | **40 ns** |
+
+The scene-path baseline before the migration (same file, second case: 400
+draws of a param-declaring custom material through `SceneView`): median
+**1.873 ms** RTX 2080, **0.630 ms** llvmpipe. 34–40 ns per draw against a
+~4.7 µs per-draw engine path is under 1%. **Go.** The number agrees with the
+argument (one more set handle in a `vkCmdBindDescriptorSets` already recorded
+per draw), and the decision is recorded against the number.
+
+**The first run of the harness produced 213 µs/draw and it was the harness.**
+The loop never called `FinishFrame`, so a thousand DISCARD maps per frame
+accumulated in Diligent's per-frame dynamic heap with nothing recycling it —
+timings degraded progressively, the variant measured *second* inherited an
+exhausted heap, and base's own mean sat 50x above its median. Both symptoms
+now have standing controls in the test: a base **rerun after** the module
+variant (order effect shows as first-base vs rerun disagreement), and
+mean-vs-median printed side by side. "When a check fails, suspect the check"
+— it was the check.
 
 ### `ParameterBlock<T>` was investigated seriously and is not load-bearing
 

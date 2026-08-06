@@ -242,6 +242,26 @@ foreach(_bucket fast integration gpu perf)
     hp_add_test_bucket(${_bucket})
 endforeach()
 
+# The gpu bucket sees Diligent's interface headers (T0161.1). **Include
+# directories only, never the libraries** -- the same trick `engine/CMakeLists`
+# uses for `Diligent-Common`: every call the tests make goes through a COM-style
+# vtable on objects the engine created, so no Diligent code is linked twice and
+# D12's one-copy rule holds. The platform defines (`PLATFORM_LINUX`, ...) arrive
+# transitively through hp_engine's PUBLIC `Diligent-PublicBuildSettings`.
+#
+# This exists for the T0161.1 measurement, which must build a second
+# `PipelineResourceSignature` against the raw device -- the engine deliberately
+# has no public API for that, and giving it one for a benchmark would be
+# backwards.
+if(TARGET hp_tests_gpu)
+    target_include_directories(hp_tests_gpu SYSTEM PRIVATE
+        $<TARGET_PROPERTY:Diligent-GraphicsEngine,INTERFACE_INCLUDE_DIRECTORIES>
+        $<TARGET_PROPERTY:Diligent-GraphicsAccessories,INTERFACE_INCLUDE_DIRECTORIES>
+        $<TARGET_PROPERTY:Diligent-Common,INTERFACE_INCLUDE_DIRECTORIES>
+        $<TARGET_PROPERTY:Diligent-Primitives,INTERFACE_INCLUDE_DIRECTORIES>
+        $<TARGET_PROPERTY:Diligent-PlatformInterface,INTERFACE_INCLUDE_DIRECTORIES>)
+endif()
+
 # The integration bucket links the engine fixture and loads the module fixture.
 # Guarded because a bucket with no sources produces no target at all.
 if(TARGET hp_tests_integration)
