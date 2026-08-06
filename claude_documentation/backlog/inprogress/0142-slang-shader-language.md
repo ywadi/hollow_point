@@ -167,13 +167,25 @@ RTX 2080 — their arithmetic, to the byte.
       test, against the real resource signature the probe never had. The
       public `probePrecompiledSpirvPipeline` went with it; `zig build docs`
       regenerated.*
-- [ ] 142.14 **VFS-backed shader source through `ISlangFileSystem`** (was
+- [x] 142.14 **VFS-backed shader source through `ISlangFileSystem`** (was
       T0141.13, numbered 2026-08-06 — it had been "moved to T0142" with no
       number to land on). A game's `.slang` is content (D13) and must reach the
       compiler through the VFS. **Resolution order: engine → game → DiligentFX**,
       engine and DiligentFX names reserved, extending the same compound factory
       `FactoryFileSystem` already bridges — one resolution order, both
       compilers. **Hard blocker for 142.15.**
+      *Done 2026-08-06: `VfsShaderSourceFactory` in `ShaderSources.cpp`, second
+      in the compound chain, safe with no mounts. **The reservation had to be
+      enforced, not just ordered, and the test is what proved it**: Diligent's
+      include-relative candidate (`shaders/HpMaterial.fxh`) resolves from the
+      mount before the bare name reaches the engine's copy, so a poison file
+      beside a game shader redefined the contract on the first run. The VFS
+      source now refuses any path whose basename matches an embedded engine
+      shader, warning once per path. gpu test: a mounted `.psh` including
+      `HpMaterial.fxh` compiles against the engine's copy with the poison
+      mounted beside it, and stops resolving when the mount goes. DiligentFX
+      names remain a documented-only reservation — their factory cannot be
+      enumerated.*
 - [ ] 142.15 **The `.slang` material asset, and a `shader` field on
       `Material`** (was T0141.1, numbered 2026-08-06 — same orphan). A material
       must be able to name a shader before anything can cook (142.7), reload

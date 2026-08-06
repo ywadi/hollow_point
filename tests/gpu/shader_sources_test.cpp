@@ -19,9 +19,13 @@
 #include <hp/Render.hpp>
 #include <hp/RenderStack.hpp>
 #include <hp/ShaderSources.hpp>
+#include <hp/Vfs.hpp>
 #include <hp/Window.hpp>
 
+#include <filesystem>
+#include <fstream>
 #include <memory>
+#include <string>
 
 // **No Diligent RHI header here, deliberately.** No test in this repo includes
 // one: D21 exports only the math subset to consumers, and widening that for a
@@ -110,6 +114,59 @@ TEST_CASE("a shader neither side has fails, rather than resolving to something e
 
 TEST_CASE("a null device is refused rather than crashing") {
     CHECK_FALSE(hp::compileEngineShader(nullptr, "HpSurface.slang", hp::ShaderStage::Pixel));
+}
+
+TEST_CASE("a shader mounted through the VFS compiles, and cannot shadow the engine's") {
+    // **T0142.14: a game's shader is content** (D13). The factory chain is
+    // engine → VFS → DiligentFX, and both halves of that order are asserted
+    // here — resolution *from* a mount, and the engine's names *winning over*
+    // a mount. The same compound factory feeds the slang bridge, so what this
+    // proves for Diligent's compiler holds for slang's resolution too.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    std::error_code ec;
+    const std::filesystem::path scratch =
+        std::filesystem::temp_directory_path() / "hp-vfs-shaders";
+    std::filesystem::remove_all(scratch, ec);
+    std::filesystem::create_directories(scratch / "shaders", ec);
+    {
+        // A game shader that also includes an engine header — the include must
+        // resolve through the same chain the top-level name did.
+        std::ofstream file(scratch / "shaders" / "game_probe.psh");
+        file << "#include \"HpMaterial.fxh\"\n"
+                "float4 main() : SV_Target0 { return float4(0.0, 1.0, 0.0, 1.0); }\n";
+    }
+    {
+        // A file named like the contract header, with contents that cannot
+        // compile. If the mount could shadow the engine, the include above
+        // would pull this in and the compile below would fail.
+        std::ofstream file(scratch / "shaders" / "HpMaterial.fxh");
+        file << "#error a game shader must not be able to redefine the contract\n";
+    }
+
+    hp::Vfs::shutdown();
+    REQUIRE(hp::Vfs::init(nullptr));
+    REQUIRE(hp::Vfs::mount(scratch.string()));
+
+    // Resolution from the mount, includes resolved engine-first: if the
+    // mounted `#error` copy of `HpMaterial.fxh` could shadow the engine's,
+    // this compile would fail on it.
+    CHECK(hp::compileEngineShader(device.render->device(), "shaders/game_probe.psh",
+                                  hp::ShaderStage::Pixel));
+
+    // With the mount gone the game shader stops resolving — a miss stays a
+    // miss, exactly as the unknown-name case above requires.
+    hp::Vfs::shutdown();
+    CHECK_FALSE(hp::compileEngineShader(device.render->device(), "shaders/game_probe.psh",
+                                        hp::ShaderStage::Pixel));
+
+    tearDown(device);
+    std::filesystem::remove_all(scratch, ec);
 }
 
 TEST_CASE("a pipeline state is built from the engine's own shaders") {

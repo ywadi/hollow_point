@@ -38,13 +38,30 @@ enum class ShaderStage : std::uint8_t {
 
 /// Creates the source factory the engine compiles its shaders through.
 ///
-/// **Ours first, then DiligentFX's.** A compound factory resolves an include by
-/// asking each source in order, so this order means an engine shader may include
-/// any DiligentFX public header — `PBR_Structures.fxh`, `PBR_Shading.fxh`,
-/// `Shadows.fxh`, `PCF.fxh` — while a name collision resolves to ours. That is
-/// the right way round: if the engine ever ships a file that shadows one of
-/// theirs it will be on purpose, and the reverse would be a silent surprise
-/// after an upgrade.
+/// **Engine, then the game's content, then DiligentFX** (T0142.14, D13). A
+/// compound factory resolves an include by asking each source in order:
+///
+/// - the engine's embedded shaders come first, so a project cannot shadow
+///   `HpMaterial.fxh` or `HpSurface.slang` and quietly redefine the contract;
+/// - the **virtual filesystem** comes second, which is what makes a game's
+///   `.slang` ordinary content — mounted directories and packs resolve here,
+///   and an engine with no mounts behaves exactly as if this source did not
+///   exist;
+/// - DiligentFX's tree comes last, so an engine shader may include any of its
+///   public headers — `PBR_Structures.fxh`, `PBR_Shading.fxh`, `Shadows.fxh`,
+///   `PCF.fxh`.
+///
+/// The consequence worth stating: **engine and DiligentFX header names are
+/// reserved.** Engine names are *enforced*: the VFS source refuses to serve
+/// any path whose basename matches an embedded engine shader, with a warning
+/// — merely ordering the sources was not enough, because a compiler's
+/// include-relative candidate (`shaders/HpMaterial.fxh`) would resolve from
+/// the mount before the bare name ever reached the engine's copy. DiligentFX
+/// names stay a documented constraint (D27): their factory cannot be
+/// enumerated to enforce against.
+///
+/// The slang bridge (`FactoryFileSystem`) consumes this same factory, so both
+/// compilers see one resolution order.
 ///
 /// The caller owns the returned factory and must release it; use
 /// `RefCntAutoPtr` at the call site rather than a raw pointer.
