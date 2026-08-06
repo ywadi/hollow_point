@@ -643,6 +643,65 @@ struct HpMaterial : IHpMaterial
     tearDown(device);
 }
 
+TEST_CASE("spike: a module-declared cbuffer absent from every signature — the failure mode") {
+    // **T0160.4's first open question, executed.** The capability matrix
+    // records it verbatim: "Whether Diligent rejects a module-declared
+    // `cbuffer` absent from the signature — decides whether T0160's failure
+    // mode is loud or silent. Not executed." This case executes it: a module
+    // declares its own constant buffer, slang compiles it happily (it is
+    // legal Slang), and the pipeline is built against signatures that have
+    // never heard of `HpMaterialParams`. Whatever renders — and whatever the
+    // log says — is the failure mode T0160's design must beat.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    CompileErrorCounter counter;
+    hp::logAddSink(&counter);
+
+    const char* kParamsModule = R"(
+cbuffer HpMaterialParams
+{
+    float4 HpTint;
+}
+
+struct HpMaterial : IHpMaterial
+{
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return HpTint;
+    }
+    override bool unshaded()
+    {
+        return true;
+    }
+}
+)";
+    std::vector<std::uint8_t> pixels;
+    const bool rendered =
+        renderCustom(device, kParamsModule, /*shaderInPool=*/true, /*unlit=*/false, pixels);
+    hp::logRemoveSink(&counter);
+    REQUIRE(rendered);
+
+    int magenta = 0;
+    int black = 0;
+    countChecks(pixels, magenta, black);
+    const Rgb centre = centreOf(pixels);
+    MESSAGE("declared-cbuffer module: centre (" << centre.r << ", " << centre.g << ", "
+                                                << centre.b << "), magenta " << magenta
+                                                << ", compile errors " << counter.compilerErrors()
+                                                << ", substitutions " << counter.substitutions());
+    // The record, not a wish: this documents the observed failure mode so the
+    // matrix's open question closes with a measurement. See the MESSAGE above
+    // in the test log for the exact numbers behind the ticket's note.
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
 TEST_CASE("a shader that fails to compile renders the checkerboard and logs once") {
     // **T0141.4, and the trap it names.** The pattern is 141.12's — one
     // visual convention, three causes, the console says which — and the log

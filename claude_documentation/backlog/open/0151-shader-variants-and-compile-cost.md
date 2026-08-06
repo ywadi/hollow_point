@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 445 |
 | **Created** | 2026-08-06 |
-| **Refs** | [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — its Done-when requires "variant growth bounded by a decision that is written down", and this ticket is where that decision's mechanisms live; 141.3 (the cache) and [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md) 142.6 (the measured 2–4x) / 142.7 (cooking) are the near-term mitigations this composes with; [0143-extended-material-features.md](0143-extended-material-features.md) — 143.8's permutation count is the pressure gauge; [0153-surface-detiling.md](0153-surface-detiling.md) — **153.8 registers three de-tiling tiers as a further axis**, and it is the standing proof that the axis list is open: any bound written here must accommodate axes that do not exist yet; **D28**, **D30**, **D34** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) — **D34 bounds this ticket's output**: whatever mechanism it picks, a shipped game receives per-variant SPIR-V and links no compiler |
+| **Refs** | [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — its Done-when requires "variant growth bounded by a decision that is written down", and this ticket is where that decision's mechanisms live; 141.3 (the cache) and [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md) 142.6 (the measured 2–4x) / 142.7 (cooking) are the near-term mitigations this composes with; [0143-extended-material-features.md](0143-extended-material-features.md) — 143.8's permutation count is the pressure gauge; [0153-surface-detiling.md](0153-surface-detiling.md) — **153.8 registers three de-tiling tiers as a further axis**, and it is the standing proof that the axis list is open: any bound written here must accommodate axes that do not exist yet; **D28**, **D30**, **D34** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) — **D34 bounds this ticket's output**: whatever mechanism it picks, a shipped game receives per-variant SPIR-V and links no compiler; [../inprogress/0160-material-declared-parameters.md](../inprogress/0160-material-declared-parameters.md) — **registers a non-axis** (160.7): declared parameters add no permutation bit, see the note below |
 
 ## Why
 
@@ -109,6 +109,18 @@ whose register pressure is the *maximum* over registered materials.
 - [ ] 151.6 Record the dynamic-dispatch trigger and its bindless prerequisite
 
 ## Notes / findings
+
+### Registered by T0160.7 (2026-08-06): declared material parameters add NO permutation axis
+
+Module identity already keys the pipeline (`cacheKey` mixes the module path;
+the SPIR-V cache hashes its content), and a parameter *value* is data written
+into a constant buffer — changing it rebuilds nothing and invalidates no cook.
+That is the entire point of T0160's design, and it hands this ticket a rule
+worth stating wherever the axis audit lands: **prefer a runtime parameter over
+a permutation bit** whenever the branch it feeds is cheap enough to leave in
+the code. A bit costs a variant per combination forever; a parameter costs a
+uniform read. The axis audit should treat any proposed new bit as guilty until
+it proves a parameter cannot express it.
 
 ### From 142.7 / D34 (2026-08-06) — the cooked-output shape is decided, and it constrains 151.2 and 151.3
 

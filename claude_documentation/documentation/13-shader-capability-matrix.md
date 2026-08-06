@@ -121,8 +121,12 @@ it. An escape hatch used routinely is a contract that failed.
 
 Recorded because an overstated document is worse than an open question.
 
-- Whether Diligent rejects a module-declared `cbuffer` absent from the signature
-  — decides whether T0160's failure mode is loud or silent. Not executed.
+- ~~Whether Diligent rejects a module-declared `cbuffer` absent from the
+  signature~~ — **executed 2026-08-06 (T0160's spike): loud.** PSO creation
+  fails naming the resource (`'HpMaterialParams' ... not present in any
+  pipeline resource signature`), the frame is the missing-material
+  checkerboard, and the renderer logs one substitution line naming the module.
+  Pinned by `custom_shader_material_test.cpp`.
 - Whether the per-primitive `CustomData` bytes read as zero or as noise on real
   hardware. Undefined per the API; not measured.
 - The register and occupancy cost of publishing the tangent frame
