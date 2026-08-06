@@ -4,7 +4,7 @@
 |---|---|
 | **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
-| **Complexity** | Complex |
+| **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
 | **Order** | 466 |
 | **Created** | 2026-08-06 |
@@ -56,6 +56,24 @@ Three engines converged on the same answer and it is worth copying rather than i
 - **A material graph or any authoring UI.** Text declaration and an inspector row; a node editor is a much later question.
 
 ## Notes / findings
+
+### Downgraded Complex -> Moderate, 2026-08-06
+
+Both unknowns that carried the Complex label were retired by the two spikes this
+ticket mandated before designing:
+
+- **Reflection rides the existing `ICompileRequest` via `spGetReflection`** — no
+  T0151.2 session-API migration is inherited. That was the scope risk that could
+  have doubled the ticket.
+- **The failure mode is loud, on device**: PSO creation refuses by name, the
+  frame is the missing-material checkerboard, and one log line names the module.
+  It also proved Diligent name-matches slang-emitted resources and remaps
+  bindings, so no `[[vk::binding]]` injection is needed.
+
+What remains is mechanical: vocabulary, the reflection pass, a `.hpmat` schema
+bump, the binding and writer, inspector rows. Only the *additional per-module
+signature* is still unproven, and the spike surfaced a shared-slot design that
+would remove even that.
 
 ### Measured 2026-08-06
 

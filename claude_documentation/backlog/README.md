@@ -271,7 +271,7 @@ wrong in the confident voice of a document that is normally right.
 | 463 | [T0157](completed/0157-rock-cube-sample.md) | The rock cube sample: the authoring path's first real test | 4 — Render layer | ✅ DONE | Medium | Moderate |
 | 464 | [T0158](inprogress/0158-parallax-depth-cues.md) | Making parallax read as relief: the reference plane and self-shadowing | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
 | 465 | [T0159](completed/0159-open-the-material-contract.md) | Open the material contract: DiligentFX exposed, state across hooks | 4 — Render layer | ✅ DONE | High | Moderate |
-| 466 | [T0160](inprogress/0160-material-declared-parameters.md) | Material-declared parameters and resources | 4 — Render layer | 🚧 IN PROGRESS | High | Complex |
+| 466 | [T0160](inprogress/0160-material-declared-parameters.md) | Material-declared parameters and resources | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
 | 464 | [T0155](open/0155-terrain-rendering.md) | Terrain rendering: their reference implementation is the floor, not the ceiling | 4 — Render layer | 🔜 TODO | Medium | Very Complex |
 | 465 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | 🔜 TODO | High | Complex |
 | 492 | [T0148](open/0148-post-process-stack.md) | The post-process stack: engine and game effects at one seam | 4 — Render layer | 🔜 TODO | Medium | Complex |
