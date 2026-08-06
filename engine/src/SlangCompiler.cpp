@@ -591,6 +591,13 @@ bool compileSlangToSpirv(const char* filePath, ShaderStage stage, const SlangMac
     request->release();
     fileSystem->release();
 
+    if (ok) {
+        // Debug rather than info: per-compile noise the console does not need,
+        // but the byte count is the cheapest instrument for "did the dead
+        // code actually fold" questions -- T0142.16's unshaded test raises
+        // the level and asserts on exactly this line.
+        HP_LOG_DEBUG(kLog, "compiled '{}' to {} bytes of SPIR-V", filePath, outSpirv.size());
+    }
     if (ok && cached.enabled) {
         // **Successes only.** A failed compile is cached as a null pipeline one
         // level up, per launch -- persisting the failure would make a fixed

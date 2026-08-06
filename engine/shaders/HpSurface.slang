@@ -431,6 +431,27 @@ interface IHpMaterial
     {
         HpSurface(In, Out);
     }
+
+    /// Whether this material skips lighting entirely (T0142.16) -- Godot's
+    /// `render_mode unshaded`, as an interface method with a default rather
+    /// than a macro, which is D28's shape for every option.
+    ///
+    /// **Statically specialised, but NOT folded at the SPIR-V level -- and
+    /// that is measured, not assumed** (T0142.16). Slang emits a direct call
+    /// to the specialised method and a real branch on its result; the
+    /// bytecode of an overriding module is within a dozen bytes of the shaded
+    /// one, at optimization level none *and* default. The lighting is
+    /// expected to fold in the driver's compiler, where the call is trivially
+    /// inlined -- but that is expectation, not proof, and T0151's link-time
+    /// constants are the mechanism that makes eliminations provable. Until
+    /// then: for a *standard* material, `Material::unlit` rides the
+    /// `HP_UNSHADED` permutation bit and genuinely excludes the lighting at
+    /// preprocess time; this method is the authored equivalent with exact
+    /// semantics and unproven-but-likely folding.
+    bool unshaded()
+    {
+        return false;
+    }
 }
 
 /// The engine's standard PBR material: every default, nothing overridden.
@@ -670,10 +691,27 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(TMaterial material, VSOutput V
     // Straight out, no BRDF, no light loop, no IBL. **A compile-time branch and
     // not a runtime one** -- an `if` would still pay for the lighting code in
     // registers and in compilation, which is the entire thing unshaded exists to
-    // avoid (141.15).
+    // avoid. This is the *data* half (`Material::unlit`, the permutation bit);
+    // the *authored* half is `IHpMaterial.unshaded()` below (T0142.16), and
+    // both produce this same output.
     Out.Color = surfaceOut.BaseColor;
     Out.Color.rgb += surfaceOut.Emissive;
 #else
+    if (material.unshaded())
+    {
+        // The authored half (T0142.16): a module overrode `unshaded()` to
+        // true. Statically specialised, so this condition is a constant and
+        // the lighting below is dead code the compiler removes -- the branch
+        // reads as runtime and costs as compile-time.
+        Out.Color = surfaceOut.BaseColor;
+        Out.Color.rgb += surfaceOut.Emissive;
+        if (g_Material.Basic.AlphaMode == PBR_ALPHA_MODE_BLEND)
+        {
+            Out.Color.rgb *= Out.Color.a;
+        }
+        return Out;
+    }
+
     // Their lighting, from `PBR_Shading.fxh`. Surface properties in, radiance
     // out -- the split D26 chose, and the reason none of the BRDF, the punctual
     // light attenuation or the IBL is reimplemented here.

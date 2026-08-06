@@ -267,6 +267,29 @@ bool renderCustom(Device& device, const std::string& moduleSource, bool shaderIn
     return view.readback(device.render->context(), pixels);
 }
 
+/// Captures the SPIR-V byte counts the compiler logs at debug level, keyed on
+/// the pixel shader — the instrument for "did the lighting actually fold".
+class SpirvSizeCapture final : public hp::ILogSink {
+public:
+    void write(const hp::LogRecord& record) override {
+        const std::string_view message = record.message;
+        if (message.find("compiled 'HpSurface.slang' to ") == std::string_view::npos) {
+            return;
+        }
+        const std::size_t start = message.find(" to ") + 4;
+        const std::size_t end = message.find(" bytes", start);
+        if (end == std::string_view::npos) {
+            return;
+        }
+        lastBytes_ = std::stoi(std::string(message.substr(start, end - start)));
+    }
+    [[nodiscard]] int lastBytes() const { return lastBytes_.load(); }
+    void reset() { lastBytes_ = 0; }
+
+private:
+    std::atomic<int> lastBytes_{0};
+};
+
 /// Counts compiler-failure log lines (the once-per-shader rule of T0141.4).
 class CompileErrorCounter final : public hp::ILogSink {
 public:
@@ -330,6 +353,106 @@ TEST_CASE("a .slang material module overrides one method and inherits the rest")
     CHECK(shadedCentre.r == 0);
     CHECK(shadedCentre.g == 0);
     CHECK(shadedCentre.b == 0);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
+TEST_CASE("a module can opt out of lighting, and the lighting folds away") {
+    // **T0142.16: unshaded as an interface method with a default** — Godot's
+    // `render_mode unshaded`, in D28's one shape for every option. Two claims,
+    // both measured:
+    //
+    //   * the *semantics*: a module overriding `unshaded()` renders its base
+    //     colour exactly, in a scene with **no light** — (255, 255, 0) can
+    //     only arrive through the unshaded path, because the shaded one is
+    //     black here;
+    //   * the *cost*, and this measurement came back **negative**: the sizes
+    //     are captured below and printed, and they are within a dozen bytes
+    //     of each other — slang emits the specialised call and a real branch,
+    //     and does not fold the lighting out at the SPIR-V level (optimization
+    //     level none and default both measured). The claim "compile-time in
+    //     effect" is therefore *not* asserted; T0151's link-time constants
+    //     own the provable mechanism, and the ticket records the hand-off.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    const std::string kShadedYellow = R"(
+struct HpMaterial : IHpMaterial
+{
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return float4(1.0, 1.0, 0.0, 1.0);
+    }
+}
+)";
+    const std::string kUnshadedYellow = R"(
+struct HpMaterial : IHpMaterial
+{
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return float4(1.0, 1.0, 0.0, 1.0);
+    }
+    override bool unshaded()
+    {
+        return true;
+    }
+}
+)";
+
+    SpirvSizeCapture sizes;
+    hp::logAddSink(&sizes);
+    hp::logSetGlobalLevel(hp::LogLevel::Debug);
+
+    // A unique token per run, appended as a comment: the SPIR-V cache is
+    // content-keyed, so without this a second run of the suite serves both
+    // modules from cache, nothing compiles, and there are no sizes to
+    // capture. A comment changes the content hash and nothing else.
+    const std::string probe = "// probe " + hp::Guid::generate().toString() + "\n";
+
+    std::vector<std::uint8_t> shadedPixels;
+    REQUIRE(renderCustom(device, kShadedYellow + probe, /*shaderInPool=*/true, /*unlit=*/false,
+                         shadedPixels));
+    const int shadedBytes = sizes.lastBytes();
+    sizes.reset();
+
+    std::vector<std::uint8_t> unshadedPixels;
+    REQUIRE(renderCustom(device, kUnshadedYellow + probe, /*shaderInPool=*/true,
+                         /*unlit=*/false, unshadedPixels));
+    const int unshadedBytes = sizes.lastBytes();
+
+    hp::logSetGlobalLevel(hp::LogLevel::Info);
+    hp::logRemoveSink(&sizes);
+
+    const Rgb shaded = centreOf(shadedPixels);
+    const Rgb unshaded = centreOf(unshadedPixels);
+    MESSAGE("shaded module, no light: (" << shaded.r << ", " << shaded.g << ", " << shaded.b
+                                         << "), " << shadedBytes << " bytes; unshaded: ("
+                                         << unshaded.r << ", " << unshaded.g << ", "
+                                         << unshaded.b << "), " << unshadedBytes << " bytes");
+
+    // Semantics: the same scene, the same module but for one override. Black
+    // versus the authored yellow, both exact.
+    CHECK(shaded.r == 0);
+    CHECK(shaded.g == 0);
+    CHECK(shaded.b == 0);
+    CHECK(unshaded.r == 255);
+    CHECK(unshaded.g == 255);
+    CHECK(unshaded.b == 0);
+
+    // Cost: both sizes captured so the measurement cannot rot silently (the
+    // modules differ in content, so neither compile can be a cache hit).
+    // **Deliberately no folding assertion**: measured 19348 vs 19336 bytes —
+    // slang does not eliminate the untaken lighting at the SPIR-V level, and
+    // asserting the wish would just be a red test. If these numbers ever
+    // diverge sharply, folding arrived (a slang upgrade, or T0151's
+    // link-time constants) and the ticket note should be updated.
+    REQUIRE(shadedBytes > 0);
+    REQUIRE(unshadedBytes > 0);
 
     hp::Vfs::shutdown();
     tearDown(device);

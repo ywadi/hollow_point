@@ -103,6 +103,18 @@ whose register pressure is the *maximum* over registered materials.
 
 ## Notes / findings
 
+### From 142.16 (2026-08-06) — interface-method overrides do not fold at the SPIR-V level
+
+Measured while landing the unshaded option: a module overriding
+`IHpMaterial.unshaded()` to a constant `true` emits SPIR-V within a dozen
+bytes of the fully shaded pipeline (19336 vs 19348), at optimization level
+none **and** default — slang specialises to a direct call and a real branch,
+and does not inline-and-eliminate. The driver almost certainly folds it, but
+that is expectation. **Link-time constants (this ticket's mechanism) are what
+makes eliminations provable at the artifact level**, and 142.16's test
+captures both byte counts every run, so whichever mechanism lands here will
+show up as a diverging pair there.
+
 ### Owner decision 2026-08-06 — runtime style switching is a requirement, and it lands here
 
 T0149's styles are **per project, with the game able to change them at

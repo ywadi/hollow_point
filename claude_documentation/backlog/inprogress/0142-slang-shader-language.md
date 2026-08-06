@@ -214,12 +214,25 @@ RTX 2080 — their arithmetic, to the byte.
       reload (142.8 — though a changed file is picked up whenever a new
       pipeline builds), and the gameplay-authoring doc gains its section when
       142.13 retires the HLSL contract file rather than before.*
-- [ ] 142.16 **Unshaded as a game-facing option** (was T0141.15, numbered
+- [x] 142.16 **Unshaded as a game-facing option** (was T0141.15, numbered
       2026-08-06 — same orphan). Under D28 an interface method with a default —
       not a PSO permutation bit and not a macro, though `Material::unlit`'s
       data path keeps the permutation T0141.12 built. Must stay compile-time in
       effect: the default folds away under static specialisation, and that is
       to be verified rather than hoped.
+      *Done 2026-08-06, with the verification coming back **negative on the
+      cost half and exact on the semantics**. `IHpMaterial.unshaded()`
+      defaults false; a module overriding it renders its base colour exactly —
+      (255, 255, 0) in a lightless scene where the same module without the
+      override is exactly (0, 0, 0). But the fold claim failed measurement:
+      slang emits the specialised call and a real branch, and the overriding
+      module's SPIR-V is 19336 bytes against the shaded 19348 — at
+      optimization level none **and** default, identical deltas. The lighting
+      is expected to fold in the driver, unproven; **T0151's link-time
+      constants are the provable mechanism and the hand-off is recorded on
+      both tickets.** The test captures both byte counts every run (a
+      per-run probe token defeats the content cache) so a slang upgrade that
+      starts folding shows up as a diverging pair.*
 - [ ] 142.13 **Retire the HLSL path.** When the engine's shaders are Slang, the
       hand-written `.psh`/`.fxh` in `engine/shaders/` go, along with
       `cmake/hp_embed_shaders.cmake` if cooking replaces embedding. **Two paths
