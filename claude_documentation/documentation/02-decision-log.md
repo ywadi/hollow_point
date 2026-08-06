@@ -1856,3 +1856,117 @@ open, rather than eroded by a hook that seemed harmless.
   it starts.
 - **Geometry shaders.** Godot refuses them too; tessellation is already
   covered by 141.9's named trigger.
+
+## D33 — **Hardware facing equals glTF facing.** `FrontCounterClockwise` is `false`, declared; single-sided culls `BACK`; and the "engine-wide winding inversion" was the test assets
+
+**Decided 2026-08-06**, triggered by the owner's question after T0141.12's
+single-sided workaround: *"my worry is we are moving away from Vulkan
+standards, are we? what's the right direction?"* Root-cause trace and the
+convention header live on **T0152**; this entry records what was measured,
+what was rejected, and what turned out to be wrong.
+
+### The premise the question rests on is false, and that is the finding
+
+**Vulkan has no winding standard.** Facing is the sign of the triangle's
+signed area in framebuffer coordinates, and the spec defines
+`VK_FRONT_FACE_COUNTER_CLOCKWISE` and `VK_FRONT_FACE_CLOCKWISE`
+symmetrically, with no default and no preference — unlike OpenGL, whose
+state machine defaults to CCW
+([Vulkan spec, Basic Polygon Rasterization](https://docs.vulkan.org/spec/latest/chapters/primsrast.html#primsrast-polygons-basic)).
+The standard that binds this engine is **glTF's**, because glTF is the only
+mesh format (D13's pipeline): front faces are counter-clockwise seen from
+the front, and the sign of the node transform's determinant flips it —
+that determinant clause is the spec's *only* normative winding sentence
+([glTF 2.0 §instantiation](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#instantiation));
+"glTF is CCW" is its identity-transform corollary.
+
+### What was measured (T0152.1, all in-tree)
+
+Counting winding reversals from a glTF index buffer to the rasteriser:
+import converts nothing (`GLTFLoader.cpp` has no axis or index conversion);
+the view is a rigid inverse (det +1); the left-handed projection has no XY
+mirror; **reverse-Z is winding-neutral** (`SetNearFarClipPlanes` writes only
+`_33`/`_43` — checked because a near/far swap *sounds* like a determinant
+change, and it is one only in the 4×4 sense that facing never consults);
+Diligent's Vulkan backend flips the viewport internally and unconditionally
+to D3D screen conventions (`DeviceContextVkImpl.cpp:1831`) and passes
+`FrontCounterClockwise` through raw (`VulkanTypeConversions.cpp:718`), so
+the flag means the same thing on every backend, flip included. **Zero
+reversals in the engine's own chain.** Under D3D's clockwise-front default —
+the current, never-set value — a glTF front face facing the camera
+classifies **front**. The engine was conformant all along.
+
+**T0141.12's diagnosis inverted cause and effect.** Its probe quad — like
+every quad in the gpu suite — is wound `{0,1,2, 0,2,3}` over BL,BR,TR,TL
+vertices: right-hand-rule normal **+Z**, away from the camera, while its
+authored `NORMAL` attributes say −Z, toward it. `SV_IsFrontFace == false`
+on those fragments was the *correct* classification of an asset whose
+winding contradicts its normals; it was read as an engine-wide inversion
+because the normals were taken as ground truth. The lit suite's calibration
+is the same inconsistency compounded: its light travels −Z onto the +Z
+face, the side facing *away* from the camera, and the pixels are lit only
+because the two-sided flip — handed `false` — inverts the authored normal
+to meet it. Setting `FrontCounterClockwise = true` went black not because
+`true` is deeply wrong but because it is wrong *for this mirror-free chain*,
+and the scenes depend on the inverted flip.
+
+### Rejected
+
+- **`FrontCounterClockwise = true` "because Diligent's own GLTFViewer sets
+  it".** The viewer's chain contains a mirror this engine's does not:
+  `InvYAxis` (det −1) on the model transform (`GLTFViewer.cpp:240–243`),
+  plus `InvZAxis` for glTF cameras. One mirror flips apparent winding once,
+  so their `true` and our `false` are the *same* convention. Raw-enum
+  comparisons across engines are meaningless without the full mirror count —
+  Godot's clockwise front (projection Y-flip, import conversion) and
+  Filament's CCW front (no viewport negation, native glTF) also both land on
+  the identical invariant: **glTF front = hardware front, single-sided culls
+  back.** Every surveyed engine preserves it; they differ only in where the
+  mirrors sit.
+- **Keeping the `CULL_MODE_FRONT` workaround.** It keeps the faces a
+  conformant renderer culls and culls the faces it keeps; it renders today's
+  backwards test assets and will invert every correctly-exported asset a DCC
+  tool produces. It dies with T0152.4, in the same commit that re-winds the
+  assets — either change alone blanks every single-sided draw.
+- **Re-baselining against the current light positions.** That would freeze
+  in the flip-dependence. Rejected as unnecessary as much as wrong: the
+  corrected lit scene is the mirror image of the current one, so its
+  measured (211, 144, 144) survives by symmetry, and the suite's other
+  assertions are deliberately orientation-independent. The feared
+  "re-baseline every pixel test" measured out at six index lines, two
+  re-aimed lights, two engine lines.
+
+### What turned out to be wrong
+
+The three-factor attribution recorded on T0141 — "glTF's CCW winding × the
+left-handed view × Vulkan's viewport flip" — names three real facts of which
+none contributes a reversal: the LH view is det +1, the viewport flip is
+pre-compensated inside Diligent's flag semantics, and CCW-ness is what the
+current default already honours. The comment at `SurfacePipeline.cpp:480`
+("a glTF front face reaches the rasteriser wound counter-clockwise") is the
+same error in place: the face it describes is, by winding, a back face.
+
+### The accepted cost, and the coupling that keeps it honest
+
+The convention is `WindingConvention.hpp` (T0152.2), modelled on
+`DepthConvention.hpp`: `kFrontFaceCounterClockwise = false` and
+`kImportMirrorsContent = false`, chained by a `static_assert`, because one
+mirror introduced anywhere — an import axis-flip, a negative camera-parent
+scale — toggles apparent winding once and the two must move together. An
+uncompensated mirror does not look like a mirror; it looks like every
+single-sided mesh vanishing.
+
+**Left open, deliberately, for the owner:** the same trace shows the engine
+displays right-handed content mirror-imaged (the real consequence of the LH
+camera — derived and cross-anchored to the facing measurement, not yet
+observed on screen; T0152.6 is the probe). Accepting that as the authored
+convention, or spending exactly one mirror to remove it — flipping both
+constants above with it — is a content-pipeline decision, not a winding one,
+and it must be taken before real DCC assets arrive. What D33 fixes either
+way: whichever parity is chosen, hardware facing equals glTF facing, and
+`CULL_MODE_BACK` means what the spec means by it.
+
+**Sequencing:** T0086 tunes shadow bias with cull-face as its knob, T0087
+adds view-dependent IBL baselines, T0143 adds per-feature pixel tests.
+Every one of them calibrated against inverted assets makes the correction
+strictly more expensive; none of them starts before T0152 lands.
