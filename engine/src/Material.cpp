@@ -79,6 +79,8 @@ void registerMaterialTypes() {
         .property<&Material::emissiveTexture>("emissiveTexture")
         .property<&Material::heightTexture>("heightTexture")
         .property<&Material::heightScale>("heightScale")
+        .property<&Material::triplanar>("triplanar")
+        .property<&Material::triplanarScale>("triplanarScale")
         .property<&Material::uv0>("uv0")
         .property<&Material::uv1>("uv1")
         .property<&Material::baseColourUv>("baseColourUv")

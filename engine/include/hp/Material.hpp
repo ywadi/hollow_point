@@ -234,6 +234,26 @@ struct Material {
     /// effect without changing the pipeline. Ignored without `heightTexture`.
     float heightScale = 0.04F;
 
+    /// Project textures from world space along the three axes instead of
+    /// sampling the mesh's UVs (T0141.8).
+    ///
+    /// **This is what textures a mesh that has no usable unwrap** — terrain,
+    /// CSG blockouts, kitbashed geometry — and it needs no texture coordinates
+    /// at all. Applies to the colour-like maps (base colour,
+    /// metallic-roughness, occlusion, emissive); the **normal map is ignored**
+    /// while this is set — reorienting a tangent-space map per projection
+    /// plane is real work that arrives when something needs it — and
+    /// `heightTexture`'s parallax is inert, since there are no UVs to
+    /// displace. The per-slot UV selectors and channel transforms are all
+    /// bypassed.
+    bool triplanar = false;
+
+    /// Texture tiles per metre when `triplanar` is set.
+    ///
+    /// World-anchored by construction: moving the mesh slides it through the
+    /// pattern, which is the trade triplanar makes everywhere it is used.
+    float triplanarScale = 1.0F;
+
     /// The first UV channel's transform, used by every slot whose selector is 0.
     UvChannel uv0;
 

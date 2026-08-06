@@ -10,7 +10,7 @@
 | **Created** | 2026-08-05 |
 | **Blocked by** | T0060.1 + T0060.6 only — the material *asset* and per-surface assignment. **Not** the rest of T0060, which was re-cut into this ticket on 2026-08-05 |
 | **Blocks** | **T0086** — shadow sampling must be written against *our* pixel shader, not `RenderPBR.psh` (141.0 is decided; 141.10 is what T0086 now waits on). Height mapping, parallax occlusion, triplanar and vertex displacement — 141.7/141.8 — which no material parameter can express |
-| **Refs** | [../completed/0060-material-system.md](../completed/0060-material-system.md) (split from it), [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md), T0093, T0053, T0094, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D24, [../open/0145-lighting-stage-own-the-light-loop.md](../open/0145-lighting-stage-own-the-light-loop.md) — the lighting rung above this ticket's surface stage (D30), [../open/0146-vertex-stage-hook.md](../open/0146-vertex-stage-hook.md) — owns the `kVertexShader` move this ticket's 141.7 note anticipates, [../open/0147-engine-intermediates-for-shaders.md](../open/0147-engine-intermediates-for-shaders.md) — delivers the *sampled* intermediates this ticket's Done-when promises, [../open/0151-shader-variants-and-compile-cost.md](../open/0151-shader-variants-and-compile-cost.md) — where the "variant growth bounded by a written decision" Done-when gets its decision |
+| **Refs** | [../completed/0060-material-system.md](../completed/0060-material-system.md) (split from it), [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md), T0093, T0053, T0094, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D24, [../open/0145-lighting-stage-own-the-light-loop.md](../open/0145-lighting-stage-own-the-light-loop.md) — the lighting rung above this ticket's surface stage (D30), [../open/0146-vertex-stage-hook.md](../open/0146-vertex-stage-hook.md) — owns the `kVertexShader` move this ticket's 141.7 note anticipates, [../open/0147-engine-intermediates-for-shaders.md](../open/0147-engine-intermediates-for-shaders.md) — delivers the *sampled* intermediates this ticket's Done-when promises, [../open/0151-shader-variants-and-compile-cost.md](../open/0151-shader-variants-and-compile-cost.md) — where the "variant growth bounded by a written decision" Done-when gets its decision; [../open/0152-winding-convention.md](../open/0152-winding-convention.md) — **corrects 141.12's winding diagnosis** (D33): the inversion was the test assets' winding contradicting their normals, not the engine's chain; the cull-`FRONT` workaround reverts there |
 
 ## Why
 
@@ -373,8 +373,17 @@ T0060 already says it must not foreclose and does not.
       not to have. Measured: zero-scale vs no-map frames **bit-identical**
       (diff 0.0); a 0.08 scale moves the frame by 15.69 mean abs per-channel
       on an oblique rock quad, and the PPM looks carved. See notes
-- [ ] 141.8 **Triplanar projection** — same reason: a surface-stage technique,
-      not a material parameter. Raised from T0060 on 2026-08-05
+- [x] 141.8 **Triplanar projection** — same reason: a surface-stage technique,
+      not a material parameter. Raised from T0060 on 2026-08-05.
+      **Done 2026-08-06**: `Material::triplanar`/`triplanarScale`, an
+      `HP_TRIPLANAR` permutation, world-space projection with a sharpened
+      three-plane blend in the standard material's defaults. **Proven on a
+      mesh with no UVs at all** — the same material sampled the normal way is
+      flat (variation 0.0, the getters return the factor); triplanar covers
+      it in rock (variation 11.38). The one place the surface stage samples
+      textures itself, argued per D26's per-function rule: DiligentFX's
+      getters are UV-set-bound and cannot express it. Normal map deliberately
+      ignored in triplanar mode; see notes
 - [x] 141.0 **Decide C1/C2/C3 and record it** — **C2, decided 2026-08-05 by the
       owner**: *"i dont want to modify dilligent"*. Recorded as **D26**, which
       amends D24. Diligent's source is never modified; we own the vertex and
@@ -785,7 +794,6 @@ zero failures.**
 
 | | | Blocked on |
 |---|---|---|
-| **141.8** | triplanar | — **next** |
 | **141.4** | error shader on compile failure | 142.15 (the `.slang` asset) |
 | **141.14** | generated shader-contract docs, gated in CI | 141.6 settling |
 | **141.9** | tessellation | deferred: *when a silhouette must change* |
@@ -794,6 +802,43 @@ Moved to T0142 and tracked there: 141.1 → **142.15**, 141.2 → **142.9**,
 141.5 → **142.8**, 141.13 → **142.14**, 141.15 → **142.16**.
 
 ## Notes / findings
+
+### 141.8 landed 2026-08-06 — triplanar, and the second data point agrees with the first
+
+**Proven on the case nothing else can fake**: a quad with positions and
+normals only. The UV-mapped control renders dead flat (variation 0.0 — the
+getters have no coordinates and return the factor); the same mesh, textures
+and pool with `triplanar = true` renders tiling rock at variation **11.38**,
+four tiles across the frame at `triplanarScale = 0.5` on an 8 m quad. Unlit,
+so the detail is sampled texture and nothing else. 19 gpu cases green on both
+targets.
+
+**The interface answer this data point adds**: triplanar did *not* need a new
+interface method — it lives inside the standard material's channel defaults
+under `HP_TRIPLANAR`, because it changes *where a texel comes from* per
+channel rather than the coordinates every channel shares. One technique
+(parallax) wanted the shared hook `surfaceCoordinates`; the other wanted the
+per-channel defaults that already existed. That is the shape D28 promised —
+the interface is neither too small (after 141.7's addition) nor growing a
+method per technique.
+
+**The per-function D26 argument, spent**: this is the one place the surface
+stage samples material textures itself. DiligentFX's `SampleTexture` reads
+`SelectUV(VSOut, …)` behind `#if USE_TEXCOORD0 || USE_TEXCOORD1`, so a
+technique whose whole point is needing no texture coordinates cannot reach
+through their getters. The triplanar samples mirror the getters' composition
+line for line — `TO_LINEAR` on colour/emissive, vertex-colour multiply,
+factor last — so a triplanar material differs from a UV-mapped one only in
+where texels come from. `triplanarScale` rides in `CustomData.y` beside the
+parallax depth.
+
+**Deliberately not done, written down**: the normal map is ignored in
+triplanar mode (per-plane tangent reorientation — a whiteout blend with
+swizzles — arrives when something needs it; a silently wrong basis would be
+worse than a flat one, and `Material::triplanar`'s doc says so). Parallax and
+triplanar are mutually exclusive, triplanar wins — there are no UVs to
+displace. World-anchoring (moving the mesh slides it through the pattern) is
+triplanar's nature, documented on the field rather than fought.
 
 ### 141.7 landed 2026-08-06 — parallax occlusion, and the interface really was short
 
@@ -932,6 +977,22 @@ convention question — whether hardware facing should be realigned with
 geometric facing, which would re-baseline every pixel test and change
 two-sided lighting — is **left open here deliberately. T0086 must look at this
 before shadow bias is tuned**, and T0086's Refs now say so.
+
+**Corrected 2026-08-06 by T0152/D33, and the correction inverts the
+diagnosis.** The trace measured zero winding reversals in the engine's chain
+— the LH view is a rigid det-+1 inverse, reverse-Z touches only the
+projection's Z column, and Diligent folds its internal Vulkan viewport flip
+into `FrontCounterClockwise`'s D3D semantics — so the default `false` is the
+glTF-conformant setting. What was inverted is the **test quad**: indices
+`{0,1,2, 0,2,3}` over BL,BR,TR,TL vertices wind its front toward **+Z**,
+away from the camera, while its authored normals say −Z. `SV_IsFrontFace ==
+false` was the correct classification of an asset whose winding contradicts
+its normals. The lit suite went black under `FrontCounterClockwise = true`
+because its scenes are lit from the far side and depend on the two-sided
+flip inverting the authored normal — the flip only fires because the winding
+is backwards. `CULL_MODE_FRONT` therefore keeps exactly the faces a
+conformant renderer culls; it reverts to `BACK` in T0152.4, in the same
+commit that re-winds the assets.
 
 **Also fixed on the way:** `makePlaceholderTexture` and `loadTexture` created
 plain 2D textures; every material slot in the shader is `Texture2DArray`

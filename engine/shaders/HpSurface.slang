@@ -209,6 +209,57 @@ float2 HpParallaxUv(float2 uv, HpSurfaceInput In)
 }
 #endif
 
+#if HP_TRIPLANAR
+// ---------------------------------------------------------------------------
+// Triplanar projection (T0141.8): textures from world space, no UVs required.
+//
+// **This is the one place the surface stage samples material textures
+// itself**, and it is D26's per-function override argued rather than assumed:
+// DiligentFX's getters are UV-set-bound -- `SampleTexture` reads
+// `SelectUV(VSOut, ...)` behind `#if USE_TEXCOORD0 || USE_TEXCOORD1` -- so a
+// technique whose whole point is needing no texture coordinates cannot reach
+// through them. The factor, sRGB and vertex-colour composition below mirrors
+// their getters line for line, so a triplanar material and a UV-mapped one
+// disagree only about *where* a texel comes from.
+// ---------------------------------------------------------------------------
+
+/// The three projections and their blend weights, computed once per fragment.
+struct HpTriplanar
+{
+    float2 uvX;
+    float2 uvY;
+    float2 uvZ;
+    float3 weights;
+};
+
+HpTriplanar HpTriplanarBasis(HpSurfaceInput In)
+{
+    HpTriplanar t;
+    // Sharpened blend: linear weights leave wide smeared bands at 45 degrees.
+    // The exponent is fixed rather than authorable until something needs it.
+    float3 n = normalize(In.Normal);
+    float3 w = pow(abs(n), float3(4.0, 4.0, 4.0));
+    t.weights = w / max(w.x + w.y + w.z, 1e-5);
+    // Tiles per metre (`Material::triplanarScale`, in `CustomData.y`).
+    float scale = g_Material.Basic.CustomData.y;
+    t.uvX = In.WorldPos.zy * scale;
+    t.uvY = In.WorldPos.xz * scale;
+    t.uvZ = In.WorldPos.xy * scale;
+    return t;
+}
+
+float4 HpTriplanarSample(Texture2DArray tex, SamplerState smp, HpTriplanar t, float mipBias)
+{
+    // Slice 0: every texture this engine binds is a one-slice array, and the
+    // per-slot `TextureSlice` attrib exists for atlases the triplanar path
+    // does not serve.
+    float4 x = tex.SampleBias(smp, float3(t.uvX, 0.0), mipBias);
+    float4 y = tex.SampleBias(smp, float3(t.uvY, 0.0), mipBias);
+    float4 z = tex.SampleBias(smp, float3(t.uvZ, 0.0), mipBias);
+    return x * t.weights.x + y * t.weights.y + z * t.weights.z;
+}
+#endif
+
 /// The standard material's surface function.
 ///
 /// **The engine's own material is written against the same contract a game's is**
@@ -273,8 +324,21 @@ interface IHpMaterial
     /// vertex-colour multiply included; returns the factor for an empty slot.
     float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
     {
+#if HP_TRIPLANAR
+        float4 baseColor = float4(1.0, 1.0, 1.0, 1.0);
+#if USE_COLOR_MAP
+        baseColor = HpTriplanarSample(g_BaseColorMap, g_BaseColorMap_sampler,
+                                      HpTriplanarBasis(In), g_Frame.Renderer.MipBias);
+        baseColor = float4(TO_LINEAR(baseColor.rgb), baseColor.a);
+#endif
+        // `In.VertexColor` is white when the mesh carries none (the contract
+        // promises so), which makes this the same multiply their getter does.
+        baseColor *= In.VertexColor;
+        return baseColor * g_Material.Basic.BaseColorFactor;
+#else
         return GetBaseColor(VSOut, g_Material, g_Frame.Renderer.MipBias,
                             g_Material.Basic.BaseColorFactor);
+#endif
     }
 
     /// Metallic in `x`, roughness in `y`. Default: glTF's packing -- roughness
@@ -283,7 +347,13 @@ interface IHpMaterial
     /// survive untextured materials unchanged.
     float2 metallicRoughness(VSOutput VSOut, HpSurfaceInput In)
     {
+#if HP_TRIPLANAR && USE_PHYS_DESC_MAP
+        float4 physicalDesc = HpTriplanarSample(g_PhysicalDescriptorMap,
+                                                g_PhysicalDescriptorMap_sampler,
+                                                HpTriplanarBasis(In), g_Frame.Renderer.MipBias);
+#else
         float4 physicalDesc = GetPhysicalDesc(VSOut, g_Material, g_Frame.Renderer.MipBias);
+#endif
         return float2(physicalDesc.b * g_Material.Basic.MetallicFactor,
                       physicalDesc.g * g_Material.Basic.RoughnessFactor);
     }
@@ -291,7 +361,11 @@ interface IHpMaterial
     /// How much ambient light reaches the fragment, 0 to 1.
     float occlusion(VSOutput VSOut, HpSurfaceInput In)
     {
-#if USE_AO_MAP
+#if HP_TRIPLANAR && USE_AO_MAP
+        return HpTriplanarSample(g_OcclusionMap, g_OcclusionMap_sampler, HpTriplanarBasis(In),
+                                 g_Frame.Renderer.MipBias).r *
+               g_Material.Basic.OcclusionFactor;
+#elif USE_AO_MAP
         return GetOcclusion(VSOut, g_Material, g_Frame.Renderer.MipBias);
 #else
         return g_Material.Basic.OcclusionFactor;
@@ -301,7 +375,14 @@ interface IHpMaterial
     /// Emissive radiance, linear RGB, deliberately not clamped to 1 (T0096).
     float3 emissive(VSOutput VSOut, HpSurfaceInput In)
     {
-#if USE_EMISSIVE_MAP
+#if HP_TRIPLANAR && USE_EMISSIVE_MAP
+        float3 emissive = TO_LINEAR(HpTriplanarSample(g_EmissiveMap, g_EmissiveMap_sampler,
+                                                      HpTriplanarBasis(In),
+                                                      g_Frame.Renderer.MipBias).rgb);
+        return emissive * float3(g_Material.Basic.EmissiveFactorR,
+                                 g_Material.Basic.EmissiveFactorG,
+                                 g_Material.Basic.EmissiveFactorB);
+#elif USE_EMISSIVE_MAP
         return GetEmissive(VSOut, g_Material, g_Frame.Renderer.MipBias);
 #else
         return float3(g_Material.Basic.EmissiveFactorR, g_Material.Basic.EmissiveFactorG,
@@ -323,7 +404,14 @@ interface IHpMaterial
         PerturbNormalInfo normalInfo = GetPerturbNormalInfo(
             In.WorldPos, geometricNormal, isFrontFace, g_Frame.Camera.fHandness);
 
-#if USE_TEXCOORD0 || USE_TEXCOORD1
+#if HP_TRIPLANAR
+        // The geometric normal only: reorienting a tangent-space map per
+        // projection plane is real work (a whiteout blend with per-plane
+        // swizzles) that arrives when something needs it, and a silently
+        // wrong basis would be worse than a flat one. `Material::triplanar`
+        // documents this.
+        return normalInfo.Normal;
+#elif USE_TEXCOORD0 || USE_TEXCOORD1
         float2 normalUv = SelectUV(
             VSOut, UnpackPBRMaterialTextureUVSelector(
                        g_Material.Textures[NormalTextureAttribId].PackedProps));

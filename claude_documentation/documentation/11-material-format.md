@@ -119,6 +119,8 @@ per-field code in `Material.cpp` at all.
 | `doubleSided` | `false` | Whether back faces are drawn |
 | `unlit` | `false` | Whether lighting is skipped and `baseColour` shown directly |
 | `heightScale` | `0.04` | How deep `heightTexture`'s parallax reads, in UV0 units (T0141.7) |
+| `triplanar` | `false` | Project textures from world space; needs no UVs. Normal map ignored while set (T0141.8) |
+| `triplanarScale` | `1` | Texture tiles per metre when `triplanar` is set |
 | `*Texture` | unset | A `TextureAsset`'s GUID, or absent for none |
 | `uv0`, `uv1` | identity | Per-channel scale, offset, rotation and wrap |
 | `*Uv` | `0` | Which UV channel that texture slot samples with |

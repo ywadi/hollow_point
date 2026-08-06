@@ -73,6 +73,14 @@ public:
         static_cast<Diligent::PBR_Renderer::PSO_FLAGS>(
             Diligent::PBR_Renderer::PSO_FLAG_FIRST_USER_DEFINED << 1ULL);
 
+    /// The material projects its textures from world space (T0141.8).
+    /// Becomes the `HP_TRIPLANAR` macro; needs no texture coordinates, which
+    /// is the whole point. Takes precedence over `kPsoFlagHeightMap` — there
+    /// are no UVs for a parallax march to displace.
+    static constexpr Diligent::PBR_Renderer::PSO_FLAGS kPsoFlagTriplanar =
+        static_cast<Diligent::PBR_Renderer::PSO_FLAGS>(
+            Diligent::PBR_Renderer::PSO_FLAG_FIRST_USER_DEFINED << 2ULL);
+
     /// The height map's resource names in the signature and the shader.
     static constexpr const char* kHeightMapVariable = "g_HeightMap";
 

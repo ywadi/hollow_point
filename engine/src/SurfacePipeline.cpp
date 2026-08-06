@@ -328,6 +328,7 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
     // PSO bit into the compile-time branch the contract promises.
     macros.Add("HP_UNSHADED", (key.GetFlags() & kPsoFlagUnshaded) != 0 ? 1 : 0);
     macros.Add("HP_USE_HEIGHT_MAP", (key.GetFlags() & kPsoFlagHeightMap) != 0 ? 1 : 0);
+    macros.Add("HP_TRIPLANAR", (key.GetFlags() & kPsoFlagTriplanar) != 0 ? 1 : 0);
 
     // The generated interface structs, which the shaders include by name --
     // exactly as `RenderPBR.psh` does. Reusing the base class's generators is

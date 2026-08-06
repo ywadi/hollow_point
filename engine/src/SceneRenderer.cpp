@@ -97,7 +97,9 @@ constexpr Diligent::PBR_Renderer::PSO_FLAGS kFeatureMask =
         // scene lights cannot dim.
         SurfacePipeline::kPsoFlagUnshaded |
         // Parallax occlusion over a material's height map (T0141.7).
-        SurfacePipeline::kPsoFlagHeightMap);
+        SurfacePipeline::kPsoFlagHeightMap |
+        // World-space triplanar projection (T0141.8).
+        SurfacePipeline::kPsoFlagTriplanar);
 
 /// Features the engine **turns on**, as opposed to what the mask above permits.
 ///
@@ -220,10 +222,13 @@ Diligent::GLTF::Material toGltfMaterial(const Material& material, bool placehold
     basic.Workflow = material.unlit ? Diligent::GLTF::Material::PBR_WORKFLOW_UNLIT
                                     : Diligent::GLTF::Material::PBR_WORKFLOW_METALL_ROUGH;
     gltf.DoubleSided = material.doubleSided;
-    // The height scale rides in `CustomData.x` (T0141.7) -- the per-material
-    // channel DiligentFX reserves for exactly this, so no new constant buffer
-    // and no layout of our own. The shader reads it under `HP_USE_HEIGHT_MAP`.
+    // The engine's scalar parameters ride in `CustomData` (T0141.7/141.8) --
+    // the per-material channel DiligentFX reserves for exactly this, so no
+    // new constant buffer and no layout of our own. `x` is the parallax depth
+    // (read under `HP_USE_HEIGHT_MAP`), `y` the triplanar tiling (read under
+    // `HP_TRIPLANAR`).
     basic.CustomData.x = material.heightScale;
+    basic.CustomData.y = material.triplanarScale;
 
     Diligent::GLTF::MaterialBuilder builder{gltf};
     for (const MaterialTextureSlot& slot : materialTextureSlots(material)) {
@@ -576,9 +581,16 @@ bool SceneRenderer::Impl::buildMaterialBinding(Diligent::IDeviceContext* context
                 Diligent::SHADER_TYPE_PIXEL, SurfacePipeline::kHeightMapVariable)) {
             variable->Set(view);
         }
-        if (material.heightTexture.isValid()) {
+        if (material.heightTexture.isValid() && !material.triplanar) {
+            // Triplanar wins when both are set: there are no UVs for the
+            // parallax march to displace, and compiling it in would pay for a
+            // loop whose result is discarded.
             out.extraFlags |= SurfacePipeline::kPsoFlagHeightMap;
         }
+    }
+
+    if (material.triplanar) {
+        out.extraFlags |= SurfacePipeline::kPsoFlagTriplanar;
     }
 
     if (!barriers.empty() && context != nullptr) {
