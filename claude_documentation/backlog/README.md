@@ -20,8 +20,13 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-06 — fifteenth revision of the day, and the one that empties the
-141/142 chain. `T0141` and `T0142` both closed**: the engine owns the surface
+**Set 2026-08-06 — sixteenth revision of the day: `T0156` closed** — parallax
+composes with triplanar, measured on both devices with zero-scale bit-identical,
+the blend seam characterised and accepted, the 153.1 sampling seam decided once
+for both tickets, and silhouette POM evaluated and closed against T0146.7's
+tessellation trigger. **T0157 (the rock cube sample) takes its place at the
+top**, because it is what T0156 was for. Before that, the fifteenth revision
+emptied the 141/142 chain. `T0141` and `T0142` both closed**: the engine owns the surface
 stage, a game authors a `.slang` material and sees it render exactly, a broken
 one is loud magenta plus one logged compiler error, the result cooks to SPIR-V
 that renders byte-identically with no compiler present (**D34**), and the
@@ -57,7 +62,7 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0156](inprogress/0156-parallax-under-triplanar.md) | parallax under triplanar | **First, so the demo scene can follow.** 141.7 and 141.8 landed hours apart and nobody wrote their intersection; `Material.hpp` says parallax is inert under triplanar, which describes what shipped rather than what is possible. The owner wants it as a proper game-dev-facing option and wants a demo scene on top of it — a cube or terrain surface in rock, triplanar and POM together, viewable in the editor. Smaller than it looks: triplanar's projections are world-axis-aligned, so each tangent frame is a *constant* and 141.7's derivative-frame construction, the expensive half, is not needed. Cost is ~1x on flat ground and ~2x on slopes under `pow(abs(n), 4)` weights, peaking exactly where the value does |
+| 1 | [T0157](open/0157-rock-cube-sample.md) | the rock cube sample | **Straight after T0156, because it is what T0156 is for.** A rotating cube with the rock material, POM and triplanar together — and the first thing in this project you can open and look at. Its second job is the real one: `loadSceneFromString` has **no caller outside `tests/`**, so a hand-authored scene loaded by a sample is the first evidence the format is *authorable* rather than merely round-trippable. T0156 left the ground ready: `heightTexture`, `heightScale`, `triplanar` and `triplanarScale` all reflect and serialise, and the gpu suite renders the exact material this sample shows |
 | 2 | [T0143](open/0143-extended-material-features.md) | extended material features | **Everything DiligentFX's PBR has, plus the ability to override it** — clearcoat, sheen, anisotropy, iridescence, transmission, volume. Amends D24. Wiring rather than new maths, because their getters are already included and callable |
 | 3 | [T0152](inprogress/0152-winding-convention.md) | the winding convention: the remainder | **The engine half landed 2026-08-06** (152.2–4: header declared, assets re-wound, cull reverted — and the old lit baseline turned out to encode the inversion via a clamped `NdotV`; before/after in the ticket). Remaining: the determinant rule (152.5), the chirality probe and the owner's mirror decision (152.6), the conventions-doc section (152.7) |
 | 4 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | **Shader-independent**, so it may slot anywhere — see below |
@@ -207,8 +212,9 @@ wrong in the confident voice of a document that is normally right.
 | 458 | [T0147](open/0147-engine-intermediates-for-shaders.md) | Engine intermediates: scene depth, scene colour, game-fed inputs | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 459 | [T0152](inprogress/0152-winding-convention.md) | The winding convention: hardware facing equals glTF facing | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
 | 460 | [T0153](open/0153-surface-detiling.md) | Surface de-tiling: breaking texture repetition, exposed to the game | 4 — Render layer | 🔜 TODO | Medium | Moderate |
-| 461 | [T0156](inprogress/0156-parallax-under-triplanar.md) | Parallax under triplanar, and the silhouette question | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
+| 461 | [T0156](completed/0156-parallax-under-triplanar.md) | Parallax under triplanar, and the silhouette question | 4 — Render layer | ✅ DONE | High | Moderate |
 | 462 | [T0154](open/0154-noise-generation.md) | Noise: CPU generator, Slang functions, and the bake-to-texture bridge | 4 — Render layer | 🔜 TODO | Medium | Moderate |
+| 463 | [T0157](open/0157-rock-cube-sample.md) | The rock cube sample: the authoring path's first real test | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 464 | [T0155](open/0155-terrain-rendering.md) | Terrain rendering: their reference implementation is the floor, not the ceiling | 4 — Render layer | 🔜 TODO | Medium | Very Complex |
 | 465 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | 🔜 TODO | High | Complex |
 | 492 | [T0148](open/0148-post-process-stack.md) | The post-process stack: engine and game effects at one seam | 4 — Render layer | 🔜 TODO | Medium | Complex |

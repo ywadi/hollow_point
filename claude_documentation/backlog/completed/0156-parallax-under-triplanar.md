@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
@@ -185,6 +185,35 @@ accordingly with a two-way reference.
   (tessellate near, POM mid, normal-map far), not alternatives.
 - **De-tiling under triplanar** — T0153, same family and same interface question,
   but a separate technique.
+
+## Closed 2026-08-06 — the intersection exists, measured on both devices
+
+**The ticket opened on** `Material.hpp` stating parallax is *inert* under
+triplanar. It now composes: a triplanar material with a height map marches
+each live world-axis projection through the height field, on meshes with no
+UVs at all, and the field comment says so instead. The enabling fact held
+exactly — the constant frames made this a fraction of 141.7's work — and the
+one design change the measurements forced (unifying every triplanar tap on
+`SampleGrad` with analytic gradients) made the zero-scale bit-identity claim
+structural rather than numerical.
+
+| Claim | Evidence |
+|---|---|
+| Zero scale marches nowhere | **0.0 mean abs vs the no-map material — bit-identical on both devices**, quad and terrain |
+| A real scale moves the frame | 7.38 / 7.55 mean abs per channel (RTX 4070 / llvmpipe) on the oblique UV-less quad; 3.35 / 3.46 on the terrain, unlit throughout |
+| Cost lands where the value does | 0.066 ns/px facing, ~1.25 ns/px worst measured (RTX); table and the layer-count finding in notes |
+| The blend band does not seam | no contour on a terrain sweeping the thresholds; high-frequency contrast **rises** 9.67 → 14.60 in the all-band 45° case |
+| The seam question is decided once | 156.5, written into T0153.1 as its implementation contract, referenced both ways |
+| Silhouette POM is closed with evidence | 156.6, recommendation against; T0146.7 reinforced, referenced both ways |
+
+**Final verification, this tree, 2026-08-06:** `zig build all` EXIT 0 with no
+`^FAILED:|error:` lines; `zig build test -Dtest=all` fast 310 + integration
+89, both targets, zero failures; the gpu suite 29 cases green on both targets
+**run in isolation** (the concurrent run contaminates the benchmark, recorded
+in notes); `zig build docs` green with `docs/shaders/IHpMaterial.md`
+regenerated. On this host the Windows target ran as a real Windows process
+via WSL interop on an **NVIDIA RTX 4070 Laptop GPU** and the Linux target ran
+natively on **llvmpipe** — every pixel and cost claim above names which.
 
 ## Notes / findings
 
