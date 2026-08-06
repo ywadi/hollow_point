@@ -12,7 +12,7 @@
 | **Refs** | T0078, T0085, T0091, T0092, T0093, [../completed/0060-material-system.md](../completed/0060-material-system.md) — needs **cutout** materials (`AlphaMode::Mask`) for alpha-tested shadow casters, delivered by 60.1. **[T0152](../inprogress/0152-winding-convention.md) blocks this ticket (D33, 2026-08-06).** 141.12's inversion finding was corrected: the engine's chain is glTF-conformant with `FrontCounterClockwise = false`; the *test assets* were wound backwards and the `CULL_FRONT` workaround was anti-conformant. T0152's engine half has landed — the convention is declared (`WindingConvention.hpp`), the assets are re-wound and the cull reverted to `BACK` — so **"cull front faces in the shadow pass" now means what every published bias recipe means by it.** Note the lit-quad baseline moved (211,144,144) → (242,25,25) in that correction: any bias tuned against the old value was calibrated on an inversion |
 
 **From T0142/D28 (2026-08-06): the material contract is Slang now.** `ShadowFactor`
-is the next field the contract gains, and `HpMaterial.fxh` names this ticket as
+is the next field the contract gains, and `HpMaterial.slang` names this ticket as
 its owner. Under D28 that field is added to the **`IHpMaterial` interface** as a
 method with a default implementation, not to an HLSL struct — and the D27 rule
 still governs it: *nothing is exposed before the system behind it exists*, so the

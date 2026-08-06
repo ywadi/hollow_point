@@ -6,11 +6,18 @@
 // has to be able to `#include "PBR_Shading.fxh"` from *theirs* — which is what
 // this produces: one source factory that serves both.
 //
-// **No shader is ever read from disk.** They are embedded into the binary at
-// build time by `cmake/hp_embed_shaders.cmake`, the same way DiligentFX embeds
-// its own. So D13's "every read goes through the VFS" stays true by there being
-// no read at all, `dist` has nothing extra to install, and a missing shader is a
-// build error rather than a black screen.
+// **No *engine* shader is ever read from disk.** They are embedded into the
+// binary at build time by `cmake/hp_embed_shaders.cmake`, the same way
+// DiligentFX embeds its own. So D13's "every read goes through the VFS" stays
+// true by there being no read at all, `dist` has nothing extra to install, and
+// a missing shader is a build error rather than a black screen. A *game's*
+// shader is content and does come through the VFS (T0142.14) — that is the
+// second source in the chain below.
+//
+// **Cooking did not change that** (T0142.7, D34): the cooked-shader key is a
+// content hash over the resolved source text, so a shipped game still reads
+// every one of these strings before it finds the bytecode. Embedding is not
+// something cooked output replaces.
 #pragma once
 
 #include <hp/Api.hpp>
@@ -42,7 +49,7 @@ enum class ShaderStage : std::uint8_t {
 /// compound factory resolves an include by asking each source in order:
 ///
 /// - the engine's embedded shaders come first, so a project cannot shadow
-///   `HpMaterial.fxh` or `HpSurface.slang` and quietly redefine the contract;
+///   `HpMaterial.slang` or `HpSurface.slang` and quietly redefine the contract;
 /// - the **virtual filesystem** comes second, which is what makes a game's
 ///   `.slang` ordinary content — mounted directories and packs resolve here,
 ///   and an engine with no mounts behaves exactly as if this source did not
@@ -55,7 +62,7 @@ enum class ShaderStage : std::uint8_t {
 /// reserved.** Engine names are *enforced*: the VFS source refuses to serve
 /// any path whose basename matches an embedded engine shader, with a warning
 /// — merely ordering the sources was not enough, because a compiler's
-/// include-relative candidate (`shaders/HpMaterial.fxh`) would resolve from
+/// include-relative candidate (`shaders/HpMaterial.slang`) would resolve from
 /// the mount before the bare name ever reached the engine's copy. DiligentFX
 /// names stay a documented constraint (D27): their factory cannot be
 /// enumerated to enforce against.
@@ -76,29 +83,34 @@ HP_API void createEngineShaderFactory(Diligent::IShaderSourceInputStreamFactory*
 /// rather than a build one, and by then the useful diagnostic is far away.
 [[nodiscard]] HP_API int embeddedShaderCount();
 
-/// Compiles one embedded shader and reports whether it succeeded.
+/// Compiles one shader through the engine's compiler and reports whether the
+/// device accepted the result.
 ///
 /// **A validation pass, not the render path.** Nothing keeps the result: the
 /// shader is released before returning, and a renderer that wants one holds it
-/// itself. What this is for is answering "does this build's shader set actually
-/// compile on this device" without creating a pipeline, which is the question
-/// worth asking at startup and the one a test can ask cheaply.
+/// itself. What this is for is answering "does this name resolve, do its
+/// includes resolve, and does the device take what comes out" without creating
+/// a pipeline — which is the question worth asking at startup and the one a
+/// test can ask cheaply.
 ///
-/// This is the seed of T0141.3's warm-up: once shaders are cached
-/// (`RenderStateCache`, `BytecodeCache`), the same walk over the embedded set is
-/// what fills the cache before the first frame instead of hitching on it.
+/// **It goes through slang, like everything else** (T0142.13, D28). It used to
+/// hand the source to Diligent's own HLSL front end, which made this a second
+/// compiler reachable from engine code; two paths that both work is exactly
+/// what T0142.13 removes. So this is subject to the same rules as any other
+/// compile: it needs the slang runtime, and in a cooked-only build
+/// (`hp/ShaderCook.hpp`) it can only succeed for a variant that was cooked.
 ///
 /// **The compiler's own message goes to the log on failure** and nowhere else —
 /// see T0141's "log on the transition, never per draw". A compile is a
 /// transition; this is the right place for it.
 ///
-/// @param device the device to compile on.
-/// @param name the shader's file name as it appears in `engine/shaders/`, e.g.
-///        `"HpSurface.psh"`.
+/// @param device the device to hand the bytecode to.
+/// @param name the shader's name as the source factory knows it — an engine
+///        shader such as `"HpSurface.slang"`, or a virtual path into a mount.
 /// @param stage which pipeline stage to compile it for.
-/// @returns whether it compiled. **False is not fatal** — the caller decides,
-///          and for a material shader that decision is the checkerboard
-///          (T0141.4).
+/// @returns whether it compiled **and** the device accepted it. **False is not
+///          fatal** — the caller decides, and for a material shader that
+///          decision is the checkerboard (T0141.4).
 [[nodiscard]] HP_API bool compileEngineShader(Diligent::IRenderDevice* device,
                                               std::string_view name, ShaderStage stage);
 

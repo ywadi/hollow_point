@@ -106,7 +106,7 @@ TEST_CASE("a shader neither side has fails, rather than resolving to something e
         return;
     }
 
-    CHECK_FALSE(hp::compileEngineShader(device.render->device(), "ThisShaderDoesNotExist.psh",
+    CHECK_FALSE(hp::compileEngineShader(device.render->device(), "ThisShaderDoesNotExist.slang",
                                         hp::ShaderStage::Pixel));
 
     tearDown(device);
@@ -120,8 +120,20 @@ TEST_CASE("a shader mounted through the VFS compiles, and cannot shadow the engi
     // **T0142.14: a game's shader is content** (D13). The factory chain is
     // engine → VFS → DiligentFX, and both halves of that order are asserted
     // here — resolution *from* a mount, and the engine's names *winning over*
-    // a mount. The same compound factory feeds the slang bridge, so what this
-    // proves for Diligent's compiler holds for slang's resolution too.
+    // a mount.
+    //
+    // **It used to say the last sentence differently, and the difference was a
+    // bug.** The claim was "the same compound factory feeds the slang bridge,
+    // so what this proves for Diligent's compiler holds for slang's resolution
+    // too" — and it did not. T0142.13 moved this probe onto slang, and it
+    // failed: the probe sits in `shaders/`, so slang asked for
+    // `shaders/HpMaterial.slang`, which the VFS refuses (reserved basename) and
+    // the engine's embedded set does not carry — and slang, unlike Diligent's
+    // front end, never tried the bare name. The contract header could not be
+    // included from any subdirectory. `readSource` now mirrors Diligent's
+    // relative-then-bare order, and **this test is what holds it there**: the
+    // probe stays in a subdirectory precisely because a root-level one would
+    // pass either way.
     Device device = bringUp();
     if (!device.ok()) {
         MESSAGE("no graphics device; skipping");
@@ -135,17 +147,18 @@ TEST_CASE("a shader mounted through the VFS compiles, and cannot shadow the engi
     std::filesystem::remove_all(scratch, ec);
     std::filesystem::create_directories(scratch / "shaders", ec);
     {
-        // A game shader that also includes an engine header — the include must
-        // resolve through the same chain the top-level name did.
-        std::ofstream file(scratch / "shaders" / "game_probe.psh");
-        file << "#include \"HpMaterial.fxh\"\n"
+        // A game shader that also includes the engine's contract — the include
+        // must resolve through the same chain the top-level name did. `.slang`,
+        // because since T0142.13 that is the only shader language there is.
+        std::ofstream file(scratch / "shaders" / "game_probe.slang");
+        file << "#include \"HpMaterial.slang\"\n"
                 "float4 main() : SV_Target0 { return float4(0.0, 1.0, 0.0, 1.0); }\n";
     }
     {
         // A file named like the contract header, with contents that cannot
         // compile. If the mount could shadow the engine, the include above
         // would pull this in and the compile below would fail.
-        std::ofstream file(scratch / "shaders" / "HpMaterial.fxh");
+        std::ofstream file(scratch / "shaders" / "HpMaterial.slang");
         file << "#error a game shader must not be able to redefine the contract\n";
     }
 
@@ -154,15 +167,18 @@ TEST_CASE("a shader mounted through the VFS compiles, and cannot shadow the engi
     REQUIRE(hp::Vfs::mount(scratch.string()));
 
     // Resolution from the mount, includes resolved engine-first: if the
-    // mounted `#error` copy of `HpMaterial.fxh` could shadow the engine's,
-    // this compile would fail on it.
-    CHECK(hp::compileEngineShader(device.render->device(), "shaders/game_probe.psh",
+    // mounted `#error` copy of `HpMaterial.slang` could shadow the engine's,
+    // this compile would fail on it. **The reservation follows the rename** —
+    // the reserved set is the embedded set, so renaming the contract renamed
+    // what is protected, and this is the assertion that proves it rather than
+    // assuming it.
+    CHECK(hp::compileEngineShader(device.render->device(), "shaders/game_probe.slang",
                                   hp::ShaderStage::Pixel));
 
     // With the mount gone the game shader stops resolving — a miss stays a
     // miss, exactly as the unknown-name case above requires.
     hp::Vfs::shutdown();
-    CHECK_FALSE(hp::compileEngineShader(device.render->device(), "shaders/game_probe.psh",
+    CHECK_FALSE(hp::compileEngineShader(device.render->device(), "shaders/game_probe.slang",
                                         hp::ShaderStage::Pixel));
 
     tearDown(device);

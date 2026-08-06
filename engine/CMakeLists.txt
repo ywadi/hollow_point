@@ -69,6 +69,11 @@ add_custom_target(hp_build_id DEPENDS "${HP_BUILD_ID_HEADER}")
 # sources are declared inputs here.
 set(HP_ENGINE_SHADERS_HEADER "${CMAKE_BINARY_DIR}/generated/hp/EngineShaders.h")
 
+# **Wider than what is embedded, deliberately** (T0142.13). Only `.slang` is
+# embedded; the HLSL extensions stay in this dependency glob so that adding one
+# re-runs the embed step, which then *fails* naming the decision. Narrowing this
+# to `.slang` would make a stray `.psh` invisible to the build instead of
+# refused by it.
 file(GLOB _hp_shader_sources CONFIGURE_DEPENDS
      "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.vsh"
      "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.psh"

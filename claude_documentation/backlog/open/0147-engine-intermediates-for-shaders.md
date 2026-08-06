@@ -66,7 +66,7 @@ and its validity rules.
       sky, before transparents is the obvious point — decide against T0096's
       HDR ordering), full or half resolution decided by measurement
 - [ ] 147.3 The contract fields and their validity docs — the
-      `HpMaterial.fxh` arrival table grows rows with owners, exactly as it
+      `HpMaterial.slang` arrival table grows rows with owners, exactly as it
       already does for `ShadowFactor`/`Visibility`
 - [ ] 147.4 Game-fed texture slots, designed with T0094.5 rather than beside
       it — one mechanism, referenced both ways

@@ -462,6 +462,87 @@ Four things. This is the honest size of the gap versus GDScript:
 
 ---
 
+## The other thing a game writes: a material shader
+
+Gameplay is C++ (**D14**); **shading is Slang** (**D28**), and it is the one
+other language a game author here writes. The section exists because
+`HpMaterial.fxh` used to document a shape that stopped being real — it told a
+developer to write a free function the engine no longer lets them define — and a
+contract that lies is worse than one that is missing.
+
+### The whole of it
+
+A material shader is a `.slang` file in the project's content, and it is one
+struct:
+
+```slang
+struct HpMaterial : IHpMaterial
+{
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return float4(1.0, 0.0, 0.0, 1.0);
+    }
+}
+```
+
+A `.hpmat` names it by GUID (`shader:`), and that is the whole wiring. **The
+struct must be called `HpMaterial`** — that name is the contract, the way
+`main` is elsewhere.
+
+### The four rules, and each one exists against a failure
+
+1. **`override` is mandatory.** Omitting it is a compile error, so engine
+   behaviour is never shadowed by accident. Slang enforces it; nothing here has
+   to.
+2. **Every method you do not override is the standard material**, and that is
+   not a special case — `HpStandardMaterial` is the interface with all its
+   defaults and nothing else, so a module that overrides `baseColor` differs
+   from the engine's own material by exactly `baseColor`. Measured: the same
+   three-line module renders `(255, 0, 0)` unshaded and `(0, 0, 0)` in a
+   lightless scene, because the *lighting* default still governs.
+3. **The module includes nothing.** The engine includes *it*, after the contract
+   and after DiligentFX's texture getters — so an override can call
+   `GetBaseColor` without knowing where it came from. Including engine headers
+   yourself is not needed and engine names are reserved anyway: a file of yours
+   named `HpMaterial.slang` is refused, with a warning, rather than quietly
+   redefining the contract.
+4. **Adding a method to `IHpMaterial` is free; removing one breaks every shipped
+   game.** Same promise as **D27**, and the same rule about not exposing a field
+   before the system behind it exists — a `ShadowFactor` that returns 1.0
+   because shadows are not built yet is worse than no field, because the shader
+   written against it silently does nothing.
+
+### Where the hooks are
+
+| Method | What it decides |
+|---|---|
+| `surfaceCoordinates` | The UVs everything else samples with — the parallax/triplanar hook, run first |
+| `baseColor`, `metallicRoughness`, `occlusion`, `emissive`, `shadingNormal` | One channel each |
+| `surface` | The assembled output, after all of the above |
+| `unshaded` | Skip lighting entirely — Godot's `render_mode unshaded` |
+
+### When it goes wrong, it is loud
+
+There is **one visual convention with three causes**, and the console says
+which: a magenta checkerboard means the material is missing, its shader is
+missing, or its shader did not compile. The compiler's error is logged **once**,
+on the compile, never per frame. On a mesh with no texture coordinates the
+checks degrade to flat magenta, which is documented rather than a bug.
+
+### What happens to it when the game ships
+
+The `.slang` is compiled to SPIR-V ahead of time and the **bytecode** ships
+(**D34**); a shipped game carries no compiler. Two consequences worth knowing
+while authoring:
+
+- **Editing a shader after the cook is not a hot reload, it is a missing
+  shader.** The cooked key is a content hash over the source, so one changed
+  comment is a different variant. In a dev build it just recompiles; in a
+  shipped build it is the checkerboard and a loud log line.
+- **A variant exists because something asked for a pipeline.** A material
+  someone never renders during the cook is a material with no cooked shader, so
+  "drive the content, then cook" is the workflow rather than a formality.
+
 ## Known gaps and open questions
 
 Recorded rather than assumed. None of these blocks the design; all of them will

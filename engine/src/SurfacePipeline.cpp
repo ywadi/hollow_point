@@ -331,7 +331,7 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
     Diligent::ShaderMacroHelper macros = DefineMacros(key);
 
     // The engine's own permutation bits, appended after DiligentFX's.
-    // `HP_UNSHADED` is the shader contract's name for it (`HpMaterial.fxh`
+    // `HP_UNSHADED` is the shader contract's name for it (`HpMaterial.slang`
     // defaults it to 0), so defining it here is what turns the user-defined
     // PSO bit into the compile-time branch the contract promises.
     macros.Add("HP_UNSHADED", (key.GetFlags() & kPsoFlagUnshaded) != 0 ? 1 : 0);

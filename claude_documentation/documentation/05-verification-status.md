@@ -148,6 +148,29 @@ tickets: black differs from a blue clear colour, so "did geometry arrive" passed
 while nothing about shading was tested at all. T0028's headline evidence is still
 true and still proves less than it reads.
 
+### Shaders: authored in Slang, compiled, cooked ✅ (2026-08-06, T0142)
+
+**The engine's own shaders are Slang, a game can author one, and the result can
+ship as bytecode with no compiler present.** Every row is a pixel or a byte
+count, not a "it ran".
+
+| Claim | Evidence |
+|---|---|
+| Slang replaced glslang with no visible change | Ten frame dumps **byte-identical** to the pre-Slang build; every guard value digit-identical on both targets |
+| A game module overriding one method renders | Three lines overriding `baseColor`: `(255, 0, 0)` unlit, `(0, 0, 0)` shaded with no light — the un-overridden lighting default still governing |
+| A broken module is loud, once | Flat magenta fallback, **1** compiler error and **1** substitution line across three frames |
+| Engine shader names are reserved against mounts | A poison `HpMaterial.slang` beside a game shader is refused; the game shader still compiles against the engine's copy |
+| Cooked bytecode renders identically | Same scene from a cooked archive: **0** compiles, and the readback compares **equal** to the compiled run's |
+| A missed variant is fatal, not silent | Module edited after the cook: **0** compiles, **1** unrecoverable log line, 4096/4096 fallback pixels |
+| No hand-written HLSL in `engine/shaders/` | Only `.slang` is embedded, and a stray `.psh` is a **configure error** naming the decision — verified in both directions |
+
+**Two things this does *not* say.** The Linux gpu run on the WSL host reports
+`llvmpipe`; the real RTX 4070 numbers come from the Windows-target run under
+wine, so both a software and a hardware Vulkan implementation are covered but
+the Linux hardware path specifically is not. And `dist` still stages the slang
+runtime by glob (twice on Linux), so "a shipped game links no Slang" is true of
+the link and not yet of the layout — T0128.
+
 ### Scenes save and load ✅ (2026-08-05, T0022)
 
 **A scene survives a round trip through text and through the binary cook**, and

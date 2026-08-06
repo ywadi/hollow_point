@@ -202,19 +202,9 @@ private:
     std::atomic<uint32_t> refs_{1};
 };
 
-/// Reads one named source through a Diligent factory. Shared by the file
-/// system below and by the top-level translation unit load.
-bool readSource(Diligent::IShaderSourceInputStreamFactory* factory, const char* name,
-                std::string& out) {
-    if (factory == nullptr || name == nullptr) {
-        return false;
-    }
-    // Slang resolves an include relative to the including file's path; with
-    // every engine shader at the virtual "root" that produces either a bare
-    // name or a `./`-prefixed one. The factory knows only bare names.
-    while (name[0] == '.' && (name[1] == '/' || name[1] == '\\')) {
-        name += 2;
-    }
+/// Asks the factory for exactly this name.
+bool readExact(Diligent::IShaderSourceInputStreamFactory* factory, const char* name,
+               std::string& out) {
     Diligent::RefCntAutoPtr<Diligent::IFileStream> stream;
     factory->CreateInputStream(name, &stream);
     if (!stream) {
@@ -224,6 +214,57 @@ bool readSource(Diligent::IShaderSourceInputStreamFactory* factory, const char* 
     stream->ReadBlob(blob);
     out.assign(blob->GetConstDataPtr<char>(), blob->GetSize());
     return true;
+}
+
+/// Reads one named source through a Diligent factory. Shared by the file
+/// system below and by the top-level translation unit load.
+///
+/// @param allowBasenameFallback whether a miss may be retried on the bare file
+///        name. **True only for includes**, and it is what makes the two
+///        compilers agree -- see the comment inside.
+bool readSource(Diligent::IShaderSourceInputStreamFactory* factory, const char* name,
+                std::string& out, bool allowBasenameFallback = false) {
+    if (factory == nullptr || name == nullptr) {
+        return false;
+    }
+    // Slang resolves an include relative to the including file's path; with
+    // every engine shader at the virtual "root" that produces either a bare
+    // name or a `./`-prefixed one. The factory knows only bare names.
+    while (name[0] == '.' && (name[1] == '/' || name[1] == '\\')) {
+        name += 2;
+    }
+    if (readExact(factory, name, out)) {
+        return true;
+    }
+    if (!allowBasenameFallback) {
+        return false;
+    }
+
+    // **Relative first, then bare -- because that is what Diligent's own
+    // include handler does, and 142.4's claim is that the two compilers cannot
+    // disagree about what a name means.** They did. A mounted game shader at
+    // `shaders/probe.slang` including `"HpMaterial.slang"` makes slang ask for
+    // `shaders/HpMaterial.slang` and *stop there*: the VFS refuses it (the
+    // basename is reserved, T0142.14) and the engine's embedded set is keyed on
+    // bare names, so the contract header simply could not be included from any
+    // subdirectory. Diligent's front end had always tried the bare name second
+    // and resolved it; found by the gpu test when T0142.13 moved that probe onto
+    // the real compiler, which is the whole argument for having done so.
+    //
+    // Safe precisely because of the reservation: the fallback reaches the
+    // engine's copy of a reserved name, and can never reach a mounted one,
+    // because the VFS source refuses to serve any path whose basename matches an
+    // embedded engine shader.
+    const char* base = name;
+    for (const char* c = name; *c != '\0'; ++c) {
+        if (*c == '/' || *c == '\\') {
+            base = c + 1;
+        }
+    }
+    if (base == name) {
+        return false;
+    }
+    return readExact(factory, base, out);
 }
 
 /// `ISlangFileSystem` over the engine's compound shader source factory.
@@ -276,7 +317,9 @@ public:
         }
         *outBlob = nullptr;
         std::string bytes;
-        if (!readSource(factory_, path, bytes)) {
+        // Includes, so the bare-name fallback applies -- this is the call that
+        // makes slang's resolution match Diligent's.
+        if (!readSource(factory_, path, bytes, /*allowBasenameFallback = */ true)) {
             return SLANG_E_NOT_FOUND;
         }
         *outBlob = new ByteBlob(std::move(bytes));

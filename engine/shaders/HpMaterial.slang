@@ -1,4 +1,5 @@
-// The contract a game's shader compiles against (T0141.6, D27).
+// The contract a game's shader compiles against (T0141.6, D27; Slang since
+// T0142.13, D28).
 //
 // **This is the only engine header a game shader includes**, and that is a
 // decision with a cost, recorded as D27. A game shader may not include
@@ -8,23 +9,45 @@
 // include DiligentFX; they include us. A rename upstream is then ported once,
 // here, behind a header whose shape does not move.
 //
-// The shape is Godot's. A developer writes one function; the engine owns the
-// `main` around it:
+// ## The authoring shape, stated once and correctly
 //
-//   #include "HpMaterial.fxh"
+// A game writes a **module that implements `IHpMaterial`** and overrides only
+// what it wants (D28, T0142.15). `override` is mandatory, so nothing the engine
+// does is replaced by accident:
 //
-//   void HpSurface(in HpSurfaceInput In, inout HpSurfaceOutput Out)
+//   struct HpMaterial : IHpMaterial
 //   {
-//       Out.BaseColor = float4(1.0, 0.0, 0.0, 1.0);
-//       Out.Roughness = 0.3;
+//       override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+//       {
+//           return float4(1.0, 0.0, 0.0, 1.0);
+//       }
 //   }
 //
-// **Since T0142.2 this contract also exists as a Slang `interface`** —
-// `IHpMaterial` in `HpSurface.slang`, whose default implementations are the
-// standard material and whose `surface()` default calls the `HpSurface`
-// function declared below. The structs in this file are the shared vocabulary
-// of both shapes; their field rules apply to the interface's methods
-// unchanged.
+// **The module includes nothing.** The engine includes *it*, into
+// `HpSurface.slang` after this contract and after DiligentFX's getters, through
+// a generated one-line include — which is what lets an override call
+// `GetBaseColor` without knowing where it comes from, and what lets the content
+// hasher recurse into the module's own text (T0142.7).
+//
+// ### What this file used to say, and why it stopped being true
+//
+// It documented Godot's shape literally — *"a developer writes one function"*,
+// `void HpSurface(in HpSurfaceInput In, inout HpSurfaceOutput Out)`, forward
+// declared at the bottom of this file so that a shader which forgot to define
+// it failed at link with a clear missing-symbol error.
+//
+// **A game cannot define that function**, and has not been able to since
+// T0142.15 put the module inside `HpSurface.slang`: the engine's own definition
+// is already in scope when the module is included, so a second body is
+// `error[E30201]: function 'HpSurface' already has a body` — measured on the
+// pinned `slangc 2026.14.1`, not reasoned about after the fact.
+//
+// D27's function-style hook is not gone; it moved. It is
+// `IHpMaterial.surface()`, whose default calls the engine's own `HpSurface` —
+// so a material wanting the whole-output hook overrides *that*, and the free
+// function is what it now honestly is: the engine's internal default, private
+// to `HpSurface.slang`. The declaration that used to sit at the bottom of this
+// file went with the claim it supported.
 //
 // ---
 //
@@ -61,31 +84,33 @@
 // from the camera position and the world position rather than interpolated; more
 // fields will follow that pattern as they are added.
 
-#ifndef _HP_MATERIAL_FXH_
-#define _HP_MATERIAL_FXH_
+#ifndef _HP_MATERIAL_SLANG_
+#define _HP_MATERIAL_SLANG_
 
 // ## Unshaded
 //
-// **A game shader can opt out of lighting entirely**, which is Godot's
+// **A game material can opt out of lighting entirely**, which is Godot's
 // `render_mode unshaded;` and is requested often enough to be part of the
-// contract rather than a workaround:
+// contract rather than a workaround. `Out.BaseColor` is then written straight
+// to the target with no BRDF, no light loop and no IBL — UI, sprites,
+// holograms, debug overlays and most VFX want exactly this.
 //
-//   #define HP_UNSHADED 1
-//   #include "HpMaterial.fxh"
+// **There are two doors to it and they are not interchangeable**, which is
+// worth knowing before reaching for either:
 //
-// `Out.BaseColor` is then written straight to the target with no BRDF, no light
-// loop and no IBL. UI, sprites, holograms, debug overlays and most VFX want
-// exactly this.
+//   * `IHpMaterial.unshaded()`, overridden to `true` by a module — the
+//     *authored* half (T0142.16). Exact in effect, and **not folded at the
+//     SPIR-V level**: measured at 19336 bytes against the shaded 19348, at
+//     optimisation level none and default alike, so the lighting is still
+//     emitted and the branch is real. T0151's link-time constants are the
+//     mechanism that would make the elimination provable.
+//   * `Material::unlit` in a `.hpmat` (T0060.1) — the *data* half, which rides
+//     the `HP_UNSHADED` permutation bit below, so the lighting is excluded at
+//     preprocess time and genuinely not paid for.
 //
-// **It is a compile-time switch and must stay one.** A runtime `if` would still
-// pay for the lighting code in registers and in shader compilation, and the
-// entire point of unshaded is not paying for it. So it becomes a PSO
-// permutation, which is one bit and is why it is worth deciding now rather than
-// bolting on: variant count is the thing that grows without limit here.
-//
-// Distinct from `Material::unlit` (T0060.1), which says the same thing for a
-// *standard* material as data. Both end at the same place; one is authored in a
-// `.hpmat` and the other in the shader.
+// The macro is that permutation bit. `SurfacePipeline::build` always defines it
+// from the PSO key; the default here exists so this contract still reads on its
+// own.
 #ifndef HP_UNSHADED
 #   define HP_UNSHADED 0
 #endif
@@ -170,11 +195,4 @@ struct HpSurfaceOutput
     float Occlusion;
 };
 
-/// **Implemented by the game, called by the engine.**
-///
-/// Declared here so that a game shader which forgets to define it fails at
-/// **link** with a clear missing-symbol error, rather than compiling into a
-/// pipeline that draws nothing and reports success.
-void HpSurface(in HpSurfaceInput In, inout HpSurfaceOutput Out);
-
-#endif // _HP_MATERIAL_FXH_
+#endif // _HP_MATERIAL_SLANG_

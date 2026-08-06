@@ -42,8 +42,14 @@ RTX 2080 — their arithmetic, to the byte.
       exactly (255, 0, 0) unshaded, and exactly (0, 0, 0) shaded with no light
       — the un-overridden lighting default still governing is the partial-
       override claim, measured.)*
-- [ ] The engine's own shaders are `.slang`, and no hand-written HLSL remains in
-      `engine/shaders/`.
+- [x] The engine's own shaders are `.slang`, and no hand-written HLSL remains in
+      `engine/shaders/`. *(142.13, 2026-08-06: the directory holds
+      `HpMaterial.slang` and `HpSurface.slang` and nothing else, and the rule is
+      **mechanical** — `hp_embed_shaders.cmake` embeds only `.slang` and refuses
+      to run at all if a `.psh`/`.vsh`/`.fxh` appears, verified in both
+      directions. Two files outside the directory are deliberate exceptions,
+      argued in the notes: DiligentCore's `HLSLDefinitions.fxh`, which is read
+      not authored, and `Render.cpp`'s 12-line fullscreen blit.)*
 - [ ] `slangc` is pinned in `.harness/`, offline after bootstrap, on both hosts.
 - [~] A shipped game links no Slang and reads cooked output only. *The
       **link** half is fact: `readelf -d libhp_engine.so` lists only libm,
@@ -255,7 +261,7 @@ RTX 2080 — their arithmetic, to the byte.
       both tickets.** The test captures both byte counts every run (a
       per-run probe token defeats the content cache) so a slang upgrade that
       starts folding shows up as a diverging pair.*
-- [ ] 142.13 **Retire the HLSL path.** When the engine's shaders are Slang, the
+- [x] 142.13 **Retire the HLSL path.** When the engine's shaders are Slang, the
       hand-written `.psh`/`.fxh` in `engine/shaders/` go, along with
       `cmake/hp_embed_shaders.cmake` if cooking replaces embedding. **Two paths
       that both work is the outcome to avoid** — it is how the `CreateInfo`
@@ -267,6 +273,19 @@ RTX 2080 — their arithmetic, to the byte.
       the backend itself (D29/T0144) — slang is the only compiler the surface
       pipeline uses. `HpMaterial.fxh` remains, pending 142.2, and
       `hp_embed_shaders.cmake` remains pending 142.7's cooking.*
+      *Closed 2026-08-06. `HpMaterial.fxh` → `HpMaterial.slang`, and the
+      conversion turned out to be **documentation** rather than syntax: the file
+      was already compiled only by slang, so what was wrong with it was what it
+      claimed. It told a developer to write a free `HpSurface` that a game has
+      not been able to define since 142.15 — measured,
+      `error[E30201]: function 'HpSurface' already has a body`. **`hp_embed_shaders.cmake`
+      survives**, and D34 is why, not a preference: the cooked-shader key is a
+      content hash over the resolved source, so a shipped game reads the shader
+      text before it finds the bytecode. The rule is now enforced by that script
+      rather than remembered. And the last second compiler reachable from engine
+      code is gone: `compileEngineShader` compiled through Diligent's HLSL front
+      end and now goes through slang — which is what caught the include-resolution
+      divergence in the notes.*
 
 ## What this changes in T0141
 
@@ -277,7 +296,7 @@ RTX 2080 — their arithmetic, to the byte.
 | 141.5 hot reload | **Superseded** by 142.8 |
 | 141.13 VFS shader source | **Reshaped** into **142.14** — resolution order still engine → game → DiligentFX, but through `ISlangFileSystem` |
 | 141.15 `HP_UNSHADED` | **Reshaped** into **142.16** — an interface method with a default, not a macro |
-| 141.6 `HpMaterial.fxh` | **Becomes** 142.2. The field list and its rules survive; the language changes |
+| 141.6 `HpMaterial.fxh` | **Becomes** 142.2, and the file becomes `HpMaterial.slang` in 142.13. The field list and its rules survive; the language changes, and so does the authoring shape it documents |
 | 141.7 / 141.8 parallax, triplanar | **Unaffected** — still a displaced `VSOutput` copy handed to their getters |
 | 141.10 / 141.11 | **Done**, and 141.11 is the acceptance test for 142.3 |
 
@@ -448,6 +467,103 @@ archive loaded from a **pack** rather than a mounted directory (the code path is
 packs each carrying an archive (the merge is `IBytecodeCache::Load`'s, which
 `emplace`s, so first-loaded wins — asserted by reading their source, not by a
 test).
+
+### 142.13 landed 2026-08-06 — and the conversion was documentation, not syntax
+
+**What was actually wrong with `HpMaterial.fxh` was what it said.** The file was
+already compiled by slang and by nothing else — the GL backend that once needed
+it to be HLSL went with D29/T0144 — so "port it to Slang" was a rename plus an
+include-guard rename. The substance was that it documented **an authoring shape
+that no longer exists**: *"a developer writes one function"*, with
+`void HpSurface(in HpSurfaceInput In, inout HpSurfaceOutput Out)` forward
+declared so a shader that forgot to define it failed at link.
+
+A game has not been able to define that function since 142.15 put its module
+*inside* `HpSurface.slang`. Measured on the pinned `slangc 2026.14.1` rather
+than reasoned about:
+
+```
+error[E30201]: function 'HpSurface' already has a body
+```
+
+D27's function-style hook is not gone, it moved: it is `IHpMaterial.surface()`,
+whose default calls the engine's own `HpSurface`. So the declaration went, the
+header now documents `struct HpMaterial : IHpMaterial`, and **D27 carries an
+amendment paragraph** saying the shape changed and the substance did not.
+
+### `hp_embed_shaders.cmake` survives, and D34 is the reason
+
+142.13 listed it as something cooking might replace. It does not, and the
+argument is one sentence: **the cooked-shader key is a content hash over the
+resolved source text**, so a shipped game reads `HpSurface.slang`, every header
+it includes and the game's own module, and only then finds the bytecode. A
+cheaper key — a PSO-key digest, say — would be a *second* key mechanism and
+would lose "edit any header, the key changes, no staleness rule to remember".
+Engine shader source stays embedded (three files, tens of kilobytes); cooked
+SPIR-V ships as content beside it.
+
+What did change is that the rule is now **mechanical**. The script embeds only
+`*.slang` and fails outright if a `.psh`/`.vsh`/`.fxh` appears in
+`engine/shaders/`, naming the decision. Verified in both directions: a clean
+tree embeds 3 shaders; a stray `Stray.psh` produces
+`CMake Error ... hand-written HLSL in '.../engine/shaders' ... Port it to
+.slang, or change the decision deliberately`. The dependency glob in
+`engine/CMakeLists.txt` deliberately stays wider than what is embedded, so
+adding one *re-runs* the step and hits the error rather than being invisible.
+
+### The last second compiler, and the bug removing it found
+
+`compileEngineShader` compiled through **Diligent's own HLSL front end**. Only
+tests called it, but it was a second compiler reachable from engine code, which
+is the hazard 142.13 names. It now compiles through slang and then hands the
+SPIR-V to the device — a strictly stronger claim than before, since it proves
+the driver accepts the result too.
+
+**And it immediately failed, which is the point of having done it.** A mounted
+game shader at `shaders/game_probe.slang` including `"HpMaterial.slang"` did not
+compile:
+
+```
+error[E15300]: include file not found
+  1 | #include "HpMaterial.slang"
+    |          ^^^ failed to find include file 'HpMaterial.slang'
+```
+
+**Slang resolves an include relative to the including file and stops there.**
+Diligent's front end tries the relative candidate *and then the bare name*. So
+`shaders/HpMaterial.slang` was refused by the VFS (reserved basename, 142.14)
+and missed the engine's embedded set (keyed on bare names), and the contract
+header could not be included from any subdirectory at all. 142.4's claim that
+"the two compilers cannot disagree about what a name means" was **false**, and
+nothing had exercised the case because the only slang consumers were at the
+virtual root.
+
+Fixed in `readSource`: relative first, then the bare name, for includes only.
+**Safe because the reservation is enforced rather than ordered** — a bare-name
+retry can only ever reach the engine's copy of a reserved name, never a mounted
+one. The gpu probe deliberately stays in a subdirectory, because a root-level
+one would pass either way.
+
+### Two hand-written HLSL exceptions, argued rather than overlooked
+
+- **`HLSLDefinitions.fxh`** — DiligentCore's, embedded from the pinned submodule
+  at build time and *prepended* to every slang compile because the DiligentFX
+  headers assume `MATRIX_ELEMENT` and friends without including them. Read,
+  never authored; its content hash rides into the variant key as
+  `HP_SLANG_PRELUDE` precisely because a prepend is invisible to an include
+  walk. It is a parameter to the embed script rather than a file in
+  `engine/shaders/`, which is the distinction.
+- **`Render.cpp`'s fullscreen blit** — ~12 lines of HLSL compiled by Diligent's
+  own front end (T0137). Converting it is possible and was rejected: it is the
+  presentation path of last resort, and putting it behind a run-time-`dlopen`ed
+  compiler means a black screen can be caused by a missing library. It shares no
+  source with the surface path, so it is not the *drift* hazard 142.13 names —
+  there is no second copy of anything. Recorded in `hp_embed_shaders.cmake` so
+  the next person does not have to rediscover the reasoning.
+
+**Pixels unchanged**, which is the acceptance test: every gpu `MESSAGE` line is
+identical before and after the rename (`(195, 195, 195) variation 8.92733`, and
+the rest), 26 cases / 562 assertions on both targets.
 
 ### Smaller things worth knowing
 

@@ -50,7 +50,7 @@ public:
     /// lights.
     ///
     /// `build()` turns this bit into the `HP_UNSHADED` macro the shader
-    /// contract already declares (`HpMaterial.fxh`), so the shader-side switch
+    /// contract already declares (`HpMaterial.slang`), so the shader-side switch
     /// is compile-time -- the lighting code is not in the pipeline at all,
     /// which is the entire point of unshaded (141.15).
     ///

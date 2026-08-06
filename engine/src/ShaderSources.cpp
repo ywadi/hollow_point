@@ -2,16 +2,19 @@
 
 #include <hp/ShaderSources.hpp>
 
+#include "SlangCompiler.hpp"
 #include "SurfacePipeline.hpp"
 
 #include <hp/Log.hpp>
 #include <hp/Vfs.hpp>
 
+#include <cstdint>
 #include <cstring>
 #include <mutex>
 #include <string>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include <DataBlobImpl.hpp>
 #include <DiligentFXShaderSourceStreamFactory.hpp>
@@ -133,9 +136,9 @@ public:
 
         // **Engine shader names are reserved under every path, not just at
         // the root** (D27, T0142.14) — and the test that added this line is
-        // why. A `#include "HpMaterial.fxh"` inside a mounted shader makes
+        // why. A `#include "HpMaterial.slang"` inside a mounted shader makes
         // Diligent try the include-relative candidate first
-        // (`shaders/HpMaterial.fxh`), which the engine's embedded set does not
+        // (`shaders/HpMaterial.slang`), which the engine's embedded set does not
         // carry — so a file named like the contract, sitting *beside* a game
         // shader, would win the relative round and redefine the contract
         // after all. Refusing to serve any path whose basename matches an
@@ -188,7 +191,7 @@ void createEngineShaderFactory(Diligent::IShaderSourceInputStreamFactory** facto
 
     // A game's shaders, through the VFS (T0142.14, D13). Content, so it sits
     // **after** the engine's embedded set — a project must not be able to
-    // shadow `HpMaterial.fxh` or `HpSurface.slang` and quietly redefine the
+    // shadow `HpMaterial.slang` or `HpSurface.slang` and quietly redefine the
     // contract — and **before** DiligentFX's tree. Engine and DiligentFX
     // header names are therefore reserved: a game file named like either is
     // shadowed by ours or shadows theirs, and both are documented constraints
@@ -230,6 +233,28 @@ bool compileEngineShader(Diligent::IRenderDevice* device, std::string_view name,
 
     const std::string path{name};
 
+    // **Through slang, like every other shader in this engine** (T0142.13).
+    // This used to hand the source to Diligent's own HLSL front end, which made
+    // it a *second* compiler reachable from engine code -- and "two paths that
+    // both work" is the outcome T0142.13 exists to remove, whatever the second
+    // path is only used by. What this function proves is that the compound
+    // factory resolves a name and its includes; routing it through the real
+    // compiler makes that proof stronger, not weaker.
+    std::vector<std::uint8_t> spirv;
+    std::string diagnostics;
+    if (!compileSlangToSpirv(path.c_str(), stage, nullptr, 0, factory, spirv, diagnostics)) {
+        // **Logged here, on the attempt.** A compile is a transition, so this is
+        // the one place a shader failure belongs; the draw path that substitutes
+        // a fallback must stay silent or it produces thousands of lines a minute
+        // (T0141).
+        HP_LOG_ERROR(kLog, "shader '{}' did not compile: {}", path,
+                     diagnostics.empty() ? "(no diagnostics)" : diagnostics);
+        return false;
+    }
+
+    // **And then the device has to accept it.** Compiling is half the claim; a
+    // module the driver refuses is not a shader, and returning true on bytecode
+    // nobody validated would make this weaker than what it replaced.
     Diligent::ShaderCreateInfo info;
     info.Desc = {path.c_str(),
                  stage == ShaderStage::Vertex ? Diligent::SHADER_TYPE_VERTEX
@@ -237,27 +262,17 @@ bool compileEngineShader(Diligent::IRenderDevice* device, std::string_view name,
                  // Separate samplers, which is what Vulkan wants. Combined
                  // samplers existed for the GL backend, which D29 removed.
                  /*UseCombinedTextureSamplers = */ false};
-    // HLSL: this function exercises *Diligent's* compile path over the embedded
-    // sources -- what it proves is that the factory resolves names and includes
-    // correctly, and Diligent's HLSL front end (glslang, for Vulkan) is the one
-    // it ships. The engine's real pipelines compile the same bytes through
-    // slang instead (D28, `SurfacePipeline::build`).
-    info.SourceLanguage = Diligent::SHADER_SOURCE_LANGUAGE_HLSL;
     info.EntryPoint = "main";
-    // By name: it resolves to a string embedded in this binary, and any
-    // `#include` inside it resolves through the compound factory -- ours first,
-    // then DiligentFX's public headers. Nothing is opened.
-    info.FilePath = path.c_str();
-    info.pShaderSourceStreamFactory = factory;
+    // **`ByteCode`, not `Source`** -- the two are mutually exclusive and their
+    // size fields are a union, so setting the wrong one sends SPIR-V down the
+    // text path.
+    info.ByteCode = spirv.data();
+    info.ByteCodeSize = spirv.size();
 
     Diligent::RefCntAutoPtr<Diligent::IShader> shader;
     device->CreateShader(info, &shader);
     if (!shader) {
-        // **Logged here, on the attempt.** A compile is a transition, so this is
-        // the one place a shader failure belongs; the draw path that substitutes
-        // a fallback must stay silent or it produces thousands of lines a minute
-        // (T0141).
-        HP_LOG_ERROR(kLog, "shader '{}' did not compile", path);
+        HP_LOG_ERROR(kLog, "the device refused slang-compiled SPIR-V for '{}'", path);
         return false;
     }
     return true;

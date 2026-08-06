@@ -341,7 +341,13 @@ T0060 already says it must not foreclose and does not.
       **Delivered as HLSL, and superseded in form by T0142.2** (D28): the field
       list, the "adding is free, removing breaks shipped games" promise and the
       "nothing is exposed before the system behind it exists" rule all carry over
-      unchanged — only the language does not
+      unchanged — only the language does not.
+      **The file is `engine/shaders/HpMaterial.slang` since T0142.13**
+      (2026-08-06), and the rename came with a correction worth knowing here:
+      the free `HpSurface` function this subtask declared **cannot be defined by
+      a game** and has not been since 142.15 — the engine's own body is in scope
+      when the module is included. D27's function-style hook lives on as
+      `IHpMaterial.surface()`; the declaration is gone with the claim
 - [→] 141.15 **Moved to T0142.16** *(numbered 2026-08-06; was an orphan)* —
       under D28 this is an interface method with a
       default implementation, not a PSO permutation bit and not a macro, so the
@@ -355,7 +361,7 @@ T0060 already says it must not foreclose and does not.
       that is why it is decided now — variant count is what grows without limit
       here. Distinct from `Material::unlit`, which says the same for a
       *standard* material as data; both end in the same place
-- [ ] 141.14 **Generate the shader contract's reference from `HpMaterial.fxh`,
+- [ ] 141.14 **Generate the shader contract's reference from `HpMaterial.slang`,
       and gate it in CI** — the same mechanism `tools/gen_api_docs.py` and the
       "API reference is up to date" job give `engine/include/hp/`. Scoped to
       **public shader headers only**, mirroring the include/src split the C++
@@ -368,7 +374,7 @@ T0060 already says it must not foreclose and does not.
       but it is enforced through `ISlangFileSystem` rather than Diligent's
       factory, because Slang compiles first. **Original:** **A VFS-backed shader source**, so a game's shader is content like
       any other (D13). Resolution order is **engine, then game, then DiligentFX**
-      — a project must not be able to shadow `HpMaterial.fxh` and redefine the
+      — a project must not be able to shadow `HpMaterial.slang` and redefine the
       contract — which makes engine and DiligentFX header names reserved
 - [x] 141.7 **Height mapping and parallax occlusion** — needs the surface stage;
       `PBR_Renderer` has no path for it and `GetPSMainSource` cannot reach before
@@ -707,7 +713,7 @@ not been proven that the metallic channel is wired correctly** — only that the
 frame varies and is not the clear colour. **T0087's environment lighting is what
 makes that testable**, and this ticket should be referenced from there.
 
-`HpMaterial.fxh` claims `Time` needs "a frame-wide clock field, which
+`HpMaterial.slang` claims `Time` needs "a frame-wide clock field, which
 `PBRFrameAttribs` has no room for yet". That is **wrong**:
 `PBRRendererShaderParameters` already carries a `Time` field. Nothing depends on
 the claim, but the table should be corrected when 141.6's contract is next

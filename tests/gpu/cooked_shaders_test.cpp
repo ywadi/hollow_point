@@ -182,13 +182,17 @@ struct HpMaterial : IHpMaterial
 // )" + token + "\n";
 }
 
-/// Renders the quad with the custom-material module already on disk.
+/// Renders the quad with @p moduleSource as its material module.
 ///
-/// Deliberately does **not** touch the scratch directory: the cooked archive
-/// lives there between calls, and a helper that wiped it would be testing
+/// Deliberately does **not** wipe the scratch directory: the cooked archive
+/// lives there between calls, and a helper that cleared it would be testing
 /// nothing.
 bool render(Device& device, const std::filesystem::path& scratch,
-            std::vector<std::uint8_t>& pixels) {
+            const std::string& moduleSource, std::vector<std::uint8_t>& pixels) {
+    {
+        std::ofstream file(scratch / "materials" / "custom.slang");
+        file << moduleSource;
+    }
     hp::Vfs::shutdown();
     if (!hp::Vfs::init(nullptr) || !hp::Vfs::mount(scratch.string())) {
         return false;
@@ -250,6 +254,28 @@ bool render(Device& device, const std::filesystem::path& scratch,
     return view.readback(device.render->context(), pixels);
 }
 
+/// Restores the process-wide switches whatever happens, **including a failed
+/// `REQUIRE`**, which unwinds straight past the end of the test.
+///
+/// This is not tidiness. Leaving `cookedShadersOnly` on leaks into every later
+/// case in the bucket, where nothing can compile and the first failure is a
+/// segfault in an unrelated file — measured once, while writing this test, and
+/// exactly the kind of cascade that makes a real failure unreadable.
+struct CookPolicyGuard {
+    ~CookPolicyGuard() {
+        hp::setCookedShadersOnly(false);
+        hp::logSetGlobalLevel(hp::LogLevel::Info);
+    }
+};
+
+/// Releases the device even when a `REQUIRE` unwinds past `tearDown`. A
+/// half-torn-down `RenderLayer` is what the next test case's `bringUp` then
+/// crashes in.
+struct DeviceGuard {
+    Device& device;
+    ~DeviceGuard() { tearDown(device); }
+};
+
 struct Rgb {
     int r = 0;
     int g = 0;
@@ -290,9 +316,9 @@ int magentaPixels(const std::vector<std::uint8_t>& rgba) {
 
 TEST_CASE("a cooked archive renders the same frame with nothing compiling") {
     Device device = bringUp();
+    DeviceGuard deviceGuard{device};
     if (!device.ok()) {
         MESSAGE("no graphics device; skipping");
-        tearDown(device);
         return;
     }
 
@@ -304,11 +330,8 @@ TEST_CASE("a cooked archive renders the same frame with nothing compiling") {
     std::filesystem::create_directories(scratch / "materials", ec);
     writeQuadGltf(scratch / "models");
     const std::string token = hp::Guid::generate().toString();
-    {
-        std::ofstream file(scratch / "materials" / "custom.slang");
-        file << redModule(token);
-    }
 
+    CookPolicyGuard policyGuard;
     CompileWatch watch;
     hp::logAddSink(&watch);
     hp::logSetGlobalLevel(hp::LogLevel::Debug);
@@ -316,12 +339,12 @@ TEST_CASE("a cooked archive renders the same frame with nothing compiling") {
     // --- 1. the cook run: compile, then seal ---------------------------------
     hp::setCookedShadersOnly(false);
     std::vector<std::uint8_t> compiled;
-    REQUIRE(render(device, scratch, compiled));
+    REQUIRE(render(device, scratch, redModule(token), compiled));
     const int compilesWhileCooking = watch.compiles();
     MESSAGE("cook run: " << compilesWhileCooking << " compile(s)");
-    // The module carries a per-run token, so its pixel shader cannot have been
-    // served from a cache another run filled. If this is ever zero the rest of
-    // the test is measuring nothing.
+    // The module carries a per-run GUID, so its pixel shader cannot have been
+    // served from a cache an earlier run filled. If this is ever zero the rest
+    // of the test is measuring nothing.
     REQUIRE(compilesWhileCooking > 0);
 
     const std::filesystem::path archive =
@@ -339,7 +362,7 @@ TEST_CASE("a cooked archive renders the same frame with nothing compiling") {
     watch.reset();
     hp::setCookedShadersOnly(true);
     std::vector<std::uint8_t> fromCook;
-    REQUIRE(render(device, scratch, fromCook));
+    REQUIRE(render(device, scratch, redModule(token), fromCook));
     const int compilesWhileShipped = watch.compiles();
 
     const Rgb centre = centreOf(fromCook);
@@ -355,11 +378,8 @@ TEST_CASE("a cooked archive renders the same frame with nothing compiling") {
     CHECK(centre.b == 0);
     CHECK(fromCook == compiled);
 
-    hp::setCookedShadersOnly(false);
-    hp::logSetGlobalLevel(hp::LogLevel::Info);
     hp::logRemoveSink(&watch);
     hp::Vfs::shutdown();
-    tearDown(device);
     std::filesystem::remove_all(scratch, ec);
 }
 
@@ -367,12 +387,12 @@ TEST_CASE("a shader the cook missed is loud and unrecoverable, not a silent fall
     // **The decision, made visible.** `Cook.hpp` would call this a cache miss
     // and re-cook; there is nothing to re-cook with. The module's text is
     // edited *after* the archive is written, so its content hash no longer
-    // matches anything in it — which is precisely the shape of a game shipping
-    // a shader change without re-running the cook.
+    // matches anything in it — which is exactly the shape of a game shipping a
+    // shader change without re-running the cook.
     Device device = bringUp();
+    DeviceGuard deviceGuard{device};
     if (!device.ok()) {
         MESSAGE("no graphics device; skipping");
-        tearDown(device);
         return;
     }
 
@@ -384,36 +404,45 @@ TEST_CASE("a shader the cook missed is loud and unrecoverable, not a silent fall
     std::filesystem::create_directories(scratch / "materials", ec);
     writeQuadGltf(scratch / "models");
     const std::string token = hp::Guid::generate().toString();
-    {
-        std::ofstream file(scratch / "materials" / "custom.slang");
-        file << redModule(token);
-    }
+    const std::string good = redModule(token);
 
+    CookPolicyGuard policyGuard;
     CompileWatch watch;
     hp::logAddSink(&watch);
     hp::logSetGlobalLevel(hp::LogLevel::Debug);
-
     hp::setCookedShadersOnly(false);
+
+    // --- the cook run has to cook *everything the content needs* -------------
+    // **Including the fallback**, and getting that wrong is what this comment
+    // is for. The first version of this test cooked only the good module and
+    // then asserted the fallback appeared when the module went missing — which
+    // passed for a while purely because an earlier test in the bucket had left
+    // the fallback's variant in the shared developer cache, and failed the
+    // moment a source change invalidated it. A cook that has never rendered the
+    // fallback cannot ship it, and then the missed variant produces *no draw at
+    // all* rather than magenta. So the broken module is rendered first, on
+    // purpose: it is what makes the fallback a cooked variant.
+    std::vector<std::uint8_t> viaFallback;
+    REQUIRE(render(device, scratch, "struct HpMaterial : IHpMaterial { this does not parse }\n",
+                   viaFallback));
+    REQUIRE(magentaPixels(viaFallback) > 0);
+
     std::vector<std::uint8_t> compiled;
-    REQUIRE(render(device, scratch, compiled));
+    REQUIRE(render(device, scratch, good, compiled));
 
     const std::filesystem::path archive =
         scratch / std::string(hp::kCookedShaderDirectory) /
         (std::string("test") + std::string(hp::kCookedShaderExtension));
     REQUIRE(hp::cookShaders(archive.string()));
 
-    // Change the shader after cooking. One comment is enough: the key is a
-    // content hash over the resolved source, which is the property that makes
-    // the archive honest and the property that makes this miss.
-    {
-        std::ofstream file(scratch / "materials" / "custom.slang");
-        file << redModule(token) << "// edited after the cook\n";
-    }
-
+    // --- the shipped run, against a module that changed after the cook -------
+    // One comment is enough: the key is a content hash over the resolved
+    // source, which is the property that makes the archive honest and the
+    // property that makes this a miss.
     watch.reset();
     hp::setCookedShadersOnly(true);
     std::vector<std::uint8_t> pixels;
-    REQUIRE(render(device, scratch, pixels));
+    REQUIRE(render(device, scratch, good + "// edited after the cook\n", pixels));
 
     MESSAGE("uncooked variant: " << watch.compiles() << " compile(s), " << watch.notCooked()
                                  << " unrecoverable line(s), magenta "
@@ -430,10 +459,7 @@ TEST_CASE("a shader the cook missed is loud and unrecoverable, not a silent fall
     const int centrePixels = (kSize / 2) * (kSize / 2);
     CHECK(magentaPixels(pixels) > (centrePixels * 3) / 4);
 
-    hp::setCookedShadersOnly(false);
-    hp::logSetGlobalLevel(hp::LogLevel::Info);
     hp::logRemoveSink(&watch);
     hp::Vfs::shutdown();
-    tearDown(device);
     std::filesystem::remove_all(scratch, ec);
 }

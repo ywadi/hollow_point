@@ -1309,7 +1309,11 @@ against the sky.
 
 **Decided 2026-08-05 on T0141, by the owner**: *"godot model it is"*.
 
-A game developer writes a function; the engine owns the shader `main` around it:
+A game developer writes their half; the engine owns the shader `main` around it.
+
+**Amended by D28/T0142.13 (2026-08-06): the shape below is the historical one,
+and the substance of D27 survives it unchanged.** As decided, a game wrote a
+free function against an HLSL header:
 
 ```hlsl
 #include "HpMaterial.fxh"          // the only engine header a game shader includes
@@ -1320,6 +1324,16 @@ void HpSurface(in HpSurfaceInput In, inout HpSurfaceOutput Out)
     Out.Roughness = ...;
 }
 ```
+
+What ships today is the same contract in a language that can express it (D28) —
+`HpMaterial.slang`, and a struct implementing `IHpMaterial` with `override`
+mandatory. The function-style hook is now `IHpMaterial.surface()`, whose default
+calls the engine's own `HpSurface`; **a game cannot define that free function
+any more** and has not been able to since T0142.15 put its module inside the
+engine's translation unit — a second body is
+`error[E30201]: function 'HpSurface' already has a body`, measured. Everything
+below — who includes whom, what is reserved, what the cost is — is untouched by
+that.
 
 **We include DiligentFX; they include us.**
 
@@ -1352,9 +1366,13 @@ later is easy; removing from it breaks games.
 
 - **Three shader sources, resolved in order: engine, then game, then DiligentFX.**
   Engine before game is deliberate — a project must not be able to shadow
-  `HpMaterial.fxh` and quietly redefine the contract. The consequence is that
+  `HpMaterial.slang` and quietly redefine the contract. The consequence is that
   engine and DiligentFX header names are **reserved**, which is a documented
-  constraint rather than a surprise at compile time.
+  constraint rather than a surprise at compile time. Engine names ended up
+  *enforced* rather than merely ordered (T0142.14), and the enforcement is what
+  makes the include-resolution fallback in `SlangCompiler.cpp` safe: a bare-name
+  retry can only ever reach the engine's copy of a reserved name, never a
+  mounted one.
 - **Game shaders arrive through the VFS** (D13), like any other content, while
   engine shaders are embedded in the binary (T0141). That asymmetry is what makes
   **hot reload** work for the half that needs it: a game's shader can change
@@ -1424,9 +1442,13 @@ monomorphic per pipeline, so it does not arise, but it is worth knowing.
 
 **A module system, so include order stops being a hazard.** Slang's `import`
 resolves modules from search paths, once, without the header-ordering discipline
-`#include` demands — `HpSurface.psh` currently has a comment explaining why
-`RenderPBR_Structures.fxh` must precede the generated structs, and that class of
-comment disappears. Modules also carry their own preprocessor state rather than
+`#include` demands — `HpSurface.slang` (`.psh` when this was written) carries a
+comment explaining why `RenderPBR_Structures.fxh` must precede the generated
+structs, and that class of comment disappears. **Still true as written**:
+T0142.13 made the engine's shaders Slang, and they still use `#include` rather
+than `import` — the module system is T0151.2's territory, and T0142.13 found the
+cost of the preprocessor path first-hand, in slang and Diligent resolving the
+same include differently. Modules also carry their own preprocessor state rather than
 leaking it, so one shader cannot silently change another's compilation. `slangd`
 gives the editor real completion and diagnostics over the same modules, which is
 what makes a game developer's shader authoring tolerable.
