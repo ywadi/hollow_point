@@ -35,8 +35,9 @@ namespace hp {
 
 /// Which pipeline stage a shader is compiled for.
 enum class ShaderStage : std::uint8_t {
-    /// Runs per vertex. Ours under D26, which is what makes vertex displacement
-    /// reachable (T0141.7).
+    /// Runs per vertex. **The engine's own since T0146** — `HpSurface.slang`'s
+    /// `vsMain`, which is what makes `IHpMaterial.vertex()` reachable at all
+    /// (D26, D36). It was DiligentFX's `RenderPBR.vsh` until then.
     Vertex,
 
     /// Runs per pixel. Ours under D26, and where the surface stage lives.
@@ -105,8 +106,12 @@ HP_API void createEngineShaderFactory(Diligent::IShaderSourceInputStreamFactory*
 /// transition; this is the right place for it.
 ///
 /// @param device the device to hand the bytecode to.
-/// @param name the shader's name as the source factory knows it — an engine
-///        shader such as `"HpSurface.slang"`, or a virtual path into a mount.
+/// @param name the shader's name as the source factory knows it — a virtual
+///        path into a mount, or an engine shader. **`HpSurface.slang` no longer
+///        succeeds here**: since T0146 its entry points are `vsMain` and
+///        `psMain`, and this compiles `main`. What it proves is that the
+///        compound factory resolves a name and its includes, which is exactly
+///        what a game's module needs, so that is what it is pointed at.
 /// @param stage which pipeline stage to compile it for.
 /// @returns whether it compiled **and** the device accepted it. **False is not
 ///          fatal** — the caller decides, and for a material shader that
@@ -121,7 +126,9 @@ HP_API void createEngineShaderFactory(Diligent::IShaderSourceInputStreamFactory*
 /// only the second one is the claim D26 rests on. A shader can compile in
 /// isolation and still be refused by the device once it has to agree with a
 /// vertex layout, a resource signature and a render-pass format — which is
-/// exactly the seam between our pixel shader and DiligentFX's vertex shader.
+/// exactly the seam between `HpSurface.slang`'s two halves — since T0146 both
+/// stages are the engine's, compiled from one file in one request, and the
+/// device is what reconciles them.
 ///
 /// Nothing is kept: the pipeline is released before returning. This is the same
 /// kind of validation `compileEngineShader` is, one level up, and the same seed

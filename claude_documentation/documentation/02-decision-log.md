@@ -2320,3 +2320,83 @@ pointing at the palette. Lifting it later is additive.
 
 **Revisit if** a game needs comparison samplers for its own shadow sampling, or
 if profiling shows the second commit costs more than T0161.1 measured.
+
+---
+
+## D36 — The vertex hook works in **object space**, one way, with no mode switch
+
+**Decided 2026-08-07 on T0146.2**, against Godot's two render modes, and the
+question is the one Godot answers with `world_vertex_coords` and
+`skip_vertex_transform`. The ticket's Done-when named it exactly: *"one
+decision, written, not three defaults discovered"*.
+
+**The hook receives the mesh's own position, normal and tangent in object
+space, returns them in object space, and the engine applies the transform.**
+`IHpMaterial.vertex(HpVertexInput In, inout HpVertexOutput Out)`, defaults to
+writing nothing, which is today's geometry to the bit.
+
+### Why object space and not world
+
+Object space is the space the mesh's *own* data is expressed in — normals,
+tangents, UVs, joint weights and morph deltas are all authored there — so a
+displacement composes with the mesh's authoring rather than fighting it. It is
+also the only space in which skinning, instancing and the node hierarchy
+compose: the hook runs before the transform, so a skinned mesh's hook sees the
+same coordinates the skin weights were painted against.
+
+**The reason anyone reaches for world space is supplied as an input instead.**
+`world_vertex_coords` exists because a wind field, a distance fade or a
+per-instance phase offset varies with where a surface *is*. So
+`HpVertexInput::WorldPos` (the rest world position) and
+`HpVertexInput::ObjectToWorld` (already skinned) are handed over read-only, and
+the mode has nothing left to do. The cost is nil: `WorldPos` is exactly the
+product `GLTF_TransformVertex` computes anyway, written as the same expression,
+so a hook that ignores it leaves the compiler an identical subexpression to
+eliminate — measured as a byte-identical frame across the whole gpu suite.
+
+### Why `skip_vertex_transform` is rejected outright
+
+Handing the projection to the shader breaks everything downstream that has to
+reason about the transform the engine applied:
+
+- **D33's winding.** Hardware facing equals glTF facing because the engine's
+  chain has zero reversals, and that is a property of a chain the engine owns.
+- **Motion vectors (T0111).** The previous-frame clip position is computed from
+  the same transform; a shader-owned projection has no previous frame.
+- **Culling and the shadow pass**, which bound geometry the engine believes it
+  placed.
+
+Nothing here has asked for it. If something does, it is a rung-5 concern
+(D30) — a custom pass — not a flag on the material contract.
+
+### The two rules a hook must obey, and they are enforced by nothing
+
+- **Do not invert a triangle.** Displacement composes with D33 only while a face
+  stays outward-facing; push a vertex past its neighbours and the face culls
+  away. There is no cheap check for this and none is attempted.
+- **Members do not cross the stage boundary.** The vertex and pixel stages
+  construct separate `HpMaterial` values, because they are separate
+  invocations. T0159 made every hook `[mutating]` and state *does* carry between
+  the pixel-stage hooks, which is exactly why this needs saying: the one place
+  it does not work looks identical in the source. `HpVertexOutput::Custom0` …
+  `Custom3` are the channel that does.
+
+### Custom interpolators: four fixed `float4` slots, and why not a declaration
+
+Godot lets an author declare a `varying`. This engine cannot, and the
+circularity is the same one D35 already recorded against a rename pass:
+`VSOutput` is generated per permutation by `PBR_Renderer`, reflection rides the
+compile, and what a module declares is therefore known only *after* the compile
+that would have to be told about it.
+
+So the engine appends four `float4` slots to the generated struct, **for
+custom-material permutations only** — a standard material's interpolator count
+is untouched, and that is half of what makes its output byte-identical. A
+module pays for all four whether it writes them or not; unwritten slots arrive
+as zero. Sized against the 2026-08-06 capability audit, where no technique
+wanted more than three.
+
+**Revisit if** a technique needs more than four, or if the always-on cost shows
+up on dense geometry. Both are additive, and both belong with T0151's variant
+work, which is the ticket that already owns "what may become a permutation
+axis".

@@ -8,6 +8,7 @@
 | **Phase** | 7 — Content pipeline |
 | **Order** | 740 |
 | **Created** | 2026-08-02 |
+| **Refs** | **T0146** ([../completed/0146-vertex-stage-hook.md](../completed/0146-vertex-stage-hook.md)) — **the vertex shader is the engine's now, and the joint-palette block is already mirrored into it.** `HpSurface.slang`'s `transformVertex` carries `HpGetJointMatrix` and the four-weight blend for both `JOINTS_BUFFER_MODE_UNIFORM` and `_STRUCTURED`, guarded by `#if MAX_JOINT_COUNT > 0 && USE_JOINTS`. **It compiles in no permutation today** — `drawModel` never sets `PSO_FLAG_USE_JOINTS`, because its vertex-flag walk maps `NORMAL`, `TEXCOORD_0/1`, `COLOR_0` and `TANGENT` and not joints — so this ticket's first render is also that block's first compile, and it must be treated as unverified code rather than as working code. The draw path needs `PSO_FLAG_USE_JOINTS` in `vertexFlags` and in `kFeatureMask`, `InitCommonSRBVars`' joint buffer bound, and `Transforms.JointCount`/`FirstJoint` written; the shader side should need nothing. T0146 was sequenced before this ticket for exactly this reason |
 
 ## Why
 

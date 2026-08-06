@@ -44,7 +44,8 @@ owning ticket.
 | Game-declared parameters | **Y** — `cbuffer HpMaterialParams` with author-named fields, valued by `.hpmat`, hinted by `[HpRange]`/`[HpColor]`/`[HpTooltip]` (2026-08-06, T0160). float/2/3/4, int, bool; 256 bytes | — |
 | Game-declared textures | **Y** — author-named `Texture2DArray` globals at any count, reflected into a per-module resource signature and bound by `.hpmat` under the author's names (2026-08-07, T0161, D35). Cost measured before commitment: 34 ns/draw (161.1). **The one deliberate limit is sampler *state***: modules sample through the engine's six-name immutable palette (`HpSamplerLinearWrap` …), and a module's own `SamplerState` is refused by name. `HpTexture0`…`3` remain as deprecated declarations | — |
 | Light access | **P** — readable since D27's amendment (2026-08-06, T0159): `g_Frame.Lights[]` is in scope, **but its order is unspecified for directional lights** (unstable sort on equal keys — pick by intensity, never index). Replacing the loop is T0145 | T0145 |
-| Vertex hook | **–** | T0146 |
+| Vertex hook | **Y** — `IHpMaterial.vertex()`, object space in and out (2026-08-07, T0146, D36). The engine owns the vertex `main`; `HpVertexInput` carries the mesh's own position, normal, tangent, UVs and colour plus the **rest world position**, the object-to-world matrix, the camera position and `Time`. `HpVertexOutput` takes displaced geometry, rewritten UVs and vertex colour. Godot's `skip_vertex_transform` is refused, and D36 says why | — |
+| Custom interpolators | **P** — four fixed `float4` slots, `HpVertexOutput::Custom0` … `Custom3` in and `HpSurfaceInput::Custom0` … `Custom3` out (2026-08-07, T0146.4). **Not a declaration**: `VSOutput` is generated per permutation and reflection rides the compile, so the count cannot depend on the module — D36 records the circularity. Present only in custom-material permutations; unwritten slots read zero | (widening: T0151) |
 | Screen resources (depth, scene colour, fed textures) | **–** | T0147 |
 | Time / frame counter | **P** — `HpSurfaceInput::Time` landed 2026-08-06 (T0159): the caller's clock reaches shaders through every render path. The *frame counter* (`uiFrameIndex`) is still only zeroed, never written | (frame counter: unowned) |
 | Per-instance data | **–** — layout exists, bytes undefined. Explicitly *not in scope* on T0160, which recorded the trigger: `PBRPrimitiveAttribs::CustomData` is the place, the write is skipped when null and the engine passes null | (unowned) |
@@ -60,14 +61,15 @@ owning ticket.
 | **World-aligned masks, game triplanar** | nothing | *expressible today* |
 | **Anisotropy, sheen, clearcoat, skin** | the light loop, extended features (the real tangent landed — zero only when the mesh has none, `w` always +1) | T0145, T0143 |
 | **Rim / Fresnel / unshaded** | nothing | *expressible today* |
-| **Vertex motion** — wind, sway, billboarding, displacement, morph, per-instance | a vertex stage that does not exist | **T0146 — zero of six expressible** |
+| **Vertex motion** — wind, sway, billboarding, displacement, morph | nothing — the vertex stage landed 2026-08-07 (T0146). Sway is the rock cube sample's worked example; billboarding has `In.CameraPos`; morph deltas need a buffer the mesh format does not carry (T0041's neighbourhood) | *five of six expressible today* |
+| **Vertex motion** — per-instance offsets | per-instance data, which is still undefined bytes in `PBRPrimitiveAttribs::CustomData` | (unowned — see the per-instance row above) |
 | **Transparency** — dissolve, fade | nothing — a dissolve threshold and a fade factor are declared parameters (T0160), and `In.Time` drives them | *expressible today* |
 | **Transparency** — refraction, decals, dithered LOD | scene colour, per-instance data, a LOD system | T0147, T0039/T0040 |
 | **Screen-space** — soft particles, heat haze, frosted glass, fog-of-war | bound screen resources | **T0147** |
 | **Time-driven** — scrolling, flowmaps, pulsing emissive | nothing — `In.Time` landed on T0159 and a flowmap's texture is a declared slot (T0160) | *expressible today* |
 | **NPR** — cel, hatching, custom BRDF | the light loop | **T0145** |
 | **NPR** — ramp lighting | the light loop (the ramp texture itself is a declared slot since T0160) | **T0145** |
-| **NPR** — outlines | a vertex stage and a second pass | T0146, T0148 |
+| **NPR** — outlines | a second pass (the vertex stage landed 2026-08-07, T0146: an inverted-hull shell is `Out.Position += In.Normal * width`) | **T0148** |
 
 ---
 
@@ -98,9 +100,16 @@ thing the audit produced:
 
 ### (c) It does not exist — real work
 
-A D27-clean light (T0145), screen resources (T0147), a vertex hook and custom
-interpolators (T0146), an instancing path, a LOD fade factor, motion vectors,
-`ShadowFactor` / `Visibility` / `AmbientOcclusionIBL` (T0086 / T0093 / T0087).
+A D27-clean light (T0145), screen resources (T0147), an instancing path, a LOD
+fade factor, motion vectors, `ShadowFactor` / `Visibility` /
+`AmbientOcclusionIBL` (T0086 / T0093 / T0087).
+
+~~A vertex hook and custom interpolators~~ — **landed 2026-08-07 (T0146,
+D36)**, and it was the largest remaining item after declared parameters: the
+vertex family was the only one in the table with **zero** of six techniques
+expressible, and the reason was that there was nothing to expose — the vertex
+`main` was DiligentFX's and had no hook at any setting. Building the stage was
+the work; the hook itself is one line inside it.
 
 ~~Declared parameters~~ — **landed 2026-08-06 (T0160)**, and it was the largest
 single item on this list: it appeared in the "blocked on" column of ~13 of the
@@ -212,4 +221,8 @@ Recorded because an overstated document is worse than an open question.
 - **Shader hot reload is traced, not executed.** The chain analysis says it does
   not work; no live edit-while-running session was performed.
 - The permutation multiplier once surface, lighting and vertex modules can vary
-  independently — undesigned, so uncounted.
+  independently — undesigned, so uncounted. **The vertex half of that question
+  is now answered and the answer is 1** (T0146): a game's vertex hook is a
+  method on the *same* module as its surface hooks, compiled from the same
+  file in the same request, so it adds no axis at all. What remains open is
+  the lighting module (T0145).

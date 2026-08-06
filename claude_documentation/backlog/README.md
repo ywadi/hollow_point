@@ -20,11 +20,34 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-07 — twenty-second revision: `T0161` closed the same day it took
-the top, and a game module's resources are its own.** The sequence stays one
-thing: *give game developers full power over shaders*.
+**Set 2026-08-07 — twenty-third revision: `T0146` closed the same day it took
+the top, and the last stage that was Diligent's is the engine's.** The sequence
+stays one thing: *give game developers full power over shaders*.
 
-T0161 landed whole: a module declares `Texture2DArray detailAlbedo;` under its
+T0146 landed everything but its tessellation deferral. The vertex `main` is
+`vsMain` in `HpSurface.slang` — the orchestration ours, `GLTF_TransformVertex`
+still theirs — and `IHpMaterial.vertex()` is the hook Godot developers use
+most. **D36** decides the space once: object space in and out, with the rest
+world position and the object-to-world matrix supplied as *inputs* so
+`world_vertex_coords` has nothing left to do, and `skip_vertex_transform`
+refused because it breaks D33's winding, T0111's motion vectors and culling
+alike. Custom interpolators exist as **four fixed `float4` slots** (a
+declaration is unreachable: reflection rides the compile), present only in
+custom-material permutations, so a standard material's output is
+byte-identical — verified by diffing every numeric line the gpu suite prints,
+where the rock cube still covers 18.079% at variation 26.7341 and all three
+parallax baselines still read `no-height vs zero-scale: 0`. Both stages now
+compile from one file in **one** request: 2 → 1 requests per pipeline, and a
+like-for-like cold-compile run went 54.22 s → **51.60 s** (the
+most-permutations case 8.12 → **7.46 s**) — a slice of 142.6's 2–4x, not the
+2–4x, because the vertex stage's translation unit got much bigger at the same
+time. The rock cube leans as it turns, which is the contrast the sample now
+makes in one frame: relief from the pixel stage, silhouette from the vertex
+stage. **The vertex family went from zero of six expressible to five of six**;
+the sixth is per-instance offsets, which wants per-instance data nobody owns.
+
+Previously — the twenty-second revision: `T0161` closed the same day it took
+the top, and a game module's resources are its own. T0161 landed whole: a module declares `Texture2DArray detailAlbedo;` under its
 own name at any count, the engine reflects the compiled shader and builds a
 per-module resource signature by subtracting its own names, and the `.hpmat`
 binds by the author's names. The gate was measured before the design was
@@ -158,9 +181,8 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0146](open/0146-vertex-stage-hook.md) | the vertex stage hook | **Zero of six techniques expressible.** Wind, foliage sway, billboarding, displacement, morph targets, per-instance offsets — the only family with an empty intersection. We use DiligentFX's vertex shader as-is, so there is no hook to open; this one is built, not exposed. Also carries custom interpolators, which every future per-vertex technique needs |
-| 2 | [T0147](open/0147-engine-intermediates-for-shaders.md) | screen resources for shaders | Refraction, soft particles, heat haze, fog-of-war. A shader cannot sample a depth buffer that is not bound to the pipeline, whatever it includes — so this is binding work, not contract work |
-| 3 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | the light loop | **The whole NPR family** — cel, ramp, hatching, custom BRDFs — plus skin, sheen and anisotropy's shading half. T0159 lets a game *read* lights; this lets it replace the loop. **Must land after T0159**, or its interface freezes before hooks are mutable and the break is paid twice |
+| 1 | [T0147](open/0147-engine-intermediates-for-shaders.md) | screen resources for shaders | Refraction, soft particles, heat haze, fog-of-war. A shader cannot sample a depth buffer that is not bound to the pipeline, whatever it includes — so this is binding work, not contract work |
+| 2 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | the light loop | **The whole NPR family** — cel, ramp, hatching, custom BRDFs — plus skin, sheen and anisotropy's shading half. T0159 lets a game *read* lights; this lets it replace the loop. **Must land after T0159**, or its interface freezes before hooks are mutable and the break is paid twice |
 
 Then, unchanged in substance and pushed behind the above: `T0143` (extended
 material features), `T0152` (the winding remainder), `T0045` (culling and render
@@ -307,7 +329,7 @@ wrong in the confident voice of a document that is normally right.
 | 455 | [T0141](completed/0141-custom-shader-materials.md) | The surface stage: standard and custom material shaders | 4 — Render layer | ✅ DONE | High | Complex |
 | 460 | [T0096](open/0096-hdr-pipeline-and-tonemapping.md) | HDR pipeline, tonemapping and the linear-workflow policy | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 445 | [T0151](open/0151-shader-variants-and-compile-cost.md) | Shader variants bounded: precompiled modules, link-time specialisation | 4 — Render layer | 🔜 TODO | Medium | Moderate |
-| 456 | [T0146](open/0146-vertex-stage-hook.md) | The vertex stage: own the vertex main, and a game vertex hook | 4 — Render layer | 🔜 TODO | High | Moderate |
+| 456 | [T0146](completed/0146-vertex-stage-hook.md) | The vertex stage: own the vertex main, and a game vertex hook | 4 — Render layer | ✅ DONE | High | Moderate |
 | 458 | [T0147](open/0147-engine-intermediates-for-shaders.md) | Engine intermediates: scene depth, scene colour, game-fed inputs | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 459 | [T0152](inprogress/0152-winding-convention.md) | The winding convention: hardware facing equals glTF facing | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
 | 460 | [T0153](open/0153-surface-detiling.md) | Surface de-tiling: breaking texture repetition, exposed to the game | 4 — Render layer | 🔜 TODO | Medium | Moderate |
