@@ -93,7 +93,8 @@ across is ~2× *and* is exactly where rock must look like rock.
       the trivial case and proving it there proves little *(2026-08-06 — a
       33×33 gaussian-hill heightfield, no UVs; zero-scale 0.0, displaced 3.35
       (RTX) / 3.46 (llvmpipe) mean abs per channel with half the frame sky)*
-- [ ] **What is not delivered is written down**, 156.6 included
+- [x] **What is not delivered is written down**, 156.6 included *(2026-08-06
+      — the "Not delivered, and why" note below)*
 
 ## Subtasks
 
@@ -123,14 +124,19 @@ across is ~2× *and* is exactly where rock must look like rock.
       one quality risk that is specific to this combination *(2026-08-06 —
       characterised, then **accepted**; measurements and the argument against
       both mitigations in notes)*
-- [ ] 156.5 **The interface question**, shared with T0153.1: this is another
+- [x] 156.5 **The interface question**, shared with T0153.1: this is another
       multi-tap surface technique, and `surfaceCoordinates` (141.7) expresses a
       *coordinate transform*, not a multi-tap blend. Decide with 153.1 rather
       than separately, and reference both ways — two tickets inventing two seams
-      for the same shape is the outcome to avoid
-- [ ] 156.6 **Evaluate silhouette POM** — see below. **Evaluation, not
+      for the same shape is the outcome to avoid *(2026-08-06 — **decided as
+      one seam, written into 153.1 as its implementation contract**, with the
+      back-reference in T0153's Refs. See "156.5 decided" in notes)*
+- [x] 156.6 **Evaluate silhouette POM** — see below. **Evaluation, not
       implementation**; the output is a recommendation with numbers and a
-      decision recorded either way
+      decision recorded either way *(2026-08-06 — evaluated against current
+      sources and this engine's own measurements: **recommendation against**,
+      T0146.7's trigger stands reinforced, both tickets updated. See "156.6
+      evaluated" in notes)*
 - [x] 156.7 **Measure on a terrain-shaped surface**, not the cube *(2026-08-06
       — the heightfield case above, PPMs in `test-frames/triplanar_terrain_*`)*
 
@@ -313,6 +319,112 @@ artefact this characterisation missed.
   plausibly.** The first three-axis quad was nearly edge-on through the
   camera plane; `covered > 0` is now asserted per mode.
 
+### 156.5 decided 2026-08-06 — one seam, at the tap, and this ticket stays out of the contract
+
+**The observation that settles it**: triplanar(+parallax) and de-tiling are
+the *same shape at different levels*. Both map one logical sample onto N
+physical taps blended by weights — triplanar fans one fragment into three
+projected sites; de-tiling fans one site into 3–4 offset taps. The seam they
+share is therefore at the **logical tap**: a method that answers "fetch one
+logical sample at this coordinate with these gradients", whose default is a
+single `SampleGrad` and whose de-tiled overrides are the tiers. Coordinate
+decisions (`surfaceCoordinates`, the triplanar basis and its marches) stay
+*above* the seam, and so does blending logical taps (the triplanar weights) —
+which is exactly why the two techniques compose without knowing about each
+other: 3 live axes × 3 de-tile taps is 153.6's nine-samples number, arrived
+at structurally.
+
+**The decision is recorded as 153.1's implementation contract** — signature
+constraints included (resource params, explicit gradients, slice,
+`exp2(mipBias)` folding, and the slangc static-specialisation check to run
+before committing to resource-typed interface parameters). **This ticket adds
+nothing to `IHpMaterial`**: a sampling seam with no de-tiling behind it would
+violate the contract's own "nothing is exposed before the system behind it
+exists" rule, so the marches live in the standard material's private helpers
+— already shaped as "N logical taps through one fetch expression"
+(`HpTriplanarSample`), so routing them through the seam when T0153 lands is
+mechanical. Two tickets, one seam, referenced both ways: the outcome 156.5
+existed to avoid is avoided.
+
+### 156.6 evaluated 2026-08-06 — silhouette POM: recommendation against, and the trigger it reinforces
+
+**Method.** A web-research pass over the primary literature, current hardware
+evidence and shipping engines (sources below), anchored by this ticket's own
+measurements of the march it would extend. The prior-art cost conclusions are
+all 2005–2010 and were treated as suspect per the brief; what follows
+distinguishes measured from asserted throughout.
+
+**The recommendation: do not build it. Tessellation (T0146.7) remains the
+silhouette answer, and its trigger stands — reinforced, because this
+evaluation closes the possible pixel-shader escape hatch behind it.**
+
+The grounds, in the order they decide it:
+
+1. **It does not compose with triplanar, which is this ticket's whole
+   subject.** Every silhouette-capable variant marches **one** height field
+   in **one** parametrisation against the true surface boundary — Policarpo
+   & Oliveira's quadric-fit relief mapping (I3D 2006), Dachsbacher &
+   Tatarchuk's per-triangle prisms (SI3D 2007), the shell-mapping and
+   quadtree families. Triplanar has no such field: its surface is a weighted
+   superposition of three height fields whose weights vary across exactly
+   the geometry a silhouette crosses, so "where does the ray exit the
+   surface" has no single well-defined answer. The research found **no
+   published work combining the two** — only one practitioner thread
+   asserting artefacts and ~3× cost, reported as opinion, with no
+   counter-example anywhere. The one recent production "POM silhouette"
+   (Crimson Desert, GDC 2025) is a UV-bounds opacity-mask hack —
+   definitionally unavailable to a projection that has no UV bounds.
+2. **The real cost lands on everything drawn behind, and terrain is the
+   worst surface to pay it on.** The mechanism is `discard`: current,
+   measured evidence (therealmjp, April 2025, RDNA3; AMD's live RDNA guide
+   says avoid `discard` outright) shows it *degrades* hierarchical-Z for the
+   draw rather than fully disabling early-Z — ~32% more pixel-shader
+   invocations in the measured front-to-back scene, **even when no pixel is
+   ever discarded**. Terrain is the scene's dominant occluder; making its
+   draw hostile to depth culling taxes the whole frame. **Not measured on
+   this engine**, stated plainly: a meaningful local measurement needs an
+   occlusion-heavy scene and belongs to T0045's queues if it is ever
+   worth building; the engine already avoids `discard` on opaque draws for
+   this reason (the alpha-mask cutout is compile-time gated, argued in
+   `HpSurface.slang`).
+3. **Shell/prism variants add geometry work that overlaps tessellation's
+   without its generality** — per-triangle prism extrusion is vertex/
+   pre-rasteriser machinery (T0146's territory) plus overdraw that the
+   literature costs only as "longer rendering times" (no modern numbers
+   exist; recorded as a gap, not glossed), and a shell does not LOD away
+   with distance the way tessellation does.
+4. **Nobody ships it for this problem.** CryEngine alone ships true
+   silhouette POM, gated to its very-high tier and documented as heavier
+   than POM; Unreal documents its POM node as *unable* to break silhouettes
+   and answers with Nanite runtime tessellation + displacement (UE5.4, GDC
+   2024); Unity HDRP and Godot 4 ship nothing silhouette-correct; Far Cry
+   5's terrain builds real cliff geometry. Converging circumstantial
+   evidence, not a stated consensus — but it all points one way.
+5. **This engine's own numbers anchor the baseline** (the cost table above):
+   the in-surface march costs 0.066–1.25 ns/px on the RTX 4070 depending on
+   grazing. A silhouette variant multiplies the marched area (a shell is
+   fatter than the surface), lengthens each march (past the boundary), and
+   adds the culling tax — against a terrain silhouette that tessellation
+   changes at geometry rates which LOD with distance.
+
+**Consequence for T0146.7, recorded there with the back-reference**: the
+trigger's wording stands — *when a silhouette must change at a density the
+mesh does not carry* — and the evaluation coming back negative means the
+pressure behind it is real: there is no cheaper pixel-shader answer waiting.
+Whoever hits the trigger should not reopen silhouette POM without new
+evidence (a published triplanar-compatible formulation, or hardware that
+makes `discard` free).
+
+**Sources** (full survey in the session's research report): Policarpo &
+Oliveira I3D 2006; Dachsbacher & Tatarchuk SI3D 2007; Jeschke et al. EGSR
+2007; Drobot, GPU Pro 1 (2010); therealmjp, "To Early-Z, or Not To Early-Z"
+(Apr 2025, RDNA3-measured); AMD GPUOpen RDNA Performance Guide; CryEngine
+docs (Silhouette POM); Epic forums + UE5.4 GDC 2024 (Nanite tessellation);
+Unity HDRP POM node docs; 80.lv on Crimson Desert (GDC 2025); GDC 2018 Far
+Cry 5 terrain talks. All primary silhouette-POM papers predate current
+hardware by a decade-plus and none has a modern re-benchmark; that absence
+is part of the finding.
+
 ### What this does *not* interact with, checked rather than assumed
 
 **The normal map stays ignored under triplanar** (141.8's recorded decision)
@@ -326,6 +438,35 @@ checked: `loadTexture`'s sRGB decode of height maps (141.7's known issue,
 T0097's territory) warps the height curve identically for the UV and
 triplanar marches — monotonic, so displacement direction and every
 differential assertion here are unaffected.
+
+### Not delivered, and why — so nothing here is discovered as a gap later
+
+- **Silhouette POM** — evaluated (156.6) and recommended against; a POM
+  cliff still has a straight edge against the sky, and the answer to that
+  remains T0146.7's tessellation, whose trigger this ticket reinforced.
+- **The tap-level sampling seam on `IHpMaterial`** — decided (156.5) but
+  deliberately not added: nothing consumes it before de-tiling's first tier,
+  and the contract exposes nothing before the system behind it exists.
+  T0153.1 implements the decision as written there.
+- **A local measurement of the `discard`/early-Z tax** — cited from current
+  external measurement instead (156.6); a meaningful local one needs an
+  occlusion-heavy scene and belongs with T0045's queues if it is ever worth
+  building.
+- **Normal-map response under triplanar** — unchanged from 141.8's recorded
+  decision: the relief shows in the displaced colour-like maps, not in the
+  lighting response, because the normal map is still ignored in triplanar
+  mode. The marched UVs are exactly the coordinates per-plane reorientation
+  will want when something needs it.
+- **Per-axis or authorable knobs** — one `heightScale` serves all three
+  projections (documented as projection units on the field), and the 1%
+  early-out floor is a shader constant. Neither has a consumer asking for
+  more.
+- **Not separately verified**: the lit path with parallax-under-triplanar has
+  no pixel test of its own — the measurements here are unlit *by design*, so
+  every differing pixel is a displaced texel. The lit path consumes the same
+  displaced samples through the same getters, and the standard material's
+  lit correctness is 141.10/141.11's territory; a lit-parallax-specific
+  assertion would smuggle the lighting response into a displacement claim.
 
 ### Why this was not simply part of 141.8
 

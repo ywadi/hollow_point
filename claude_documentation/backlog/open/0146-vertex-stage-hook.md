@@ -99,7 +99,16 @@ compile (142.6), on top of the capability.
       `PBR_Renderer` creates no hull or domain shaders at all, so this is new
       **pipeline** work rather than new shader code — which is why it lands
       here, where the pre-rasteriser stages become the engine's, and not on the
-      ticket that happens to want it first
+      ticket that happens to want it first.
+      **T0156.6's silhouette-POM evaluation came back negative (2026-08-06)**,
+      so this trigger is the *only* silhouette answer and the pressure behind
+      it is real: silhouette POM does not compose with triplanar (no single
+      height field to march), its `discard` degrades hierarchical-Z for
+      everything drawn behind — terrain being the scene's dominant occluder —
+      and nobody ships it for this problem (Unreal's answer is Nanite runtime
+      tessellation; CryEngine gates its version to the very-high tier). The
+      full evaluation with sources and this engine's march-cost anchors is on
+      T0156's notes; do not reopen silhouette POM without new evidence
 
 ## Inherited from T0141, 2026-08-06 — tessellation, and a trigger that needed sharpening
 
@@ -135,6 +144,10 @@ does not carry.** Two things would pull it in — T0155's LOD scheme choosing
 tessellation, and T0156.6's silhouette-POM evaluation coming back negative
 (if pixel-shader silhouettes work, the pressure drops; if they do not, this is
 the remaining answer). Both tickets say so on their own side.
+**The second of those has now happened**: 156.6 evaluated silhouette POM on
+2026-08-06 and recommended against it — see 146.7's subtask text for the
+short form and T0156's notes for the full evaluation. This ticket's
+tessellation is the remaining answer to silhouettes past mesh density.
 
 **What T0141 established and this inherits unchanged:** tessellation is
 reachable *only* because D26 chose C2 — we own PSO creation. C1 (patching

@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 460 |
 | **Created** | 2026-08-06 |
-| **Refs** | [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — **141.8's triplanar is what makes this urgent**, and 141.7's `surfaceCoordinates` is the hook that turns out *not* to reach it; [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md) — the seam is an `IHpMaterial` method, so D28's interface-with-defaults is the mechanism; [0097-texture-import-pipeline.md](0097-texture-import-pipeline.md) — **the good tier needs an import-time transform**, see 153.5; [0151-shader-variants-and-compile-cost.md](0151-shader-variants-and-compile-cost.md) — each tier is a permutation axis and its cost lands there; [0149-style-bundles.md](0149-style-bundles.md) — a style names a de-tiling default; **D26**, **D27**, **D30** rung 2 ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) |
+| **Refs** | [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — **141.8's triplanar is what makes this urgent**, and 141.7's `surfaceCoordinates` is the hook that turns out *not* to reach it; [0156-parallax-under-triplanar.md](../inprogress/0156-parallax-under-triplanar.md) — **156.5 decided 153.1's seam shape with this ticket** (one per-logical-tap sampling seam, coordinates above it, blends above it — see 153.1) and its `HpTriplanarSample` is the fan-out that must route through the seam once it exists; [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md) — the seam is an `IHpMaterial` method, so D28's interface-with-defaults is the mechanism; [0097-texture-import-pipeline.md](0097-texture-import-pipeline.md) — **the good tier needs an import-time transform**, see 153.5; [0151-shader-variants-and-compile-cost.md](0151-shader-variants-and-compile-cost.md) — each tier is a permutation axis and its cost lands there; [0149-style-bundles.md](0149-style-bundles.md) — a style names a de-tiling default; **D26**, **D27**, **D30** rung 2 ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) |
 
 ## Why
 
@@ -74,12 +74,34 @@ tier.**
 
 ## Subtasks
 
-- [ ] 153.1 **Decide the seam** — a sampling override on `IHpMaterial`, since
-      `surfaceCoordinates` cannot express a multi-tap blend. This is a contract
-      widening under D27 and it is the ticket's real decision. **First, before
-      any tier.** Write down what the method signature must carry (sampler,
-      coordinate, gradients — a de-tiled sample must use `SampleGrad`, because
-      the per-cell offset breaks the implicit derivative and produces seams)
+- [ ] 153.1 **Implement the seam — its *shape* is already decided, with
+      T0156.5 (2026-08-06), so implement that decision rather than reopening
+      it.** One per-logical-tap sampling method on `IHpMaterial`: it carries
+      the texture and sampler, the coordinate, the **explicit screen-space
+      gradients** for that coordinate, and the array slice; its default is a
+      single `SampleGrad`; de-tiling tiers replace how *one logical tap* is
+      fetched. The layering rule that makes the techniques compose:
+      **coordinate decisions stay above the seam** (`surfaceCoordinates` for
+      UV materials, the triplanar basis and its per-axis parallax marches for
+      triplanar ones), **and so does blending logical taps** (triplanar's
+      weights). T0156 proved the layering from above: its `HpTriplanarSample`
+      is already exactly "N logical taps through one fetch expression", so
+      when this seam lands, its three `SampleGrad` calls route through it
+      mechanically and de-tiling under triplanar-with-parallax needs no
+      special case — 153.6's nine-taps number is this composition, and
+      T0156's sub-1% weight floor already trims it to live axes only.
+      Constraints T0156 paid to learn: `SampleGrad` is mandatory on both
+      sides of the seam (marched coordinates *and* per-cell offsets break the
+      implicit derivative); fold the frame mip bias in as `exp2(mipBias)` on
+      both gradients, which T0156 measured as exact; and verify on the pinned
+      slangc that an interface method taking resource-typed parameters
+      specialises statically — if it does not, the fallback is per-slot
+      methods, argued then, not silently.
+      **Why T0156 did not add the seam itself**: nothing consumes it before
+      the first tier exists, and the contract's own rule (D27, restated in
+      `docs/shaders/index.md`) is that nothing is exposed before the system
+      behind it — so T0156's marches live in the standard material's private
+      helpers, shaped for this seam but not published as it
 - [ ] 153.2 **Tier 1, macro variation** — the cheap win, and the one that ships
       as a sane default
 - [ ] 153.3 **Tier 2, stochastic offset** — hex or grid cells, per-cell offset
