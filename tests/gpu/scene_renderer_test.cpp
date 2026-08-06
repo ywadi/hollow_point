@@ -206,8 +206,7 @@ void exerciseSceneView(hp::RenderBackend backend, const char* backendName) {
 
         hp::SceneViewStats stats;
         Diligent::ITextureView* published =
-            sceneView.render(device.render->context(), scene, pool,
-                             device.render->clipSpace(), 0, &stats);
+            sceneView.render(device.render->context(), scene, pool, 0, &stats);
 
         CHECK_FALSE(stats.hadCamera);
         CHECK(stats.submitted == 0);
@@ -224,8 +223,7 @@ void exerciseSceneView(hp::RenderBackend backend, const char* backendName) {
 
         hp::SceneViewStats stats;
         Diligent::ITextureView* published =
-            sceneView.render(device.render->context(), scene, pool,
-                             device.render->clipSpace(), 0, &stats);
+            sceneView.render(device.render->context(), scene, pool, 0, &stats);
 
         CHECK(stats.hadCamera);
         CHECK(stats.considered == 0);
@@ -246,8 +244,7 @@ void exerciseSceneView(hp::RenderBackend backend, const char* backendName) {
 
         hp::SceneViewStats stats;
         Diligent::ITextureView* published =
-            sceneView.render(device.render->context(), scene, pool,
-                             device.render->clipSpace(), 0, &stats);
+            sceneView.render(device.render->context(), scene, pool, 0, &stats);
 
         CHECK(stats.hadCamera);
         CHECK(stats.considered == 1);
@@ -267,8 +264,7 @@ void exerciseSceneView(hp::RenderBackend backend, const char* backendName) {
 
         hp::Scene scene;
         scene.propagateTransforms();
-        CHECK(sceneView.render(device.render->context(), scene, pool,
-                               device.render->clipSpace()) != nullptr);
+        CHECK(sceneView.render(device.render->context(), scene, pool) != nullptr);
     }
 
     SUBCASE("the published texture is a shader resource, so a viewport can sample it") {
@@ -279,7 +275,7 @@ void exerciseSceneView(hp::RenderBackend backend, const char* backendName) {
         hp::Scene scene;
         scene.propagateTransforms();
         Diligent::ITextureView* published =
-            sceneView.render(device.render->context(), scene, pool, device.render->clipSpace());
+            sceneView.render(device.render->context(), scene, pool);
         REQUIRE(published != nullptr);
         CHECK(published == sceneView.colour());
     }

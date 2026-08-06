@@ -126,8 +126,6 @@ struct Frustum {
 ///        own scene, so none is passed separately.
 /// @param targetWidth render target width in pixels. Must be positive.
 /// @param targetHeight render target height in pixels. Must be positive.
-/// @param clip the device's clip-space convention, from
-///        `RenderLayer::clipSpace()`.
 /// @param viewOffset an additive world-space offset applied to the camera's
 ///        world transform *after* resolution (81.9) — shake, recoil, or a blend.
 ///        Identity by default. **This is the seam that keeps camera shake out of
@@ -136,7 +134,7 @@ struct Frustum {
 /// @returns the resolved view, or nothing when the entity has no `Camera`, no
 ///          `WorldTransform`, or the target size or lens is unusable.
 [[nodiscard]] HP_API std::optional<ResolvedView> buildView(Entity entity, int targetWidth,
-                                                           int targetHeight, ClipSpace clip,
+                                                           int targetHeight,
                                                            const float4x4& viewOffset =
                                                                float4x4::Identity());
 
@@ -167,12 +165,12 @@ struct Frustum {
 ///
 /// Works for any projection this engine produces, including reverse-Z, because
 /// it is derived from the matrix rather than from the lens — which is also why
-/// it does not need to know which convention built it.
+/// it does not need to know which convention built it. The near plane is
+/// formed for the [0, 1] clip space, which is the only one the engine has
+/// since T0144.3.
 /// @param viewProjection a combined view-projection matrix.
-/// @param clip the device's clip-space convention, which decides how the near
-///        plane is formed.
 /// @returns the frustum, with normals pointing inwards and planes normalised.
-[[nodiscard]] HP_API Frustum extractFrustum(const float4x4& viewProjection, ClipSpace clip);
+[[nodiscard]] HP_API Frustum extractFrustum(const float4x4& viewProjection);
 
 /// Projects a world-space point to pixel coordinates (81.7).
 ///

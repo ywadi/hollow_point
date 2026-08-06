@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 415 |
 | **Created** | 2026-08-06 |
-| **Refs** | **D28** (the decision), D26, D27, [T0141](../inprogress/0141-custom-shader-materials.md) — this supersedes how 141.1, 141.2, 141.5, 141.13 and 141.15 are built; [T0143](../open/0143-extended-material-features.md) — the extended lineup is authored in Slang once this lands; T0087, T0096, T0086 — each adds shading their own shader work must reach |
+| **Refs** | **D28** (the decision), D26, D27, **D29**/[T0144](0144-remove-opengl-backend.md) — removed the OpenGL backend and with it the single-source constraint, unblocking 142.2 and closing 142.13's GL half; [T0141](../inprogress/0141-custom-shader-materials.md) — this supersedes how 141.1, 141.2, 141.5, 141.13 and 141.15 are built; [T0143](../open/0143-extended-material-features.md) — the extended lineup is authored in Slang once this lands; T0087, T0096, T0086 — each adds shading their own shader work must reach |
 
 ## Why
 
@@ -161,10 +161,11 @@ RTX 2080 — their arithmetic, to the byte.
       duplication that hid `TextureAttribIndices` happened.
       *2026-08-06: the hand-written `.psh` is gone (it is the `.slang` file
       now), and the drift hazard specifically is gone with it — there is
-      **one source**, consumed by two compilers, never two sources. What
-      remains of this subtask is the GL backend's Diligent-HLSL *path*, which
-      cannot retire until GL can consume slang output (the resource-renaming
-      finding in notes). `HpMaterial.fxh` also remains, pending 142.2.*
+      **one source**, consumed by two compilers, never two sources.*
+      *Later the same day: the GL backend's Diligent-HLSL path retired with
+      the backend itself (D29/T0144) — slang is the only compiler the surface
+      pipeline uses. `HpMaterial.fxh` remains, pending 142.2, and
+      `hp_embed_shaders.cmake` remains pending 142.7's cooking.*
 
 ## What this changes in T0141
 
@@ -220,8 +221,9 @@ wine all resolve without help.
   today**, on naming alone, before any converter question. This is why GL
   keeps Diligent's HLSL path over the same source. The known route to closing
   it is SPIRV-Cross with a renaming pass (DiligentCore does the equivalent for
-  Vulkan: `SPIRVShaderResources.cpp` prefers slang instance names). 142.13
-  cannot fully close until this does.
+  Vulkan: `SPIRVShaderResources.cpp` prefers slang instance names).
+  *(Overtaken by D29/T0144, 2026-08-06: the GL backend was removed, so no
+  converter is needed and the GL half of 142.13 closed with it.)*
 - **The GL HLSL2GLSL converter inlines `#include` textually, before any
   preprocessing** — an include guard never runs. Including
   `HLSLDefinitions.fxh` from the shader (which slang needs first) defined
@@ -271,14 +273,19 @@ plus closing the D3D12 half against D25.
   for the process. No compile-time numbers were taken (142.6 owes them); the
   gpu suite's wall time did not visibly move.
 
-### The single-source constraint, stated so 142.2 does not trip on it
+### The single-source constraint — **lifted by T0144 (2026-08-06)**
 
-Until GL can consume slang output, `HpSurface.slang` must stay inside the
-subset both compilers accept — no `interface`, no generics, no `override` in
-*this file*. The game-facing `IHpMaterial` model (142.2) rides the slang-only
-path, which today means **custom shader materials will be Vulkan-only until
-the GL naming problem is solved**, and that constraint should be decided
-deliberately (D2 made GL the Windows fallback) rather than discovered.
+*(As originally written: until GL could consume slang output,
+`HpSurface.slang` had to stay inside the subset both compilers accept — no
+`interface`, no generics, no `override` in this file — and custom shader
+materials would have been Vulkan-only until the GL naming problem was
+solved.)*
+
+**D29 resolved this by removing the OpenGL backend entirely** (T0144): slang
+is the only compiler that ever sees the engine's shaders, so the full language
+— `interface`, defaults, `override`, generics — is available in
+`HpSurface.slang`. 142.2 is unblocked, and the "Vulkan-only custom materials"
+question is moot because Vulkan is the only backend.
 
 ### Struct inheritance is deprecated — do not build on it
 

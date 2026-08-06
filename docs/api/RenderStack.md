@@ -236,9 +236,10 @@ std::size_t render(Diligent::IRenderDevice * device, Diligent::IDeviceContext * 
  @param targets the shared frame targets, or nullptr.
  @param width target width in pixels.
  @param height target height in pixels.
- @param clip the device's clip-space convention, from
+ @param clip the device's texture-space convention, from
         `RenderLayer::clipSpace()`. Required rather than defaulted: a
-        default-constructed `ClipSpace` looks plausible and silently
-        mirrors every projection a layer builds on OpenGL.
+        default-constructed `ClipSpace` looks plausible and flips
+        nothing, which silently inverts a layer's render-to-texture
+        sampling.
  @returns how many layers actually rendered, which is what a test asserts
           on to prove `enabled` is honoured.

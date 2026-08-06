@@ -82,7 +82,7 @@ std::optional<Entity> resolveCamera(Scene & scene, std::uint8_t viewSlot)
 ## `buildView`
 
 ```cpp
-std::optional<ResolvedView> buildView(Entity entity, int targetWidth, int targetHeight, ClipSpace clip, const float4x4 & viewOffset)
+std::optional<ResolvedView> buildView(Entity entity, int targetWidth, int targetHeight, const float4x4 & viewOffset)
 ```
 
  Builds every matrix for a resolved camera.
@@ -91,8 +91,6 @@ std::optional<ResolvedView> buildView(Entity entity, int targetWidth, int target
         own scene, so none is passed separately.
  @param targetWidth render target width in pixels. Must be positive.
  @param targetHeight render target height in pixels. Must be positive.
- @param clip the device's clip-space convention, from
-        `RenderLayer::clipSpace()`.
  @param viewOffset an additive world-space offset applied to the camera's
         world transform *after* resolution (81.9) — shake, recoil, or a blend.
         Identity by default. **This is the seam that keeps camera shake out of
@@ -134,7 +132,7 @@ ViewportRect letterboxViewport(ViewportRect rect, float viewportAspect, float re
 ## `extractFrustum`
 
 ```cpp
-Frustum extractFrustum(const float4x4 & viewProjection, ClipSpace clip)
+Frustum extractFrustum(const float4x4 & viewProjection)
 ```
 
  Extracts the six world-space frustum planes from a view-projection matrix
@@ -142,10 +140,10 @@ Frustum extractFrustum(const float4x4 & viewProjection, ClipSpace clip)
 
  Works for any projection this engine produces, including reverse-Z, because
  it is derived from the matrix rather than from the lens — which is also why
- it does not need to know which convention built it.
+ it does not need to know which convention built it. The near plane is
+ formed for the [0, 1] clip space, which is the only one the engine has
+ since T0144.3.
  @param viewProjection a combined view-projection matrix.
- @param clip the device's clip-space convention, which decides how the near
-        plane is formed.
  @returns the frustum, with normals pointing inwards and planes normalised.
 
 ## `worldToScreen`

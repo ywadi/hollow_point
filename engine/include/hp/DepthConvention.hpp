@@ -40,13 +40,14 @@ namespace hp {
 ///    this).
 /// 4. The depth clear is `kDepthClearValue`, not 1.0.
 ///
-/// **And it requires a [0, 1] clip space, which is why `hp::ClipSpace` exists
-/// and why it is declared below rather than beside the device that reports it.**
-/// On a [-1, 1] clip space the depth value is remapped through the midpoint
-/// before it reaches the buffer, which throws away exactly the precision
-/// reverse-Z was bought for. The engine turns on Diligent's `ZeroToOneNDZ` and
-/// refuses an OpenGL device that cannot honour it, so the [-1, 1] case does not
-/// exist here rather than being handled by a second code path.
+/// **And it requires a [0, 1] clip space.** On a [-1, 1] clip space the depth
+/// value is remapped through the midpoint before it reaches the buffer, which
+/// throws away exactly the precision reverse-Z was bought for. Vulkan — the
+/// only backend since **D29** — clips Z to [0, 1] by specification, so this is
+/// a guarantee rather than a device query. (It used to be a query: OpenGL
+/// clips to [-1, 1] unless `glClipControl` says otherwise, and the engine
+/// carried a `minZ` field and a second projection branch to refuse or serve
+/// that case. T0144.3 removed them with the backend.)
 ///
 /// Deciding this now costs the lines below. Deciding it after T0028, T0045 and
 /// T0096 exist costs a sweep through every pipeline state and every shader that
@@ -60,38 +61,34 @@ inline constexpr bool kReverseZ = true;
 /// been drawn, everything is at infinity".
 inline constexpr float kDepthClearValue = kReverseZ ? 0.0F : 1.0F;
 
-/// The device's clip-space convention (T0130.3).
+/// The device's texture-space convention (T0130.3, simplified by T0144.3).
 ///
-/// **This is a property of the device, not of the engine, and the two backends
-/// disagree by default.** Vulkan clips Z to [0, 1]; OpenGL clips it to [-1, 1]
-/// unless `glClipControl` says otherwise, and Diligent gates that on an opt-in
-/// flag that defaults to off. The engine turns it on and refuses a device that
-/// cannot honour it, so in practice `minZ` is always 0 here — but the value is
-/// still read from the device rather than assumed, because "assumed" is how a
-/// projection matrix ends up right on one backend and mirrored on the other.
+/// This struct used to carry the clip-space Z range too (`minZ`, and a
+/// `negativeOneToOneZ()` every projection consulted), because Vulkan and
+/// OpenGL disagreed about it. D29 removed OpenGL, Vulkan's [0, 1] range is a
+/// specification guarantee, and the projection now assumes it — so what
+/// remains is the one convention that is still worth carrying around:
+///
+/// **Which way texture space runs.** `yToV` is the scale taking an NDC Y
+/// coordinate to a texture V coordinate — **-0.5 on Vulkan** (Diligent's
+/// `NDCAttribs::YtoVScale`; the magnitude is the whole 0.5 scale, not a sign).
+/// A render-to-texture pass that ignores it samples its source vertically
+/// flipped. Still read from the device rather than hardcoded, because it is
+/// the device's property and reading it is what kept the present blit right
+/// when the backends disagreed.
 ///
 /// **It lives in this header rather than next to `RenderLayer::clipSpace()`,
-/// which is where the value comes from**, because the things that must honour it
-/// are the same things that must honour reverse-Z, and several of them have no
-/// business including a swap chain to read two floats. `RenderPassContext`
-/// carries one so that a gameplay-authored layer (T0094) building its own
-/// projection cannot get it wrong by omission — and a default-constructed
-/// `ClipSpace` is deliberately *not* a usable one, since `yToV` of zero flips
-/// nothing in either direction.
+/// which is where the value comes from**, because the things that honour it
+/// sit beside the things that honour reverse-Z, and several of them have no
+/// business including a swap chain to read one float. `RenderPassContext`
+/// carries one so a gameplay-authored layer (T0094) flipping a
+/// render-to-texture pass cannot get it wrong by omission — and a
+/// default-constructed `ClipSpace` is deliberately *not* a usable one, since
+/// `yToV` of zero flips nothing in either direction.
 struct ClipSpace {
-    /// Minimum clip-space Z. 0 on Vulkan, and on OpenGL with clip control.
-    float minZ = 0.0F;
-
-    /// Scale taking an NDC Y coordinate to a texture V coordinate. **Positive
-    /// on OpenGL and negative on Vulkan** — the two disagree about which way
-    /// texture space runs, which is why a render-to-texture pass that ignores
-    /// this comes out vertically flipped on exactly one of them.
+    /// Scale taking an NDC Y coordinate to a texture V coordinate. -0.5 on
+    /// Vulkan.
     float yToV = 0.0F;
-
-    /// @returns whether clip-space Z runs [-1, 1] rather than [0, 1]. This is
-    ///          the argument every Diligent projection helper takes, so it is
-    ///          spelled the way they spell it.
-    [[nodiscard]] constexpr bool negativeOneToOneZ() const { return minZ < 0.0F; }
 };
 
 } // namespace hp

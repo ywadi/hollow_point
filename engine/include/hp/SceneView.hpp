@@ -121,16 +121,14 @@ public:
     /// @param context the immediate context. Must not be null.
     /// @param scene the scene to draw.
     /// @param pool where mesh GUIDs resolve.
-    /// @param clip the device's clip-space convention, from
-    ///        `RenderLayer::clipSpace()`.
     /// @param viewSlot which camera slot to resolve. Slot 0 is the world.
     /// @param stats optional; filled with what the frame did.
     /// @returns the colour target to display, or **nullptr when nothing was
     ///          published** — no camera, or the view could not be built. A null
     ///          return is the signal not to emit a `FrameRenderedEvent`.
     Diligent::ITextureView* render(Diligent::IDeviceContext* context, Scene& scene,
-                                   const AssetPool& pool, ClipSpace clip,
-                                   std::uint8_t viewSlot = 0, SceneViewStats* stats = nullptr);
+                                   const AssetPool& pool, std::uint8_t viewSlot = 0,
+                                   SceneViewStats* stats = nullptr);
 
     /// @returns the colour target's shader-resource view, or nullptr. **Valid
     ///          for the current frame only** — a resize recreates it.

@@ -120,7 +120,7 @@ bool valid() const
 ## `SceneView::render`
 
 ```cpp
-Diligent::ITextureView * render(Diligent::IDeviceContext * context, Scene & scene, const AssetPool & pool, ClipSpace clip, std::uint8_t viewSlot, SceneViewStats * stats)
+Diligent::ITextureView * render(Diligent::IDeviceContext * context, Scene & scene, const AssetPool & pool, std::uint8_t viewSlot, SceneViewStats * stats)
 ```
 
  Renders one frame of the scene.
@@ -131,8 +131,6 @@ Diligent::ITextureView * render(Diligent::IDeviceContext * context, Scene & scen
  @param context the immediate context. Must not be null.
  @param scene the scene to draw.
  @param pool where mesh GUIDs resolve.
- @param clip the device's clip-space convention, from
-        `RenderLayer::clipSpace()`.
  @param viewSlot which camera slot to resolve. Slot 0 is the world.
  @param stats optional; filled with what the frame did.
  @returns the colour target to display, or **nullptr when nothing was

@@ -131,6 +131,34 @@ Full verification on the removal commit, both targets:
   down cleanly — 15 log lines total, exit 0 on close. Never a crash, never
   silence, never spam.
 
+### 144.3 — how far the depth simplification went, and why it is provably inert (2026-08-06)
+
+**What was removed:** `ClipSpace::minZ` and `negativeOneToOneZ()`, the
+`[-1, 1]` branch in `projectionMatrix` (both forms now pass Diligent's
+`NegativeOneToOne = false` unconditionally), and the `[-1, 1]` near-plane form
+in `extractFrustum`. **The `clip` parameter went with them** from
+`projectionMatrix`, `buildView`, `extractFrustum` and `SceneView::render` —
+their own test had said it best: *"a parameter that is accepted and dropped is
+worse than one that does not exist."*
+
+**What was kept:** `ClipSpace` itself, now carrying only `yToV` — the
+texture-space V direction is still a genuine device report (−0.5 on Vulkan),
+`RenderLayer::clipSpace()` still reads it, `RenderStack::render` still plumbs
+it into `RenderPassContext.clip` for gameplay render-to-texture, and the blit
+still consumes it. `kReverseZ` and `kDepthClearValue` are untouched.
+
+**Why it cannot have changed depth:** on every device the engine ever accepted,
+`minZ` was 0, so `negativeOneToOneZ()` was `false` and the removed branches
+were dead on Vulkan. The proof is pinned rather than argued: the fast case
+added in the previous commit ("the projection is Diligent's [0, 1] mapping
+with the planes swapped, byte for byte") compares `hp::projectionMatrix`
+against `float4x4::Projection/Ortho` called directly, passed on the code both
+before and after this change. The wrong-clip-space fast case was replaced by
+that pinning case (302 → 303 → 302 keeps the count at baseline), and the gpu
+subcase "clip space is [0, 1] on every backend" became "the device reports the
+texture-space convention the engine reads" (`yToV == -0.5`), since the Z range
+is a Vulkan specification guarantee rather than a queryable disagreement.
+
 ### Measured: a GL device in the process shifted the Vulkan pixels — evidence for the decision itself
 
 After the removal, the Linux gpu run's frame-wide **variation statistics moved

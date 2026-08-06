@@ -383,7 +383,7 @@ bool renderTextured(Device& device, const std::string& prefix, std::vector<std::
     view.setClearColour(0.0F, 0.0F, 1.0F, 1.0F);
 
     hp::SceneViewStats stats;
-    if (view.render(device.render->context(), scene, pool, device.render->clipSpace(), 0, &stats) ==
+    if (view.render(device.render->context(), scene, pool, 0, &stats) ==
         nullptr) {
         return false;
     }

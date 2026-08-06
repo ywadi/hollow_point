@@ -1,8 +1,8 @@
 // Active-camera resolution, viewports, frustums and the screen helpers (T0081).
 //
 // Bucket: fast. All of it is a scene plus arithmetic; nothing here needs a
-// device, because `buildView` takes the clip-space convention as a parameter
-// precisely so it can be exercised without one.
+// device — since T0144.3 the projection depends on nothing a device reports,
+// so `buildView` is exercised exactly as the engine calls it.
 
 #include <doctest/doctest.h>
 
@@ -12,14 +12,6 @@
 #include <cmath>
 
 namespace {
-
-/// A [0, 1] clip space, which is what every device the engine accepts reports.
-hp::ClipSpace zeroToOne() {
-    hp::ClipSpace clip;
-    clip.minZ = 0.0F;
-    clip.yToV = -0.5F;
-    return clip;
-}
 
 /// A camera entity at a position, looking down +Z (the engine is left-handed).
 hp::Entity makeCamera(hp::Scene& scene, const char* name, int priority, std::uint8_t slot = 0) {
@@ -91,7 +83,7 @@ TEST_CASE("a view is built from the entity's world transform") {
     scene.setLocalTransform(entity, transform);
     scene.propagateTransforms();
 
-    const auto view = hp::buildView(entity, 1920, 1080, zeroToOne());
+    const auto view = hp::buildView(entity, 1920, 1080);
     REQUIRE(view.has_value());
     CHECK(view->viewportWidth == 1920);
     CHECK(view->viewportHeight == 1080);
@@ -118,7 +110,7 @@ TEST_CASE("a camera inherits its parent's transform") {
     scene.setLocalTransform(rig, rigTransform);
     scene.propagateTransforms();
 
-    const auto view = hp::buildView(entity, 800, 600, zeroToOne());
+    const auto view = hp::buildView(entity, 800, 600);
     REQUIRE(view.has_value());
 
     // The camera is at x = 5, so a world point at x = 5 is straight ahead.
@@ -140,7 +132,7 @@ TEST_CASE("the view offset moves the view without touching the entity") {
     hp::float4x4 shake = hp::float4x4::Identity();
     shake._41 = 0.25F; // a quarter-unit kick sideways
 
-    const auto view = hp::buildView(entity, 800, 600, zeroToOne(), shake);
+    const auto view = hp::buildView(entity, 800, 600, shake);
     REQUIRE(view.has_value());
 
     // The entity did not move.
@@ -214,7 +206,7 @@ TEST_CASE("a letterboxed view reports the reference aspect, not the window's") {
     entity.get<hp::Camera>().referenceAspect = 16.0F / 9.0F;
     scene.propagateTransforms();
 
-    const auto view = hp::buildView(entity, 2560, 1080, zeroToOne());
+    const auto view = hp::buildView(entity, 2560, 1080);
     REQUIRE(view.has_value());
     CHECK(view->aspect == doctest::Approx(16.0F / 9.0F));
     // Pillarboxed: narrower than the window, full height.
@@ -228,7 +220,7 @@ TEST_CASE("a split-screen viewport resolves to pixels and survives a resize") {
     entity.get<hp::Camera>().viewport = {0.0F, 0.0F, 0.5F, 1.0F};
     scene.propagateTransforms();
 
-    const auto small = hp::buildView(entity, 1280, 720, zeroToOne());
+    const auto small = hp::buildView(entity, 1280, 720);
     REQUIRE(small.has_value());
     CHECK(small->viewportWidth == 640);
     CHECK(small->viewportHeight == 720);
@@ -236,7 +228,7 @@ TEST_CASE("a split-screen viewport resolves to pixels and survives a resize") {
 
     // The same normalised rect at a different size is still half the screen --
     // which is why the rect is normalised rather than stored in pixels.
-    const auto large = hp::buildView(entity, 3840, 2160, zeroToOne());
+    const auto large = hp::buildView(entity, 3840, 2160);
     REQUIRE(large.has_value());
     CHECK(large->viewportWidth == 1920);
     CHECK(large->viewportHeight == 2160);
@@ -247,25 +239,25 @@ TEST_CASE("an unusable camera or target yields no view rather than a broken one"
     hp::Entity entity = makeCamera(scene, "camera", 0);
     scene.propagateTransforms();
 
-    CHECK_FALSE(hp::buildView(entity, 0, 720, zeroToOne()).has_value());
-    CHECK_FALSE(hp::buildView(entity, 1280, -1, zeroToOne()).has_value());
+    CHECK_FALSE(hp::buildView(entity, 0, 720).has_value());
+    CHECK_FALSE(hp::buildView(entity, 1280, -1).has_value());
 
     // An entity that is not a camera at all.
     hp::Entity plain = scene.create("plain");
     scene.propagateTransforms();
-    CHECK_FALSE(hp::buildView(plain, 1280, 720, zeroToOne()).has_value());
+    CHECK_FALSE(hp::buildView(plain, 1280, 720).has_value());
 
     // A lens that cannot make a projection degrades to no view, which a caller
     // can show visibly -- rather than to an identity matrix that renders a
     // scene nobody can interpret.
     entity.get<hp::Camera>().nearPlane = 0.0F;
-    CHECK_FALSE(hp::buildView(entity, 1280, 720, zeroToOne()).has_value());
+    CHECK_FALSE(hp::buildView(entity, 1280, 720).has_value());
 
     // An off-target viewport rect is refused rather than clamped.
     hp::Entity bad = makeCamera(scene, "bad", 0);
     bad.get<hp::Camera>().viewport = {0.8F, 0.0F, 0.5F, 1.0F};
     scene.propagateTransforms();
-    CHECK_FALSE(hp::buildView(bad, 1280, 720, zeroToOne()).has_value());
+    CHECK_FALSE(hp::buildView(bad, 1280, 720).has_value());
 }
 
 TEST_CASE("the frustum contains what is in front and rejects what is not") {
@@ -277,9 +269,9 @@ TEST_CASE("the frustum contains what is in front and rejects what is not") {
     camera.verticalFov = 1.0F;
     scene.propagateTransforms();
 
-    const auto view = hp::buildView(entity, 800, 600, zeroToOne());
+    const auto view = hp::buildView(entity, 800, 600);
     REQUIRE(view.has_value());
-    const hp::Frustum frustum = hp::extractFrustum(view->viewProjection, zeroToOne());
+    const hp::Frustum frustum = hp::extractFrustum(view->viewProjection);
 
     // Straight ahead, comfortably between the planes.
     CHECK(frustum.contains(hp::float3(0.0F, 0.0F, 10.0F)));
@@ -306,9 +298,9 @@ TEST_CASE("a sphere straddling a plane is not culled") {
     entity.get<hp::Camera>().farPlane = 100.0F;
     scene.propagateTransforms();
 
-    const auto view = hp::buildView(entity, 800, 600, zeroToOne());
+    const auto view = hp::buildView(entity, 800, 600);
     REQUIRE(view.has_value());
-    const hp::Frustum frustum = hp::extractFrustum(view->viewProjection, zeroToOne());
+    const hp::Frustum frustum = hp::extractFrustum(view->viewProjection);
 
     // Centre is behind the far plane, but the sphere reaches back inside it.
     CHECK(frustum.intersectsSphere(hp::float3(0.0F, 0.0F, 105.0F), 10.0F));
@@ -326,9 +318,9 @@ TEST_CASE("frustum planes are normalised, so distances mean something") {
     hp::Entity entity = makeCamera(scene, "camera", 0);
     scene.propagateTransforms();
 
-    const auto view = hp::buildView(entity, 800, 600, zeroToOne());
+    const auto view = hp::buildView(entity, 800, 600);
     REQUIRE(view.has_value());
-    const hp::Frustum frustum = hp::extractFrustum(view->viewProjection, zeroToOne());
+    const hp::Frustum frustum = hp::extractFrustum(view->viewProjection);
 
     for (const hp::float4& plane : frustum.planes) {
         const float length =
@@ -342,7 +334,7 @@ TEST_CASE("world to screen and back is a round trip") {
     hp::Entity entity = makeCamera(scene, "camera", 0);
     scene.propagateTransforms();
 
-    const auto view = hp::buildView(entity, 1920, 1080, zeroToOne());
+    const auto view = hp::buildView(entity, 1920, 1080);
     REQUIRE(view.has_value());
 
     const hp::float3 world(1.5F, -0.75F, 12.0F);
@@ -378,7 +370,7 @@ TEST_CASE("the screen centre maps to the centre of the viewport") {
     hp::Entity entity = makeCamera(scene, "camera", 0);
     scene.propagateTransforms();
 
-    const auto view = hp::buildView(entity, 1920, 1080, zeroToOne());
+    const auto view = hp::buildView(entity, 1920, 1080);
     REQUIRE(view.has_value());
 
     float x = 0.0F;
@@ -402,7 +394,7 @@ TEST_CASE("a point behind the camera is refused, not projected") {
     hp::Entity entity = makeCamera(scene, "camera", 0);
     scene.propagateTransforms();
 
-    const auto view = hp::buildView(entity, 1920, 1080, zeroToOne());
+    const auto view = hp::buildView(entity, 1920, 1080);
     REQUIRE(view.has_value());
 
     float x = -1.0F;
@@ -421,7 +413,7 @@ TEST_CASE("a pixel outside the viewport produces no ray") {
     entity.get<hp::Camera>().viewport = {0.5F, 0.0F, 0.5F, 1.0F};
     scene.propagateTransforms();
 
-    const auto view = hp::buildView(entity, 1280, 720, zeroToOne());
+    const auto view = hp::buildView(entity, 1280, 720);
     REQUIRE(view.has_value());
     CHECK(view->viewportX == 640);
 
@@ -441,7 +433,7 @@ TEST_CASE("a resolved view carries the culling mask for T0045") {
     entity.get<hp::Camera>().cullingMask = hp::LayerMask{0x00000005U};
     scene.propagateTransforms();
 
-    const auto view = hp::buildView(entity, 800, 600, zeroToOne());
+    const auto view = hp::buildView(entity, 800, 600);
     REQUIRE(view.has_value());
     CHECK(view->camera.cullingMask == hp::LayerMask{0x00000005U});
 }

@@ -196,8 +196,7 @@ void exerciseMeshDraw(hp::RenderBackend backend, const char* backendName) {
     view.setClearColour(0.0F, 0.0F, 1.0F, 1.0F);
 
     hp::SceneViewStats stats;
-    Diligent::ITextureView* published = view.render(device.render->context(), scene, pool,
-                                                    device.render->clipSpace(), 0, &stats);
+    Diligent::ITextureView* published = view.render(device.render->context(), scene, pool, 0, &stats);
 
     REQUIRE(published != nullptr);
     CHECK(stats.hadCamera);

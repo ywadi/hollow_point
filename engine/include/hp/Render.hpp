@@ -221,11 +221,12 @@ public:
     ///          buffer is where a composited frame ultimately lands.
     [[nodiscard]] Diligent::ISwapChain* swapChain() const;
 
-    /// @returns the device's clip-space convention, or the defaults when the
-    ///          layer is inert.
+    /// @returns the device's texture-space convention (`yToV`), or the default
+    ///          when the layer is inert — which is deliberately not a usable
+    ///          value; see `ClipSpace`.
     ///
-    /// **Read this rather than assuming it.** It is the difference between a
-    /// projection matrix that is right on Vulkan and silently wrong on OpenGL;
+    /// **Read this rather than assuming it.** A render-to-texture pass that
+    /// hardcodes the flip is one device report away from sampling upside down;
     /// see `ClipSpace` and T0130.3.
     [[nodiscard]] ClipSpace clipSpace() const;
 

@@ -100,7 +100,7 @@ void SceneRenderLayer::onRenderLayer(const RenderPassContext& pass) {
     }
 
     const std::optional<ResolvedView> view =
-        buildView(*camera, pass.width, pass.height, pass.clip);
+        buildView(*camera, pass.width, pass.height);
     if (!view) {
         HP_LOG_WARN(kLog,
                     "layer '{}': a camera was found on view slot {} but no view could be built "

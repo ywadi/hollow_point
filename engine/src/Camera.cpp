@@ -56,12 +56,16 @@ float exposureMultiplierFromEv100(float ev100) {
     return 1.0F / (1.2F * std::pow(2.0F, ev100));
 }
 
-float4x4 projectionMatrix(const Camera& camera, float aspect, ClipSpace clip) {
+float4x4 projectionMatrix(const Camera& camera, float aspect) {
     if (!usable(camera, aspect)) {
         return float4x4::Identity();
     }
 
-    const bool negativeOneToOneZ = clip.negativeOneToOneZ();
+    // [0, 1] clip space, which Vulkan -- the only backend, D29 -- guarantees
+    // by specification. `false` is Diligent's spelling of it
+    // (`NegativeOneToOne`), and the fast suite pins the resulting matrix
+    // byte-for-byte against Diligent's own helper so this cannot drift.
+    constexpr bool kNegativeOneToOneZ = false;
 
     // Reverse-Z by swapping near and far, which is exact rather than a trick.
     // Diligent's SetNearFarClipPlanes solves for a mapping that sends its
@@ -75,10 +79,11 @@ float4x4 projectionMatrix(const Camera& camera, float aspect, ClipSpace clip) {
 
     if (camera.orthographic) {
         const float height = camera.orthographicSize * 2.0F;
-        return float4x4::Ortho(height * aspect, height, clipNear, clipFar, negativeOneToOneZ);
+        return float4x4::Ortho(height * aspect, height, clipNear, clipFar, kNegativeOneToOneZ);
     }
 
-    return float4x4::Projection(camera.verticalFov, aspect, clipNear, clipFar, negativeOneToOneZ);
+    return float4x4::Projection(camera.verticalFov, aspect, clipNear, clipFar,
+                                kNegativeOneToOneZ);
 }
 
 } // namespace hp

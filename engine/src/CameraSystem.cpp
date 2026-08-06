@@ -128,7 +128,7 @@ std::optional<Entity> resolveCamera(Scene& scene, std::uint8_t viewSlot) {
 }
 
 std::optional<ResolvedView> buildView(Entity entity, int targetWidth, int targetHeight,
-                                      ClipSpace clip, const float4x4& viewOffset) {
+                                      const float4x4& viewOffset) {
     HP_PROFILE_ZONE();
 
     if (targetWidth <= 0 || targetHeight <= 0 || !entity.valid()) {
@@ -186,7 +186,7 @@ std::optional<ResolvedView> buildView(Entity entity, int targetWidth, int target
 
     // T0111.2's jitter seam is here: projection is assembled once, so sub-pixel
     // offsets for TAA go in at this point rather than in every consumer.
-    resolved.projection = projectionMatrix(*camera, resolved.aspect, clip);
+    resolved.projection = projectionMatrix(*camera, resolved.aspect);
     if (resolved.projection == float4x4::Identity()) {
         HP_LOG_ERROR(kLog, "camera lens is unusable (near {}, far {}, fov {}); not rendering",
                      camera->nearPlane, camera->farPlane, camera->verticalFov);
@@ -197,7 +197,7 @@ std::optional<ResolvedView> buildView(Entity entity, int targetWidth, int target
     return resolved;
 }
 
-Frustum extractFrustum(const float4x4& viewProjection, ClipSpace clip) {
+Frustum extractFrustum(const float4x4& viewProjection) {
     HP_PROFILE_ZONE();
 
     // Gribb-Hartmann: each plane is a sum or difference of matrix rows, because
@@ -216,15 +216,10 @@ Frustum extractFrustum(const float4x4& viewProjection, ClipSpace clip) {
     // top: y <= w
     frustum.planes[3] = float4(m._14 - m._12, m._24 - m._22, m._34 - m._32, m._44 - m._42);
 
-    // The near plane is the one that depends on the clip-space convention: on a
-    // [0, 1] clip space it is z >= 0, on [-1, 1] it is z >= -w. Getting this
-    // wrong culls geometry just in front of the camera on exactly one backend,
-    // which is the failure T0130.3 exists to prevent.
-    if (clip.negativeOneToOneZ()) {
-        frustum.planes[4] = float4(m._14 + m._13, m._24 + m._23, m._34 + m._33, m._44 + m._43);
-    } else {
-        frustum.planes[4] = float4(m._13, m._23, m._33, m._43);
-    }
+    // The near plane is the one that depends on the clip-space convention:
+    // z >= 0 on the [0, 1] clip space, which is the only one the engine has
+    // (D29/T0144.3 — the [-1, 1] form `z >= -w` went with the OpenGL backend).
+    frustum.planes[4] = float4(m._13, m._23, m._33, m._43);
     // far: z <= w
     frustum.planes[5] = float4(m._14 - m._13, m._24 - m._23, m._34 - m._33, m._44 - m._43);
 

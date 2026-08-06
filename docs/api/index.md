@@ -36,7 +36,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Camera.hpp>`](Camera.md) | 11 | 11 |
 | [`<hp/CameraSystem.hpp>`](CameraSystem.md) | 11 | 11 |
 | [`<hp/Cook.hpp>`](Cook.md) | 14 | 14 |
-| [`<hp/DepthConvention.hpp>`](DepthConvention.md) | 4 | 4 |
+| [`<hp/DepthConvention.hpp>`](DepthConvention.md) | 3 | 3 |
 | [`<hp/DrawSubmission.hpp>`](DrawSubmission.md) | 3 | 3 |
 | [`<hp/Engine.hpp>`](Engine.md) | 4 | 4 |
 | [`<hp/EntryPoint.hpp>`](EntryPoint.md) | 1 | 0 |
@@ -70,7 +70,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 47 | 47 |
 
-**720 public declarations across 39 headers, 603 documented.**
+**719 public declarations across 39 headers, 602 documented.**
 
 ## Every symbol
 
@@ -194,7 +194,6 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `kReverseZ` | [`DepthConvention.hpp`](DepthConvention.md) |
 | `kDepthClearValue` | [`DepthConvention.hpp`](DepthConvention.md) |
 | `ClipSpace` | [`DepthConvention.hpp`](DepthConvention.md) |
-| `ClipSpace::negativeOneToOneZ` | [`DepthConvention.hpp`](DepthConvention.md) |
 | `DrawItem` | [`DrawSubmission.hpp`](DrawSubmission.md) |
 | `DrawParseStats` | [`DrawSubmission.hpp`](DrawSubmission.md) |
 | `parseScene` | [`DrawSubmission.hpp`](DrawSubmission.md) |

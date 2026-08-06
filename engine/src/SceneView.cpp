@@ -131,8 +131,8 @@ int SceneView::height() const {
 }
 
 Diligent::ITextureView* SceneView::render(Diligent::IDeviceContext* context, Scene& scene,
-                                          const AssetPool& pool, ClipSpace clip,
-                                          std::uint8_t viewSlot, SceneViewStats* stats) {
+                                          const AssetPool& pool, std::uint8_t viewSlot,
+                                          SceneViewStats* stats) {
     HP_PROFILE_ZONE();
 
     SceneViewStats counted;
@@ -182,7 +182,7 @@ Diligent::ITextureView* SceneView::render(Diligent::IDeviceContext* context, Sce
     }
 
     const std::optional<ResolvedView> view =
-        buildView(*camera, impl.targets.width(), impl.targets.height(), clip);
+        buildView(*camera, impl.targets.width(), impl.targets.height());
     if (!view) {
         HP_LOG_WARN(kLog, "a camera was found on view slot {} but no view could be built from "
                           "it; check its near/far planes",

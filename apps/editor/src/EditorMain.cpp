@@ -103,8 +103,7 @@ public:
         view_.resize(width, height);
 
         hp::SceneViewStats stats;
-        Diligent::ITextureView* colour = view_.render(render_.context(), scene_, assets_,
-                                                      render_.clipSpace(), 0, &stats);
+        Diligent::ITextureView* colour = view_.render(render_.context(), scene_, assets_, 0, &stats);
         if (colour == nullptr) {
             render_.setPresentSource(nullptr);
             return;

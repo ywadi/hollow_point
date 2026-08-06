@@ -1,9 +1,10 @@
 // The camera lens model and its projection (T0130).
 //
 // Bucket: fast. All of this is arithmetic — no device is needed to check that a
-// projection maps the near plane to 1. What *does* need a device is the
-// clip-space convention the matrix is built against, and that is measured in the
-// gpu bucket rather than assumed here.
+// projection maps the near plane to 1. The projection is built for the [0, 1]
+// clip space unconditionally since T0144.3 — Vulkan, the only backend,
+// guarantees it by specification — and a case below pins the construction
+// byte-for-byte against Diligent's own helper.
 //
 // **These cases assert endpoints, not coefficients.** Checking `_33` against a
 // hand-derived expression only proves the test and the implementation share a
@@ -48,14 +49,6 @@ int ulpsBetween(float a, float b) {
     return static_cast<int>(std::abs(abits - bbits));
 }
 
-/// A [0, 1] clip space, which is what every device the engine accepts reports.
-hp::ClipSpace zeroToOne() {
-    hp::ClipSpace clip;
-    clip.minZ = 0.0F;
-    clip.yToV = -0.5F;
-    return clip;
-}
-
 } // namespace
 
 TEST_CASE("the engine is on reverse-Z, and the clear value follows it") {
@@ -71,7 +64,7 @@ TEST_CASE("a perspective projection puts the near plane at 1 and the far plane a
     camera.nearPlane = 0.1F;
     camera.farPlane = 1000.0F;
 
-    const hp::float4x4 projection = hp::projectionMatrix(camera, 16.0F / 9.0F, zeroToOne());
+    const hp::float4x4 projection = hp::projectionMatrix(camera, 16.0F / 9.0F);
 
     // Reverse-Z. Getting this backwards renders a scene in which distant
     // geometry occludes near geometry -- which does not look like a depth bug,
@@ -100,7 +93,7 @@ TEST_CASE("an orthographic projection uses the same reverse-Z convention") {
     camera.nearPlane = 0.1F;
     camera.farPlane = 100.0F;
 
-    const hp::float4x4 projection = hp::projectionMatrix(camera, 1.0F, zeroToOne());
+    const hp::float4x4 projection = hp::projectionMatrix(camera, 1.0F);
 
     CHECK(ndcDepth(projection, camera.nearPlane) == doctest::Approx(1.0F));
     CHECK(ndcDepth(projection, camera.farPlane) == doctest::Approx(0.0F));
@@ -124,7 +117,7 @@ TEST_CASE("the projection is Diligent's [0, 1] mapping with the planes swapped, 
     const hp::float4x4 expected = hp::float4x4::Projection(
         camera.verticalFov, aspect, camera.farPlane, camera.nearPlane,
         /*NegativeOneToOne = */ false);
-    CHECK(hp::projectionMatrix(camera, aspect, zeroToOne()) == expected);
+    CHECK(hp::projectionMatrix(camera, aspect) == expected);
 
     hp::Camera ortho;
     ortho.orthographic = true;
@@ -135,7 +128,7 @@ TEST_CASE("the projection is Diligent's [0, 1] mapping with the planes swapped, 
     const hp::float4x4 expectedOrtho =
         hp::float4x4::Ortho(height, height, ortho.farPlane, ortho.nearPlane,
                             /*NegativeOneToOne = */ false);
-    CHECK(hp::projectionMatrix(ortho, 1.0F, zeroToOne()) == expectedOrtho);
+    CHECK(hp::projectionMatrix(ortho, 1.0F) == expectedOrtho);
 }
 
 TEST_CASE("reverse-Z is what makes a float depth buffer worth having") {
@@ -149,7 +142,7 @@ TEST_CASE("reverse-Z is what makes a float depth buffer worth having") {
     camera.nearPlane = 0.1F;
     camera.farPlane = 1000.0F;
 
-    const hp::float4x4 reverse = hp::projectionMatrix(camera, 1.0F, zeroToOne());
+    const hp::float4x4 reverse = hp::projectionMatrix(camera, 1.0F);
 
     // The same lens without the swap: near->0, far->1. This is the comparison
     // that makes the case a measurement rather than a restatement of the
@@ -187,31 +180,6 @@ TEST_CASE("reverse-Z is what makes a float depth buffer worth having") {
     CHECK(reverseUlps > plainUlps * 1000);
 }
 
-TEST_CASE("a matrix built for the wrong clip space is not the same matrix") {
-    // Guards the thing that is invisible on one backend: if `ClipSpace` were
-    // ignored, these two would be identical and OpenGL would silently render
-    // with a Vulkan matrix. The engine refuses a [-1, 1] device, but the
-    // parameter must still be honoured -- a parameter that is accepted and
-    // dropped is worse than one that does not exist.
-    hp::Camera camera;
-
-    hp::ClipSpace negativeOneToOne;
-    negativeOneToOne.minZ = -1.0F;
-    negativeOneToOne.yToV = 0.5F;
-    CHECK(negativeOneToOne.negativeOneToOneZ());
-    CHECK_FALSE(zeroToOne().negativeOneToOneZ());
-
-    const hp::float4x4 forZeroToOne = hp::projectionMatrix(camera, 1.0F, zeroToOne());
-    const hp::float4x4 forNegative = hp::projectionMatrix(camera, 1.0F, negativeOneToOne);
-    CHECK_FALSE(forZeroToOne == forNegative);
-
-    // On a [-1, 1] clip space the near plane still maps to the near end of the
-    // range, which is +1 in both conventions under reverse-Z; the far plane goes
-    // to -1 rather than 0.
-    CHECK(ndcDepth(forNegative, camera.nearPlane) == doctest::Approx(1.0F));
-    CHECK(ndcDepth(forNegative, camera.farPlane) == doctest::Approx(-1.0F));
-}
-
 TEST_CASE("aspect ratio changes the horizontal extent and leaves the vertical alone") {
     // 130.2's decision, made observable: the vertical field of view is what is
     // authored, so widening the viewport must show more at the sides rather
@@ -219,8 +187,8 @@ TEST_CASE("aspect ratio changes the horizontal extent and leaves the vertical al
     hp::Camera camera;
     camera.verticalFov = 1.0F;
 
-    const hp::float4x4 narrow = hp::projectionMatrix(camera, 1.0F, zeroToOne());
-    const hp::float4x4 wide = hp::projectionMatrix(camera, 2.0F, zeroToOne());
+    const hp::float4x4 narrow = hp::projectionMatrix(camera, 1.0F);
+    const hp::float4x4 wide = hp::projectionMatrix(camera, 2.0F);
 
     CHECK(narrow._22 == doctest::Approx(wide._22));
     CHECK(wide._11 == doctest::Approx(narrow._11 / 2.0F));
@@ -230,30 +198,29 @@ TEST_CASE("an unusable lens yields the identity rather than a NaN") {
     // A NaN here would not fail here. It would multiply into a world transform
     // and present as geometry that stopped being drawn, in a subsystem with no
     // connection to cameras.
-    const hp::ClipSpace clip = zeroToOne();
     const hp::float4x4 identity = hp::float4x4::Identity();
 
     hp::Camera zeroNear;
     zeroNear.nearPlane = 0.0F;
-    CHECK(hp::projectionMatrix(zeroNear, 1.0F, clip) == identity);
+    CHECK(hp::projectionMatrix(zeroNear, 1.0F) == identity);
 
     hp::Camera inverted;
     inverted.nearPlane = 100.0F;
     inverted.farPlane = 1.0F;
-    CHECK(hp::projectionMatrix(inverted, 1.0F, clip) == identity);
+    CHECK(hp::projectionMatrix(inverted, 1.0F) == identity);
 
     hp::Camera fine;
-    CHECK(hp::projectionMatrix(fine, 0.0F, clip) == identity);
-    CHECK(hp::projectionMatrix(fine, -1.0F, clip) == identity);
+    CHECK(hp::projectionMatrix(fine, 0.0F) == identity);
+    CHECK(hp::projectionMatrix(fine, -1.0F) == identity);
 
     hp::Camera degenerateFov;
     degenerateFov.verticalFov = kPi;
-    CHECK(hp::projectionMatrix(degenerateFov, 1.0F, clip) == identity);
+    CHECK(hp::projectionMatrix(degenerateFov, 1.0F) == identity);
 
     hp::Camera flatOrtho;
     flatOrtho.orthographic = true;
     flatOrtho.orthographicSize = 0.0F;
-    CHECK(hp::projectionMatrix(flatOrtho, 1.0F, clip) == identity);
+    CHECK(hp::projectionMatrix(flatOrtho, 1.0F) == identity);
 }
 
 TEST_CASE("focal length and field of view are exact inverses") {
@@ -321,7 +288,7 @@ TEST_CASE("a default camera is a usable camera") {
     // Camera is added in the editor, and a default that produced an identity
     // matrix would present as "the viewport is broken".
     const hp::Camera camera;
-    const hp::float4x4 projection = hp::projectionMatrix(camera, 16.0F / 9.0F, zeroToOne());
+    const hp::float4x4 projection = hp::projectionMatrix(camera, 16.0F / 9.0F);
 
     CHECK_FALSE(projection == hp::float4x4::Identity());
     CHECK(ndcDepth(projection, camera.nearPlane) == doctest::Approx(1.0F));

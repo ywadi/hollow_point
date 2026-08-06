@@ -106,22 +106,21 @@ void exerciseTargetsAndStack(hp::RenderBackend backend, const char* backendName)
     MESSAGE("device up on " << std::string(backendName) << ": "
                             << device.render->adapterDescription());
 
-    SUBCASE("clip space is [0, 1] on every backend") {
-        // T0130.3. This is the measurement the ticket refused to take on
-        // faith. Diligent's `EngineGLCreateInfo::ZeroToOneNDZ` defaults to
-        // **false**, so before T0130 this engine ran Vulkan on [0, 1] and
-        // OpenGL on [-1, 1] -- and nothing had yet built a projection matrix,
-        // which is the only reason it had not produced a visible bug.
+    SUBCASE("the device reports the texture-space convention the engine reads") {
+        // T0130.3's measurement, reduced by T0144.3: the clip-space Z range is
+        // no longer queried -- Vulkan guarantees [0, 1] by specification, and
+        // the OpenGL device that could disagree is gone (D29). What is still
+        // read from the device is the V direction, and it must be a usable
+        // value: a default-constructed ClipSpace flips nothing, which is why
+        // the zero check matters.
         const hp::ClipSpace clip = device.render->clipSpace();
-        MESSAGE("clip space on " << std::string(backendName) << ": minZ=" << clip.minZ
-                                 << " yToV=" << clip.yToV);
+        MESSAGE("texture-space convention on " << std::string(backendName)
+                                               << ": yToV=" << clip.yToV);
 
-        CHECK(clip.minZ == 0.0F);
-        CHECK_FALSE(clip.negativeOneToOneZ());
-
-        // Not incidental: reverse-Z is only worth having on a [0, 1] clip
-        // space, so this is the precondition for the whole depth convention.
         CHECK(clip.yToV != 0.0F);
+        // Vulkan's NDC Y points down relative to texture V, and Diligent
+        // reports the whole scale: exactly -0.5, not a sign.
+        CHECK(clip.yToV == -0.5F);
     }
 
     SUBCASE("targets create for every role") {

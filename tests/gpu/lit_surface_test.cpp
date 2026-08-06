@@ -237,7 +237,7 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
     view.setClearColour(0.0F, 0.0F, 1.0F, 1.0F);
 
     hp::SceneViewStats stats;
-    REQUIRE(view.render(device.render->context(), scene, pool, device.render->clipSpace(), 0,
+    REQUIRE(view.render(device.render->context(), scene, pool, 0,
                         &stats) != nullptr);
     CHECK(stats.submitted == 1);
 
@@ -270,7 +270,7 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
         scene.destroy(lightEntity);
         scene.propagateTransforms();
 
-        REQUIRE(view.render(device.render->context(), scene, pool, device.render->clipSpace(), 0,
+        REQUIRE(view.render(device.render->context(), scene, pool, 0,
                             &stats) != nullptr);
         std::vector<std::uint8_t> unlit;
         REQUIRE(view.readback(device.render->context(), unlit));
@@ -285,7 +285,7 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
     SUBCASE("a disabled light contributes nothing") {
         lightEntity.get<hp::Light>().enabled = false;
 
-        REQUIRE(view.render(device.render->context(), scene, pool, device.render->clipSpace(), 0,
+        REQUIRE(view.render(device.render->context(), scene, pool, 0,
                             &stats) != nullptr);
         std::vector<std::uint8_t> unlit;
         REQUIRE(view.readback(device.render->context(), unlit));
@@ -297,7 +297,7 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
         // Monotonicity, which is a cheap way to catch intensity being dropped on
         // the floor -- a fixed value would pass every check above.
         lightEntity.get<hp::Light>().intensity = 0.5F;
-        REQUIRE(view.render(device.render->context(), scene, pool, device.render->clipSpace(), 0,
+        REQUIRE(view.render(device.render->context(), scene, pool, 0,
                             &stats) != nullptr);
         std::vector<std::uint8_t> dim;
         REQUIRE(view.readback(device.render->context(), dim));
@@ -322,8 +322,7 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
             placement.position = hp::float3{0.0F, 0.0F, z};
             scene.setLocalTransform(lightEntity, placement);
             scene.propagateTransforms();
-            REQUIRE(view.render(device.render->context(), scene, pool,
-                                device.render->clipSpace(), 0, &stats) != nullptr);
+            REQUIRE(view.render(device.render->context(), scene, pool, 0, &stats) != nullptr);
             std::vector<std::uint8_t> pixels;
             REQUIRE(view.readback(device.render->context(), pixels));
             return centreOf(pixels);
@@ -369,8 +368,7 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
         const auto renderWithCone = [&](float inner, float outer) {
             lamp.innerConeAngle = inner;
             lamp.outerConeAngle = outer;
-            REQUIRE(view.render(device.render->context(), scene, pool,
-                                device.render->clipSpace(), 0, &stats) != nullptr);
+            REQUIRE(view.render(device.render->context(), scene, pool, 0, &stats) != nullptr);
             std::vector<std::uint8_t> pixels;
             REQUIRE(view.readback(device.render->context(), pixels));
             return centreOf(pixels);

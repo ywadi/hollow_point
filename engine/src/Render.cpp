@@ -771,9 +771,7 @@ Diligent::ISwapChain* RenderLayer::swapChain() const {
 ClipSpace RenderLayer::clipSpace() const {
     ClipSpace clip;
     if (impl_ && impl_->device) {
-        const Diligent::NDCAttribs& ndc = impl_->device->GetDeviceInfo().NDC;
-        clip.minZ = ndc.MinZ;
-        clip.yToV = ndc.YtoVScale;
+        clip.yToV = impl_->device->GetDeviceInfo().NDC.YtoVScale;
     }
     return clip;
 }

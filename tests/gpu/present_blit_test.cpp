@@ -222,7 +222,7 @@ void exerciseBlit(hp::RenderBackend backend, const char* backendName) {
 
     hp::SceneView view;
     REQUIRE(view.create(device.render->device(), device.render->context(), kSize, kSize));
-    REQUIRE(view.render(device.render->context(), scene, pool, device.render->clipSpace(), 0,
+    REQUIRE(view.render(device.render->context(), scene, pool, 0,
                         nullptr) != nullptr);
 
     std::vector<std::uint8_t> source;

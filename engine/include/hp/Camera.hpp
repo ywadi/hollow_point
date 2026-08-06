@@ -367,14 +367,15 @@ struct Camera {
 /// @param aspect viewport width divided by height (130.2). Must be greater than
 ///        zero. **Derived from the viewport by the caller, never stored on the
 ///        camera**, because a stored aspect goes stale on the first resize.
-/// @param clip the device's clip-space convention, from
-///        `RenderLayer::clipSpace()`. Read from the device rather than assumed:
-///        it is the difference between a matrix that is right on Vulkan and
-///        mirrored on OpenGL.
 /// @returns the projection matrix, or the identity when a parameter is out of
 ///          range — which renders nothing recognisable rather than propagating a
 ///          NaN through the transform chain, where it would present as
 ///          disappearing geometry somewhere else entirely.
-[[nodiscard]] HP_API float4x4 projectionMatrix(const Camera& camera, float aspect, ClipSpace clip);
+///
+/// (A `ClipSpace` parameter used to sit here, because OpenGL's [-1, 1] Z range
+/// meant the matrix depended on the device. Vulkan's [0, 1] range is a
+/// specification guarantee, so since T0144.3 the projection is built for it
+/// unconditionally.)
+[[nodiscard]] HP_API float4x4 projectionMatrix(const Camera& camera, float aspect);
 
 } // namespace hp
