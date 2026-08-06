@@ -1508,3 +1508,88 @@ day by T0142's first implementation session; the remainder still stand.)*
   renaming pass is the known route to closing this.
 
 **T0142 owns the adoption** and carries each of these as work.
+
+---
+
+## D29 — **Vulkan is the only backend.** OpenGL is removed
+
+**Decided 2026-08-06 by the owner**, on the research below: *"I lean towards
+ripping out opengl support all in all, we are a small studio anyway and wont be
+able to support both."*
+
+**Amends D1**, which recorded *"Both targets get Vulkan and OpenGL"* and the
+backend table in `01-project-overview.md`. D1's substance — zig/MinGW, no
+Direct3D, cross-compile from either host — is untouched. Only the second backend
+goes.
+
+### What the fallback was actually buying
+
+Measured floor: the engine **never requests a Vulkan version**.
+`EngineVkCreateInfo` has no `ApiVersion` field, `Instance.cpp` starts at
+`VK_API_VERSION_1_0` and takes whatever the driver reports. So the requirement is
+**Vulkan 1.0**, the 2016 specification — not 1.3.
+
+That puts the hardware floor at 2012:
+
+| vendor | floor |
+|---|---|
+| NVIDIA | Kepler (GTX 600). **Fermi never got Vulkan** — NVIDIA called it *"not an engineering issue but an install base issue"* |
+| AMD | GCN 1 (HD 7000). Pre-GCN TeraScale never did |
+| Intel | Skylake on Windows (2015); Haswell on Linux via Mesa, barely maintained |
+
+Players genuinely below that floor are **low single digits** — ~91–92% of Steam
+reports DX12-class GPUs, which is a close proxy because both APIs need the same
+hardware generation, and Linux and macOS users are Vulkan-capable or out of
+scope. **Not a verified figure**: Steam publishes no "% with Vulkan" number and
+repeated fetches disagreed, so this is directional.
+
+**Unreal made this exact cut in 4.26, December 2020.** Godot and Unity keep
+desktop GL, but their stated reasons are **mobile and web**, where GLES and WebGL
+genuinely cover devices Vulkan does not. This engine targets Windows and Linux
+desktop only, so that reasoning does not transfer.
+
+### Why removing it is a gain, not merely an acceptable loss
+
+**The two backends disagree in ways that produce silently wrong images, and the
+engine carries abstractions whose only purpose is to paper over it.**
+`DepthConvention.hpp` exists because Vulkan clips Z to `[0, 1]` and OpenGL to
+`[-1, 1]`, and *"the two disagree about which way"* the axis runs — its own
+comment warns of *"a projection matrix that is right on Vulkan and silently wrong
+on OpenGL."* `combinedSamplers = IsGLDevice()` splits the shader path. A second
+path that is exercised less and fails quietly is exactly the shape of bug this
+tree lost a full session to on 2026-08-06, twice over: a duplicated `CreateInfo`
+that hid an unset `TextureAttribIndices`, and a feature flag that left the
+occlusion map bound and unread.
+
+**And it is what unblocks D28.** Slang's HLSL and GLSL emitters rename every
+resource (`cbFrameAttribs` becomes `cbFrameAttribs_0`) and GL binds by name, so
+GL cannot consume Slang output — measured. Diligent's GL backend also refuses
+bytecode outright (`ShaderGLImpl.cpp:221`). Keeping GL therefore pins
+`HpSurface.slang` to the subset both compilers accept, which makes `IHpMaterial`
+— interfaces, default implementations, `override`, the entire reason D28 was
+adopted — **unreachable**. That is the concrete, recurring price of the fallback.
+
+### What was rejected
+
+| | Verdict |
+|---|---|
+| **Keep GL, route Slang → SPIR-V → SPIRV-Cross → GLSL** | **Not taken.** Technically plausible — SPIRV-Cross is vendored and Slang's SPIR-V preserves names — but it means owning a translation step to keep a backend worth low single digits, and the studio has said it cannot support two |
+| **Add Direct3D 12 instead** | **Rejected, and it is not close.** D3D would genuinely buy better Windows driver tuning, DirectStorage and PIX — but MinGW has no `atlbase.h`, DiligentCore's own probes disable D3D11/D3D12, and having it means the MSVC ABI plus a real Windows SDK, *which cannot be driven from a Linux host*. The choice is not "Vulkan or D3D"; it is "Vulkan only" versus **giving up cross-compiling Windows from Linux** (D1, D3). It stays available later if a concrete need appears |
+| **Keep GL for CI and QA** | **Rejected on the owner's answer.** Nobody develops or tests in a VM or over RDP. This was the one genuine risk — Hyper-V's GPU-P supports DX11 and OpenGL but **not** Vulkan, RDP forwards no acceleration, and Windows has no ubiquitous software-Vulkan fallback the way GL has GDI-generic |
+
+### The cost, stated plainly
+
+- **A breaking public API change.** `RenderBackend::OpenGL` and
+  `WindowConfig::openGLContext` are removed, and `RenderBackend::Default` no
+  longer means "try Vulkan, fall back".
+- **Intel Haswell/Broadwell on Windows** (2013–14) never had a Vulkan driver and
+  are lost outright. So is any machine whose OEM driver package never registered
+  a Vulkan ICD, on otherwise capable silicon.
+- **GPU tests on a Windows CI runner become impossible** until that runner has a
+  real Vulkan device. `gpu_adapter_report_test.cpp` records the current one as
+  *"gdi generic — Windows' generic OpenGL 1.1"*. Survivable only because the GPU
+  bucket is built and never run in CI.
+- **No fallback of any kind.** A machine without Vulkan does not start the
+  renderer, and the failure must be a clear message rather than a crash.
+
+**T0144 owns the removal.**
