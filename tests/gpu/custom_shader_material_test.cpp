@@ -35,6 +35,7 @@
 #include <hp/Vfs.hpp>
 #include <hp/Window.hpp>
 
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -192,7 +193,7 @@ void countChecks(const std::vector<std::uint8_t>& rgba, int& magenta, int& black
 ///        exercises the material-names-a-missing-shader path.
 /// @param unlit the material's unlit flag.
 bool renderCustom(Device& device, const std::string& moduleSource, bool shaderInPool, bool unlit,
-                  std::vector<std::uint8_t>& pixels) {
+                  std::vector<std::uint8_t>& pixels, int frames = 1) {
     std::error_code ec;
     const std::filesystem::path scratch =
         std::filesystem::temp_directory_path() / "hp-custom-shader";
@@ -255,14 +256,36 @@ bool renderCustom(Device& device, const std::string& moduleSource, bool shaderIn
     view.setClearColour(0.0F, 0.0F, 1.0F, 1.0F);
 
     hp::SceneViewStats stats;
-    if (view.render(device.render->context(), scene, pool, 0, &stats) == nullptr) {
-        return false;
+    for (int i = 0; i < frames; ++i) {
+        if (view.render(device.render->context(), scene, pool, 0, &stats) == nullptr) {
+            return false;
+        }
     }
     if (stats.submitted != 1) {
         return false;
     }
     return view.readback(device.render->context(), pixels);
 }
+
+/// Counts compiler-failure log lines (the once-per-shader rule of T0141.4).
+class CompileErrorCounter final : public hp::ILogSink {
+public:
+    void write(const hp::LogRecord& record) override {
+        if (record.message.find("slang failed to compile") != std::string_view::npos) {
+            ++compilerErrors_;
+        }
+        if (record.message.find("did not compile; rendering the missing-material") !=
+            std::string_view::npos) {
+            ++substitutions_;
+        }
+    }
+    [[nodiscard]] int compilerErrors() const { return compilerErrors_.load(); }
+    [[nodiscard]] int substitutions() const { return substitutions_.load(); }
+
+private:
+    std::atomic<int> compilerErrors_{0};
+    std::atomic<int> substitutions_{0};
+};
 
 /// The module under test: overrides base colour, inherits everything else.
 const char* kRedModule = R"(
@@ -307,6 +330,60 @@ TEST_CASE("a .slang material module overrides one method and inherits the rest")
     CHECK(shadedCentre.r == 0);
     CHECK(shadedCentre.g == 0);
     CHECK(shadedCentre.b == 0);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
+TEST_CASE("a shader that fails to compile renders the checkerboard and logs once") {
+    // **T0141.4, and the trap it names.** The pattern is 141.12's — one
+    // visual convention, three causes, the console says which — and the log
+    // discipline is the part that gets ruined first: a failed shader logged
+    // per frame is 3,600 lines a minute. Three frames, one compiler error,
+    // one substitution line naming the module.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    CompileErrorCounter counter;
+    hp::logAddSink(&counter);
+
+    const char* kBrokenModule = R"(
+struct HpMaterial : IHpMaterial
+{
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return this does not parse;
+    }
+}
+)";
+    std::vector<std::uint8_t> pixels;
+    const bool rendered =
+        renderCustom(device, kBrokenModule, /*shaderInPool=*/true, /*unlit=*/false, pixels,
+                     /*frames=*/3);
+    hp::logRemoveSink(&counter);
+    REQUIRE(rendered);
+
+    int magenta = 0;
+    int black = 0;
+    countChecks(pixels, magenta, black);
+    MESSAGE("broken shader: magenta " << magenta << ", compiler errors "
+                                      << counter.compilerErrors() << ", substitutions "
+                                      << counter.substitutions());
+
+    // The fallback, loud and unlit (there is no light in this scene). Flat
+    // magenta rather than checks, because this quad has no UVs — the same
+    // documented degradation the missing-shader case pins.
+    const int centrePixels = (kSize / 2) * (kSize / 2);
+    CHECK(magenta > (centrePixels * 3) / 4);
+
+    // Logged on the transition: one compiler error and one renderer line
+    // across three frames — never per draw, never per frame.
+    CHECK(counter.compilerErrors() == 1);
+    CHECK(counter.substitutions() == 1);
 
     hp::Vfs::shutdown();
     tearDown(device);

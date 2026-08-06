@@ -64,9 +64,10 @@ surface stage rather than being Diligent's fixed shader.
       parameter interface
 - [ ] Custom shader parameters appear in the inspector automatically
 - [x] Shader compilation is cached, not repeated every launch (141.3, 2026-08-06 — persistent SPIR-V cache, measured 11.9s → 2.3s on the heaviest gpu case)
-- [ ] A shader that fails to compile renders the **same magenta checkerboard** a
+- [x] A shader that fails to compile renders the **same magenta checkerboard** a
       missing material does, **and** logs the compiler's error — never a crash,
-      never a silently wrong surface
+      never a silently wrong surface (141.4, 2026-08-06 — asserted with a log
+      capture: one error across three frames)
 - [ ] Shader hot reload in the editor
 - [ ] **Custom shaders receive engine intermediates** — visibility (T0093),
       screen position, depth, world position — not just a finished colour
@@ -320,8 +321,16 @@ T0060 already says it must not foreclose and does not.
       IBL, or PSO creation showing up in a measurement). Measured on the gpu
       suite: the channel-inspection case 11.88s uncached → 2.25s warm, lit
       surface 3.24s → 0.67s — full numbers in the notes
-- [ ] 141.4 Error shader on compile failure: the shared checkerboard, plus a
-      console error naming the shader and the compiler's message (was 60.7)
+- [x] 141.4 Error shader on compile failure: the shared checkerboard, plus a
+      console error naming the shader and the compiler's message (was 60.7).
+      **Done 2026-08-06**: a custom module that fails to compile renders
+      141.12's fallback through the same `ensureFallbackBinding` path — one
+      pattern, three causes. The compiler's message is logged by the pipeline
+      on the attempt (the null is cached, so once per permutation), and one
+      renderer line names the module, once per module — measured: across
+      three rendered frames, exactly one compiler error and one substitution
+      line, and the draw path stays silent. Never a crash, never invisible:
+      the frame is loud magenta
 - [→] 141.5 **Moved to T0142.8** — Slang's runtime API is built for it
 - [x] 141.6 **`HpMaterial.fxh` — the contract a game shader compiles
       against** (D27). `HpSurfaceInput` is a *promise*: adding to it later is
@@ -794,7 +803,6 @@ zero failures.**
 
 | | | Blocked on |
 |---|---|---|
-| **141.4** | error shader on compile failure | 142.15 (the `.slang` asset) |
 | **141.14** | generated shader-contract docs, gated in CI | 141.6 settling |
 | **141.9** | tessellation | deferred: *when a silhouette must change* |
 

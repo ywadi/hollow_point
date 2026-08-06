@@ -357,6 +357,11 @@ struct SceneRenderer::Impl {
     /// transition, never from the draw path.
     std::unordered_set<Guid> reportedMissing;
 
+    /// Shader modules already reported broken (T0141.4), same rule: the
+    /// compiler's error is logged by the pipeline on the compile attempt;
+    /// this guards the one renderer-side line that names the module.
+    std::unordered_set<std::string> reportedBroken;
+
     /// Scratch, reused across frames so a draw does not allocate.
     Diligent::GLTF::ModelTransforms transforms;
 
@@ -883,6 +888,42 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                 doubleSided ? Diligent::CULL_MODE_NONE : Diligent::CULL_MODE_BACK};
 
             Diligent::IPipelineState* pso = renderer->pipeline(graphics, key, customModule);
+            if (pso == nullptr && customModule != nullptr) {
+                // **The error shader** (T0141.4): a custom module that will
+                // not compile renders the same checkerboard a missing
+                // material does -- one visual convention, three causes, and
+                // the console says which. The compiler's own message was
+                // logged by the pipeline on the compile attempt, once (the
+                // null is cached); this line names the module, once; the
+                // per-frame path below stays silent.
+                if (reportedBroken.insert(customModule).second) {
+                    HP_LOG_ERROR(kLog,
+                                 "shader module '{}' did not compile; rendering the "
+                                 "missing-material pattern in its place (see the compiler "
+                                 "error above)",
+                                 customModule);
+                }
+                if (MaterialBinding* errorFallback = ensureFallbackBinding(context)) {
+                    material = &errorFallback->gltf;
+                    srb = errorFallback->srb;
+                    extraFlags = errorFallback->extraFlags;
+                    customModule = nullptr;
+                    flags = (vertexFlags | kMaterialFlags | kEnabledFeatures | extraFlags) &
+                            kFeatureMask;
+                    if ((flags & Diligent::PBR_Renderer::PSO_FLAG_USE_TEXCOORD0) == 0) {
+                        flags &= ~SurfacePipeline::kPsoFlagHeightMap;
+                    }
+                    // Same cull decision as the failed draw -- the surface's
+                    // sidedness is not the shader's fault -- and opaque,
+                    // because the fallback material is.
+                    const Diligent::PBR_Renderer::PSOKey errorKey{
+                        Diligent::PBR_Renderer::RenderPassType::Main, flags,
+                        static_cast<Diligent::PBR_Renderer::ALPHA_MODE>(
+                            material->Attribs.AlphaMode),
+                        doubleSided ? Diligent::CULL_MODE_NONE : Diligent::CULL_MODE_BACK};
+                    pso = renderer->pipeline(graphics, errorKey);
+                }
+            }
             if (pso == nullptr) {
                 continue;
             }
