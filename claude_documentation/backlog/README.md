@@ -181,7 +181,7 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0147](open/0147-engine-intermediates-for-shaders.md) | screen resources for shaders | Refraction, soft particles, heat haze, fog-of-war. A shader cannot sample a depth buffer that is not bound to the pipeline, whatever it includes — so this is binding work, not contract work |
+| 1 | [T0147](inprogress/0147-engine-intermediates-for-shaders.md) | screen resources for shaders | Refraction, soft particles, heat haze, fog-of-war. A shader cannot sample a depth buffer that is not bound to the pipeline, whatever it includes — so this is binding work, not contract work |
 | 2 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | the light loop | **The whole NPR family** — cel, ramp, hatching, custom BRDFs — plus skin, sheen and anisotropy's shading half. T0159 lets a game *read* lights; this lets it replace the loop. **Must land after T0159**, or its interface freezes before hooks are mutable and the break is paid twice |
 
 Then, unchanged in substance and pushed behind the above: `T0143` (extended
@@ -330,7 +330,7 @@ wrong in the confident voice of a document that is normally right.
 | 460 | [T0096](open/0096-hdr-pipeline-and-tonemapping.md) | HDR pipeline, tonemapping and the linear-workflow policy | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 445 | [T0151](open/0151-shader-variants-and-compile-cost.md) | Shader variants bounded: precompiled modules, link-time specialisation | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 456 | [T0146](completed/0146-vertex-stage-hook.md) | The vertex stage: own the vertex main, and a game vertex hook | 4 — Render layer | ✅ DONE | High | Moderate |
-| 458 | [T0147](open/0147-engine-intermediates-for-shaders.md) | Engine intermediates: scene depth, scene colour, game-fed inputs | 4 — Render layer | 🔜 TODO | High | Moderate |
+| 458 | [T0147](inprogress/0147-engine-intermediates-for-shaders.md) | Engine intermediates: scene depth, scene colour, game-fed inputs | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
 | 459 | [T0152](inprogress/0152-winding-convention.md) | The winding convention: hardware facing equals glTF facing | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
 | 460 | [T0153](open/0153-surface-detiling.md) | Surface de-tiling: breaking texture repetition, exposed to the game | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 461 | [T0156](completed/0156-parallax-under-triplanar.md) | Parallax under triplanar, and the silhouette question | 4 — Render layer | ✅ DONE | High | Moderate |

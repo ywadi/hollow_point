@@ -2,13 +2,13 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
 | **Order** | 458 |
 | **Created** | 2026-08-06 |
-| **Refs** | **T0161** ([../completed/0161-game-resource-model.md](../completed/0161-game-resource-model.md)) / **D35** — the other side of the two-namespace line is drawn: game-*declared* resources are reflected into the per-module signature, so the engine-*fed* screen resources this ticket adds belong in the engine's base signature under engine names, and `buildModuleSignatureDesc`'s subtraction will automatically leave them alone once they are declared there; [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — its Done-when promises intermediates and no subtask delivers the sampled ones; [0093-visibility-and-fog-of-war.md](0093-visibility-and-fog-of-war.md) — the visibility field arrives with it, through this mechanism; [0094-gameplay-extensible-rendering.md](0094-gameplay-extensible-rendering.md) — 94.4/94.5 are the game-fed half of this; [../completed/0046-frame-render-targets.md](../completed/0046-frame-render-targets.md) — every target already carries `BIND_SHADER_RESOURCE`, and design-gaps item 8 flagged the scene-colour seam into it; [0096-hdr-pipeline-and-tonemapping.md](0096-hdr-pipeline-and-tonemapping.md) — sidedness rules; [0106-vfx-sprites-and-flipbooks.md](0106-vfx-sprites-and-flipbooks.md) — soft particles are this ticket's depth read; [0089-fog-and-atmospherics.md](0089-fog-and-atmospherics.md) — fog is another consumer |
+| **Refs** | **T0161** ([../completed/0161-game-resource-model.md](../completed/0161-game-resource-model.md)) / **D35** — the other side of the two-namespace line is drawn: game-*declared* resources are reflected into the per-module signature, so the engine-*fed* screen resources this ticket adds belong in the engine's base signature under engine names, and `buildModuleSignatureDesc`'s subtraction will automatically leave them alone once they are declared there; [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — its Done-when promises intermediates and no subtask delivers the sampled ones; [0093-visibility-and-fog-of-war.md](../open/0093-visibility-and-fog-of-war.md) — the visibility field arrives with it, through this mechanism; [0094-gameplay-extensible-rendering.md](../open/0094-gameplay-extensible-rendering.md) — 94.4/94.5 are the game-fed half of this; [../completed/0046-frame-render-targets.md](../completed/0046-frame-render-targets.md) — every target already carries `BIND_SHADER_RESOURCE`, and design-gaps item 8 flagged the scene-colour seam into it; [0096-hdr-pipeline-and-tonemapping.md](../open/0096-hdr-pipeline-and-tonemapping.md) — sidedness rules; [0106-vfx-sprites-and-flipbooks.md](../open/0106-vfx-sprites-and-flipbooks.md) — soft particles are this ticket's depth read; [0089-fog-and-atmospherics.md](../open/0089-fog-and-atmospherics.md) — fog is another consumer |
 
 ## Why
 
@@ -82,6 +82,64 @@ and its validity rules.
       answer, or reject with the reasoning)
 
 ## Notes / findings
+
+### The design, decided before any of it was built (2026-08-07)
+
+**The frame gained a pass split, and that is the whole shape of this ticket.**
+`SceneRenderer::render` submitted the draw list in one walk, in list order, so
+a blended surface could be drawn *before* the opaque geometry behind it — and
+there was no point in the frame at which "the opaque image" existed. Both
+problems have one answer:
+
+| Step | What | Why here |
+|---|---|---|
+| 10.9a | **Opaque pass** — every primitive whose alpha mode is `Opaque` or `Mask` | |
+| 10.9b | **Scene snapshot** — copy the bound colour and depth into the caller's snapshot targets | the only moment the opaque image is complete and no blended surface has touched it |
+| 10.9c | **Blend pass** — every primitive whose alpha mode is `Blend` | reads 10.9b |
+
+The split is a correctness fix on its own (transparents now draw after opaques,
+which they did not) and it is what makes a snapshot point *nameable*.
+
+**Copy rather than alias, and this was the decision most at risk of "works on
+one driver".** The alternative was to bind the depth buffer through a
+`TEXTURE_VIEW_READ_ONLY_DEPTH_STENCIL` view during the blend pass and sample
+the live attachment — `VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL` permits
+exactly that. It was rejected: it needs the *caller* to bind a different DSV for
+one of two passes, it makes the depth a shader reads depend on how many blended
+surfaces have already drawn into it, and it has no counterpart for colour — so
+the engine would have carried two mechanisms with two validity rules. One copy
+mechanism, one rule, every backend.
+
+**Two engine names in the base signature, no new samplers.** `g_SceneColour`
+and `g_SceneDepth` are `MUTABLE` texture SRVs on the base signature (the ticket's
+own Refs argued this, and `buildModuleSignatureDesc`'s subtraction leaves them
+alone for free). They are sampled through the **existing** palette
+(`HpSamplerLinearClamp`, `HpSamplerPointClamp`), so the immutable-sampler count
+is unchanged at 13 and only the sampled-image count moves, 6 → 8.
+
+**The validity rule is enforced at pipeline build, not documented and hoped
+for.** A module that names either resource in a pipeline whose alpha mode is not
+`Blend` is refused **by name**: `SurfacePipeline::build` returns null, the
+renderer substitutes the missing-material checkerboard, and one log line says
+which module and why. That is the Done-when's "fails loudly, not garbage",
+achieved without any per-pass rebinding — the alpha mode is already in the
+`PSOKey`.
+
+**The snapshot costs nothing when nothing wants it, and the demand is exact
+rather than one frame late.** The opaque walk *scans* the primitives it skips:
+it records whether the blend pass has any work at all and whether any of its
+modules either names a screen resource or has never been compiled (unknown
+counts as wanting). Only then is the copy issued. A scene with no blended
+material never pays; a scene with blended materials that ignore the screen pays
+nothing from the second frame and one copy on the first.
+
+**Game-fed textures ride the module signature, by name.** A game layer calls
+`setGameTexture("visibility", view)`; a module declares
+`Texture2DArray visibility;` exactly as T0161 already allows, and the module SRB
+binder resolves the name against the `.hpmat` first and the game feed second.
+No new signature, no new declaration syntax — which is the point: T0161's
+mechanism was already the right one, and what was missing was a *source* for the
+bytes.
 
 ### Scene colour has a cost and a trap worth naming now
 
