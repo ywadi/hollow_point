@@ -2017,3 +2017,124 @@ way: whichever parity is chosen, hardware facing equals glTF facing, and
 adds view-dependent IBL baselines, T0143 adds per-feature pixel tests.
 Every one of them calibrated against inverted assets makes the correction
 strictly more expensive; none of them starts before T0152 lands.
+
+---
+
+## D34 — **A cooked shader is content and its absence is fatal.** One producer, one key, one format; the developer cache and the cooked archive differ only in where they live and what a miss means
+
+**Decided 2026-08-06** while landing **T0142.7**, jointly with **T0151**'s
+cooked-output question, which its Done-when required to be settled here rather
+than separately.
+
+### The invariant this entry exists to break
+
+`Cook.hpp` opens by promising that the binary form is *always safely
+discardable*: missing, stale, truncated or from a future version, the correct
+response is to re-cook from the YAML, **never to fail**. That promise is what
+makes the cook format safe to ship and safe to delete, and it is true because
+the YAML travels with it.
+
+**It does not hold for a shader**, and inheriting it would have been the bug.
+A shipped game carries neither `slangc` nor a `.slang` — that is T0142's own
+Done-when ("a shipped game links no Slang and reads cooked output only") — so a
+missing cooked shader cannot be recovered by anything at any cost. It is fatal,
+and the cook layer says so in its own vocabulary: `CookedShaderStatus` shares no
+value with `CookStatus`, `hp/ShaderCook.hpp` neither calls nor wraps
+`writeCook`/`readCook`, and the log line names the shader and the word
+*incomplete* rather than anything that reads like a cache miss.
+
+Only the byte primitives are reused (`writeU32`, `readString`, …), because two
+implementations of "write a u64" is how an endianness decision gets made twice
+and differently.
+
+### The reconciliation with T0141.3, which is the question that had to be answered first
+
+T0141.3 had landed a persistent SPIR-V cache on Diligent's `IBytecodeCache` a
+few hours earlier. Cooking could have been a *second* thing that produces
+SPIR-V, and **two paths that both work is exactly the outcome T0142.13 exists
+to prevent** — it is how the `CreateInfo` duplication that hid
+`TextureAttribIndices` happened.
+
+**So cooked output is the same artefact.** There is one function in this engine
+that turns `.slang` into SPIR-V (`compileSlangToSpirv`), one key (Diligent's
+`XXH128` content hash over the resolved source of the shader and every
+transitive include, plus the macros), and one store (`engine/src/ShaderCook.cpp`).
+Cooking is that producer run early with its output relocated into content. What
+differs is the promise attached to the bytes:
+
+| | developer cache (T0141.3) | cooked archive (T0142.7) |
+|---|---|---|
+| lives | beside the executable | in the VFS, in a pack (**D13**) |
+| written by | the process, as it compiles | the cook, ahead of time |
+| a miss means | compile it | **fatal** — there is nothing to compile with |
+| deleting it | costs a recompile | breaks the game |
+| authoritative | no | yes — and then the dev cache is not consulted at all |
+
+**The last row is the one worth arguing.** In cooked-only mode the developer
+cache is neither read nor written, which costs a little speed on a developer's
+machine and buys the only thing that matters: a stale dev cache silently
+standing in for content that failed to cook is precisely the "renders here,
+black on the player's machine" failure the whole ticket exists to make
+impossible.
+
+### The joint decision with T0151: per-variant SPIR-V, and precompiled modules may never ship
+
+T0151 offered three shapes for cooked output — per-variant SPIR-V, precompiled
+`.slang-module`s linked at load, or both. **It is per-variant SPIR-V**, and the
+reason is decisive rather than aesthetic: linking at load requires the slang
+runtime *in the shipped game*, which is the thing T0142's Done-when forbids and
+the thing cooking exists to remove. 34 MB of compiler and a load-time link step
+would be paid on the player's machine to save time on the build machine.
+
+So T0151's mechanisms are **inputs to the cook, never artefacts of it**.
+Precompiled modules may make the cook faster; link-time constants may make the
+variant set smaller; neither may change what a player's machine has to be able
+to do, which is `memcpy` and nothing else. Recorded on both tickets.
+
+### What the key being a content hash forces, and it is not what was assumed
+
+The lookup key is a hash **over the resolved source text**, so computing it
+requires the source — a cooked build still reads `HpSurface.slang`, every header
+it includes, and the game's own `.slang` module, and only then finds the
+bytecode. Two consequences, both measured rather than reasoned about after the
+fact:
+
+- **`cmake/hp_embed_shaders.cmake` survives**, which T0142.13 had listed as an
+  open possibility ("along with `hp_embed_shaders.cmake` if cooking replaces
+  embedding"). It does not replace it. Engine shader source stays compiled into
+  the binary — a few tens of kilobytes — and cooked SPIR-V ships beside it as
+  content. The alternative, keying cooked entries on something cheaper such as a
+  PSO-key digest, was rejected: it is a second key mechanism, and it loses the
+  property that editing any header invalidates the key with no staleness rule to
+  remember.
+- **Editing a shader after cooking is a cooked-shader miss, not a silent
+  substitution.** Pinned by a gpu test that adds one comment line to a game
+  module after the archive is written and asserts the loud line, zero compiles,
+  and T0141.12's fallback pattern in the frame.
+
+### Where archives live, and how DLC adds one
+
+`shaders/cooked/*.hpsv` in the virtual tree, every archive from every mount,
+entries merged. That is D13's "packs, patches and DLC are one mechanism" applied
+to shaders: a DLC pack that adds a material adds its shader's bytecode in its own
+archive without republishing the base game's. The cost is a naming rule —
+**archive file names must be unique across packs**, because two packs shipping
+`base.hpsv` collide on the path and only the first-mounted one is read.
+
+Loading is explicit (`hp::loadCookedShaders()`, called after mounting) rather
+than automatic: the VFS has no change notification, and inventing one here would
+be T0058's job done badly.
+
+### What is deliberately not decided here
+
+- **Which variants a project cooks.** A variant exists because something asked
+  for a pipeline, so the cook is "drive the content, then seal" — the shape
+  Godot's shader baker has. Enumerating a project's variants exhaustively is
+  T0043's (export) with T0151 bounding how many there are; neither exists, and
+  pretending otherwise in this layer would have been the more expensive mistake.
+- **Whether `dist` should stop staging the slang runtime.** Measured on
+  2026-08-06: `dist` stages it **twice** on Linux (`bin/` and `lib/`, 43.7 MB
+  each) and once on Windows (31.5 MB), out of 281 MB and 162 MB respectively —
+  by glob, because nobody decides what ships. Cooking is what makes dropping it
+  *possible*; deciding what a `dist` layout contains is **T0128**, and the
+  reference is recorded there.

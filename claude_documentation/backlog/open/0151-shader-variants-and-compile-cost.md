@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 445 |
 | **Created** | 2026-08-06 |
-| **Refs** | [../inprogress/0141-custom-shader-materials.md](../inprogress/0141-custom-shader-materials.md) — its Done-when requires "variant growth bounded by a decision that is written down", and this ticket is where that decision's mechanisms live; 141.3 (the cache) and [../inprogress/0142-slang-shader-language.md](../inprogress/0142-slang-shader-language.md) 142.6 (the measured 2–4x) / 142.7 (cooking) are the near-term mitigations this composes with; [0143-extended-material-features.md](0143-extended-material-features.md) — 143.8's permutation count is the pressure gauge; **D28**, **D30** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) |
+| **Refs** | [../inprogress/0141-custom-shader-materials.md](../inprogress/0141-custom-shader-materials.md) — its Done-when requires "variant growth bounded by a decision that is written down", and this ticket is where that decision's mechanisms live; 141.3 (the cache) and [../inprogress/0142-slang-shader-language.md](../inprogress/0142-slang-shader-language.md) 142.6 (the measured 2–4x) / 142.7 (cooking) are the near-term mitigations this composes with; [0143-extended-material-features.md](0143-extended-material-features.md) — 143.8's permutation count is the pressure gauge; [0153-surface-detiling.md](0153-surface-detiling.md) — **153.8 registers three de-tiling tiers as a further axis**, and it is the standing proof that the axis list is open: any bound written here must accommodate axes that do not exist yet; **D28**, **D30**, **D34** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) — **D34 bounds this ticket's output**: whatever mechanism it picks, a shipped game receives per-variant SPIR-V and links no compiler |
 
 ## Why
 
@@ -78,9 +78,13 @@ whose register pressure is the *maximum* over registered materials.
       synthetic — the number replaces the 0.71→0.33 proxy, and the
       session-API migration it requires is dispositioned (done, or rejected
       with the reasoning)
-- [ ] Cooking (142.7) knows this ticket's answer: whether cooked output is
+- [x] Cooking (142.7) knows this ticket's answer: whether cooked output is
       per-variant SPIR-V, precompiled modules + link at load, or both —
-      decided *with* 142.7, referenced both ways
+      decided *with* 142.7, referenced both ways.
+      **Answered 2026-08-06 as D34, jointly, while 142.7 landed: cooked output
+      is per-variant SPIR-V.** Precompiled modules are permitted as *inputs to
+      the cook* and forbidden as *shipped artefacts* — see the note below,
+      which is the constraint this ticket now works inside.
 - [ ] The **dynamic-dispatch escape hatch is recorded with a trigger**: the
       measured condition (pipeline count or cold-compile seconds after cache +
       cook) that reopens it, and the named prerequisite (bindless descriptor
@@ -102,6 +106,43 @@ whose register pressure is the *maximum* over registered materials.
 - [ ] 151.6 Record the dynamic-dispatch trigger and its bindless prerequisite
 
 ## Notes / findings
+
+### From 142.7 / D34 (2026-08-06) — the cooked-output shape is decided, and it constrains 151.2 and 151.3
+
+**Cooked output is per-variant SPIR-V**, in the same store and under the same
+content-hash key as T0141.3's developer cache. The joint decision is D34; what
+matters to *this* ticket is the constraint it imposes, which is one sentence:
+
+> Precompiled modules and link-time constants are **inputs to the cook, never
+> artefacts of it.**
+
+The reason is not aesthetic. Linking at load needs the slang runtime **in the
+shipped game** — 34 MB of compiler and a load-time link step on the player's
+machine — which is the thing T0142's Done-when forbids and the thing cooking
+exists to remove. So 151.3 may measure precompiled modules and adopt them to
+make the *cook* faster; 151.4 may move an engine axis to a link-time constant
+and cook the resulting variants; neither may make a player's machine do
+anything but `memcpy`.
+
+**151.2's disposition gained no new pressure from cooking, and that is worth
+recording rather than assuming.** 142.7 reused `compileSlangToSpirv` untouched
+— the deprecated compile-request API is still what runs, because cooking is the
+existing compile driven early rather than a different compile. The session/module
+migration remains owned here, argued on precompiled modules alone.
+
+**One measurement this ticket can now make that it could not before.** With
+cooking in place, "how many variants does a project actually have" is a
+countable number rather than an estimate: the archive is one entry per variant.
+The gpu suite's own cook came out at 438 KB (Linux) and 1.33 MB (the Windows
+target, more entries) after the whole bucket — a real, if small, first data
+point for 151.1's audit.
+
+**And the axis list is open, which the bound must survive.** D34 fixes the
+*form* of cooked output and says nothing about how many entries it has. T0143's
+six feature bits (143.8) and T0153's three de-tiling tiers (153.8) both arrive
+later and both multiply the space, so 151.5's written bound has to be a rule new
+axes are argued against — not an enumeration of today's, which would be stale
+before it was committed.
 
 ### From 142.16 (2026-08-06) — interface-method overrides do not fold at the SPIR-V level
 

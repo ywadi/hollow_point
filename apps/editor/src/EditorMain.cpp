@@ -18,6 +18,7 @@
 #include <hp/Paths.hpp>
 #include <hp/Light.hpp>
 #include <hp/Render.hpp>
+#include <hp/ShaderCook.hpp>
 #include <hp/Vfs.hpp>
 
 #include <hp/EntryPoint.hpp>
@@ -269,6 +270,14 @@ private:
             HP_LOG_WARN(kLog, "could not mount the demo content; the viewport stays empty");
             return;
         }
+
+        // **Whoever mounts content is who loads its cooked shaders** (T0142.7).
+        // There is no mount notification to hang this on, and inventing one
+        // would be T0058's job done badly -- so the pattern is "mount, then
+        // load", and this is the live example of it. The editor always has a
+        // compiler, so it normally finds nothing and carries on; a shipped
+        // runtime (T0042) finds everything and is the case that matters.
+        (void)hp::loadCookedShaders();
 
         auto mesh = hp::loadMesh(render.device(), render.context(), "models/quad.gltf");
         if (!mesh || !mesh->valid()) {

@@ -9,7 +9,7 @@
 | **Order** | 740 |
 | **Created** | 2026-08-04 |
 | **Found by** | T0105.4 |
-| **Refs** | [../completed/0105-module-linkage-loose-ends.md](../completed/0105-module-linkage-loose-ends.md), T0109, T0043, T0013 |
+| **Refs** | [../completed/0105-module-linkage-loose-ends.md](../completed/0105-module-linkage-loose-ends.md), T0109, T0043, T0013, **D34** / [T0142](../inprogress/0142-slang-shader-language.md) 142.7 — **cooking makes dropping the slang runtime possible, and this ticket is where it is decided.** Measured 2026-08-06: `dist` stages the compiler **twice** on Linux (`bin/` and `lib/`, 43.7 MB each of a 281 MB tree) and once on Windows (31.5 MB of 162 MB), by glob. T0142's Done-when *"a shipped game links no Slang and reads cooked output only"* cannot close until a `dist` layout exists that omits it |
 
 ## Why
 
@@ -24,6 +24,20 @@ fixture the test suite builds — including `hp_unload_module_broken`, an artifa
 that exists *because* it segfaults the process at exit, staged into `bin/` on
 Windows next to `hp_editor.exe`. That specific leak is fixed. The mechanism that
 produced it is not.
+
+**A fourth arrived with T0142.7 (2026-08-06), and it is the largest single
+item in the tree.** The slang runtime is staged into a shipping layout by the
+same globs — `libslang-compiler.so` (33.7 MB) and `libslang-glslang-*.so`
+(10.0 MB) land in **both** `bin/` (via the app-payload tree copy) and `lib/`
+(via the `*.so` sweep), so Linux ships 87.4 MB of shader compiler twice over;
+Windows ships `slang-compiler.dll` + `slang-glslang.dll` (31.5 MB) once. Before
+cooking existed there was no choice — a build with no compiler could not create
+a pipeline. **Now there is**: D34 makes cooked SPIR-V the shipped artefact and
+`hp::cookedShadersOnly()` the mode that consumes it, so a player-facing layout
+that omits the compiler is a decision this ticket can take rather than a
+capability someone has to build first. A layout that omits it and ships no
+cooked archive renders nothing — loudly, naming the shader — which is the
+failure mode D34 chose deliberately and the one this ticket must not stage into.
 
 Three things it still cannot get right, all for the same reason:
 

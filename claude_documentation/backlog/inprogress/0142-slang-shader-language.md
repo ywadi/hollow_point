@@ -45,7 +45,16 @@ RTX 2080 — their arithmetic, to the byte.
 - [ ] The engine's own shaders are `.slang`, and no hand-written HLSL remains in
       `engine/shaders/`.
 - [ ] `slangc` is pinned in `.harness/`, offline after bootstrap, on both hosts.
-- [ ] A shipped game links no Slang and reads cooked output only.
+- [~] A shipped game links no Slang and reads cooked output only. *The
+      **link** half is fact: `readelf -d libhp_engine.so` lists only libm,
+      libc, ld-linux, libpthread and libdl — no slang, and `ldd hp_editor`
+      agrees, because the runtime is `dlopen`ed. The **reads cooked output
+      only** half is proven as a capability (142.7: a frame rendered from a
+      cooked archive with zero compiles, byte-identical to the compiled one),
+      not yet as a `dist` layout — `dist` still stages the runtime by glob,
+      **twice** on Linux (43.7 MB in `bin/` and again in `lib/`) and once on
+      Windows (31.5 MB). Deciding what a shipping layout contains is **T0128**,
+      and the reference is recorded there.*
 - [ ] The editor builds a material inspector from Slang reflection, with no
       device and no successful compile required.
 
@@ -131,12 +140,25 @@ RTX 2080 — their arithmetic, to the byte.
       142.7's cooking, both of which make the cold compile a cache miss
       rather than a startup cost. First-frame-in-the-editor was not measured
       separately.*
-- [ ] 142.7 **Cook shaders as compiled assets.** Slang → cooked output at cook
+- [x] 142.7 **Cook shaders as compiled assets.** Slang → cooked output at cook
       time, keyed on content hash like everything else. **But `Cook.hpp`'s
       invariant does not hold**: it promises anything cooked can be re-cooked from
       source, and an exported game has neither `slangc` nor `.slang`. A missing
       cooked shader is **fatal, not recoverable** — the cook layer must say so
       rather than inherit the wrong contract.
+      *Done 2026-08-06 as **D34**, and the decision was the work. Cooked output
+      is **the same artefact as 141.3's cache** — one producer, one content-hash
+      key, one store (`engine/src/ShaderCook.cpp`) — differing only in where it
+      lives (VFS content, `shaders/cooked/*.hpsv`, merged across mounts) and in
+      what a miss means (fatal; and the dev cache is then not consulted at all,
+      because a stale one standing in for content that failed to cook is the
+      bug this exists to prevent). Jointly with T0151: **per-variant SPIR-V**,
+      precompiled modules permitted as cook inputs and forbidden as shipped
+      artefacts, because linking at load would put the compiler back in the
+      shipped game. Proved on hardware: the same scene renders the
+      byte-identical frame from a cooked archive with **zero compiles**, and a
+      module edited after the cook is one loud unrecoverable line plus
+      T0141.12's fallback — never a silent substitution. Evidence in notes.*
 - [ ] 142.8 **Hot reload in the editor**, via Slang's runtime API and the same
       content hash. Supersedes 141.5.
 - [ ] 142.9 **Material inspector from Slang reflection** — parameters read from
@@ -367,6 +389,65 @@ every printed guard value is digit-identical on both targets — base colour
 (85, 80, 57) 14.5219, metal (12, 12, 11) 6.8905, lit quad (211, 144, 144).
 The expression changed; the output provably did not. Full suites: fast
 302/214,660, integration 89/515, gpu 15/492, both targets, docs clean.
+
+### 142.7 landed 2026-08-06 — cooking, and the invariant it had to refuse
+
+**The decision is D34; this is what it cost and what it proved.**
+
+**Shape.** `hp/ShaderCook.hpp` (public: the container, the policy, `cookShaders`
+and `loadCookedShaders`), `engine/src/ShaderCook.cpp` (the one store),
+`engine/src/ShaderStore.hpp` (the seam `SlangCompiler.cpp` reaches it through).
+141.3's `SpirvCache` **moved** into that store rather than being duplicated
+beside it — `SlangCompiler.cpp` now describes a variant (`ShaderVariantKey`:
+file, stage, macros, prelude text, factory) and the store owns hashing, because
+a hash computed in two places is a hash computed differently. Lookup order:
+cooked archives → developer cache → compile; in cooked-only mode it stops after
+the first, loudly.
+
+**Container.** `HPSHADER` magic, format version, the pinned slang version as a
+compiler id, length-prefixed payload. It reuses `Cook.hpp`'s *byte primitives*
+and none of its semantics: `CookedShaderStatus` shares no value with
+`CookStatus` and every one of its values is an error to report rather than a
+reason to re-cook. Eight fast tests pin round-trip, empty-but-valid,
+compiler mismatch, bad magic at header length, truncation, and a future format
+version being refused *before* the compiler id is believed.
+
+**Measured on hardware (RTX 4070 Laptop under wine for the Windows target;
+llvmpipe for the Linux one on this WSL host — see "not verified" below):**
+
+| claim | evidence |
+|---|---|
+| a cook run compiles | `cook run: 1 compile(s)` — the module carries a per-run GUID token so it cannot be served from any earlier cache |
+| the archive is real | `cooked archive: 438249 bytes` (Linux), 1326301 (Windows target — more entries, same suite) |
+| cooked renders identically | `cooked run: (255, 0, 0), 0 compile(s), 0 missing`, and the full readback compares **equal** to the compiled run's, not merely close |
+| a missed variant is loud | `uncooked variant: 0 compile(s), 1 unrecoverable line(s), magenta 4096` — 4096/4096 centre pixels are the fallback |
+
+Full suites after: gpu 26 cases / 560 assertions on **both** targets; fast
+310 / 214,690; integration 89 / 515; `zig build docs` green.
+
+**Two things that surprised, and are now written down:**
+
+- **The key being a content hash means the shader *source* still ships.**
+  Computing the lookup key requires resolving `HpSurface.slang` and every
+  include, so a cooked build reads all of it and only then finds the bytecode.
+  That settles 142.13's open question in the opposite direction to the guess:
+  **cooking does not replace `hp_embed_shaders.cmake`.** The alternative — a
+  cheaper key such as a PSO-key digest — is a second key mechanism and loses
+  "edit any header, key changes, no staleness rule to remember".
+- **`HP_SPIRV_CACHE=0` makes cooking impossible**, because the store is where a
+  compiled variant is kept. `cookShaders` refuses with that reason named rather
+  than writing a plausible empty archive.
+
+**Not verified.** The Linux gpu run on this WSL host reports
+`llvmpipe (LLVM 20.1.2)` for these cases while the Windows-target run under
+wine gets the real RTX 4070 — so the cooked-vs-compiled byte equality is proven
+on both a software and a hardware Vulkan implementation, but the *Linux*
+hardware path specifically was not the one exercised. Also unverified: a cooked
+archive loaded from a **pack** rather than a mounted directory (the code path is
+`Vfs::read`, which does not distinguish, but no test mounts a ZIP), and two
+packs each carrying an archive (the merge is `IBytecodeCache::Load`'s, which
+`emplace`s, so first-loaded wins — asserted by reading their source, not by a
+test).
 
 ### Smaller things worth knowing
 

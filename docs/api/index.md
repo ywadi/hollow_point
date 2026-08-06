@@ -64,6 +64,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/SceneView.hpp>`](SceneView.md) | 18 | 18 |
 | [`<hp/Serialize.hpp>`](Serialize.md) | 6 | 6 |
 | [`<hp/Settings.hpp>`](Settings.md) | 28 | 28 |
+| [`<hp/ShaderCook.hpp>`](ShaderCook.md) | 12 | 12 |
 | [`<hp/ShaderSources.hpp>`](ShaderSources.md) | 5 | 5 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Vfs.hpp>`](Vfs.md) | 23 | 23 |
@@ -71,7 +72,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 47 | 47 |
 
-**733 public declarations across 40 headers, 616 documented.**
+**745 public declarations across 41 headers, 628 documented.**
 
 ## Every symbol
 
@@ -693,6 +694,18 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `SettingsStore::setString` | [`Settings.hpp`](Settings.md) |
 | `SettingsStore::readLayerNames` | [`Settings.hpp`](Settings.md) |
 | `SettingsStore::writeLayerNames` | [`Settings.hpp`](Settings.md) |
+| `kCookedShaderFormatVersion` | [`ShaderCook.hpp`](ShaderCook.md) |
+| `kCookedShaderDirectory` | [`ShaderCook.hpp`](ShaderCook.md) |
+| `kCookedShaderExtension` | [`ShaderCook.hpp`](ShaderCook.md) |
+| `CookedShaderStatus` | [`ShaderCook.hpp`](ShaderCook.md) |
+| `describe` | [`ShaderCook.hpp`](ShaderCook.md) |
+| `shaderCompilerId` | [`ShaderCook.hpp`](ShaderCook.md) |
+| `writeCookedShaderArchive` | [`ShaderCook.hpp`](ShaderCook.md) |
+| `readCookedShaderArchive` | [`ShaderCook.hpp`](ShaderCook.md) |
+| `loadCookedShaders` | [`ShaderCook.hpp`](ShaderCook.md) |
+| `cookShaders` | [`ShaderCook.hpp`](ShaderCook.md) |
+| `cookedShadersOnly` | [`ShaderCook.hpp`](ShaderCook.md) |
+| `setCookedShadersOnly` | [`ShaderCook.hpp`](ShaderCook.md) |
 | `ShaderStage` | [`ShaderSources.hpp`](ShaderSources.md) |
 | `createEngineShaderFactory` | [`ShaderSources.hpp`](ShaderSources.md) |
 | `embeddedShaderCount` | [`ShaderSources.hpp`](ShaderSources.md) |

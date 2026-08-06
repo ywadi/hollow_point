@@ -20,19 +20,19 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-06 — twelfth revision of the day, and the sequenced 141/142
-authoring chain is done: 141.12, 141.3, 141.7, 141.8, 142.14, 142.15, 141.4
-and 142.16 all landed today; T0152's engine half (152.2–4) landed in between.
-A game can author a `.slang` material — broken ones included, unshaded ones
-included — and the engine answers correctly in every case.** The fourth revision was the first derived from
-the code rather than from the tickets. The previous sequence named **142.7
-(cooking)** as what came next. Reading the tree says it cannot be: shader source
-is **embedded-only** — `hp_embed_shaders.cmake` bakes raw string literals into
-the engine binary and there is no VFS path — and **`Material` carries no shader
-reference field**. So a game's `.slang` cannot reach the compiler, and no
-material can name one. Cooking today would be designing a format for an asset
-type that does not exist yet, so it sits behind the two things that
-make it concrete.
+**Set 2026-08-06 — thirteenth revision of the day. 142.7 (cooking) has landed,
+so the sequenced 141/142 authoring chain now runs all the way to a shipped
+artefact: 141.12, 141.3, 141.7, 141.8, 142.14, 142.15, 141.4, 142.16 and 142.7,
+with T0152's engine half (152.2–4) in between. A game can author a `.slang`
+material — broken ones included, unshaded ones included — the engine answers
+correctly in every case, and the result cooks to SPIR-V that renders
+byte-identically with no compiler present (**D34**).** The fourth revision was
+the first derived from the code rather than from the tickets, and it demoted
+142.7 for a reason that has since been discharged: shader source was
+embedded-only and `Material` carried no shader field, so a game's `.slang` could
+not reach the compiler and no material could name one. 142.14 and 142.15 fixed
+both, which is what made cooking a real asset rather than a format invented for
+one that did not exist.
 
 The owner's reason for this section: *"This way we know what needs to happen next
 even if the context and session restart."* The [Board](#board) below is every
@@ -59,7 +59,13 @@ missing its before-sampling hook, now `surfaceCoordinates`) and **141.8**
 case no other sampling path can fake); from **T0142**, **142.14** (game
 shaders through the VFS, engine names enforced-reserved) and **142.15** (the
 `.slang` material asset — a game module overriding one method renders, exact
-to the pixel, and T0142's headline Done-when is met); from **T0141** again,
+to the pixel, and T0142's headline Done-when is met); **142.7** (cooked
+shaders, **D34** — cooked output is the *same artefact* as 141.3's cache under
+one content-hash key, differing only in that it ships as content and that a
+miss is fatal rather than a recompile; T0151's joint question is answered with
+it, and the honest finding is that cooking does **not** replace
+`hp_embed_shaders.cmake`, because the key is a hash over the source); from
+**T0141** again,
 **141.4** (a module that fails to compile renders the checkerboard, with the
 compiler's error logged once, not per frame) and **142.16** (unshaded as an
 interface method — exact semantics, and the honest finding that slang does
@@ -77,12 +83,11 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0142.7](inprogress/0142-slang-shader-language.md) | cook shaders as compiled assets | Concrete now — 142.14 and 142.15 both landed. Carries a decision, not just work: **`Cook.hpp`'s invariant does not hold** — an exported game has neither `slangc` nor `.slang`, so a missing cooked shader is **fatal, not recoverable**, and the cook layer must say so rather than inherit the wrong contract |
-| 2 | [T0142.13](inprogress/0142-slang-shader-language.md) | retire the HLSL path | `HpMaterial.fxh` is still hand-written HLSL and `HpSurface.slang` still includes it, so T0142's "no hand-written HLSL in `engine/shaders/`" is **not** met. `hp_embed_shaders.cmake`'s fate is decided here too, because item 1 may replace it |
-| 3 | [T0143](open/0143-extended-material-features.md) | extended material features | **Everything DiligentFX's PBR has, plus the ability to override it** — clearcoat, sheen, anisotropy, iridescence, transmission, volume. Amends D24. Wiring rather than new maths, because their getters are already included and callable |
-| 4 | [T0152](inprogress/0152-winding-convention.md) | the winding convention: the remainder | **The engine half landed 2026-08-06** (152.2–4: header declared, assets re-wound, cull reverted — and the old lit baseline turned out to encode the inversion via a clamped `NdotV`; before/after in the ticket). Remaining: the determinant rule (152.5), the chirality probe and the owner's mirror decision (152.6), the conventions-doc section (152.7) |
-| 5 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | **Shader-independent**, so it may slot anywhere — see below |
-| 6 | [T0086](open/0086-shadows.md) | shadows | Last because it needs the surface stage *and* adds `ShadowFactor` to the material contract, so it wants that contract settled in Slang first — **and T0152 must land first** — 141.12's winding finding was corrected by D33 (the assets, not the engine), and shadow bias tuned before the assets are re-wound bakes the inversion into every tuned value. **Now also behind T0145** (D30): the shadow lookup lives inside the light loop T0145 moves into the engine, so the loop must land before shadow sampling is written — or it is written twice |
+| 1 | [T0142.13](inprogress/0142-slang-shader-language.md) | retire the HLSL path | `HpMaterial.fxh` is still hand-written HLSL and `HpSurface.slang` still includes it, so T0142's "no hand-written HLSL in `engine/shaders/`" is **not** met. **`hp_embed_shaders.cmake`'s fate is already settled by D34 and it survives** — the cooked-shader key is a content hash over the resolved source, so a cooked build still reads the shader text and embedding is not replaced by cooking. What is left here is the contract header itself, and making the rule mechanical |
+| 2 | [T0143](open/0143-extended-material-features.md) | extended material features | **Everything DiligentFX's PBR has, plus the ability to override it** — clearcoat, sheen, anisotropy, iridescence, transmission, volume. Amends D24. Wiring rather than new maths, because their getters are already included and callable |
+| 3 | [T0152](inprogress/0152-winding-convention.md) | the winding convention: the remainder | **The engine half landed 2026-08-06** (152.2–4: header declared, assets re-wound, cull reverted — and the old lit baseline turned out to encode the inversion via a clamped `NdotV`; before/after in the ticket). Remaining: the determinant rule (152.5), the chirality probe and the owner's mirror decision (152.6), the conventions-doc section (152.7) |
+| 4 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | **Shader-independent**, so it may slot anywhere — see below |
+| 5 | [T0086](open/0086-shadows.md) | shadows | Last because it needs the surface stage *and* adds `ShadowFactor` to the material contract, so it wants that contract settled in Slang first — **and T0152 must land first** — 141.12's winding finding was corrected by D33 (the assets, not the engine), and shadow bias tuned before the assets are re-wound bakes the inversion into every tuned value. **Now also behind T0145** (D30): the shadow lookup lives inside the light loop T0145 moves into the engine, so the loop must land before shadow sampling is written — or it is written twice |
 
 ### The three orphaned subtasks are numbered now — resolved 2026-08-06
 
@@ -234,6 +239,7 @@ wrong in the confident voice of a document that is normally right.
 | 456 | [T0146](open/0146-vertex-stage-hook.md) | The vertex stage: own the vertex main, and a game vertex hook | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 458 | [T0147](open/0147-engine-intermediates-for-shaders.md) | Engine intermediates: scene depth, scene colour, game-fed inputs | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 459 | [T0152](inprogress/0152-winding-convention.md) | The winding convention: hardware facing equals glTF facing | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
+| 460 | [T0153](open/0153-surface-detiling.md) | Surface de-tiling: breaking texture repetition, exposed to the game | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 465 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | 🔜 TODO | High | Complex |
 | 492 | [T0148](open/0148-post-process-stack.md) | The post-process stack: engine and game effects at one seam | 4 — Render layer | 🔜 TODO | Medium | Complex |
 | 542 | [T0149](open/0149-style-bundles.md) | Style bundles: the one-click looks | 4 — Render layer | 🔜 TODO | Medium | Complex |

@@ -48,6 +48,17 @@ struct SlangMacro {
     const char* definition;
 };
 
+/// Bump when the way slang is *driven* changes -- target, matrix layout, the
+/// prelude arrangement -- anything that alters the output without altering any
+/// hashed input.
+///
+/// It lives beside the code it describes and is consumed by `ShaderStore.hpp`,
+/// which folds it into every variant key. Forgetting to bump it means a cooked
+/// archive or a developer cache serves bytecode from a compile that would no
+/// longer be made the same way, which is the one staleness this key cannot
+/// detect on its own.
+inline constexpr int kSlangDrivingSchema = 1;
+
 /// @returns whether the slang runtime library could be loaded on this machine.
 ///
 /// The first call attempts the load and logs the outcome once; later calls are
