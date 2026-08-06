@@ -28,6 +28,7 @@
 //     designed for -- never a crash.
 #pragma once
 
+#include <hp/ShaderParams.hpp>
 #include <hp/ShaderSources.hpp>
 
 #include <cstdint>
@@ -46,6 +47,23 @@ namespace hp {
 struct SlangMacro {
     const char* name;
     const char* definition;
+};
+
+/// What a compile may be asked to report about the module it compiled (T0160.2).
+///
+/// **Filled from the compile that already happens, never from a second one.**
+/// The alternative was reflecting a module on its own, and that is not a thing
+/// that exists: a module names `IHpMaterial`, `VSOutput` and — since D27's
+/// amendment — anything else `HpSurface.slang` can see, so a standalone
+/// translation unit containing it does not type-check, and slang emits no
+/// reflection at all for a failed compile (measured on the pinned
+/// `slangc 2026.14.1`: `-reflection-json` writes no file). Reflecting the real
+/// compile is therefore not a compromise, it is the only place the module is a
+/// well-formed program.
+struct SlangReflectionRequest {
+    /// Receives the module's declared parameters and texture slots. Left empty
+    /// when the shader declares none, which is the standard material's case.
+    ShaderParamLayout* layout = nullptr;
 };
 
 /// Bump when the way slang is *driven* changes -- target, matrix layout, the
@@ -84,11 +102,18 @@ inline constexpr int kSlangDrivingSchema = 1;
 /// @param outDiagnostics receives the compiler's message text, on success
 ///        (warnings) and failure (errors) alike. The caller owns logging it on
 ///        the attempt, once -- never from a draw path (T0141).
+/// @param reflect what to report about the module, or null for nothing.
+///        **Asking for reflection defeats the bytecode cache for this call**:
+///        a cached hit has no `ProgramLayout` behind it, so a caller that needs
+///        the layout compiles. That is deliberate and cheap -- it happens once
+///        per module per process, and the alternative is caching a second
+///        artefact whose staleness nothing could detect.
 /// @returns whether compilation succeeded.
 [[nodiscard]] bool compileSlangToSpirv(const char* filePath, ShaderStage stage,
                                        const SlangMacro* macros, std::size_t macroCount,
                                        Diligent::IShaderSourceInputStreamFactory* sources,
                                        std::vector<std::uint8_t>& outSpirv,
-                                       std::string& outDiagnostics);
+                                       std::string& outDiagnostics,
+                                       const SlangReflectionRequest* reflect = nullptr);
 
 } // namespace hp

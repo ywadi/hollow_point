@@ -62,6 +62,29 @@ using CreateGlobalSessionFn = SlangResult (*)(SlangInt apiVersion,
 struct SlangLibrary {
     CreateGlobalSessionFn createGlobalSession = nullptr;
 
+    /// Resolves any other entry point out of the same image.
+    ///
+    /// **The reflection API is C functions, not vtable methods** (T0160.2), so
+    /// using it is the one thing this file cannot do through the COM interface
+    /// alone -- and linking them is exactly what this whole loader exists to
+    /// avoid (D28's boundary table: a shipped game links no Slang). Resolving
+    /// them from the handle we already hold keeps the link edge at zero and
+    /// costs one `dlsym` per symbol, once.
+    ///
+    /// @param name the exported symbol's name.
+    /// @returns the symbol, or nullptr when the library does not export it.
+    [[nodiscard]] void* symbol(const char* name) const {
+        if (handle == nullptr) {
+            return nullptr;
+        }
+#if defined(_WIN32)
+        return reinterpret_cast<void*>(
+            GetProcAddress(static_cast<HMODULE>(handle), name));
+#else
+        return ::dlsym(handle, name);
+#endif
+    }
+
     SlangLibrary() {
         const char* override = std::getenv("HP_SLANG_LIBRARY");
         if (override != nullptr && tryLoad(override)) {
@@ -83,44 +106,57 @@ struct SlangLibrary {
                      HP_SLANG_LIBRARY_NAME);
     }
 
+    /// The loaded image. **Never closed**, deliberately: the global session
+    /// lives for the process, and unloading a compiler under it is T0105's
+    /// class of bug for no benefit. Kept rather than discarded since T0160.2,
+    /// which needs further entry points out of the same image.
+    void* handle = nullptr;
+
 private:
     bool tryLoad(const char* path) {
 #if defined(_WIN32)
-        HMODULE handle = LoadLibraryA(path);
-        if (handle == nullptr) {
+        HMODULE loaded = LoadLibraryA(path);
+        if (loaded == nullptr) {
             return false;
         }
-        auto symbol = reinterpret_cast<CreateGlobalSessionFn>(
-            reinterpret_cast<void*>(GetProcAddress(handle, "slang_createGlobalSession")));
+        handle = loaded;
+        auto entry = reinterpret_cast<CreateGlobalSessionFn>(
+            reinterpret_cast<void*>(GetProcAddress(loaded, "slang_createGlobalSession")));
 #else
-        void* handle = ::dlopen(path, RTLD_NOW | RTLD_LOCAL);
-        if (handle == nullptr) {
+        void* loaded = ::dlopen(path, RTLD_NOW | RTLD_LOCAL);
+        if (loaded == nullptr) {
             return false;
         }
-        auto symbol =
-            reinterpret_cast<CreateGlobalSessionFn>(::dlsym(handle, "slang_createGlobalSession"));
+        handle = loaded;
+        auto entry =
+            reinterpret_cast<CreateGlobalSessionFn>(::dlsym(loaded, "slang_createGlobalSession"));
 #endif
-        if (symbol == nullptr) {
+        if (entry == nullptr) {
             // A library with that name but without the entry point is worth a
             // line of its own: it means the wrong file is sitting there.
             HP_LOG_ERROR(kLog, "'{}' loaded but does not export slang_createGlobalSession", path);
+            handle = nullptr;
             return false;
         }
-        createGlobalSession = symbol;
+        createGlobalSession = entry;
         HP_LOG_INFO(kLog, "slang runtime loaded from '{}'", path);
-        // The handle is deliberately never closed: the global session lives
-        // for the process, and unloading a compiler under it is T0105's class
-        // of bug for no benefit.
         return true;
     }
 };
+
+/// The one `SlangLibrary`. Held so the reflection entry points can be resolved
+/// out of the same image the compiler came from.
+SlangLibrary& slangLibrary() {
+    static SlangLibrary library;
+    return library;
+}
 
 /// The process-wide global session. Creating one is expensive (it loads the
 /// core module); compile requests are cheap. One engine library per process
 /// (D12) makes a function-local static the right shape.
 slang::IGlobalSession* globalSession() {
     static slang::IGlobalSession* session = [] {
-        static SlangLibrary library;
+        SlangLibrary& library = slangLibrary();
         if (library.createGlobalSession == nullptr) {
             return static_cast<slang::IGlobalSession*>(nullptr);
         }
@@ -332,6 +368,349 @@ private:
     std::atomic<uint32_t> refs_{1};
 };
 
+// ---------------------------------------------------------------------------
+// Reflection (T0160.2)
+//
+// **On the compile that already happens, and it could not be anywhere else.**
+// The obvious design is a pass over the module on its own -- which is what
+// T0160 asked for, and what D28 promised the editor -- and it does not exist:
+// a module is a fragment, not a program. It names `IHpMaterial` and `VSOutput`,
+// which are declared by `HpSurface.slang` and by `PBR_Renderer`'s per-pipeline
+// generated structs respectively, and since D27's 2026-08-06 amendment its
+// bodies may reach anything else that file can see -- `g_HeightMap`,
+// `g_Frame.Lights[]`, DiligentFX's getters. Compiling it alone is a wall of
+// undefined identifiers, and slang emits **no** reflection for a failed
+// compile (measured: `slangc -reflection-json` on such a file writes no file at
+// all, with and without `-no-codegen`).
+//
+// So reflection reads the `ProgramLayout` of the real pixel-shader compile.
+// That is stronger than a separate pass, not weaker: there is exactly one
+// compile, so a layout can never describe a shader different from the one the
+// device runs -- the divergence T0142.13 exists to prevent.
+//
+// What it costs is the deviceless promise: the reflected compile needs
+// `PBR_Renderer::DefineMacros`, whose ~100 macros read `m_Settings` *and*
+// `m_Device.GetDeviceInfo().Features`, so producing the same compile without a
+// device would mean a second, hand-maintained macro set. Recorded on T0160
+// rather than paid for here.
+// ---------------------------------------------------------------------------
+
+/// The reflection entry points, resolved out of the loaded image.
+///
+/// **Function pointers rather than calls, because they are C functions.** Every
+/// other use of slang in this file goes through the COM vtables, which is what
+/// makes an MSVC-built DLL callable from a MinGW-built engine *and* what keeps
+/// the link edge at zero (D28: a shipped game links no Slang). The reflection
+/// API is not vtable-shaped -- `spReflection_*` are plain exports -- so calling
+/// it directly would add exactly the link dependency the loader exists to
+/// avoid, and the cross-compile would fail on the import library.
+///
+/// Resolved once. A library that is missing any of them yields no reflection at
+/// all rather than a half-filled layout, and says so once.
+struct ReflectionApi {
+    unsigned (*getParameterCount)(SlangReflection*) = nullptr;
+    SlangReflectionParameter* (*getParameterByIndex)(SlangReflection*, unsigned) = nullptr;
+    SlangReflectionVariable* (*variableLayoutGetVariable)(SlangReflectionVariableLayout*) = nullptr;
+    SlangReflectionTypeLayout* (*variableLayoutGetTypeLayout)(SlangReflectionVariableLayout*) =
+        nullptr;
+    std::size_t (*variableLayoutGetOffset)(SlangReflectionVariableLayout*,
+                                           SlangParameterCategory) = nullptr;
+    const char* (*variableGetName)(SlangReflectionVariable*) = nullptr;
+    unsigned (*variableGetUserAttributeCount)(SlangReflectionVariable*) = nullptr;
+    SlangReflectionUserAttribute* (*variableGetUserAttribute)(SlangReflectionVariable*,
+                                                              unsigned) = nullptr;
+    const char* (*attributeGetName)(SlangReflectionUserAttribute*) = nullptr;
+    unsigned (*attributeGetArgumentCount)(SlangReflectionUserAttribute*) = nullptr;
+    SlangResult (*attributeGetFloat)(SlangReflectionUserAttribute*, unsigned, float*) = nullptr;
+    const char* (*attributeGetString)(SlangReflectionUserAttribute*, unsigned,
+                                      std::size_t*) = nullptr;
+    SlangTypeKind (*typeLayoutGetKind)(SlangReflectionTypeLayout*) = nullptr;
+    SlangReflectionTypeLayout* (*typeLayoutGetElementTypeLayout)(SlangReflectionTypeLayout*) =
+        nullptr;
+    std::size_t (*typeLayoutGetSize)(SlangReflectionTypeLayout*, SlangParameterCategory) = nullptr;
+    std::uint32_t (*typeLayoutGetFieldCount)(SlangReflectionTypeLayout*) = nullptr;
+    SlangReflectionVariableLayout* (*typeLayoutGetFieldByIndex)(SlangReflectionTypeLayout*,
+                                                                unsigned) = nullptr;
+    SlangReflectionType* (*typeLayoutGetType)(SlangReflectionTypeLayout*) = nullptr;
+    SlangTypeKind (*typeGetKind)(SlangReflectionType*) = nullptr;
+    SlangScalarType (*typeGetScalarType)(SlangReflectionType*) = nullptr;
+    std::size_t (*typeGetElementCount)(SlangReflectionType*, SlangReflection*) = nullptr;
+};
+
+/// @returns the resolved reflection entry points, or nullptr when the loaded
+///          library does not export all of them.
+const ReflectionApi* reflectionApi() {
+    static ReflectionApi api;
+    static const bool ready = [] {
+        const SlangLibrary& library = slangLibrary();
+        bool ok = true;
+        const auto bind = [&](auto& slot, const char* name) {
+            void* symbol = library.symbol(name);
+            if (symbol == nullptr) {
+                HP_LOG_ERROR(kLog,
+                             "the slang library does not export '{}'; material parameters "
+                             "declared by a shader module cannot be reflected from source",
+                             name);
+                ok = false;
+                return;
+            }
+            slot = reinterpret_cast<std::remove_reference_t<decltype(slot)>>(symbol);
+        };
+        bind(api.getParameterCount, "spReflection_GetParameterCount");
+        bind(api.getParameterByIndex, "spReflection_GetParameterByIndex");
+        bind(api.variableLayoutGetVariable, "spReflectionVariableLayout_GetVariable");
+        bind(api.variableLayoutGetTypeLayout, "spReflectionVariableLayout_GetTypeLayout");
+        bind(api.variableLayoutGetOffset, "spReflectionVariableLayout_GetOffset");
+        bind(api.variableGetName, "spReflectionVariable_GetName");
+        bind(api.variableGetUserAttributeCount, "spReflectionVariable_GetUserAttributeCount");
+        bind(api.variableGetUserAttribute, "spReflectionVariable_GetUserAttribute");
+        bind(api.attributeGetName, "spReflectionUserAttribute_GetName");
+        bind(api.attributeGetArgumentCount, "spReflectionUserAttribute_GetArgumentCount");
+        bind(api.attributeGetFloat, "spReflectionUserAttribute_GetArgumentValueFloat");
+        bind(api.attributeGetString, "spReflectionUserAttribute_GetArgumentValueString");
+        bind(api.typeLayoutGetKind, "spReflectionTypeLayout_getKind");
+        bind(api.typeLayoutGetElementTypeLayout, "spReflectionTypeLayout_GetElementTypeLayout");
+        bind(api.typeLayoutGetSize, "spReflectionTypeLayout_GetSize");
+        bind(api.typeLayoutGetFieldCount, "spReflectionTypeLayout_GetFieldCount");
+        bind(api.typeLayoutGetFieldByIndex, "spReflectionTypeLayout_GetFieldByIndex");
+        bind(api.typeLayoutGetType, "spReflectionTypeLayout_GetType");
+        bind(api.typeGetKind, "spReflectionType_GetKind");
+        bind(api.typeGetScalarType, "spReflectionType_GetScalarType");
+        bind(api.typeGetElementCount, "spReflectionType_GetSpecializedElementCount");
+        return ok;
+    }();
+    return ready ? &api : nullptr;
+}
+
+/// Maps a reflected field's type onto the small set a material can carry.
+///
+/// @param api the resolved entry points.
+/// @param program the program layout, needed to resolve an element count.
+/// @param type the field's type.
+/// @param out receives the mapped type.
+/// @returns false for anything outside the set -- a matrix, an array, a nested
+///          struct. The caller skips the field **by name**, so an author sees
+///          which declaration was not understood rather than a parameter that
+///          silently never arrives.
+bool mapParamType(const ReflectionApi& api, SlangReflection* program, SlangReflectionType* type,
+                  ShaderParamType& out) {
+    if (type == nullptr) {
+        return false;
+    }
+    const auto scalarOf = [](SlangScalarType scalar, ShaderParamType& mapped) {
+        switch (scalar) {
+        case SLANG_SCALAR_TYPE_FLOAT32:
+            mapped = ShaderParamType::Float;
+            return true;
+        case SLANG_SCALAR_TYPE_INT32:
+        case SLANG_SCALAR_TYPE_UINT32:
+            mapped = ShaderParamType::Int;
+            return true;
+        case SLANG_SCALAR_TYPE_BOOL:
+            mapped = ShaderParamType::Bool;
+            return true;
+        default:
+            return false;
+        }
+    };
+
+    switch (api.typeGetKind(type)) {
+    case SLANG_TYPE_KIND_SCALAR:
+        return scalarOf(api.typeGetScalarType(type), out);
+    case SLANG_TYPE_KIND_VECTOR: {
+        ShaderParamType element = ShaderParamType::Float;
+        if (!scalarOf(api.typeGetScalarType(type), element)) {
+            return false;
+        }
+        // **Only float vectors.** An `int2` in a material block is a shape
+        // nothing in the audit wanted and would need a second write path; a
+        // scalar `int` is the case that does come up (step counts) and is
+        // supported above.
+        if (element != ShaderParamType::Float) {
+            return false;
+        }
+        switch (api.typeGetElementCount(type, program)) {
+        case 2:
+            out = ShaderParamType::Float2;
+            return true;
+        case 3:
+            out = ShaderParamType::Float3;
+            return true;
+        case 4:
+            out = ShaderParamType::Float4;
+            return true;
+        default:
+            return false;
+        }
+    }
+    default:
+        return false;
+    }
+}
+
+/// Reads `[HpRange]`, `[HpColor]` and `[HpTooltip]` off a declared field.
+///
+/// The attributes are defined in `HpMaterial.slang` (T0160.1) so a module still
+/// includes nothing. Slang carries user-defined attributes and their argument
+/// values through into reflection -- verified on the pinned compiler before
+/// this was written, not after. **They exist only in source**, so a cooked
+/// build reflects the block from its SPIR-V and gets everything here except
+/// these; that is the trade, and an editor always has the compiler.
+void readHints(const ReflectionApi& api, SlangReflectionVariable* variable, ShaderParam& param) {
+    if (variable == nullptr) {
+        return;
+    }
+    const unsigned count = api.variableGetUserAttributeCount(variable);
+    for (unsigned i = 0; i < count; ++i) {
+        SlangReflectionUserAttribute* attribute = api.variableGetUserAttribute(variable, i);
+        if (attribute == nullptr) {
+            continue;
+        }
+        const char* rawName = api.attributeGetName(attribute);
+        if (rawName == nullptr) {
+            continue;
+        }
+        const std::string name = rawName;
+        const unsigned arguments = api.attributeGetArgumentCount(attribute);
+        if (name == "HpRange" && arguments >= 2) {
+            float low = 0.0F;
+            float high = 0.0F;
+            if (SLANG_SUCCEEDED(api.attributeGetFloat(attribute, 0, &low)) &&
+                SLANG_SUCCEEDED(api.attributeGetFloat(attribute, 1, &high))) {
+                param.min = static_cast<double>(low);
+                param.max = static_cast<double>(high);
+            }
+        } else if (name == "HpColor") {
+            param.colour = true;
+        } else if (name == "HpTooltip" && arguments >= 1) {
+            std::size_t size = 0;
+            if (const char* text = api.attributeGetString(attribute, 0, &size); text != nullptr) {
+                // The blob is the literal's *source text*, delimiters included,
+                // so the quotes come off here rather than in every consumer.
+                std::string value(text, size);
+                if (value.size() >= 2 && value.front() == '"' && value.back() == '"') {
+                    value = value.substr(1, value.size() - 2);
+                }
+                param.tooltip = std::move(value);
+            }
+        }
+    }
+}
+
+/// Fills a layout from a successful compile's program reflection.
+///
+/// @param request the compile request, after a successful `compile()`.
+/// @param filePath the shader's name, for the diagnostics below.
+/// @param out receives the layout; untouched fields stay empty.
+void reflectParams(slang::ICompileRequest* request, const char* filePath,
+                   ShaderParamLayout& out) {
+    HP_PROFILE_ZONE();
+
+    const ReflectionApi* api = reflectionApi();
+    if (api == nullptr || request == nullptr) {
+        return;
+    }
+    // A vtable method, unlike everything below it -- so this one call needs no
+    // symbol at all.
+    SlangReflection* program = request->getReflection();
+    if (program == nullptr) {
+        return;
+    }
+
+    const unsigned parameters = api->getParameterCount(program);
+    for (unsigned i = 0; i < parameters; ++i) {
+        SlangReflectionParameter* parameter = api->getParameterByIndex(program, i);
+        if (parameter == nullptr) {
+            continue;
+        }
+        SlangReflectionVariable* variable = api->variableLayoutGetVariable(parameter);
+        const char* rawName = variable != nullptr ? api->variableGetName(variable) : nullptr;
+        if (rawName == nullptr) {
+            continue;
+        }
+        const std::string name = rawName;
+
+        // A texture slot: matched by the reserved name, so a module that
+        // happens to declare an unrelated texture is not mistaken for one.
+        for (std::uint32_t slot = 0; slot < kShaderTextureSlots; ++slot) {
+            const char* slotName = shaderTextureSlotName(slot);
+            if (slotName != nullptr && name == slotName) {
+                out.textures.push_back(ShaderTextureSlot{name, slot});
+            }
+        }
+
+        if (name != kShaderParamsBlock) {
+            continue;
+        }
+        SlangReflectionTypeLayout* type = api->variableLayoutGetTypeLayout(parameter);
+        if (type == nullptr) {
+            continue;
+        }
+        // `cbuffer X { ... }` reflects as a constant buffer whose *element*
+        // type layout is the anonymous struct of its fields. Reading the
+        // buffer's own field list instead yields nothing, silently.
+        const SlangTypeKind kind = api->typeLayoutGetKind(type);
+        if (kind == SLANG_TYPE_KIND_CONSTANT_BUFFER || kind == SLANG_TYPE_KIND_PARAMETER_BLOCK) {
+            type = api->typeLayoutGetElementTypeLayout(type);
+        }
+        if (type == nullptr) {
+            continue;
+        }
+        out.blockBytes =
+            static_cast<std::uint32_t>(api->typeLayoutGetSize(type, SLANG_PARAMETER_CATEGORY_UNIFORM));
+
+        const std::uint32_t fields = api->typeLayoutGetFieldCount(type);
+        for (std::uint32_t f = 0; f < fields; ++f) {
+            SlangReflectionVariableLayout* field = api->typeLayoutGetFieldByIndex(type, f);
+            if (field == nullptr) {
+                continue;
+            }
+            SlangReflectionVariable* fieldVariable = api->variableLayoutGetVariable(field);
+            const char* fieldName =
+                fieldVariable != nullptr ? api->variableGetName(fieldVariable) : nullptr;
+            if (fieldName == nullptr) {
+                continue;
+            }
+            ShaderParam param;
+            param.name = fieldName;
+            SlangReflectionTypeLayout* fieldType = api->variableLayoutGetTypeLayout(field);
+            if (fieldType == nullptr ||
+                !mapParamType(*api, program, api->typeLayoutGetType(fieldType), param.type)) {
+                // Named, so an author can see which declaration the material
+                // system cannot carry -- the alternative is a parameter that
+                // exists in the shader, never appears in the inspector, and
+                // gives nobody a reason why.
+                HP_LOG_WARN(kLog,
+                            "'{}' declares '{}.{}' with a type this engine cannot carry in a "
+                            "material (only float/float2/float3/float4, int and bool); it will "
+                            "keep whatever the shader initialises it to",
+                            filePath, kShaderParamsBlock, param.name);
+                continue;
+            }
+            param.offset = static_cast<std::uint32_t>(
+                api->variableLayoutGetOffset(field, SLANG_PARAMETER_CATEGORY_UNIFORM));
+            param.size = static_cast<std::uint32_t>(
+                api->typeLayoutGetSize(fieldType, SLANG_PARAMETER_CATEGORY_UNIFORM));
+            readHints(*api, fieldVariable, param);
+            out.params.push_back(std::move(param));
+        }
+    }
+
+    if (out.blockBytes > kShaderParamsMaxBytes) {
+        // **Refused rather than truncated.** The engine binds one buffer of
+        // `kShaderParamsMaxBytes`; writing a longer block into it would run
+        // past the end, and reading it in the shader would read whatever
+        // follows. Dropping the parameters leaves the module's own
+        // initialisers in charge, which is wrong but bounded and says so.
+        HP_LOG_ERROR(kLog,
+                     "'{}' declares a {}-byte '{}' block and the engine binds {} bytes; its "
+                     "parameters are not written",
+                     filePath, out.blockBytes, kShaderParamsBlock, kShaderParamsMaxBytes);
+        out.params.clear();
+        out.blockBytes = 0;
+    }
+}
+
 } // namespace
 
 bool slangCompilerAvailable() {
@@ -342,14 +721,24 @@ bool slangCompilerAvailable() {
 bool compileSlangToSpirv(const char* filePath, ShaderStage stage, const SlangMacro* macros,
                          std::size_t macroCount,
                          Diligent::IShaderSourceInputStreamFactory* sources,
-                         std::vector<std::uint8_t>& outSpirv, std::string& outDiagnostics) {
+                         std::vector<std::uint8_t>& outSpirv, std::string& outDiagnostics,
+                         const SlangReflectionRequest* reflect) {
     HP_PROFILE_ZONE();
 
     outSpirv.clear();
     outDiagnostics.clear();
+    if (reflect != nullptr && reflect->layout != nullptr) {
+        *reflect->layout = ShaderParamLayout{};
+    }
     if (filePath == nullptr || sources == nullptr) {
         return false;
     }
+    // **A cache hit has no reflection behind it**, so a caller that asked for a
+    // layout has to compile. Deliberate, and the alternative was worse: caching
+    // the layout beside the bytecode adds a second artefact whose staleness the
+    // content key cannot detect on its own (`kSlangDrivingSchema`'s whole
+    // reason for existing). This path runs once per module per process.
+    const bool wantReflection = reflect != nullptr && reflect->layout != nullptr;
 
     // **Resolved before the lock is taken, and that ordering is load-bearing.**
     // Deciding the policy may probe the slang runtime, and probing it takes
@@ -393,7 +782,16 @@ bool compileSlangToSpirv(const char* filePath, ShaderStage stage, const SlangMac
     const ShaderVariantKey variant{filePath, stage, macros, macroCount, prelude, sources};
 
     const bool lookUp = shaderStoreActive(cookedOnly);
-    if (lookUp && shaderStoreLookup(variant, cookedOnly, outSpirv)) {
+    // **`cookedOnly` wins over the reflection request, and getting that
+    // backwards broke the cooked suite outright.** In a cooked-only build
+    // there is no compiler to fall through to, so skipping the lookup does not
+    // buy a reflection -- it turns a working lookup into "not in any cooked
+    // shader archive" and no shader at all. There, the bytecode comes from the
+    // archive and the layout comes from Diligent's reflection of it
+    // (`SurfacePipeline::reflectFromShader`), which is the whole reason that
+    // second reader exists.
+    const bool skipCacheForReflection = wantReflection && !cookedOnly;
+    if (lookUp && !skipCacheForReflection && shaderStoreLookup(variant, cookedOnly, outSpirv)) {
         return true;
     }
 
@@ -461,6 +859,13 @@ bool compileSlangToSpirv(const char* filePath, ShaderStage stage, const SlangMac
     }
 
     bool ok = false;
+    if (SLANG_SUCCEEDED(result) && wantReflection) {
+        // **Before `release()`**, which is the whole reason this sits inside
+        // the function rather than being handed back: the `ProgramLayout` is
+        // owned by the request and every string in it points into the
+        // compiler's own memory.
+        reflectParams(request, filePath, *reflect->layout);
+    }
     if (SLANG_SUCCEEDED(result)) {
         ISlangBlob* code = nullptr;
         if (SLANG_SUCCEEDED(request->getEntryPointCodeBlob(entryPoint, 0, &code)) &&

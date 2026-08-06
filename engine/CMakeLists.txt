@@ -124,6 +124,7 @@ add_library(hp_engine SHARED
     src/RenderStack.cpp
     src/Scene.cpp
     src/ShaderCook.cpp
+    src/ShaderParams.cpp
     src/ShaderSources.cpp
     src/SlangCompiler.cpp
     src/SurfacePipeline.cpp

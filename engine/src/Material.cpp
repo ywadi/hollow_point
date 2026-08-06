@@ -54,6 +54,17 @@ void registerMaterialTypes() {
         .value<TextureWrap::Mirror>("Mirror")
         .value<TextureWrap::Clamp>("Clamp");
 
+    // **The two name/value stores** (T0160.3). Reflected like anything else, so
+    // save, load and the cook walk them with no per-field code — the same
+    // property this file's header claims for every parameter above.
+    reflect<MaterialParam>("MaterialParam")
+        .property<&MaterialParam::name>("name")
+        .property<&MaterialParam::value>("value");
+
+    reflect<MaterialTexture>("MaterialTexture")
+        .property<&MaterialTexture::name>("name")
+        .property<&MaterialTexture::texture>("texture");
+
     reflect<UvChannel>("UvChannel")
         .property<&UvChannel::scale>("scale")
         .property<&UvChannel::offset>("offset")
@@ -88,7 +99,9 @@ void registerMaterialTypes() {
         .property<&Material::metallicRoughnessUv>("metallicRoughnessUv")
         .property<&Material::normalUv>("normalUv")
         .property<&Material::occlusionUv>("occlusionUv")
-        .property<&Material::emissiveUv>("emissiveUv");
+        .property<&Material::emissiveUv>("emissiveUv")
+        .property<&Material::params>("params")
+        .property<&Material::textures>("textures");
 }
 
 std::string writeMaterial(const Material& material) {

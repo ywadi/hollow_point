@@ -40,7 +40,7 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 
 | Page | Source | Declarations |
 |---|---|---|
-| [`HpMaterial`](HpMaterial.md) | `engine/shaders/HpMaterial.slang` | 3 |
+| [`HpMaterial`](HpMaterial.md) | `engine/shaders/HpMaterial.slang` | 6 |
 | [`IHpMaterial`](IHpMaterial.md) | `engine/shaders/HpSurface.slang` | 1 |
 
 ## Every symbol
@@ -48,6 +48,12 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | Symbol | Kind | Page |
 |---|---|---|
 | `HP_UNSHADED` | macro | [`HpMaterial`](HpMaterial.md) |
+| `HpRangeAttribute` | struct | [`HpMaterial`](HpMaterial.md) |
+| `HpRangeAttribute::lo` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpRangeAttribute::hi` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpColorAttribute` | struct | [`HpMaterial`](HpMaterial.md) |
+| `HpTooltipAttribute` | struct | [`HpMaterial`](HpMaterial.md) |
+| `HpTooltipAttribute::text` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput` | struct | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::UV0` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::UV1` | field | [`HpMaterial`](HpMaterial.md) |

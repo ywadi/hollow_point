@@ -46,6 +46,16 @@ hp::Material populated() {
     material.uv1.wrapV = hp::TextureWrap::Clamp;
     material.occlusionUv = 1;
     material.emissiveUv = 1;
+    // The module-declared half (T0160.3): one scalar, one three-component
+    // value, one bound texture slot — enough that a round trip which drops the
+    // arity, the order or the name is visible rather than accidentally right.
+    material.params = {
+        hp::MaterialParam{"referencePlane", hp::ShaderValue{{0.5F, 0.0F, 0.0F, 0.0F}, 1}},
+        hp::MaterialParam{"tint", hp::ShaderValue{{1.0F, 0.5F, 0.25F, 0.0F}, 3}},
+    };
+    material.textures = {
+        hp::MaterialTexture{"HpTexture0", hp::Guid{0x1122334455667788ULL}},
+    };
     return material;
 }
 
@@ -76,6 +86,24 @@ void checkSame(const hp::Material& actual, const hp::Material& expected) {
     CHECK(actual.baseColourUv == expected.baseColourUv);
     CHECK(actual.occlusionUv == expected.occlusionUv);
     CHECK(actual.emissiveUv == expected.emissiveUv);
+
+    // The declared-parameter store (T0160.3). **Order is part of the value**:
+    // it is the order the shader declares them in, which is the order an
+    // inspector shows and a diff reads.
+    REQUIRE(actual.params.size() == expected.params.size());
+    for (std::size_t i = 0; i < expected.params.size(); ++i) {
+        CHECK(actual.params[i].name == expected.params[i].name);
+        CHECK(actual.params[i].value.count == expected.params[i].value.count);
+        for (std::size_t c = 0; c < expected.params[i].value.count; ++c) {
+            CHECK(actual.params[i].value.components[c] ==
+                  doctest::Approx(expected.params[i].value.components[c]));
+        }
+    }
+    REQUIRE(actual.textures.size() == expected.textures.size());
+    for (std::size_t i = 0; i < expected.textures.size(); ++i) {
+        CHECK(actual.textures[i].name == expected.textures[i].name);
+        CHECK(actual.textures[i].texture == expected.textures[i].texture);
+    }
 }
 
 } // namespace
@@ -225,6 +253,145 @@ material:
 
 TEST_CASE("malformed YAML fails cleanly rather than producing an empty material") {
     CHECK_FALSE(hp::parseMaterial("\t: not: yaml: ["));
+}
+
+// --- module-declared parameters (T0160.3) ------------------------------------
+
+TEST_CASE("a shader module's parameters are carried by name, in the order authored") {
+    // **The whole of 160.3 in one document.** A `.hpmat` that names parameters
+    // the engine has never heard of is the point: the names belong to the
+    // shader module, this file only holds values for them.
+    const auto material = hp::parseMaterial(R"(version: 2
+material:
+  shader: 1570000000000020
+  params:
+    - name: referencePlane
+      value: 0.75
+    - name: tint
+      value: [1, 0.5, 0.25]
+  textures:
+    - name: HpTexture0
+      texture: 1122334455667788
+)");
+    REQUIRE(material);
+    REQUIRE(material->params.size() == 2);
+
+    // A scalar stays a scalar, and a three-component value stays three. The
+    // shader's declared type is what decides how many floats reach the GPU;
+    // this is what the document said, and normalising it away would rewrite a
+    // person's file on the next save.
+    CHECK(material->params[0].name == "referencePlane");
+    CHECK(material->params[0].value.count == 1);
+    CHECK(material->params[0].value.components[0] == doctest::Approx(0.75F));
+    CHECK(material->params[1].name == "tint");
+    CHECK(material->params[1].value.count == 3);
+    CHECK(material->params[1].value.components[1] == doctest::Approx(0.5F));
+    // Unwritten components are **zero, not undefined** — a `float4` parameter
+    // given three numbers gets a zero fourth rather than the previous
+    // material's.
+    CHECK(material->params[1].value.components[3] == doctest::Approx(0.0F));
+
+    REQUIRE(material->textures.size() == 1);
+    CHECK(material->textures[0].name == "HpTexture0");
+    CHECK(material->textures[0].texture == hp::Guid{0x1122334455667788ULL});
+}
+
+TEST_CASE("a version-1 material still loads, and carries no parameters") {
+    // **The bump is a signal in one direction only.** Every `.hpmat` written
+    // before T0160 is still valid: reading is lenient, both keys are simply
+    // absent, and a material with no custom shader has nothing to say about
+    // them anyway.
+    const auto material = hp::parseMaterial(R"(version: 1
+material:
+  roughness: 0.2
+)");
+    REQUIRE(material);
+    CHECK(material->roughness == doctest::Approx(0.2F));
+    CHECK(material->params.empty());
+    CHECK(material->textures.empty());
+}
+
+TEST_CASE("a malformed parameter value leaves the parameter alone") {
+    // The same rule every other field has. A value that cannot be read must
+    // not be reinterpreted, and must not poison the entries after it.
+    const auto material = hp::parseMaterial(R"(version: 2
+material:
+  params:
+    - name: broken
+      value: not-a-number
+    - name: fine
+      value: 2
+)");
+    REQUIRE(material);
+    REQUIRE(material->params.size() == 2);
+    CHECK(material->params[0].name == "broken");
+    CHECK(material->params[0].value.components[0] == doctest::Approx(0.0F));
+    CHECK(material->params[1].name == "fine");
+    CHECK(material->params[1].value.components[0] == doctest::Approx(2.0F));
+}
+
+TEST_CASE("a parameter value round-trips through the document as it was written") {
+    // Writing is exact: a scalar comes back a scalar. The regression this
+    // guards is a saver that normalises every value to four components, which
+    // reads as a diff on every material the first time anyone saves one.
+    hp::Material material;
+    material.params = {
+        hp::MaterialParam{"scalar", hp::ShaderValue{{0.25F, 0.0F, 0.0F, 0.0F}, 1}},
+        hp::MaterialParam{"quad", hp::ShaderValue{{1.0F, 2.0F, 3.0F, 4.0F}, 4}},
+    };
+    const std::string document = hp::writeMaterial(material);
+    const auto restored = hp::parseMaterial(document);
+    REQUIRE(restored);
+    REQUIRE(restored->params.size() == 2);
+    CHECK(restored->params[0].value.count == 1);
+    CHECK(restored->params[0].value.components[0] == doctest::Approx(0.25F));
+    CHECK(restored->params[1].value.count == 4);
+    CHECK(restored->params[1].value.components[3] == doctest::Approx(4.0F));
+    // A scalar is written as a scalar, not as a one-element sequence.
+    CHECK(document.find("value: 0.25") != std::string::npos);
+}
+
+TEST_CASE("the reserved slot names are one table, and out of range is nothing") {
+    // The signature, the shader contract and the binder all spell these, so
+    // they come from one place and a bad index is a null rather than a
+    // fabricated name the signature does not carry.
+    CHECK(std::string{hp::shaderTextureSlotName(0)} == "HpTexture0");
+    CHECK(std::string{hp::shaderTextureSamplerName(0)} == "HpTexture0_sampler");
+    CHECK(std::string{hp::shaderTextureSlotName(hp::kShaderTextureSlots - 1)} == "HpTexture3");
+    CHECK(hp::shaderTextureSlotName(hp::kShaderTextureSlots) == nullptr);
+    CHECK(hp::shaderTextureSamplerName(hp::kShaderTextureSlots) == nullptr);
+}
+
+TEST_CASE("a declared parameter presents exactly as a reflected C++ field does") {
+    // **The unification D28 anticipated, as a check rather than a claim**: an
+    // inspector consumes one description whichever reflection produced it. A
+    // `hp::Material` field's metadata is a `PropertyMeta` from `entt::meta`; a
+    // module's parameter hands back the same struct, filled from
+    // `[HpRange]` and `[HpTooltip]`.
+    hp::ShaderParam param;
+    param.name = "referencePlane";
+    param.type = hp::ShaderParamType::Float;
+    param.min = 0.0;
+    param.max = 1.0;
+    param.tooltip = "Which height sits on the polygon plane.";
+
+    const hp::PropertyMeta meta = param.meta();
+    CHECK(meta.min == doctest::Approx(0.0));
+    CHECK(meta.max == doctest::Approx(1.0));
+    REQUIRE(meta.tooltip != nullptr);
+    CHECK(std::string{meta.tooltip} == "Which height sits on the polygon plane.");
+    CHECK_FALSE(meta.hidden);
+
+    hp::ShaderParamLayout layout;
+    layout.params.push_back(param);
+    layout.blockBytes = 4;
+    REQUIRE(layout.find("referencePlane") != nullptr);
+    CHECK(layout.find("referencePlane")->type == hp::ShaderParamType::Float);
+    // A name the module does not declare is nothing, not a fabricated entry —
+    // which is what lets a shader drop a parameter without invalidating every
+    // material that set it.
+    CHECK(layout.find("gone") == nullptr);
+    CHECK_FALSE(layout.empty());
 }
 
 // --- the binary path --------------------------------------------------------

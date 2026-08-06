@@ -102,7 +102,7 @@ geometry that can least afford it. `ViewDir` is computed in the pixel shader
 from the camera position and the world position rather than interpolated; more
 fields will follow that pattern as they are added.
 
-3 declaration(s), 17 member(s), all documented.
+6 declaration(s), 20 member(s), all documented.
 
 ## `HP_UNSHADED`
 
@@ -134,6 +134,63 @@ worth knowing before reaching for either:
 The macro is that permutation bit. `SurfacePipeline::build` always defines it
 from the PSO key; the default here exists so this contract still reads on its
 own.
+
+## `HpRangeAttribute`
+
+```hlsl
+struct HpRangeAttribute
+```
+
+Bounds a numeric parameter, for the inspector.
+
+`[HpRange(0.0, 1.0)]` — Godot's `hint_range`, as a Slang attribute rather
+than as syntax the engine would have to invent. Equal bounds mean unbounded.
+**Presentation only**: nothing clamps the value that reaches the shader, so
+a hand-edited `.hpmat` outside the range still renders what it says.
+
+### `HpRangeAttribute::lo`
+
+```hlsl
+float lo;
+```
+
+The lowest value the inspector offers.
+
+### `HpRangeAttribute::hi`
+
+```hlsl
+float hi;
+```
+
+The highest. Equal to `lo` means unbounded.
+
+## `HpColorAttribute`
+
+```hlsl
+struct HpColorAttribute
+```
+
+Marks a `float3`/`float4` parameter as a colour, so an inspector offers a
+swatch instead of three number boxes. The bytes written are identical.
+
+## `HpTooltipAttribute`
+
+```hlsl
+struct HpTooltipAttribute
+```
+
+Text shown on hover in the inspector.
+
+The same slot `hp::PropertyMeta::tooltip` fills for a reflected C++ field —
+one description, two reflections, which is the unification D28 anticipated.
+
+### `HpTooltipAttribute::text`
+
+```hlsl
+String text;
+```
+
+The text itself.
 
 ## `HpSurfaceInput`
 

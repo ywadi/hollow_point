@@ -57,12 +57,14 @@
 #include <hp/Assets.hpp>
 #include <hp/Guid.hpp>
 #include <hp/Math.hpp>
+#include <hp/ShaderParams.hpp>
 
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace hp {
 
@@ -134,6 +136,44 @@ struct UvChannel {
 
     /// How V repeats outside 0..1.
     TextureWrap wrapV = TextureWrap::Repeat;
+};
+
+/// One value this material gives a parameter its shader module declared
+/// (T0160.3).
+///
+/// **Name-keyed, not typed fields**, and that is the whole difference between
+/// this and every other member of `Material`: the engine does not know what
+/// parameters exist until it reflects the module, so it cannot have a field per
+/// one. The name is the shader's declared field name; what it *means* is the
+/// shader's business, and this struct deliberately knows nothing about it.
+///
+/// A name the module does not declare is dropped when the material is written
+/// to the GPU — the same leniency a `.hpmat` field this build does not have
+/// gets, and it is what lets a shader lose a parameter without invalidating
+/// every material that set it.
+struct MaterialParam {
+    /// The parameter's name, as the module's `HpMaterialParams` block declares
+    /// it.
+    std::string name;
+
+    /// The authored value, 1 to 4 components. Converted to the shader's
+    /// declared type when it is written.
+    ShaderValue value;
+};
+
+/// One texture this material binds to a module's texture slot (T0160.3).
+struct MaterialTexture {
+    /// The slot's name, `HpTexture0` … `HpTexture3` (`shaderTextureSlotName`).
+    ///
+    /// **The engine's name rather than the author's**, because the pipeline
+    /// resource signature has to carry it before any module exists — see
+    /// `hp/ShaderParams.hpp` for the trade and what the alternative would cost.
+    std::string name;
+
+    /// The `TextureAsset` bound there. Default binds the renderer's white
+    /// default, exactly as an unset fixed slot does; a GUID that does not
+    /// resolve binds the checkerboard, exactly as a broken fixed slot does.
+    Guid texture;
 };
 
 /// A material asset: the parameters one surface is shaded with (60.1).
@@ -305,6 +345,30 @@ struct Material {
 
     /// Which UV channel the emissive texture samples with.
     std::uint8_t emissiveUv = 0;
+
+    /// Values for the parameters `shader`'s module declares (T0160.3).
+    ///
+    /// **Ordered and by name, not a map**, for two reasons that pull the same
+    /// way: a person editing a `.hpmat` should see parameters in the order the
+    /// shader declares them rather than alphabetically, and the reflected
+    /// serializer bottoms out in sequences and leaves — an associative
+    /// container is a shape it has never had to write, and inventing one for
+    /// this would be T0020's ticket, not this one.
+    ///
+    /// **Changing a value here rebuilds no pipeline and invalidates no cook.**
+    /// The values are written into a constant buffer per draw, exactly as the
+    /// engine's own material attribs are; module *identity* already keys the
+    /// pipeline cache, so parameters add no permutation axis at all. That is
+    /// the point, and it is recorded against T0151.
+    ///
+    /// Empty for every material without a custom shader, which is what makes
+    /// this cost nothing to have.
+    std::vector<MaterialParam> params;
+
+    /// Textures for the slots `shader`'s module uses (T0160.3).
+    ///
+    /// Keyed by the slot's engine-given name, `HpTexture0` … `HpTexture3`.
+    std::vector<MaterialTexture> textures;
 };
 
 /// The stable pool name for a material.
@@ -319,7 +383,13 @@ struct AssetTraits<Material> {
 /// The **material** schema, versioned separately from the scene's: the two
 /// change for unrelated reasons, and one number for both would force a scene
 /// migration every time a material gained a field.
-inline constexpr std::uint32_t kMaterialSchemaVersion = 1;
+///
+/// **2 since T0160**, which added `params` and `textures`. Every version-1
+/// document still loads unchanged — reading is lenient and both keys are
+/// absent from them — and the bump is the signal in the other direction: a
+/// build that predates this refuses a document that might carry parameters it
+/// would drop on the next save.
+inline constexpr std::uint32_t kMaterialSchemaVersion = 2;
 
 /// The extension a material asset is stored under.
 ///

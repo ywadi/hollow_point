@@ -70,6 +70,12 @@ DOC_LINE = re.compile(r"^\s*///\s?(.*)$")
 COMMENT_LINE = re.compile(r"^\s*//\s?(.*)$")
 SEPARATOR = re.compile(r"^\s*//\s*-{3,}\s*$")
 PREPROC_COND = re.compile(r"^\s*#\s*(if|ifdef|ifndef|else|elif|endif)\b")
+# A line that is nothing but an attribute -- `[__AttributeUsage(...)]` above a
+# user-defined attribute's declaration (T0160.1). Stepped over when looking for
+# a declaration's prose, for the same reason `#if` is: the comment belongs to
+# the declaration, and demanding it sit between the attribute and the struct
+# would mean writing the source to suit the generator.
+ATTRIBUTE_LINE = re.compile(r"^\s*\[[^\]]*\]\s*$")
 TYPE_DECL = re.compile(r"^\s*(struct|interface)\s+([A-Za-z_]\w*)\s*(?::[^{]*)?\s*(\{)?\s*$")
 DEFINE = re.compile(r"^\s*#\s*define\s+([A-Za-z_]\w*)\s*(.*?)\s*$")
 FIELD = re.compile(r"^\s*([A-Za-z_][\w:<>, ]*?)\s+([A-Za-z_]\w*)\s*(\[[^\]]*\])?\s*;\s*$")
@@ -137,7 +143,9 @@ def doc_above(lines: list[str], index: int) -> str:
     the generator.
     """
     i = index - 1
-    while i >= 0 and (not lines[i].strip() or PREPROC_COND.match(lines[i])):
+    while i >= 0 and (
+        not lines[i].strip() or PREPROC_COND.match(lines[i]) or ATTRIBUTE_LINE.match(lines[i])
+    ):
         i -= 1
     end = i + 1
     while i >= 0 and (DOC_LINE.match(lines[i]) or COMMENT_LINE.match(lines[i])):

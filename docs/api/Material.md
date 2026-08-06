@@ -6,7 +6,7 @@
 #include <hp/Material.hpp>
 ```
 
-15 public declaration(s), 15 documented.
+17 public declaration(s), 17 documented.
 
 ## `AlphaMode`
 
@@ -61,6 +61,34 @@ struct UvChannel
  Two channels because `PBR_Renderer` has two — `PSO_FLAG_USE_TEXCOORD0` and
  `USE_TEXCOORD1` — and `SelectUV` lerps between exactly those.
 
+## `MaterialParam`
+
+```cpp
+struct MaterialParam
+```
+
+ One value this material gives a parameter its shader module declared
+ (T0160.3).
+
+ **Name-keyed, not typed fields**, and that is the whole difference between
+ this and every other member of `Material`: the engine does not know what
+ parameters exist until it reflects the module, so it cannot have a field per
+ one. The name is the shader's declared field name; what it *means* is the
+ shader's business, and this struct deliberately knows nothing about it.
+
+ A name the module does not declare is dropped when the material is written
+ to the GPU — the same leniency a `.hpmat` field this build does not have
+ gets, and it is what lets a shader lose a parameter without invalidating
+ every material that set it.
+
+## `MaterialTexture`
+
+```cpp
+struct MaterialTexture
+```
+
+ One texture this material binds to a module's texture slot (T0160.3).
+
 ## `Material`
 
 ```cpp
@@ -88,7 +116,7 @@ struct AssetTraits
 ## `kMaterialSchemaVersion`
 
 ```cpp
-inline constexpr std :: uint32_t kMaterialSchemaVersion = 1
+inline constexpr std :: uint32_t kMaterialSchemaVersion = 2
 ```
 
  The schema version written into a `.hpmat` document.
@@ -96,6 +124,12 @@ inline constexpr std :: uint32_t kMaterialSchemaVersion = 1
  The **material** schema, versioned separately from the scene's: the two
  change for unrelated reasons, and one number for both would force a scene
  migration every time a material gained a field.
+
+ **2 since T0160**, which added `params` and `textures`. Every version-1
+ document still loads unchanged — reading is lenient and both keys are
+ absent from them — and the bump is the signal in the other direction: a
+ build that predates this refuses a document that might carry parameters it
+ would drop on the next save.
 
 ## `kMaterialExtension`
 

@@ -9,9 +9,15 @@
 #include <hp/Log.hpp>
 #include <hp/Math.hpp>
 #include <hp/Profiling.hpp>
+// `ShaderValue` is a leaf and not a maths type: a shader parameter's value is
+// one to four floats **whose count the document decides**, so it is the one
+// leaf here that is not a fixed shape. See `writeLeaf` below for why the arity
+// is carried rather than normalised away (T0160.3).
+#include <hp/ShaderParams.hpp>
 
 #include <hp/Cook.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <string>
@@ -300,6 +306,20 @@ bool writeLeaf(LeafSink out, const entt::meta_any& value) {
         out.write(*v);
         return true;
     }
+    if (const auto* v = value.try_cast<ShaderValue>()) {
+        // **A scalar stays a scalar** (T0160.3). `value: 0.5` is what a person
+        // writes for a `float` parameter, and writing it back as
+        // `[0.5, 0, 0, 0]` would rewrite their file into three components it
+        // never had. The shader's declared type is what decides how many
+        // components reach the GPU; this is only what the document said.
+        const std::size_t count = v->count == 0 ? 1U : std::min<std::size_t>(v->count, 4U);
+        if (count == 1) {
+            out.write(static_cast<double>(v->components[0]));
+        } else {
+            writeFloats(out, v->components, count);
+        }
+        return true;
+    }
     if (const auto* v = value.try_cast<float2>()) {
         writeFloats(out, &v->x, 2);
         return true;
@@ -422,6 +442,33 @@ bool readLeaf(YamlNode node, entt::meta_any& value) {
     }
     if (auto* v = value.try_cast<double>()) {
         return node.tryRead(*v);
+    }
+    if (auto* v = value.try_cast<ShaderValue>()) {
+        // Both shapes a person may write, and a bare scalar first for the same
+        // reason the enum path tries the integer first — `tryRead(double&)`
+        // refuses a sequence, so the two cannot swallow each other.
+        *v = ShaderValue{};
+        double scalar = 0.0;
+        if (node.tryRead(scalar)) {
+            v->components[0] = static_cast<float>(scalar);
+            v->count = 1;
+            return true;
+        }
+        if (!node.isSequence() || node.size() == 0 || node.size() > 4) {
+            return false;
+        }
+        for (std::size_t i = 0; i < node.size(); ++i) {
+            double component = 0.0;
+            if (!node.at(i).tryRead(component)) {
+                // All or nothing, like every other vector here: a half-read
+                // parameter is a plausible-looking wrong value.
+                *v = ShaderValue{};
+                return false;
+            }
+            v->components[i] = static_cast<float>(component);
+        }
+        v->count = static_cast<std::uint8_t>(node.size());
+        return true;
     }
     if (auto* v = value.try_cast<float2>()) {
         return readFloats(node, &v->x, 2);
@@ -747,6 +794,16 @@ bool cookLeaf(const entt::meta_any& value, std::vector<std::byte>& out) {
         writeU64(out, bits);
         return true;
     }
+    if (const auto* v = value.try_cast<ShaderValue>()) {
+        // Four floats and the count, always — a fixed record, because the cook
+        // is a cache read only by this code and paying seventeen bytes for
+        // uniformity is cheaper than a variable-length one nobody can skip.
+        if (!cookFloats(v->components, 4, out)) {
+            return false;
+        }
+        out.push_back(static_cast<std::byte>(v->count));
+        return true;
+    }
     if (const auto* v = value.try_cast<float2>()) {
         return cookFloats(&v->x, 2, out);
     }
@@ -844,6 +901,17 @@ bool uncookLeaf(const std::vector<std::byte>& bytes, std::size_t& cursor, entt::
             return false;
         }
         std::memcpy(v, &bits, sizeof bits);
+        return true;
+    }
+    if (auto* v = value.try_cast<ShaderValue>()) {
+        if (!uncookFloats(bytes, cursor, v->components, 4) || cursor >= bytes.size()) {
+            return false;
+        }
+        const auto count = static_cast<std::uint8_t>(bytes[cursor++]);
+        // Clamped rather than trusted: a corrupt cook must mean "re-cook", and
+        // a count of 200 read into a four-float array is the one way this
+        // record could be worse than useless.
+        v->count = count == 0 || count > 4 ? 1U : count;
         return true;
     }
     if (auto* v = value.try_cast<float2>()) {

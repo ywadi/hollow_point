@@ -48,7 +48,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Layers.hpp>`](Layers.md) | 15 | 15 |
 | [`<hp/Light.hpp>`](Light.md) | 8 | 8 |
 | [`<hp/Log.hpp>`](Log.md) | 22 | 12 |
-| [`<hp/Material.hpp>`](Material.md) | 15 | 15 |
+| [`<hp/Material.hpp>`](Material.md) | 17 | 17 |
 | [`<hp/Math.hpp>`](Math.md) | 6 | 6 |
 | [`<hp/Module.hpp>`](Module.md) | 6 | 6 |
 | [`<hp/ModuleHost.hpp>`](ModuleHost.md) | 25 | 25 |
@@ -65,6 +65,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Serialize.hpp>`](Serialize.md) | 6 | 6 |
 | [`<hp/Settings.hpp>`](Settings.md) | 28 | 28 |
 | [`<hp/ShaderCook.hpp>`](ShaderCook.md) | 12 | 12 |
+| [`<hp/ShaderParams.hpp>`](ShaderParams.md) | 13 | 13 |
 | [`<hp/ShaderSources.hpp>`](ShaderSources.md) | 5 | 5 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Vfs.hpp>`](Vfs.md) | 23 | 23 |
@@ -72,7 +73,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 47 | 47 |
 
-**752 public declarations across 41 headers, 635 documented.**
+**767 public declarations across 42 headers, 650 documented.**
 
 ## Every symbol
 
@@ -451,6 +452,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `AlphaMode` | [`Material.hpp`](Material.md) |
 | `TextureWrap` | [`Material.hpp`](Material.md) |
 | `UvChannel` | [`Material.hpp`](Material.md) |
+| `MaterialParam` | [`Material.hpp`](Material.md) |
+| `MaterialTexture` | [`Material.hpp`](Material.md) |
 | `Material` | [`Material.hpp`](Material.md) |
 | `AssetTraits` | [`Material.hpp`](Material.md) |
 | `kMaterialSchemaVersion` | [`Material.hpp`](Material.md) |
@@ -713,6 +716,19 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `cookShaders` | [`ShaderCook.hpp`](ShaderCook.md) |
 | `cookedShadersOnly` | [`ShaderCook.hpp`](ShaderCook.md) |
 | `setCookedShadersOnly` | [`ShaderCook.hpp`](ShaderCook.md) |
+| `kShaderParamsBlock` | [`ShaderParams.hpp`](ShaderParams.md) |
+| `kShaderTextureSlots` | [`ShaderParams.hpp`](ShaderParams.md) |
+| `shaderTextureSlotName` | [`ShaderParams.hpp`](ShaderParams.md) |
+| `shaderTextureSamplerName` | [`ShaderParams.hpp`](ShaderParams.md) |
+| `kShaderParamsMaxBytes` | [`ShaderParams.hpp`](ShaderParams.md) |
+| `ShaderParamType` | [`ShaderParams.hpp`](ShaderParams.md) |
+| `ShaderValue` | [`ShaderParams.hpp`](ShaderParams.md) |
+| `ShaderParam` | [`ShaderParams.hpp`](ShaderParams.md) |
+| `ShaderParam::meta` | [`ShaderParams.hpp`](ShaderParams.md) |
+| `ShaderTextureSlot` | [`ShaderParams.hpp`](ShaderParams.md) |
+| `ShaderParamLayout` | [`ShaderParams.hpp`](ShaderParams.md) |
+| `ShaderParamLayout::empty` | [`ShaderParams.hpp`](ShaderParams.md) |
+| `ShaderParamLayout::find` | [`ShaderParams.hpp`](ShaderParams.md) |
 | `ShaderStage` | [`ShaderSources.hpp`](ShaderSources.md) |
 | `createEngineShaderFactory` | [`ShaderSources.hpp`](ShaderSources.md) |
 | `embeddedShaderCount` | [`ShaderSources.hpp`](ShaderSources.md) |
