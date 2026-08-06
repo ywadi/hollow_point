@@ -111,7 +111,7 @@ T0095 → T0105 and T0054/T0056 → T0025 for how that was done and why.
 export PATH="$PWD/.harness/zig/linux-x86_64/0.16.0:$PATH"
 
 zig build linux                # or windows / all
-zig build test -Dtest=all      # both targets; wine runs the Windows suite
+zig build test -Dtest=all      # both targets -- see "which runner", below
 zig build test -Dtest=gpu      # needs a real GPU -- `all` builds it, never runs it
 zig build docs                 # regenerate + CHECK the API reference
 zig build dist                 # stage runnable output
@@ -119,6 +119,35 @@ zig build dist                 # stage runnable output
 
 Everything is pinned in `.harness/` — zig, cmake, ninja. Nothing on `PATH` is
 required, and the build says so loudly if it falls back to something there.
+
+### Which runner executes the Windows suite — read the line, do not assume
+
+**On a WSL host the Windows suite runs as a genuine Windows process, not under
+wine.** `binfmt_misc` hands a `.exe` to the real Windows loader, which is higher
+fidelity than wine and needs nothing installed (T0004). Wine is the **fallback**
+for a real Linux box, and `build.zig` calls it *"a degraded path, not a normal
+one"* (T0125). CI's ubuntu runner is such a box, so **CI does use wine** — that
+is the one place the word belongs.
+
+The build **prints** which one it picked, and that line exists precisely because
+this has been guessed wrong:
+
+```
++- test (windows-x86_64, gpu) as a real Windows process via WSL interop success
++- test (linux-x86_64, gpu) natively success
+```
+
+Read it. Saying "verified under wine" about a run that was native understates
+the evidence, and it has now happened in two separate sessions' reports.
+
+**And on this WSL host the *Linux* target gets software Vulkan.** The Linux ICD
+list is `asahi, gfxstream, intel_hasvk, intel, lvp, nouveau, radeon, virtio` —
+`lvp` is lavapipe and there is no NVIDIA ICD, so `llvmpipe` is all Vulkan can
+pick, while the *Windows* target run reaches the real GPU. So a gpu-suite claim
+is hardware-backed on the Windows target and software-backed on the Linux one,
+and the tests print the device. Environment configuration, not an engine defect;
+Mesa's dozen driver over the existing `libd3d12.so` is the known route and
+nobody has needed it yet.
 
 ### Deciding whether the build actually failed
 
@@ -184,8 +213,9 @@ pushing again while a run is going kills it. That is intended — a superseded
 push should not burn runners — but it means **letting a run finish before
 pushing again** is the difference between verifying your work and silently not.
 
-**Four jobs must pass**: Linux host (both target suites, Windows one under
-wine), Windows host (native), offline-configure, and the API-reference check.
+**Four jobs must pass**: Linux host (both target suites — and here the Windows
+one genuinely is under wine, because a GitHub ubuntu runner is not WSL),
+Windows host (native), offline-configure, and the API-reference check.
 Expect **~5 minutes warm** — build trees are cached, keyed on the submodule SHAs
 plus the CMake and toolchain files (T0121). A **pin bump invalidates that key**
 and costs a full cold build, 16–18 minutes; that is the intended trade for a
