@@ -18,7 +18,7 @@ Every parameter the format has, in one file — this is exactly what the engine
 writes:
 
 ```yaml
-version: 1
+version: 2
 material:
   baseColour:
     - 0.25
@@ -59,12 +59,19 @@ material:
   normalUv: 0
   occlusionUv: 1
   emissiveUv: 1
+  shader: 1570000000000020
+  params:
+    - name: referencePlane
+      value: 0.5
+  textures:
+    - name: HpTexture0
+      texture: 1570000000000031
 ```
 
 And this is a complete, valid material too:
 
 ```yaml
-version: 1
+version: 2
 material:
   baseColour: [1, 0, 0, 1]
   roughness: 0.2
@@ -124,6 +131,9 @@ per-field code in `Material.cpp` at all.
 | `*Texture` | unset | A `TextureAsset`'s GUID, or absent for none |
 | `uv0`, `uv1` | identity | Per-channel scale, offset, rotation and wrap |
 | `*Uv` | `0` | Which UV channel that texture slot samples with |
+| `shader` | unset | A `ShaderAsset`'s GUID — the module this surface is shaded by (T0142.15) |
+| `params` | empty | Values for the parameters that module declares (T0160) |
+| `textures` | empty | Textures for the slots that module uses (T0160) |
 
 **The factors default to 1, not to 0**, and that is not a style choice: a
 material that sets a texture and nothing else must come out as the texture says,
@@ -194,6 +204,92 @@ neighbour's pixels across the seam.
 
 A mesh carrying only one UV set makes `uv1` inert: `SelectUV` falls back to
 whichever set exists rather than sampling garbage.
+
+## `params` and `textures`: the half of a material the engine did not name (T0160)
+
+Every parameter above is the **engine's**. Its name means the same thing on
+every material in every game, and that vocabulary cannot grow to fit a technique
+the engine has never heard of. Before T0160 a game shader's own knobs had
+nowhere to live at all — the first material shader written in this repository,
+`samples/rockcube/content/shaders/rock_pom.slang`, hard-coded its one parameter
+as a compile-time literal and said so in its own comment.
+
+A module declares its parameters in Slang and a `.hpmat` carries values for them
+**by name**:
+
+```slang
+// in the game's own .slang module
+cbuffer HpMaterialParams
+{
+    [HpRange(0.0, 1.0)]
+    [HpTooltip("Which height sits on the polygon plane.")]
+    float referencePlane;
+
+    [HpColor]
+    float3 tint;
+}
+```
+
+```yaml
+version: 2
+material:
+  shader: 1570000000000020
+  params:
+    - name: referencePlane
+      value: 0.5
+    - name: tint
+      value: [0.8, 0.7, 0.6]
+  textures:
+    - name: HpTexture0
+      texture: 1570000000000031
+```
+
+**Nothing in this file knows what those names mean.** They belong to the module;
+this is a name/value store, and a name the module does not declare is dropped
+when the material reaches the GPU — the same leniency a parameter this build
+does not have gets.
+
+### Five rules worth knowing before authoring one
+
+**A scalar stays a scalar.** `value: 0.5` and `value: [0.5, 0, 0, 0]` are
+different documents and both round-trip to themselves, so saving a hand-written
+material never rewrites a number into three components it did not have. The
+*shader's* declared type decides how many floats reach the GPU: a `float3` given
+`value: 0.5` is written as `(0.5, 0, 0)`, never as one float running into the
+next parameter's bytes.
+
+**A parameter the material does not set reads zero**, not the previous draw's
+value and not undefined memory.
+
+**Changing a value rebuilds no pipeline and invalidates no cook.** Values are
+written into a constant buffer per draw, exactly as `heightScale` is. Module
+*identity* already keys the pipeline cache, so parameters add no permutation
+axis — which is the reason to prefer a parameter over a `#define` whenever the
+choice exists, and it is recorded against T0151.
+
+**The texture slot names are the engine's**: `HpTexture0` … `HpTexture3`, with
+`HpTexture0_sampler` and so on already declared, so a module samples one without
+declaring anything. They are named here rather than by the author because a
+pipeline resource signature is built once, before any module exists, and
+Diligent matches a shader's resources to it *by name*. The parameter *fields*
+are the author's for the mirror-image reason: fields are not resources, so they
+cost the signature nothing.
+
+An unset slot samples **white** — the same no-texture answer the fixed slots
+give — and a GUID that does not resolve samples the missing-asset checkerboard.
+
+**Only what the engine can carry**: `float`, `float2`, `float3`, `float4`, `int`
+and `bool`, and 256 bytes of block in total. A matrix, an array or a nested
+struct in the block is reported by name in the log and left at whatever the
+shader initialises it to; a module whose block overruns the cap is refused by
+name rather than truncated.
+
+### `version: 2`
+
+The schema bumped when these two keys arrived. **Every version-1 `.hpmat` still
+loads** — reading is lenient and both keys are simply absent from them. The bump
+is the signal in the other direction: a build predating T0160 refuses a document
+that might carry parameters it would drop on the next save.
 
 ### Strengths are 0..1, not 0..100
 
@@ -270,9 +366,20 @@ invalidates it rather than being misread from it.
 
 ## What is not here yet
 
-- **Custom shader materials** — T0141. Nothing in this format forecloses them: a
-  `shader` key and its declared parameters are additive, and a material without
-  one is what this document describes.
+- ~~**Custom shader materials**~~ — landed. The `shader` key arrived with
+  T0142.15 and its declared parameters with **T0160**; both are additive, and a
+  material without either is what the rest of this document describes.
+- **Author-chosen texture slot names.** A module binds `HpTexture0` … `3`, not
+  `detailMap`. Naming them would need either a second descriptor set per module
+  — a second SRB and a second commit on every draw — or a rename pass that must
+  know the names *before* the compile that discovers them, which is circular.
+  Both were weighed on T0160 and the trade is recorded in the capability matrix
+  as the named widening.
+- **A parameter's default.** A module's block is zero-initialised, so a
+  parameter no material sets reads zero rather than something the shader
+  declared as sensible. `[HpDefault(...)]` is the obvious shape and nothing
+  needs it yet.
+- **Material instances** — see below.
 - **Per-slot UV transforms.** Exposed per *channel*, which covers the ordinary
   case; a slot needing its own transform independent of the channel it selects
   has nowhere to say so yet. The plumbing underneath is per slot, so this is an

@@ -20,9 +20,30 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-06 — nineteenth revision of the day: `T0159` closed — the
-contract is open. The sequence stays one thing: *give game developers full
-power over shaders*.**
+**Set 2026-08-06 — twentieth revision of the day: `T0160` closed — a game can
+ship a *tunable* material. The sequence stays one thing: *give game developers
+full power over shaders*.**
+
+T0160 landed the largest single row-unblocker in the capability matrix. A game's
+`.slang` declares `cbuffer HpMaterialParams` with **its own field names**, hints
+them with `[HpRange]`/`[HpColor]`/`[HpTooltip]`, samples four texture slots, and
+a `.hpmat` gives all of it values by name — changing one rebuilds no pipeline
+and invalidates no cook. `rock_pom.slang`'s reference plane, the first knob ever
+written here and a compile-time literal because there was nowhere to put it, is
+now a parameter: **the material file alone** moves 33207 of 47393 texels, mean
+absolute difference 25.2, with the silhouette and the magenta guard unchanged.
+Six technique rows became *expressible today*.
+
+Three things it settled that other tickets were waiting on. **T0032's open
+reflection question is answered with measurements** and one half of its
+Done-when is struck: reflecting a module *without a device* is not possible —
+a module is a fragment, not a program, and slang emits no reflection for a
+failed compile — so reflection rides the real compile and a cooked build reads
+the same layout out of its SPIR-V. **T0153 is down to the per-tap seam alone**,
+its declared textures having landed here. And the one widening this owes is
+written down: a module's texture slots are named by the engine
+(`HpTexture0`…`3`), because author names need either a second descriptor set per
+draw or a rename pass that is circular.
 
 T0159 landed all of it: D27's amendment is in force and documented where a
 shader author reads (`docs/shaders/HpMaterial.md`), the hooks are `[mutating]`
@@ -112,10 +133,9 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0160](inprogress/0160-material-declared-parameters.md) | material-declared parameters and textures | **The single largest row-unblocker in the matrix — ~13 of 40 techniques**, and the one a game developer hits on *day one* rather than when attempting something advanced. A game cannot ship a tunable material at all today: the first shader ever authored here hard-codes its one knob as a literal because there is nowhere to put it. Not something opening DiligentFX can fix — Diligent has no such thing either |
-| 2 | [T0146](open/0146-vertex-stage-hook.md) | the vertex stage hook | **Zero of six techniques expressible.** Wind, foliage sway, billboarding, displacement, morph targets, per-instance offsets — the only family with an empty intersection. We use DiligentFX's vertex shader as-is, so there is no hook to open; this one is built, not exposed. Also carries custom interpolators, which every future per-vertex technique needs |
-| 3 | [T0147](open/0147-engine-intermediates-for-shaders.md) | screen resources for shaders | Refraction, soft particles, heat haze, fog-of-war. A shader cannot sample a depth buffer that is not bound to the pipeline, whatever it includes — so this is binding work, not contract work |
-| 4 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | the light loop | **The whole NPR family** — cel, ramp, hatching, custom BRDFs — plus skin, sheen and anisotropy's shading half. T0159 lets a game *read* lights; this lets it replace the loop. **Must land after T0159**, or its interface freezes before hooks are mutable and the break is paid twice |
+| 1 | [T0146](open/0146-vertex-stage-hook.md) | the vertex stage hook | **Zero of six techniques expressible.** Wind, foliage sway, billboarding, displacement, morph targets, per-instance offsets — the only family with an empty intersection. We use DiligentFX's vertex shader as-is, so there is no hook to open; this one is built, not exposed. Also carries custom interpolators, which every future per-vertex technique needs |
+| 2 | [T0147](open/0147-engine-intermediates-for-shaders.md) | screen resources for shaders | Refraction, soft particles, heat haze, fog-of-war. A shader cannot sample a depth buffer that is not bound to the pipeline, whatever it includes — so this is binding work, not contract work |
+| 3 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | the light loop | **The whole NPR family** — cel, ramp, hatching, custom BRDFs — plus skin, sheen and anisotropy's shading half. T0159 lets a game *read* lights; this lets it replace the loop. **Must land after T0159**, or its interface freezes before hooks are mutable and the break is paid twice |
 
 Then, unchanged in substance and pushed behind the above: `T0143` (extended
 material features), `T0152` (the winding remainder), `T0045` (culling and render
@@ -271,7 +291,7 @@ wrong in the confident voice of a document that is normally right.
 | 463 | [T0157](completed/0157-rock-cube-sample.md) | The rock cube sample: the authoring path's first real test | 4 — Render layer | ✅ DONE | Medium | Moderate |
 | 464 | [T0158](inprogress/0158-parallax-depth-cues.md) | Making parallax read as relief: the reference plane and self-shadowing | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
 | 465 | [T0159](completed/0159-open-the-material-contract.md) | Open the material contract: DiligentFX exposed, state across hooks | 4 — Render layer | ✅ DONE | High | Moderate |
-| 466 | [T0160](inprogress/0160-material-declared-parameters.md) | Material-declared parameters and resources | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
+| 466 | [T0160](completed/0160-material-declared-parameters.md) | Material-declared parameters and resources | 4 — Render layer | ✅ DONE | High | Moderate |
 | 464 | [T0155](open/0155-terrain-rendering.md) | Terrain rendering: their reference implementation is the floor, not the ceiling | 4 — Render layer | 🔜 TODO | Medium | Very Complex |
 | 465 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | 🔜 TODO | High | Complex |
 | 492 | [T0148](open/0148-post-process-stack.md) | The post-process stack: engine and game effects at one seam | 4 — Render layer | 🔜 TODO | Medium | Complex |

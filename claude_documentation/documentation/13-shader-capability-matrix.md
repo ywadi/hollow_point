@@ -41,29 +41,33 @@ owning ticket.
 | Whole-output hook (`surface`) | **Y** | — |
 | Per-tap sampling seam | **–** | T0153.1 |
 | Cross-hook state | **Y** — hooks are `[mutating]`, members zero-initialised (2026-08-06, T0159) | — |
-| Game-declared parameters and textures | **–** | T0160 |
+| Game-declared parameters | **Y** — `cbuffer HpMaterialParams` with author-named fields, valued by `.hpmat`, hinted by `[HpRange]`/`[HpColor]`/`[HpTooltip]` (2026-08-06, T0160). float/2/3/4, int, bool; 256 bytes | — |
+| Game-declared textures | **P** — four slots, **named by the engine** (`HpTexture0`…`3`), bound by `.hpmat`. Author-chosen names need a per-module descriptor set or a circular rename pass; see the widening below | (author names: unowned) |
 | Light access | **P** — readable since D27's amendment (2026-08-06, T0159): `g_Frame.Lights[]` is in scope, **but its order is unspecified for directional lights** (unstable sort on equal keys — pick by intensity, never index). Replacing the loop is T0145 | T0145 |
 | Vertex hook | **–** | T0146 |
 | Screen resources (depth, scene colour, fed textures) | **–** | T0147 |
 | Time / frame counter | **P** — `HpSurfaceInput::Time` landed 2026-08-06 (T0159): the caller's clock reaches shaders through every render path. The *frame counter* (`uiFrameIndex`) is still only zeroed, never written | (frame counter: unowned) |
-| Per-instance data | **–** — layout exists, bytes undefined | T0160's note |
+| Per-instance data | **–** — layout exists, bytes undefined. Explicitly *not in scope* on T0160, which recorded the trigger: `PBRPrimitiveAttribs::CustomData` is the place, the write is skipped when null and the engine passes null | (unowned) |
 | Pass and pipeline control | **–** | T0148 / T0150 / T0094 |
 
 ## The technique rows
 
 | Family | Needs, beyond what exists | Blocked on |
 |---|---|---|
-| **Parallax** — POM, relief, cone-step | parameters for its knobs (self-shadowing landed 2026-08-06 — `rock_pom.slang` marches a shadow ray on T0159's contract) | T0160 |
-| **De-tiling / macro variation** | per-tap seam, declared textures (cross-hook state landed) | T0153.1, T0160 |
-| **Layered surfaces** — snow, wetness, moss, detail maps | declared textures and parameters | **T0160 alone** |
+| **Parallax** — POM, relief, cone-step | nothing — knobs landed 2026-08-06 (T0160): `rock_pom.slang`'s reference plane is a declared parameter valued by `rock.hpmat`, and self-shadowing landed on T0159 | *expressible today* |
+| **De-tiling / macro variation** | the per-tap sampling seam (declared textures and parameters landed) | T0153.1 |
+| **Layered surfaces** — snow, wetness, moss, detail maps | nothing — declared textures and parameters landed 2026-08-06 (T0160) | *expressible today* |
 | **World-aligned masks, game triplanar** | nothing | *expressible today* |
 | **Anisotropy, sheen, clearcoat, skin** | the light loop, extended features (the real tangent landed — zero only when the mesh has none, `w` always +1) | T0145, T0143 |
 | **Rim / Fresnel / unshaded** | nothing | *expressible today* |
 | **Vertex motion** — wind, sway, billboarding, displacement, morph, per-instance | a vertex stage that does not exist | **T0146 — zero of six expressible** |
-| **Transparency** — dissolve, fade, refraction, decals, dithered LOD | parameters, scene colour, per-instance, a LOD system (time landed) | T0160, T0147, T0039/T0040 |
+| **Transparency** — dissolve, fade | nothing — a dissolve threshold and a fade factor are declared parameters (T0160), and `In.Time` drives them | *expressible today* |
+| **Transparency** — refraction, decals, dithered LOD | scene colour, per-instance data, a LOD system | T0147, T0039/T0040 |
 | **Screen-space** — soft particles, heat haze, frosted glass, fog-of-war | bound screen resources | **T0147** |
-| **Time-driven** — scrolling, flowmaps, pulsing emissive | scrolling and pulsing emissive are *expressible today* (`In.Time`, 2026-08-06); flowmaps still want a declared texture | T0160 |
-| **NPR** — cel, ramp, hatching, outlines, custom BRDF | the light loop; outlines also need a vertex stage and a pass | **T0145**, T0146, T0148 |
+| **Time-driven** — scrolling, flowmaps, pulsing emissive | nothing — `In.Time` landed on T0159 and a flowmap's texture is a declared slot (T0160) | *expressible today* |
+| **NPR** — cel, hatching, custom BRDF | the light loop | **T0145** |
+| **NPR** — ramp lighting | the light loop (the ramp texture itself is a declared slot since T0160) | **T0145** |
+| **NPR** — outlines | a vertex stage and a second pass | T0146, T0148 |
 
 ---
 
@@ -94,10 +98,42 @@ thing the audit produced:
 
 ### (c) It does not exist — real work
 
-A D27-clean light (T0145), screen resources (T0147), declared parameters
-(T0160), a vertex hook and custom interpolators (T0146), an instancing path, a
-LOD fade factor, motion vectors, `ShadowFactor` / `Visibility` /
-`AmbientOcclusionIBL` (T0086 / T0093 / T0087).
+A D27-clean light (T0145), screen resources (T0147), a vertex hook and custom
+interpolators (T0146), an instancing path, a LOD fade factor, motion vectors,
+`ShadowFactor` / `Visibility` / `AmbientOcclusionIBL` (T0086 / T0093 / T0087).
+
+~~Declared parameters~~ — **landed 2026-08-06 (T0160)**, and it was the largest
+single item on this list: it appeared in the "blocked on" column of ~13 of the
+40 audited techniques, against ~9 for the light loop. Six rows above are now
+*expressible today* because of it.
+
+---
+
+## The one widening this landing owes
+
+**A module's texture slots are named by the engine, not by its author** —
+`HpTexture0` … `HpTexture3`. That is not a limitation of Slang or of Diligent;
+it is the price of using **one** pipeline resource signature, which is created
+once at renderer construction, before any module exists, and which Diligent
+matches a shader's resources to *by name*.
+
+Two ways to author-chosen names were designed on T0160 and neither was taken:
+
+- **A per-module signature**, added beside the base one. Costs a second SRB and
+  a second `CommitShaderResources` on every draw of every custom material, and
+  it was the last unproven item in the ticket. The shared-slot design removed
+  the need to prove it at all.
+- **A rename pass** — reflect the module, learn it declares `detailMap`, and
+  emit `#define detailMap HpTexture0` into the generated include ahead of it.
+  This is **circular**: the reflection rides the compile, so the names are not
+  known until after the compile that would have to be told them.
+
+A third path exists and is what would actually pay for it: a deviceless
+reflection pass that runs at *import* time, before any pipeline. That does not
+exist either, and the reason is the next entry.
+
+**Parameter *fields* are the author's** for the mirror-image reason — a field is
+not a resource, so it costs the signature nothing.
 
 ---
 
@@ -126,7 +162,20 @@ Recorded because an overstated document is worse than an open question.
   fails naming the resource (`'HpMaterialParams' ... not present in any
   pipeline resource signature`), the frame is the missing-material
   checkerboard, and the renderer logs one substitution line naming the module.
-  Pinned by `custom_shader_material_test.cpp`.
+  That is now what the *absence* of a signature slot looks like; the slot
+  exists, and `custom_shader_material_test.cpp` pins the capability instead.
+- **Reflecting a module without a device is not possible today, and D28 promised
+  it.** Measured on T0160: a module is a *fragment*, not a program — it names
+  `IHpMaterial` and `VSOutput`, and since D27's amendment its bodies may reach
+  `g_HeightMap`, `g_Frame.Lights[]` and DiligentFX's getters — so a translation
+  unit containing it alone does not type-check, and slang emits **no**
+  reflection for a failed compile (`slangc -reflection-json` writes no file,
+  with `-no-codegen` and without). Reflection therefore rides the real
+  pixel-shader compile, which needs `PBR_Renderer::DefineMacros` — ~100 macros
+  read from `m_Settings` *and* `m_Device.GetDeviceInfo().Features`. Reproducing
+  that without a device means a second, hand-maintained macro set, which is the
+  second path D28 forbids. The consequence a person meets: a material's declared
+  parameters are known only after a pipeline has been built for its module.
 - Whether the per-primitive `CustomData` bytes read as zero or as noise on real
   hardware. Undefined per the API; not measured.
 - The register and occupancy cost of publishing the tangent frame

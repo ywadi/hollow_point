@@ -8,7 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 630 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0053 (Blocks this), T0032, T0071, T0062, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D23, [../../documentation/09-gameplay-authoring.md](../../documentation/09-gameplay-authoring.md), [../completed/0112-string-identity-and-localisation.md](../completed/0112-string-identity-and-localisation.md) |
+| **Refs** | T0053 (Blocks this), T0032, T0071, T0062, [../completed/0160-material-declared-parameters.md](../completed/0160-material-declared-parameters.md) — **a material's rows come from two reflections and must present as one**: `hp::ShaderParam::meta()` returns the same `hp::PropertyMeta` a reflected C++ field carries, so the inspector consumes one struct whichever side produced it, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D23, [../../documentation/09-gameplay-authoring.md](../../documentation/09-gameplay-authoring.md), [../completed/0112-string-identity-and-localisation.md](../completed/0112-string-identity-and-localisation.md) |
 
 ## Obligation from T0060 (2026-08-05) — percentages are the inspector's job
 

@@ -8,7 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 600 |
 | **Created** | 2026-08-02 |
-| **Refs** | [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md) — **inherited its editor half** (142.8/142.9/142.10 → 32.7/32.8/32.9), including an undecided question this ticket must settle; [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — the same work reached T0142 from 141.2/141.5 first, so the chain is 141.2 → 142.9 → 32.8 and 141.5 → 142.8 → 32.7; [../completed/0085-layers-and-masks.md](../completed/0085-layers-and-masks.md) — 85.6's mask editor widget also waits here; [0035-hierarchy-and-inspector.md](0035-hierarchy-and-inspector.md) — the inspector panel itself, which 32.8/32.9 describe the *contents* of; [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) **D28** (Slang), **D12** (the editor is a module host) |
+| **Refs** | [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md) — **inherited its editor half** (142.8/142.9/142.10 → 32.7/32.8/32.9), including an undecided question this ticket must settle; [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — the same work reached T0142 from 141.2/141.5 first, so the chain is 141.2 → 142.9 → 32.8 and 141.5 → 142.8 → 32.7; [../completed/0085-layers-and-masks.md](../completed/0085-layers-and-masks.md) — 85.6's mask editor widget also waits here; [0035-hierarchy-and-inspector.md](0035-hierarchy-and-inspector.md) — the inspector panel itself, which 32.8/32.9 describe the *contents* of; [../completed/0160-material-declared-parameters.md](../completed/0160-material-declared-parameters.md) — **answers 32.8's open reflection question with measurements, and builds the description 32.9 has to consume**: `hp::ShaderParamLayout` exists, and the deviceless half of this ticket's Done-when is measured impossible; [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) **D28** (Slang), **D12** (the editor is a module host) |
 
 ## Why
 
@@ -24,9 +24,14 @@ not itself become a dumping ground.
 - [ ] An ImGui dockspace hosts panels, and docking actually works
 - [ ] Dock layout persists across editor restarts
 - [ ] `grep -ri editor engine/` returns nothing
-- [ ] **A material inspector is built from shader reflection, with no device and
-      no successful compile required** — inherited from T0142, which could not
-      close it without an editor to put it in
+- [ ] **A material inspector is built from shader reflection** — inherited from
+      T0142, which could not close it without an editor to put it in.
+      **The "with no device and no successful compile required" half was
+      measured impossible on T0160 and is struck**: a module is a fragment, not
+      a program, so no translation unit containing it alone type-checks and
+      slang emits no reflection for a failed compile. The layout exists once a
+      pipeline has been built for the module (`SurfacePipeline::paramLayout`);
+      what this ticket owes is the panel, not a second reflector
 
 ## Subtasks
 
@@ -132,6 +137,59 @@ a warning, not a silent omission.** That rule came with the work and survives
 whichever mechanism wins.
 
 ## Notes / findings
+
+### T0160 answered 32.8's reflection question — 2026-08-06, with measurements
+
+The section above says the mechanism *"must not be decided by default"*, and it
+was not: T0160 needed the same reflection for the *renderer* side and settled it
+on evidence. What this ticket inherits is an answer plus a hard constraint.
+
+**Both mechanisms are in the tree, and they are not alternatives — they are the
+compiled build and the cooked build.**
+
+- **Slang's reflection is primary**, and it carries the hints: `[HpRange]`,
+  `[HpColor]` and `[HpTooltip]` are engine-defined attributes declared in
+  `HpMaterial.slang`, and slang delivers them into reflection with their
+  argument values. The tooltip arrives as its *source text*, quotes included.
+- **Diligent's `GetConstantBufferDesc` is the fallback**, used where the
+  bytecode came from a cooked archive and nothing compiled. Same bytes, so the
+  offsets cannot disagree; hints do not survive into SPIR-V, and an editor
+  always has the compiler. `LoadConstantBufferReflection` is on only for
+  pipelines with a custom module.
+- The old plan — annotate and write a parser — stayed rejected.
+
+**The deviceless promise is not achievable and this is the measurement.** A
+module names `IHpMaterial` and `VSOutput`, and since D27's amendment its bodies
+may reach `g_HeightMap`, `g_Frame.Lights[]` and DiligentFX's getters, so a
+translation unit containing the module alone is a wall of undefined identifiers.
+Slang emits **no** reflection for a failed compile — `slangc -reflection-json`
+writes no file, with `-no-codegen` and without, on the pinned 2026.14.1. So
+reflection rides the real `HpSurface.slang` compile, which needs
+`PBR_Renderer::DefineMacros` — ~100 macros read from `m_Settings` *and*
+`m_Device.GetDeviceInfo().Features`. Reproducing that without a device means a
+second, hand-maintained macro set, which is the second path D28 forbids.
+
+**What 32.8 must therefore do:** read `SurfacePipeline::paramLayout(module)`
+through whatever accessor the editor gets, and accept that a material's
+parameters are known once a pipeline has been built for its module. That is
+after the first frame that draws it — good enough for an inspector, and *not*
+"while the developer is typing".
+
+**What 32.9 must therefore do: consume `hp::PropertyMeta` from both sides and
+nothing else.** `ShaderParam::meta()` already returns exactly the struct a
+reflected C++ property carries — min, max, tooltip, read-only, hidden — so the
+unification this subtask describes is already available as data and needs no
+second description invented in the panel. The one thing the two genuinely do
+not share is *identity*: a component field is a `entt::meta_data` on a type, a
+material parameter is a name in a `.hpmat`'s `params` list.
+
+**The parameter buffer question in the section above is also settled, and the
+answer is not `CustomData`.** Riding the per-material `float4` was the
+suggestion; it does not survive contact with author-declared parameters, whose
+count and layout the engine cannot know. A module declares
+`cbuffer HpMaterialParams` and the engine binds one 256-byte buffer to a slot
+the shared signature names — `CustomData.x`/`.y` stay the engine's own
+`heightScale` and `triplanarScale`.
 
 **ImGui docking is already proven working** — that was the whole point of the
 earlier probe app: `ImGui 1.92.9b, docking ON`, verified on both OpenGL and
