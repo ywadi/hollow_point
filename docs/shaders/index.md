@@ -40,7 +40,7 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 
 | Page | Source | Declarations |
 |---|---|---|
-| [`HpMaterial`](HpMaterial.md) | `engine/shaders/HpMaterial.slang` | 6 |
+| [`HpMaterial`](HpMaterial.md) | `engine/shaders/HpMaterial.slang` | 20 |
 | [`IHpMaterial`](IHpMaterial.md) | `engine/shaders/HpSurface.slang` | 1 |
 
 ## Every symbol
@@ -54,6 +54,20 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | `HpColorAttribute` | struct | [`HpMaterial`](HpMaterial.md) |
 | `HpTooltipAttribute` | struct | [`HpMaterial`](HpMaterial.md) |
 | `HpTooltipAttribute::text` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSamplerLinearWrap` | global | [`HpMaterial`](HpMaterial.md) |
+| `HpSamplerLinearClamp` | global | [`HpMaterial`](HpMaterial.md) |
+| `HpSamplerPointWrap` | global | [`HpMaterial`](HpMaterial.md) |
+| `HpSamplerPointClamp` | global | [`HpMaterial`](HpMaterial.md) |
+| `HpSamplerAnisoWrap` | global | [`HpMaterial`](HpMaterial.md) |
+| `HpSamplerAnisoClamp` | global | [`HpMaterial`](HpMaterial.md) |
+| `HpTexture0` | global | [`HpMaterial`](HpMaterial.md) |
+| `HpTexture1` | global | [`HpMaterial`](HpMaterial.md) |
+| `HpTexture2` | global | [`HpMaterial`](HpMaterial.md) |
+| `HpTexture3` | global | [`HpMaterial`](HpMaterial.md) |
+| `HpTexture0_sampler` | macro | [`HpMaterial`](HpMaterial.md) |
+| `HpTexture1_sampler` | macro | [`HpMaterial`](HpMaterial.md) |
+| `HpTexture2_sampler` | macro | [`HpMaterial`](HpMaterial.md) |
+| `HpTexture3_sampler` | macro | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput` | struct | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::UV0` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::UV1` | field | [`HpMaterial`](HpMaterial.md) |

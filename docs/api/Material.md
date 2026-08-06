@@ -87,7 +87,8 @@ struct MaterialParam
 struct MaterialTexture
 ```
 
- One texture this material binds to a module's texture slot (T0160.3).
+ One texture this material binds to a texture the module declares
+ (T0160.3, author-named since T0161).
 
 ## `Material`
 

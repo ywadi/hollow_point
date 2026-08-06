@@ -64,7 +64,7 @@ material:
     - name: referencePlane
       value: 0.5
   textures:
-    - name: HpTexture0
+    - name: detailAlbedo
       texture: 1570000000000031
 ```
 
@@ -205,7 +205,7 @@ neighbour's pixels across the seam.
 A mesh carrying only one UV set makes `uv1` inert: `SelectUV` falls back to
 whichever set exists rather than sampling garbage.
 
-## `params` and `textures`: the half of a material the engine did not name (T0160)
+## `params` and `textures`: the half of a material the engine did not name (T0160, T0161)
 
 Every parameter above is the **engine's**. Its name means the same thing on
 every material in every game, and that vocabulary cannot grow to fit a technique
@@ -214,11 +214,14 @@ nowhere to live at all — the first material shader written in this repository,
 `samples/rockcube/content/shaders/rock_pom.slang`, hard-coded its one parameter
 as a compile-time literal and said so in its own comment.
 
-A module declares its parameters in Slang and a `.hpmat` carries values for them
-**by name**:
+A module declares its parameters **and its textures** in Slang, under its own
+names and at whatever count it wants (T0161, D35), and a `.hpmat` carries
+values and bindings for them **by those names**:
 
 ```slang
 // in the game's own .slang module
+Texture2DArray detailAlbedo;      // the author's name -- no registration
+
 cbuffer HpMaterialParams
 {
     [HpRange(0.0, 1.0)]
@@ -240,7 +243,7 @@ material:
     - name: tint
       value: [0.8, 0.7, 0.6]
   textures:
-    - name: HpTexture0
+    - name: detailAlbedo
       texture: 1570000000000031
 ```
 
@@ -267,16 +270,26 @@ written into a constant buffer per draw, exactly as `heightScale` is. Module
 axis — which is the reason to prefer a parameter over a `#define` whenever the
 choice exists, and it is recorded against T0151.
 
-**The texture slot names are the engine's**: `HpTexture0` … `HpTexture3`, with
-`HpTexture0_sampler` and so on already declared, so a module samples one without
-declaring anything. They are named here rather than by the author because a
-pipeline resource signature is built once, before any module exists, and
-Diligent matches a shader's resources to it *by name*. The parameter *fields*
-are the author's for the mirror-image reason: fields are not resources, so they
-cost the signature nothing.
+**Texture names are the author's** (T0161). The engine reflects the compiled
+module and builds a per-module resource signature from what it finds, so a
+`textures:` entry names whatever the module declared — `detailAlbedo`, not an
+engine identifier. Declare them `Texture2DArray` (the one shape the engine
+binds; anything else is refused by name at pipeline build) and sample through
+the engine's palette — `HpSamplerLinearWrap`, `HpSamplerLinearClamp`,
+`HpSamplerPointWrap`, `HpSamplerPointClamp`, `HpSamplerAnisoWrap`,
+`HpSamplerAnisoClamp` — because sampler *state* is the engine's vocabulary
+(D35's one deliberate limit) and a module declaring its own `SamplerState` is
+refused by name with the palette in the log. `HpMaterialParams` stays the one
+reserved name: the *block* is the engine's so these values have one place to
+go; the fields inside it are the author's.
 
-An unset slot samples **white** — the same no-texture answer the fixed slots
-give — and a GUID that does not resolve samples the missing-asset checkerboard.
+T0160's `HpTexture0` … `HpTexture3` still bind — they are deprecated
+declarations in the contract file now, ordinary author-visible names — so a
+shipped v2 `.hpmat` renders unchanged.
+
+A texture the material does not name samples **white** — the same no-texture
+answer every engine slot gives — and a GUID that does not resolve samples the
+missing-asset checkerboard.
 
 **Only what the engine can carry**: `float`, `float2`, `float3`, `float4`, `int`
 and `bool`, and 256 bytes of block in total. A matrix, an array or a nested
@@ -369,12 +382,15 @@ invalidates it rather than being misread from it.
 - ~~**Custom shader materials**~~ — landed. The `shader` key arrived with
   T0142.15 and its declared parameters with **T0160**; both are additive, and a
   material without either is what the rest of this document describes.
-- **Author-chosen texture slot names.** A module binds `HpTexture0` … `3`, not
-  `detailMap`. Naming them would need either a second descriptor set per module
-  — a second SRB and a second commit on every draw — or a rename pass that must
-  know the names *before* the compile that discovers them, which is circular.
-  Both were weighed on T0160 and the trade is recorded in the capability matrix
-  as the named widening.
+- ~~**Author-chosen texture slot names.**~~ — landed (**T0161**, D35). A module
+  declares `Texture2DArray detailMap;` and the `.hpmat` binds `detailMap`. The
+  second descriptor set T0160 weighed and deferred is exactly what shipped,
+  after 161.1 measured its cost at 34 ns a draw; the rename pass stayed
+  rejected as circular. `HpTexture0` … `3` remain as deprecated declarations.
+- **Author-defined sampler state.** Filtering comes from the engine's
+  six-entry palette; a custom aniso level, border colour or compare sampler is
+  metadata a cooked build would have to carry, and waits for a real request
+  (D35).
 - **A parameter's default.** A module's block is zero-initialised, so a
   parameter no material sets reads zero rather than something the shader
   declared as sensible. `[HpDefault(...)]` is the obvious shape and nothing

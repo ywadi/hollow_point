@@ -6,7 +6,7 @@
 #include <hp/ShaderParams.hpp>
 ```
 
-13 public declaration(s), 13 documented.
+11 public declaration(s), 11 documented.
 
 ## `kShaderParamsBlock`
 
@@ -23,72 +23,26 @@ inline constexpr const char * kShaderParamsBlock = "HpMaterialParams"
  author's. That split is the whole trick: fields are not resources, so they
  cost the signature nothing and a module may name and order them freely.
 
-## `kShaderTextureSlots`
+## `kShaderSamplerPalette`
 
 ```cpp
-inline constexpr std :: uint32_t kShaderTextureSlots = 4
+inline constexpr const char * kShaderSamplerPalette [ ] = { "HpSamplerLinearWrap" , "HpSamplerLinearClamp" , "HpSamplerPointWrap" , "HpSamplerPointClamp" , "HpSamplerAnisoWrap" , "HpSamplerAnisoClamp" , }
 ```
 
- How many texture slots a module may use.
+ The engine's sampler palette: the sampler names a module may sample with
+ (T0161, D35).
 
- **Four is a judgement against the capability audit, not a measured limit.**
+ **Sampler *state* is the engine's vocabulary; which sampler to use is the
+ author's choice, made by naming one of these in code.** The names are
+ declared in `HpMaterial.slang` and backed by immutable samplers in the base
+ resource signature, so the choice travels inside the SPIR-V and a cooked
+ build carries no sampler metadata at all — the one thing SPIR-V cannot
+ express never needs expressing. Godot ships the identical restriction.
 
- Each slot is a resource in the *one shared* signature, declared for every
- pipeline — so every material SRB in the engine binds it, including a plain
- glTF material that will never read it. That superset pattern is what makes
- one signature enough (see `kShaderParamsBlock`), and it is also why this is
- not sixteen: a slot costs a descriptor and an immutable sampler on **every**
- material in the scene, not only on the ones that use it.
-
- Four covers the declared-texture techniques the 2026-08-06 audit found — a
- detail albedo, a blend mask, a flowmap, a lighting ramp — none of which
- wants more than two at once.
-
- **The budget, counted rather than assumed** (T0160). The shared pixel-stage
- signature holds **10 sampled images and 11 immutable samplers** today, four
- of each from here. T0087's IBL adds 3 images, T0086's shadow map 1, and
- T0143's extended materials about 12 more — which is where the budget
- actually gets interesting, and the answer there is Diligent's
- `ShaderTexturesArrayMode` collapsing the seventeen material slots into one
- array, not trimming module slots.
-
- Raising it is two places: this constant with the loop in
- `SurfacePipeline::CreateCustomSignature`, and the declarations in
- `HpMaterial.slang`, which are written out by hand so a module can use one
- without declaring anything.
-
-## `shaderTextureSlotName`
-
-```cpp
-const char * shaderTextureSlotName(std::uint32_t slot)
-```
-
- The name of a module's texture slot, `HpTexture0` … `HpTexture3`.
-
- **A string literal with static lifetime**, which is what the caller needs:
- `PipelineResourceSignatureDesc` stores the `const char*` it is given and
- does not copy it, so a name assembled into a local would dangle behind the
- signature.
-
- @param slot which slot, below `kShaderTextureSlots`.
- @returns the slot's shader name, or nullptr when @p slot is out of range —
-          never a fabricated name, because a name the signature does not
-          carry fails PSO creation rather than a bind.
-
-## `shaderTextureSamplerName`
-
-```cpp
-const char * shaderTextureSamplerName(std::uint32_t slot)
-```
-
- The name of a module's texture-slot sampler, `HpTexture0_sampler` … .
-
- The `_sampler` suffix is the engine's convention everywhere else
- (`g_HeightMap_sampler`) and is what Diligent's uncombined-sampler mode
- expects. Immutable in the signature, so a module never binds one.
-
- @param slot which slot, below `kShaderTextureSlots`.
- @returns the sampler's shader name, or nullptr when @p slot is out of range.
+ `Aniso` is 8x, wrap and clamp both. A module declaring its own
+ `SamplerState` is refused by name at pipeline build, with this palette in
+ the log line; widening it — a compare sampler, an author-set aniso level —
+ is additive when something real asks (recorded on D35).
 
 ## `kShaderParamsMaxBytes`
 
@@ -180,7 +134,14 @@ PropertyMeta meta() const
 struct ShaderTextureSlot
 ```
 
- One texture slot a module's compiled code actually uses.
+ One texture a module's compiled code samples, under the author's own name
+ (T0161).
+
+ **The name is the author's, not the engine's** — `detailAlbedo`, not
+ `HpTexture0` — because the resource lives in the per-module signature built
+ from this very reflection, so no name has to exist before the module does.
+ It is the key a `.hpmat`'s `textures:` list binds by, and the label an
+ inspector row shows.
 
 ## `ShaderParamLayout`
 

@@ -102,7 +102,80 @@ geometry that can least afford it. `ViewDir` is computed in the pixel shader
 from the camera position and the world position rather than interpolated; more
 fields will follow that pattern as they are added.
 
-6 declaration(s), 20 member(s), all documented.
+
+#### A module's own parameters and resources (T0160, T0161, D35)
+
+**Your module declares its own textures under its own names, at whatever
+count it wants**, as ordinary globals — no registration, no attributes, no
+engine identifiers:
+
+    Texture2DArray detailAlbedo;
+    Texture2DArray puddleMask;
+
+    cbuffer HpMaterialParams
+    {
+        [HpRange(0.0, 1.0)]
+        [HpTooltip("How wet the surface reads.")]
+        float wetness;
+
+        [HpColor]
+        float3 tint;
+    }
+
+The engine reflects the compiled module and binds what it finds; the
+`.hpmat` beside it supplies values and textures **by your names**:
+
+    params:
+      - name: wetness
+        value: 0.75
+    textures:
+      - name: detailAlbedo
+        texture: 1570000000000031
+
+The conventions, each of which the engine enforces loudly rather than
+trusting:
+
+- **`HpMaterialParams` is the one reserved name.** The parameter *block* is
+  called that so a `.hpmat`'s values have one place to go; every field name
+  inside it is yours. A second constant buffer under another name is
+  refused, by name, at pipeline build. The block is capped at **256 bytes**
+  and carries `float`/`float2`/`float3`/`float4`/`int`/`bool`; anything
+  else is reported by name and left at what the shader initialises it to.
+- **Declare textures as `Texture2DArray`.** Every texture this engine binds
+  is a one-slice 2D array; a plain `Texture2D` is refused by name at
+  pipeline build, because past that point the mismatch would be a raw
+  Vulkan validation error in a cooked game.
+- **Sample through the engine's sampler palette** — `HpSamplerLinearWrap`,
+  `HpSamplerLinearClamp`, `HpSamplerPointWrap`, `HpSamplerPointClamp`,
+  `HpSamplerAnisoWrap`, `HpSamplerAnisoClamp`, declared below. Sampler
+  *state* is the engine's vocabulary, and this is the one deliberate limit
+  (D35): the choice of sampler travels inside your compiled code, so a
+  cooked build carries no sampler metadata at all. Declaring your own
+  `SamplerState` is refused by name, with the palette in the log line.
+- **Declare unconditionally, at module top level.** A declaration inside a
+  permutation `#if` makes "what does this module declare" a question with
+  one answer per macro set, and neither a `.hpmat` nor an inspector row can
+  be permutation-dependent. An unused declaration is stripped from the
+  compiled code and costs nothing.
+- **Values are data, not permutations.** Changing a `.hpmat` value rebuilds
+  no pipeline and invalidates no cook.
+- **Two namespaces, one line between them.** Resources you *declare* are
+  yours, fed by the `.hpmat`. Resources the *engine* feeds — the frame,
+  the lights, the height map, and later the screen and shadow resources
+  (T0147, T0086) — are the engine's names, reached as documented above.
+  A texture the `.hpmat` does not name samples **white**; a GUID that does
+  not resolve samples the missing-asset checkerboard.
+- **Buffers are declared the same way but no material stage can feed one
+  yet** — a structured buffer in a surface module is refused by name until
+  the stages whose point they are (T0147 screen resources, T0150 compute)
+  land. The mechanism is already stage-neutral; the data paths are not
+  built.
+
+`HpTexture0` … `HpTexture3`, T0160's engine-named slots, still compile and
+still bind from a `.hpmat` that names them — see their declarations below —
+but they are **deprecated**: name your textures yourself.
+
+20 declaration(s), 20 member(s), all documented.
 
 ## `HP_UNSHADED`
 
@@ -191,6 +264,129 @@ String text;
 ```
 
 The text itself.
+
+## `HpSamplerLinearWrap`
+
+```hlsl
+SamplerState HpSamplerLinearWrap;
+```
+
+Bilinear filtering with mip-mapping, coordinates wrapping — the default
+choice for anything that tiles across a surface.
+
+## `HpSamplerLinearClamp`
+
+```hlsl
+SamplerState HpSamplerLinearClamp;
+```
+
+Bilinear filtering, coordinates clamped to the edge texel. What a LUT, a
+ramp or an atlased texture wants — wrapping one bleeds the far edge in.
+
+## `HpSamplerPointWrap`
+
+```hlsl
+SamplerState HpSamplerPointWrap;
+```
+
+Nearest-texel sampling, wrapping. Pixel art, ID maps, and any texture
+whose texels are data rather than an image to be filtered.
+
+## `HpSamplerPointClamp`
+
+```hlsl
+SamplerState HpSamplerPointClamp;
+```
+
+Nearest-texel sampling, clamped. The data-texture counterpart of
+`HpSamplerLinearClamp`.
+
+## `HpSamplerAnisoWrap`
+
+```hlsl
+SamplerState HpSamplerAnisoWrap;
+```
+
+8x anisotropic filtering, wrapping. For surface detail read at grazing
+angles — floors, terrain, anything large and walked across. The level is
+the engine's (D35); an author-chosen level is the recorded escape, waiting
+on a real request.
+
+## `HpSamplerAnisoClamp`
+
+```hlsl
+SamplerState HpSamplerAnisoClamp;
+```
+
+8x anisotropic filtering, clamped. See `HpSamplerAnisoWrap`.
+
+## `HpTexture0`
+
+```hlsl
+Texture2DArray HpTexture0;
+```
+
+Deprecated (T0161): declare your own `Texture2DArray yourName;` instead.
+Binds from a `.hpmat` `textures:` entry naming `HpTexture0`, as T0160
+shipped it.
+
+## `HpTexture1`
+
+```hlsl
+Texture2DArray HpTexture1;
+```
+
+Deprecated (T0161); see `HpTexture0`.
+
+## `HpTexture2`
+
+```hlsl
+Texture2DArray HpTexture2;
+```
+
+Deprecated (T0161); see `HpTexture0`.
+
+## `HpTexture3`
+
+```hlsl
+Texture2DArray HpTexture3;
+```
+
+Deprecated (T0161); see `HpTexture0`.
+
+## `HpTexture0_sampler`
+
+```hlsl
+#define HpTexture0_sampler HpSamplerLinearWrap
+```
+
+Deprecated (T0161): the slot samplers are the palette's `LinearWrap` now,
+which is bit-identical state to what the slots always had. Sample through
+the palette by name in new code.
+
+## `HpTexture1_sampler`
+
+```hlsl
+#define HpTexture1_sampler HpSamplerLinearWrap
+```
+
+Deprecated (T0161); see `HpTexture0_sampler`.
+
+## `HpTexture2_sampler`
+
+```hlsl
+#define HpTexture2_sampler HpSamplerLinearWrap
+```
+
+Deprecated (T0161); see `HpTexture0_sampler`.
+
+## `HpTexture3_sampler`
+
+```hlsl
+#define HpTexture3_sampler HpSamplerLinearWrap
+```
+
+Deprecated (T0161); see `HpTexture0_sampler`.
 
 ## `HpSurfaceInput`
 

@@ -65,7 +65,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Serialize.hpp>`](Serialize.md) | 6 | 6 |
 | [`<hp/Settings.hpp>`](Settings.md) | 28 | 28 |
 | [`<hp/ShaderCook.hpp>`](ShaderCook.md) | 12 | 12 |
-| [`<hp/ShaderParams.hpp>`](ShaderParams.md) | 13 | 13 |
+| [`<hp/ShaderParams.hpp>`](ShaderParams.md) | 11 | 11 |
 | [`<hp/ShaderSources.hpp>`](ShaderSources.md) | 5 | 5 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Vfs.hpp>`](Vfs.md) | 23 | 23 |
@@ -73,7 +73,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 47 | 47 |
 
-**767 public declarations across 42 headers, 650 documented.**
+**765 public declarations across 42 headers, 648 documented.**
 
 ## Every symbol
 
@@ -717,9 +717,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `cookedShadersOnly` | [`ShaderCook.hpp`](ShaderCook.md) |
 | `setCookedShadersOnly` | [`ShaderCook.hpp`](ShaderCook.md) |
 | `kShaderParamsBlock` | [`ShaderParams.hpp`](ShaderParams.md) |
-| `kShaderTextureSlots` | [`ShaderParams.hpp`](ShaderParams.md) |
-| `shaderTextureSlotName` | [`ShaderParams.hpp`](ShaderParams.md) |
-| `shaderTextureSamplerName` | [`ShaderParams.hpp`](ShaderParams.md) |
+| `kShaderSamplerPalette` | [`ShaderParams.hpp`](ShaderParams.md) |
 | `kShaderParamsMaxBytes` | [`ShaderParams.hpp`](ShaderParams.md) |
 | `ShaderParamType` | [`ShaderParams.hpp`](ShaderParams.md) |
 | `ShaderValue` | [`ShaderParams.hpp`](ShaderParams.md) |

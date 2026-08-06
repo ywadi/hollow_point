@@ -42,7 +42,7 @@ owning ticket.
 | Per-tap sampling seam | **–** | T0153.1 |
 | Cross-hook state | **Y** — hooks are `[mutating]`, members zero-initialised (2026-08-06, T0159) | — |
 | Game-declared parameters | **Y** — `cbuffer HpMaterialParams` with author-named fields, valued by `.hpmat`, hinted by `[HpRange]`/`[HpColor]`/`[HpTooltip]` (2026-08-06, T0160). float/2/3/4, int, bool; 256 bytes | — |
-| Game-declared textures | **P** — four slots, **named by the engine** (`HpTexture0`…`3`), bound by `.hpmat`. Author-chosen names need a per-module descriptor set or a circular rename pass; see the widening below | (author names: unowned) |
+| Game-declared textures | **Y** — author-named `Texture2DArray` globals at any count, reflected into a per-module resource signature and bound by `.hpmat` under the author's names (2026-08-07, T0161, D35). Cost measured before commitment: 34 ns/draw (161.1). **The one deliberate limit is sampler *state***: modules sample through the engine's six-name immutable palette (`HpSamplerLinearWrap` …), and a module's own `SamplerState` is refused by name. `HpTexture0`…`3` remain as deprecated declarations | — |
 | Light access | **P** — readable since D27's amendment (2026-08-06, T0159): `g_Frame.Lights[]` is in scope, **but its order is unspecified for directional lights** (unstable sort on equal keys — pick by intensity, never index). Replacing the loop is T0145 | T0145 |
 | Vertex hook | **–** | T0146 |
 | Screen resources (depth, scene colour, fed textures) | **–** | T0147 |
@@ -109,57 +109,60 @@ single item on this list: it appeared in the "blocked on" column of ~13 of the
 
 ---
 
-## The one widening this landing owes
+## The widening T0160 owed — paid on 2026-08-07 (T0161, D35)
 
-**A module's texture slots are named by the engine, not by its author** —
-`HpTexture0` … `HpTexture3`. That is not a limitation of Slang or of Diligent;
-it is the price of using **one** pipeline resource signature, which is created
-once at renderer construction, before any module exists, and which Diligent
-matches a shader's resources to *by name*.
+This section used to record that a module's texture slots were named by the
+engine (`HpTexture0` … `HpTexture3`), the price of one shared resource
+signature created before any module exists. **That price is no longer paid.**
+The per-module signature T0160 weighed and deferred is exactly what shipped:
+the engine reflects the compiled module, subtracts the names its own
+signatures carry, and builds a second signature from what is left — the
+author's textures, under the author's names, at any count. The rename pass
+stayed rejected as circular, and the cost that parked the second signature on
+T0160 was measured before commitment: **34 ns per draw** on this machine, 40
+on llvmpipe (T0161.1), including the second per-draw parameter map.
 
-Two ways to author-chosen names were designed on T0160 and neither was taken:
+What remains engine-named, deliberately:
 
-- **A per-module signature**, added beside the base one. Costs a second SRB and
-  a second `CommitShaderResources` on every draw of every custom material, and
-  it was the last unproven item in the ticket. The shared-slot design removed
-  the need to prove it at all.
-- **A rename pass** — reflect the module, learn it declares `detailMap`, and
-  emit `#define detailMap HpTexture0` into the generated include ahead of it.
-  This is **circular**: the reflection rides the compile, so the names are not
-  known until after the compile that would have to be told them.
+- **`HpMaterialParams`** — the parameter *block*, so a `.hpmat`'s values have
+  one place to go. Fields inside it are the author's.
+- **Sampler state** — modules sample through the six-name immutable palette
+  (`HpSamplerLinearWrap` …); an author-declared `SamplerState` is refused by
+  name with the palette in the log. D35 records the additive escape.
 
-A third path exists and is what would actually pay for it: a deviceless
-reflection pass that runs at *import* time, before any pipeline. That does not
-exist either, and the reason is the next entry.
+The old slots survive as deprecated declarations in the contract, bound
+through the same reflection walk as any author name, so a shipped v2 `.hpmat`
+renders unchanged — pinned by the rockcube sample tests.
 
-**Parameter *fields* are the author's** for the mirror-image reason — a field is
-not a resource, so it costs the signature nothing.
+### What the texture budget looks like since the migration
 
-### Why four slots, and what the texture budget actually looks like
-
-Four is a judgement against this audit, not a measured limit. A slot is declared
-in the **one shared** signature, so every material SRB in the engine binds it —
-including a plain glTF material that will never read it. It costs a descriptor
-and an immutable sampler on *every* material in the scene, which is why it is
-not sixteen. The declared-texture techniques above want a detail albedo, a blend
-mask, a flowmap or a lighting ramp, and none wants more than two at once.
-
-Counted from the signature rather than assumed, on 2026-08-06:
+The four slots and the params buffer left the shared signature, so a **plain
+glTF material's SRB carries fewer descriptors than before T0160 existed**, and
+a custom material pays for exactly what it declares. Counted from the
+signature at creation (logged by the renderer, pinned by
+`custom_shader_material_test`), on 2026-08-07:
 
 | | sampled images | immutable samplers |
 |---|---|---|
-| **today** (5 glTF + `g_HeightMap` + 4 module slots) | **10** | **11** |
-| + T0087's IBL | 13 | 11 — all reuse `g_LinearClampSampler` |
-| + T0086's shadow map | 14 | 12 |
-| + **T0143**'s extended materials (clearcoat ×3, sheen ×2 and two LUTs, anisotropy, iridescence ×2, transmission, thickness) | **~26** | **~18** |
+| **T0160's count** (5 glTF + `g_HeightMap` + 4 module slots) | 10 | 11 |
+| **today** (5 glTF + `g_HeightMap`; palette samplers added) | **6** | **13** |
+| + T0087's IBL | 9 | 13 — all reuse `g_LinearClampSampler` |
+| + T0086's shadow map | 10 | 14 |
+| + **T0143**'s extended materials (clearcoat ×3, sheen ×2 and two LUTs, anisotropy, iridescence ×2, transmission, thickness) | **~22** | **~20** |
+| + a module's own declarations | + what it declares, in **its** signature | palette, shared |
 
-Vulkan's *guaranteed* per-stage floor is 16 for both — **quoted from the spec and
-not queried on any device here**, and desktop hardware is far above it, so
-nothing breaks today. The row worth noticing is the last one: **T0143 crosses
-that floor on its own**, with the four module slots contributing 4 of 26. If the
-budget ever becomes real the answer is Diligent's `ShaderTexturesArrayMode`,
-which collapses the seventeen material slots into a single array, rather than
-trimming what a game is allowed to declare.
+Vulkan's *guaranteed* per-stage floor is 16 for both — **quoted from the spec
+and not queried on any device here**, and desktop hardware is far above it.
+T0143 still crosses the image floor on its own (~22 with the four module slots
+no longer contributing), and the answer there remains Diligent's
+`ShaderTexturesArrayMode` collapsing the seventeen material slots into one
+array — never trimming what a game may declare. The sampler count crossing 16
+under T0143 is new pressure from the palette's six; the palette is shared
+across every pipeline, so collapsing material samplers is the lever there too.
+
+A signature occupies at most 2 Vulkan descriptor sets and everything here is
+`MUTABLE`, so base + module = **2 sets** against a spec floor of 4 (this
+machine: 32 on the RTX 2080, 8 on llvmpipe).
 
 ---
 

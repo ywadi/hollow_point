@@ -341,6 +341,26 @@ def collect(path: pathlib.Path, lines: list[str], public_file: bool) -> list[dic
             i += 1
             continue
 
+        # A top-level global declaration -- the sampler palette and the
+        # deprecated texture slots (T0161). These are contract exactly as a
+        # struct is: an author names `HpSamplerLinearWrap` in code, and a
+        # reference that omits it documents a vocabulary nobody can use.
+        # Struct members never reach this branch; a struct's whole body is
+        # skipped by the TYPE_DECL arm above.
+        field = FIELD.match(line)
+        if field and wanted:
+            entities.append({
+                "kind": "global",
+                "name": field.group(2),
+                "doc": doc_above(lines, i),
+                "line": i + 1,
+                "signature": f"{field.group(1)} {field.group(2)}{field.group(3) or ''};",
+                "members": [],
+            })
+            exported_next = False
+            i += 1
+            continue
+
         if exported_next and line.strip() and not line.strip().startswith("//"):
             raise SystemExit(
                 f"error: {path}:{i + 1}: 'hp-shader-doc: export' is followed by something "
@@ -417,7 +437,7 @@ def render_unit(unit: dict) -> str:
     for entity in entities:
         out.append(f"## `{entity['name']}`")
         out.append("")
-        if entity["kind"] == "macro":
+        if entity["kind"] in ("macro", "global"):
             out.append(f"```hlsl\n{entity['signature']}\n```")
         else:
             out.append(f"```hlsl\n{entity['kind']} {entity['name']}\n```")
