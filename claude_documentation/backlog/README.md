@@ -20,7 +20,29 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-06 — seventeenth revision of the day: `T0157` closed** — **there
+**Set 2026-08-06 — eighteenth revision of the day: the sequence is now one
+thing — *give game developers full power over shaders*.**
+
+A capability audit of all 40 techniques a real game shader might want found that
+**most of them are impossible here**, and that the contract had been shaped
+entirely by the handful that happened to fit in a single hook. The trigger was a
+game shader unable to implement parallax self-shadowing — a technique from
+2006 — which failed **silently**: it compiled, rendered, and produced nothing.
+
+The five items below are the whole of "a game dev can do anything", in the order
+that unblocks the most soonest. They are not five separate features; they are one
+goal split by what each piece costs.
+[`13-shader-capability-matrix.md`](../documentation/13-shader-capability-matrix.md)
+is the audit, and is meant to be *maintained* — add a row before building a
+technique, and an empty cell is the next gap found in advance.
+
+**D27 was amended** by the owner on 2026-08-06: a game's shader may include
+DiligentFX and reach engine internals, no warning and no version check. The
+reasoning is on T0159 and in the log; the short version is that this engine is
+permanently on Diligent, a shipped game never meets a newer engine under D12's
+lockstep, and a broken shader already renders loud magenta.
+
+**Previously — the seventeenth revision: `T0157` closed** — **there
 is now something to open and look at.** The rock cube sample renders a
 hand-authored `.hpscene` with a `.hpmat`, parallax occlusion and triplanar on a
 UV-less cube, rotating, in the editor — and every byte of it comes through the
@@ -77,11 +99,16 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0158](open/0158-parallax-depth-cues.md) | parallax depth cues | **Straight after T0157, because T0157 is what found it.** A rock cube went on screen and read as *"a glass cube with the texture inside it"* — parallax displaces **inward only**, and there is no self-shadowing anywhere in the engine, so the relief has motion parallax and no shading parallax. Both halves live in the surface stage that already exists, and the survey behind choosing them over cone stepping, quadtree displacement and the silhouette family is on the ticket |
-| 2 | [T0143](open/0143-extended-material-features.md) | extended material features | **Everything DiligentFX's PBR has, plus the ability to override it** — clearcoat, sheen, anisotropy, iridescence, transmission, volume. Amends D24. Wiring rather than new maths, because their getters are already included and callable |
-| 3 | [T0152](inprogress/0152-winding-convention.md) | the winding convention: the remainder | **The engine half landed 2026-08-06** (152.2–4: header declared, assets re-wound, cull reverted — and the old lit baseline turned out to encode the inversion via a clamped `NdotV`; before/after in the ticket). Remaining: the determinant rule (152.5), the chirality probe and the owner's mirror decision (152.6), the conventions-doc section (152.7) |
-| 4 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | **Shader-independent**, so it may slot anywhere — see below |
-| 5 | [T0086](open/0086-shadows.md) | shadows | Last because it needs the surface stage *and* adds `ShadowFactor` to the material contract, so it wants that contract settled in Slang first — **and T0152 must land first** — 141.12's winding finding was corrected by D33 (the assets, not the engine), and shadow bias tuned before the assets are re-wound bakes the inversion into every tuned value. **Now also behind T0145** (D30): the shadow lookup lives inside the light loop T0145 moves into the engine, so the loop must land before shadow sampling is written — or it is written twice |
+| 1 | [T0159](open/0159-open-the-material-contract.md) | open the contract | **The cheapest large unlock, and it is mostly deletion.** Amends D27 so a game shader may reach DiligentFX and engine internals; makes the hooks `[mutating]` so a material can keep state across them (~3 lines, measured backward-compatible); publishes the undisplaced UV and the real tangent; writes `Time`, whose field has existed and been zero all along. Self-shadowing lands as the acceptance test rather than the goal |
+| 2 | [T0160](open/0160-material-declared-parameters.md) | material-declared parameters and textures | **The single largest row-unblocker in the matrix — ~13 of 40 techniques**, and the one a game developer hits on *day one* rather than when attempting something advanced. A game cannot ship a tunable material at all today: the first shader ever authored here hard-codes its one knob as a literal because there is nowhere to put it. Not something opening DiligentFX can fix — Diligent has no such thing either |
+| 3 | [T0146](open/0146-vertex-stage-hook.md) | the vertex stage hook | **Zero of six techniques expressible.** Wind, foliage sway, billboarding, displacement, morph targets, per-instance offsets — the only family with an empty intersection. We use DiligentFX's vertex shader as-is, so there is no hook to open; this one is built, not exposed. Also carries custom interpolators, which every future per-vertex technique needs |
+| 4 | [T0147](open/0147-engine-intermediates-for-shaders.md) | screen resources for shaders | Refraction, soft particles, heat haze, fog-of-war. A shader cannot sample a depth buffer that is not bound to the pipeline, whatever it includes — so this is binding work, not contract work |
+| 5 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | the light loop | **The whole NPR family** — cel, ramp, hatching, custom BRDFs — plus skin, sheen and anisotropy's shading half. T0159 lets a game *read* lights; this lets it replace the loop. **Must land after T0159**, or its interface freezes before hooks are mutable and the break is paid twice |
+
+Then, unchanged in substance and pushed behind the above: `T0143` (extended
+material features), `T0152` (the winding remainder), `T0045` (culling and render
+queues), `T0086` (shadows), and `T0158`, whose 158.2 unblocks the moment T0159
+lands.
 
 ### T0045 is the movable one, and that is the useful thing to know about it
 
@@ -230,7 +257,9 @@ wrong in the confident voice of a document that is normally right.
 | 461 | [T0156](completed/0156-parallax-under-triplanar.md) | Parallax under triplanar, and the silhouette question | 4 — Render layer | ✅ DONE | High | Moderate |
 | 462 | [T0154](open/0154-noise-generation.md) | Noise: CPU generator, Slang functions, and the bake-to-texture bridge | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 463 | [T0157](completed/0157-rock-cube-sample.md) | The rock cube sample: the authoring path's first real test | 4 — Render layer | ✅ DONE | Medium | Moderate |
-| 464 | [T0158](open/0158-parallax-depth-cues.md) | Making parallax read as relief: the reference plane and self-shadowing | 4 — Render layer | 🔜 TODO | High | Moderate |
+| 464 | [T0158](inprogress/0158-parallax-depth-cues.md) | Making parallax read as relief: the reference plane and self-shadowing | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
+| 465 | [T0159](open/0159-open-the-material-contract.md) | Open the material contract: DiligentFX exposed, state across hooks | 4 — Render layer | 🔜 TODO | High | Moderate |
+| 466 | [T0160](open/0160-material-declared-parameters.md) | Material-declared parameters and resources | 4 — Render layer | 🔜 TODO | High | Complex |
 | 464 | [T0155](open/0155-terrain-rendering.md) | Terrain rendering: their reference implementation is the floor, not the ceiling | 4 — Render layer | 🔜 TODO | Medium | Very Complex |
 | 465 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | 🔜 TODO | High | Complex |
 | 492 | [T0148](open/0148-post-process-stack.md) | The post-process stack: engine and game effects at one seam | 4 — Render layer | 🔜 TODO | Medium | Complex |

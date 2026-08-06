@@ -464,7 +464,12 @@ class ShaderAsset
  an *identity* and a *path*: the compiler re-reads the path through the VFS
  source factory at pipeline-build time, so the bytes compiled are the bytes
  currently mounted — which is also what makes an edited shader picked up by
- the next pipeline build without this asset changing. The source text is
+ the next pipeline build without this asset changing — **but nothing triggers
+ such a build for a key that already exists** (measured 2026-08-06): there is
+ no file watcher, `ensureMaterialBinding` rebuilds only when the `Material`
+ object identity changes, `SurfacePipeline` keys its cache on the module's
+ path string rather than its content and never clears the map, and a failed
+ compile is cached as null. **Shader hot reload does not work today.** The source text is
  kept from load time for validity ("the file existed and read") and for the
  reflection work T0032.8 will do without a device (it was T0142.9 until
  T0142 closed and its editor half moved to the ticket that builds an editor).

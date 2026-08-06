@@ -2,14 +2,14 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
 | **Order** | 464 |
 | **Created** | 2026-08-06 |
 | **Blocked by** | nothing — both halves sit inside the surface stage the engine already owns (**D26**) |
-| **Refs** | [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) 141.7 — the march this extends; [../completed/0156-parallax-under-triplanar.md](../completed/0156-parallax-under-triplanar.md) — the per-projection march, and **156.6's evaluation against silhouette POM**, which is what makes this the remaining move; [../completed/0157-rock-cube-sample.md](../completed/0157-rock-cube-sample.md) — **the sample that exposed the gap by being looked at**, and the test bed; [0145-lighting-stage-own-the-light-loop.md](0145-lighting-stage-own-the-light-loop.md) — **158.3 must be decided there**, see below; [0146-vertex-stage-hook.md](0146-vertex-stage-hook.md) 146.7 — tessellation, the *other* answer, and deliberately not this one; [0155-terrain-rendering.md](0155-terrain-rendering.md) — the consumer that would justify the faster marches this ticket rejects; [0087-environment-lighting.md](0087-environment-lighting.md), T0096 — findings land on both; **D24**, **D26**, **D27** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) |
+| **Refs** | [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) 141.7 — the march this extends; [../completed/0156-parallax-under-triplanar.md](../completed/0156-parallax-under-triplanar.md) — the per-projection march, and **156.6's evaluation against silhouette POM**, which is what makes this the remaining move; [../completed/0157-rock-cube-sample.md](../completed/0157-rock-cube-sample.md) — **the sample that exposed the gap by being looked at**, and the test bed; [0145-lighting-stage-own-the-light-loop.md](../open/0145-lighting-stage-own-the-light-loop.md) — **158.3 must be decided there**, see below; [0146-vertex-stage-hook.md](../open/0146-vertex-stage-hook.md) 146.7 — tessellation, the *other* answer, and deliberately not this one; [0155-terrain-rendering.md](../open/0155-terrain-rendering.md) — the consumer that would justify the faster marches this ticket rejects; [0087-environment-lighting.md](../open/0087-environment-lighting.md), T0096 — findings land on both; **D24**, **D26**, **D27** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) |
 
 ## Why
 
@@ -66,13 +66,13 @@ practice and is not wasted work when tessellation later lands above it.
 
 ## Subtasks
 
-- [ ] 158.1 **The reference plane.** `heightScale` currently measures depth below
+- [x] 158.1 **The reference plane.** `heightScale` currently measures depth below
       a ceiling; add the zero point, so a value of ~0.5 puts half the range above
       the surface and half below. Free — a subtraction inside the existing march,
       no extra samples. This is Unreal's `BumpOffset` *Reference Plane* by
       another name, and it is the direct answer to "make it pop out" for a
       technique that structurally cannot
-- [ ] 158.2 **Parallax self-shadowing.** A second, shorter march from the hit
+- [~] 158.2 **Parallax self-shadowing.** *Attempted in the material and blocked by the contract — see the findings. The march is written and correct; what a material cannot obtain is a usable tangent frame at `surface()` time. Moves behind T0145 with 158.3.* A second, shorter march from the hit
       point toward the light; if the height field blocks it, darken. Fewer steps
       than the view march — a shadow ray answers *blocked or not*, not *where* —
       and it wants a soft falloff rather than a binary result, per Tatarchuk's
@@ -111,6 +111,94 @@ practice and is not wasted work when tessellation later lands above it.
   reimplementing it is the outcome D26 exists to prevent.
 
 ## Notes / findings
+
+### 158.1 landed as **game content**, not an engine change — and the engine change was reverted
+
+The reference plane was first built into the engine: a `Material::heightReferencePlane`
+parameter in `CustomData.z`, read by `HpParallaxMarch`. It worked and it was
+**wrong to do**, and the owner said so. Reverted before commit.
+
+**It belongs in a game's `.slang` module**, and that is not a style preference —
+it is what D26 and D28 are *for*. A surface technique nobody has shipped yet
+should be proved as content first; the engine adopting a parameter on every
+material's behalf, before any game has needed it, is the decision those two
+entries exist to defer. `samples/rockcube/content/shaders/rock_pom.slang` is now
+the first thing outside `tests/` to author a material shader, which makes it the
+first real exercise of that path.
+
+**The custom module reproduces the engine's march exactly** at
+`kReferencePlane == 1` — luminance variation **26.7202**, the same number the
+standard material produces — and at 0.5 gives **26.7297**, matching the reverted
+engine-side experiment to four significant figures. That equivalence is the
+correctness proof; the picture is the point of it.
+
+### 158.2 — self-shadowing cannot be written in a material today
+
+> **CORRECTED 2026-08-06.** The heading below said this was a limitation of the
+> contract that a material *could not* overcome. Half of that is wrong and the
+> correction matters: **Slang supports `[mutating]` interface requirements, and
+> a non-mutating override still satisfies one** — so declaring our hooks
+> mutating is a backward-compatible, ~3-line change, not a redesign. The
+> blocker was never Slang; it was that *we* did not declare it. **T0159** does,
+> and self-shadowing lands there. The measurements below stand exactly as
+> recorded; only the conclusion "cannot" was overstated.
+
+### Why it could not be written *as the contract stood*
+
+Attempted, measured, abandoned in the material. Two facts close the door
+together, and neither is obvious from reading the contract:
+
+**1. `IHpMaterial`'s methods are non-mutating, so a material cannot carry
+per-fragment state between hooks.** Marking `surfaceCoordinates` `[mutating]` so
+it can cache the tangent frame in a member is rejected by slang with
+`error[E30854]: 'surfaceCoordinates' marked as 'override' is not overriding any
+base declarations` — the attribute changes the signature and the override stops
+matching. Measured on the pinned `slangc 2026.14.1`.
+
+**2. By the time `surface()` runs, `In.UV0` is the *displaced* coordinate**, so
+the frame cannot be rebuilt there either. The march moved the UV per pixel, so
+its screen-space derivatives are discontinuous, and the frame built from them
+collapses: probed with an unshaded debug output, the shadow ray's lateral reach
+came out **~0.006 UV — about three texels of a 512 map** — against the ~0.14 the
+geometry calls for. It therefore never met an occluder and the shadow term was
+zero everywhere, **while looking entirely correct in the source**. It took
+rendering `occlusion`, `lightTS.z` and `|lightOffset|` into the colour channels
+to see it.
+
+**So self-shadowing belongs in the engine's surface stage**, where the smooth UV
+and the light are both in scope — which is what this ticket said, and now has
+evidence for rather than an argument. Two consequences to carry:
+
+- **158.3's dependency on T0145 is now the *only* blocker of substance.** The
+  march itself is twenty lines and was written; what it cannot get from a
+  material is a frame and a light.
+- **The contract gap is worth recording on its own.** "A material cannot keep
+  state between hooks" is a real limit on what D28's authoring surface can
+  express, and it will be hit again by any multi-hook technique — T0153's
+  de-tiling is the obvious next one. Whether `IHpMaterial` should gain mutating
+  methods, or a per-fragment context struct threaded through the hooks, is a
+  design question for whoever hits it second.
+
+### A process failure worth recording, because it wasted an hour
+
+**A magenta checkerboard was reported as a working render.** The custom material
+was wired up, the gpu test's `variation > 4.0` passed, the number moved, and it
+was called a success — from summary statistics, without looking at the frame.
+The frame was the missing-material pattern at mean RGB (127, 0, 127), because
+the gpu test keeps its **own** asset list and the shader had been added only to
+the module's, so the material named a shader GUID that was not in the pool.
+
+That is precisely the failure `rockcube_sample_test.cpp`'s own comment warns
+about — *"a missing material renders the checkerboard, and the checkerboard
+would pass a coverage check happily"* — and it was written in that file before
+this happened. It then produced a second wrong conclusion: that an **empty**
+custom module renders differently from the standard material, which would have
+been an engine bug contradicting D28. It does not; both frames were magenta.
+
+**The guard that would have caught it:** the gpu test asserts coverage and
+variation, and neither excludes the checkerboard. A cheap assertion that the
+frame is not predominantly magenta belongs in every case that renders a material
+by GUID.
 
 ### Measured 2026-08-06, on T0157's sample, before any of this was built
 

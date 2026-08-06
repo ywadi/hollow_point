@@ -213,7 +213,8 @@ TEST_CASE("the rock cube sample renders its committed content") {
     hp::AssetPool pool;
     for (const char* path : {"textures/rock_basecolour.png", "textures/rock_orm.png",
                              "textures/rock_height.png", "textures/rock_normal.png",
-                             "materials/rock.hpmat", "models/cube.gltf"}) {
+                             "shaders/rock_pom.slang", "materials/rock.hpmat",
+                             "models/cube.gltf"}) {
         const hp::ImportResult result =
             hp::importAsset(device.render->device(), device.render->context(), pool, path);
         CAPTURE(path);
@@ -326,7 +327,8 @@ TEST_CASE("the rock cube's faces cull from inside, so they wind outward") {
     hp::AssetPool pool;
     for (const char* path : {"textures/rock_basecolour.png", "textures/rock_orm.png",
                              "textures/rock_height.png", "textures/rock_normal.png",
-                             "materials/rock.hpmat", "models/cube.gltf"}) {
+                             "shaders/rock_pom.slang", "materials/rock.hpmat",
+                             "models/cube.gltf"}) {
         (void)hp::importAsset(device.render->device(), device.render->context(), pool, path);
     }
 
@@ -405,7 +407,8 @@ TEST_CASE("the cube's lighting is anchored to the world, not to the mesh") {
     hp::AssetPool pool;
     for (const char* path : {"textures/rock_basecolour.png", "textures/rock_orm.png",
                              "textures/rock_height.png", "textures/rock_normal.png",
-                             "materials/rock.hpmat", "models/cube.gltf"}) {
+                             "shaders/rock_pom.slang", "materials/rock.hpmat",
+                             "models/cube.gltf"}) {
         (void)hp::importAsset(device.render->device(), device.render->context(), pool, path);
     }
     const auto text = hp::Vfs::readText("scenes/rockcube.hpscene");

@@ -1318,6 +1318,13 @@ against the sky.
 
 ## D27 — A game's shader compiles against the **engine's** contract, never against DiligentFX directly
 
+> **AMENDED 2026-08-06 by the owner, on T0159: a game's shader MAY include
+> DiligentFX and reach engine internals.** No warning, no version stamp, no
+> refusal. What follows is the original entry, kept because it was not wrong
+> when written and a reader must be able to see why it changed. The amendment's
+> reasoning is immediately below it, under "Why this was relaxed".
+
+
 **Decided 2026-08-05 on T0141, by the owner**: *"godot model it is"*.
 
 A game developer writes their half; the engine owns the shader `main` around it.
@@ -1372,6 +1379,47 @@ that wall — and taking it then costs everything above.
 The mitigation is not a loophole, it is keeping `HpSurfaceInput` generous:
 **T0141.6 decides that list deliberately**, because it is a promise. Adding to it
 later is easy; removing from it breaks games.
+
+### Why this was relaxed — 2026-08-06, the owner's call on T0159
+
+The wall the entry predicted was hit, exactly as predicted, and the answer went
+the other way. A game shader could not implement **parallax self-shadowing** — a
+technique from 2006 — because the only source of a light direction is
+`g_Frame.Lights[]`, and this entry forbade it. The failure was silent: the
+shader compiled, rendered, and produced a zero shadow term.
+
+Five things decided it:
+
+1. **This engine is permanently on Diligent.** D24 as amended by T0143 commits
+   to feature parity with DiligentFX's PBR; D29 removed the OpenGL backend.
+   Insulating against a renderer swap is insurance against a fire that cannot
+   start.
+2. **A shipped game never meets a newer engine.** D12's lockstep ships them
+   together, so an upstream rename is *development-time* friction for this
+   studio on its own timetable. The entry's language reads as though it protects
+   third-party shipped games; T0109 says there are none.
+3. **Breakage is already loud.** A shader that fails to compile renders magenta
+   and logs one compiler error (T0141.4) — measured this session, including by
+   being briefly mistaken for a working render, which is a fair test of how
+   visible it is.
+4. **It was never enforced.** `samples/rockcube/content/shaders/rock_pom.slang`
+   already reached `g_HeightMap`, `g_Material.Basic.CustomData` and the
+   permutation macros and compiled fine, because a module is textually inside
+   `HpSurface.slang`. The rule cost reasoning time and blocked nothing.
+5. **The residual risk was already carried.** A compile error catches a rename,
+   not *semantic* drift — an upstream function keeping its signature and
+   changing meaning. But the engine itself calls `GetBaseColor`,
+   `PerturbNormal` and `ApplyPunctualLight`, so that exposure exists today.
+   Widening it enlarges the surface without adding a class of risk. The
+   mitigation is unchanged: pinned submodule SHAs, byte-identical baselines, and
+   the gpu suite.
+
+**What survives unchanged.** The engine still owns `main` and still includes
+DiligentFX so a game does not have to. `HpSurfaceInput` should still be good
+enough that nobody needs the escape — and **reaching for an internal is a signal
+that a contract widening is owed**, which is what
+[`13-shader-capability-matrix.md`](13-shader-capability-matrix.md) exists to
+track. An escape hatch used routinely is a contract that failed.
 
 ### Consequences
 

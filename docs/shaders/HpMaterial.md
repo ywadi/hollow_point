@@ -76,7 +76,7 @@ line and additive by construction:
 | `Visibility` | T0093 — vision-based visibility |
 | `AmbientOcclusionIBL` | T0087 — environment lighting |
 | `Velocity` | T0111 — motion vectors |
-| `Time` | needs a frame-wide clock field, which `PBRFrameAttribs` has no room for yet |
+| `Time` | **the field exists and is never written** (T0159.5). `PBRFrameAttribs::Time` is there; `hp::Time` has the clock; `SceneRenderer` does not connect them |
 
 #### The struct is a contract, not a wire format
 
@@ -177,7 +177,11 @@ float4 Tangent;
 
 World-space tangent and the handedness of the bitangent in `w`.
 
-**Zero when the mesh has no tangents.** Normal mapping and parallax both
+**Zero ALWAYS, not only when the mesh lacks tangents** (T0159.4). The
+assignment in `HpSurface.slang` is unconditional, even though
+`RenderPBR.vsh` writes a world-space tangent whenever the mesh carries
+one. This sentence said "zero when the mesh has no tangents" until an
+audit measured otherwise. Normal mapping and parallax both
 need this, so a surface function that uses either must tolerate its
 absence rather than producing a black surface — the engine cannot invent
 tangents a mesh does not carry.

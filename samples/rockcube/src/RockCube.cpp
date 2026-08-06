@@ -86,6 +86,9 @@ constexpr const char* kAssets[] = {
     "textures/rock_orm.png",
     "textures/rock_height.png",
     "textures/rock_normal.png",
+    // The shader before the material that names it, so a failure reads in
+    // the order a person would look for it.
+    "shaders/rock_pom.slang",
     "materials/rock.hpmat",
     "models/cube.gltf",
 };
