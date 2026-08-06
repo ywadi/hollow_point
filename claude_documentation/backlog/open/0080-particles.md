@@ -106,8 +106,9 @@ Consequences this ticket was not written for:
   particles, and a compute dispatch each would be dominated by overhead. All
   emitters share buffers and are simulated together; this is what makes the
   small-emitter case viable without a second CPU path.
-- **OpenGL 4.3 floor.** Compute shaders require it. T0025's GL fallback
-  assumptions need checking against that, and it is recorded in D15.
+- **~~OpenGL 4.3 floor~~ moot since D29/T0144 (2026-08-06):** the GL
+  backend is removed, and D15's compute-shader requirement is a given on
+  Vulkan.
 
 **Editor preview (80.9) is harder than it reads** now that simulation is on the
 GPU: previewing without entering play mode means running compute outside the

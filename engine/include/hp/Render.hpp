@@ -53,19 +53,25 @@ namespace hp {
 
 /// Which graphics backend to run on.
 ///
-/// No Direct3D, and that is deliberate rather than missing: zig targets Windows
-/// through the MinGW ABI, MinGW has no `atlbase.h`, and DiligentCore gates
-/// D3D11/D3D12 on ATL. Both targets get Vulkan and OpenGL.
+/// **Vulkan is the only backend (D29).** OpenGL was removed — a small studio
+/// cannot support two backends, the second one was worth low single digits of
+/// players, and keeping it pinned the engine's shaders to the subset both
+/// compilers accept (D28). No Direct3D either, and that is deliberate rather
+/// than missing: zig targets Windows through the MinGW ABI, MinGW has no
+/// `atlbase.h`, and DiligentCore gates D3D11/D3D12 on ATL.
 enum class RenderBackend : std::uint8_t {
-    /// Pick the best available — Vulkan, falling back to OpenGL.
+    /// The engine's default backend. **This means Vulkan, with no fallback**:
+    /// it used to mean "try Vulkan, fall back to OpenGL", and D29 removed the
+    /// fallback. A machine without Vulkan does not start the renderer, and
+    /// says so in the log.
     Default,
     Vulkan,
-    OpenGL,
 };
 
 /// How the render layer comes up.
 struct RenderConfig {
-    /// Which backend to use. `Default` tries Vulkan then OpenGL.
+    /// Which backend to use. `Default` and `Vulkan` are the same device today;
+    /// `Default` is what to write unless a bug report needs the request pinned.
     RenderBackend backend = RenderBackend::Default;
 
     /// Wait for vertical blank when presenting (T0110).
@@ -149,8 +155,8 @@ public:
     ///          this is false; it simply does nothing.
     [[nodiscard]] bool ready() const;
 
-    /// @returns the backend actually in use, which may differ from the one
-    ///          requested when `Default` was asked for or a fallback happened.
+    /// @returns the backend actually in use. `Vulkan` once a device is up;
+    ///          `Default` only while no device has been created.
     [[nodiscard]] RenderBackend backend() const;
 
     /// @returns a human-readable adapter description, for logs and an about box.

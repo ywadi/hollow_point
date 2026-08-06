@@ -80,9 +80,10 @@ stacking one RHI abstraction on another, both solving the same problem.
 
 Three further blockers:
 
-1. **Vulkan-only.** Raw `VkPipelineStageFlags2`/`VkAccessFlags2` throughout. Our
-   OpenGL fallback matters (no D3D on Windows, per D2), so this would mean two
-   separate renderers.
+1. **Vulkan-only.** Raw `VkPipelineStageFlags2`/`VkAccessFlags2` throughout.
+   *(Weakened by D29/T0144, 2026-08-06: the engine is Vulkan-only now too,
+   so "it would mean two renderers" no longer applies — the blockers below
+   still do.)*
 2. **Barriers collide.** Diligent already inserts them automatically, and that
    automatic path is explicitly not thread-safe. A frame graph wants to own
    barriers; you cannot have both without switching Diligent to manual mode and

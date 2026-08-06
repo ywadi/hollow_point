@@ -66,10 +66,6 @@ Device bringUp(hp::RenderBackend backend) {
     windowConfig.width = 320;
     windowConfig.height = 240;
     windowConfig.resizable = true;
-    // The GL backend needs a context created with the window; Vulkan must not
-    // have one. Getting this wrong produces a device that fails to come up
-    // rather than anything diagnosable.
-    windowConfig.openGLContext = backend == hp::RenderBackend::OpenGL;
 
     device.window = hp::Window::create(windowConfig);
     if (!device.window) {
@@ -300,10 +296,4 @@ void exerciseTargetsAndStack(hp::RenderBackend backend, const char* backendName)
 TEST_CASE("frame targets and the render stack work on the default backend"
           * doctest::test_suite("gpu")) {
     exerciseTargetsAndStack(hp::RenderBackend::Default, "default");
-}
-
-TEST_CASE("frame targets and the render stack work on OpenGL" * doctest::test_suite("gpu")) {
-    // Separate window, because the GL backend needs a context created with it
-    // and Vulkan needs one created without.
-    exerciseTargetsAndStack(hp::RenderBackend::OpenGL, "OpenGL");
 }

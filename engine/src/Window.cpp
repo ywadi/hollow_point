@@ -54,11 +54,6 @@ std::unique_ptr<Window> Window::create(const WindowConfig& config) {
     // is quietly blurry on a scaled display is the kind of thing nobody
     // attributes to a missing flag.
     flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
-    if (config.openGLContext) {
-        // Must be a creation flag: SDL cannot add GL capability to an existing
-        // window, so the backend decision precedes the window (T0025.2).
-        flags |= SDL_WINDOW_OPENGL;
-    }
 
     if (config.displayMode == DisplayMode::BorderlessFullscreen) {
         // Set at creation as well as being switchable later: opening straight
@@ -108,19 +103,6 @@ std::unique_ptr<Window> Window::create(const WindowConfig& config) {
         HP_LOG_ERROR(kLog, "SDL_CreateWindow failed: {}", SDL_GetError());
         releaseSdl();
         return nullptr;
-    }
-
-    if (config.openGLContext) {
-        // Diligent's GL backend attaches to whatever context is current, so one
-        // has to exist *and* be current before the device is created. Held for
-        // the window's lifetime; SDL destroys it with the window.
-        if (SDL_GL_CreateContext(sdlWindow) == nullptr) {
-            HP_LOG_ERROR(kLog, "SDL_GL_CreateContext failed: {}", SDL_GetError());
-            SDL_DestroyWindow(sdlWindow);
-            releaseSdl();
-            return nullptr;
-        }
-        HP_LOG_INFO(kLog, "OpenGL context created and made current");
     }
 
     // Not make_unique: the constructor is private, deliberately, so a Window can

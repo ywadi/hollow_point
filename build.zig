@@ -54,14 +54,14 @@ const specs = [_]TargetSpec{
         .key = "linux-x86_64",
         .step_name = "linux",
         .toolchain = "cmake/toolchains/x86_64-linux-gnu.cmake",
-        .desc = "Build the Linux x86_64 target (glibc 2.28, Vulkan + OpenGL)",
+        .desc = "Build the Linux x86_64 target (glibc 2.28, Vulkan)",
         .os = .linux,
     },
     .{
         .key = "windows-x86_64",
         .step_name = "windows",
         .toolchain = "cmake/toolchains/x86_64-windows-gnu.cmake",
-        .desc = "Build the Windows x86_64 target (MinGW ABI, Vulkan + OpenGL)",
+        .desc = "Build the Windows x86_64 target (MinGW ABI, Vulkan)",
         .os = .windows,
     },
 };

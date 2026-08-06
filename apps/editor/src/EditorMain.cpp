@@ -37,13 +37,12 @@ const hp::LogCategory kLog("editor");
 #define HP_PATH_SEP "/"
 #endif
 
-/// Reads `--backend=vulkan|opengl` from the command line (25.2).
+/// Reads `--backend=vulkan` from the command line (25.2).
 ///
-/// Parsed before the window is created, and that ordering is forced rather than
-/// stylistic: an OpenGL context is an SDL *creation* flag, so the backend has to
-/// be known before there is a window at all (see `WindowConfig::openGLContext`).
-/// An unrecognised value is reported and ignored rather than being fatal --
-/// a typo in a debugging flag should not stop the program starting.
+/// Vulkan is the only backend (D29), so the flag pins the request for a bug
+/// report rather than selecting anything. An unrecognised value is reported
+/// and ignored rather than being fatal -- a typo in a debugging flag should
+/// not stop the program starting.
 hp::RenderBackend backendFromArgs(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
@@ -54,11 +53,7 @@ hp::RenderBackend backendFromArgs(int argc, char** argv) {
         if (value == "vulkan" || value == "vk") {
             return hp::RenderBackend::Vulkan;
         }
-        if (value == "opengl" || value == "gl") {
-            return hp::RenderBackend::OpenGL;
-        }
-        HP_LOG_WARN(kLog, "unknown --backend={} (expected vulkan or opengl); using the default",
-                    value);
+        HP_LOG_WARN(kLog, "unknown --backend={} (expected vulkan); using the default", value);
     }
     return hp::RenderBackend::Default;
 }
@@ -144,7 +139,7 @@ private:
 class Editor final : public hp::Application {
 public:
     explicit Editor(hp::RenderBackend backend)
-        : hp::Application(makeConfig(backend)), backend_(backend) {}
+        : hp::Application(makeConfig()), backend_(backend) {}
 
 private:
     hp::RenderConfig renderConfig() const {
@@ -155,7 +150,7 @@ private:
 
     hp::RenderBackend backend_ = hp::RenderBackend::Default;
 
-    static hp::ApplicationConfig makeConfig(hp::RenderBackend backend) {
+    static hp::ApplicationConfig makeConfig() {
         hp::ApplicationConfig config;
         config.name = "HollowPoint Editor";
         config.window.title = "HollowPoint Editor";
@@ -169,9 +164,6 @@ private:
         // enough to stay responsive to a click that brings it back.
         config.frameRateCap = 60;
         config.backgroundFrameRateCap = 10;
-        // The GL context must exist before the window does, so the
-        // backend choice reaches all the way back to here.
-        config.window.openGLContext = (backend == hp::RenderBackend::OpenGL);
         return config;
     }
 
@@ -319,7 +311,7 @@ private:
         scene.setLocalTransform(sun, sunPlacement);
 
         scene.propagateTransforms();
-        HP_LOG_INFO(kLog, "demo scene ready: a lit quad. Run with --backend=opengl to see it.");
+        HP_LOG_INFO(kLog, "demo scene ready: a lit quad.");
     }
 
     /// Loads the sample gameplay module, if it is where one of the layouts puts

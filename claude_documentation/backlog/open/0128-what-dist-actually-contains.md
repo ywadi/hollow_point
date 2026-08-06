@@ -275,7 +275,7 @@ builds something not meant to ship will leak the same way, and the failure is
 silent.
 
 **Do not simply delete the recursive glob.** It is doing necessary work:
-Diligent's `GraphicsEngineVk` / `GraphicsEngineOpenGL` are loaded dynamically by
+Diligent's `GraphicsEngineVk` (GL removed by D29/T0144) is loaded dynamically by
 Diligent's own factory loader, so they are *not* imports of the executable and
 `$<TARGET_RUNTIME_DLLS>` cannot see them. Measured on `hp_editor.exe`, whose
 only non-system import is `libhp_engine.dll`. Any replacement has to name those

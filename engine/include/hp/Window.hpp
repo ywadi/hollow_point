@@ -61,29 +61,16 @@ struct WindowConfig {
     int height = 720;
     bool resizable = true;
 
-    /// Create the window with an OpenGL context (T0025.2).
-    ///
-    /// **This has to be decided before the window exists, which is the whole
-    /// awkwardness.** `SDL_WINDOW_OPENGL` is a creation flag and a GL context
-    /// can only be made against a window that carries it, while Diligent's
-    /// Linux GL backend attaches to a context that is *already current*. So the
-    /// graphics backend is chosen before the window opens, not after — which is
-    /// the opposite of what a render layer pushed into a running application
-    /// would suggest.
-    ///
-    /// Found by trying: with this off, requesting the OpenGL backend fails with
-    /// "No current GL context found!" and no amount of work inside the render
-    /// layer can recover it.
-    ///
-    /// Off by default because Vulkan is the default backend and asking for a GL
-    /// context costs a context nothing else uses.
-    bool openGLContext = false;
-
     /// Which display mode to open in (T0129).
     ///
-    /// Unlike `openGLContext`, this one *is* changeable afterwards —
-    /// `Window::setDisplayMode`. It is here as well because opening directly
-    /// into fullscreen avoids a visible windowed flash at startup.
+    /// Changeable afterwards too — `Window::setDisplayMode`. It is here as well
+    /// because opening directly into fullscreen avoids a visible windowed flash
+    /// at startup.
+    ///
+    /// (An `openGLContext` flag used to sit beside this one, because a GL
+    /// context is an SDL *creation* flag and forced the backend choice to
+    /// precede the window. D29 removed the OpenGL backend, and with it the only
+    /// window-creation decision the renderer ever imposed.)
     DisplayMode displayMode = DisplayMode::Windowed;
 
     /// Index of the display to open on, from `Window::displays()`. Out of range

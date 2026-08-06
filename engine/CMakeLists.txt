@@ -309,17 +309,17 @@ if (WIN32)
     # "loaded, GetEngineFactoryVk=0000000000000000".
     #
     # Static linking sidesteps both: no import library, so no atexit collision,
-    # and no name lookup, so no prefix mismatch. The cost is that both backends
-    # are baked into libhp_engine.dll rather than being separate files, so
-    # neither can be absent on Windows.
+    # and no name lookup, so no prefix mismatch. The cost is that the backend is
+    # baked into libhp_engine.dll rather than being a separate file.
+    #
+    # Vulkan only (D29): the OpenGL backend is removed, and the root
+    # CMakeLists.txt sets DILIGENT_NO_OPENGL so its targets do not even build.
     target_link_libraries(hp_engine PRIVATE
         Diligent-GraphicsEngineVk-static
-        Diligent-GraphicsEngineOpenGL-static
         Diligent-Common)
 else()
     target_link_libraries(hp_engine PRIVATE
         Diligent-GraphicsEngineVk-shared
-        Diligent-GraphicsEngineOpenGL-shared
         Diligent-Common)
 endif()
 

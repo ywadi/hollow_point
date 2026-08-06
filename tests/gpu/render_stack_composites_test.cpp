@@ -94,7 +94,6 @@ Device bringUp(hp::RenderBackend backend) {
     windowConfig.title = "hp render stack composite test";
     windowConfig.width = kSize;
     windowConfig.height = kSize;
-    windowConfig.openGLContext = backend == hp::RenderBackend::OpenGL;
 
     Device device;
     device.window = hp::Window::create(windowConfig);
@@ -458,9 +457,4 @@ void exerciseComposite(hp::RenderBackend backend, const char* backendName) {
 TEST_CASE("a world layer and a HUD layer composite correctly on the default backend"
           * doctest::test_suite("gpu")) {
     exerciseComposite(hp::RenderBackend::Default, "default");
-}
-
-TEST_CASE("a world layer and a HUD layer composite correctly on OpenGL"
-          * doctest::test_suite("gpu")) {
-    exerciseComposite(hp::RenderBackend::OpenGL, "OpenGL");
 }

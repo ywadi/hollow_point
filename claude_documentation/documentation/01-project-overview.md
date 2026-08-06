@@ -78,7 +78,8 @@ Four artifacts that matter, out of roughly 1100 build targets per platform:
 | `hp_runtime` | what ships with a game |
 | `libhp_sandbox.so` / `.dll` | the sample gameplay module, loaded at run time |
 
-Plus Diligent's `GraphicsEngineVk` / `GraphicsEngineOpenGL` shared libraries.
+Plus Diligent's `GraphicsEngineVk` shared library on Linux (Windows links the
+backend statically into the engine DLL).
 
 `zig build dist` stages a runnable tree into `dist/<target>/`: executables and
 the libraries they load in `bin/`, shared and static libraries in `lib/`. An
@@ -91,15 +92,22 @@ Our code is **C++20**; Diligent builds at 17 alongside it.
 
 | Target | Backends |
 |---|---|
-| Linux x86_64 | Vulkan, OpenGL |
-| Windows x86_64 | Vulkan, OpenGL |
+| Linux x86_64 | Vulkan |
+| Windows x86_64 | Vulkan |
+
+**Vulkan only, and there is no fallback (D29, T0144).** OpenGL was the fallback
+until 2026-08-06 and was removed: a small studio cannot support two backends,
+the second one was worth low single digits of players, and it pinned the
+engine's shaders to the subset both compilers accept (D28). The hardware floor
+is Vulkan 1.0 — 2012-class GPUs. A machine without a Vulkan driver gets a clear
+logged message and no renderer.
 
 **No Direct3D on Windows**, and this is by design, not an oversight. Zig targets
 Windows through the MinGW-w64 ABI, MinGW has no `atlbase.h`, and DiligentCore
-gates D3D11/D3D12 on ATL (`DiligentCore/CMakeLists.txt:160-181`). The engine
-detects this and configures itself for Vulkan + GL. Direct3D would require the
-MSVC ABI plus a real Windows SDK, which cannot be driven from a Linux host.
-The user chose this trade-off explicitly.
+gates D3D11/D3D12 on ATL (`DiligentCore/CMakeLists.txt:160-181`). Those probes
+fail on their own. Direct3D would require the MSVC ABI plus a real Windows SDK,
+which cannot be driven from a Linux host. The user chose this trade-off
+explicitly.
 
 ## History worth knowing
 

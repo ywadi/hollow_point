@@ -102,6 +102,12 @@ set(DILIGENT_INSTALL_CORE           OFF CACHE BOOL "" FORCE)
 set(DILIGENT_INSTALL_TOOLS          OFF CACHE BOOL "" FORCE)
 set(DILIGENT_INSTALL_FX             OFF CACHE BOOL "" FORCE)
 
+# Vulkan is the only backend (D29, T0144). Disabling OpenGL here removes its
+# ~100 targets from every build rather than merely leaving them unlinked --
+# nothing can quietly depend on a backend that does not build. Direct3D needs
+# no equivalent: DiligentCore's own probes disable it under MinGW (D2).
+set(DILIGENT_NO_OPENGL ON CACHE BOOL "" FORCE)
+
 # Dear ImGui: use the upstream docking branch instead of the copy vendored as a
 # submodule inside DiligentEngine, so dock panels are available.
 # DILIGENT_DEAR_IMGUI_PATH is Diligent's own supported override, so the engine

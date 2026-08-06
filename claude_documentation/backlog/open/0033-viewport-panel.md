@@ -87,5 +87,6 @@ alive while ImGui draws it, which is *after* the panel's update returns. Freeing
 or resizing it in the same frame is a use-after-free that often appears to work
 until it doesn't.
 
-Y-axis convention differs between Vulkan and OpenGL; the image may appear flipped
-on one backend. Check both rather than fixing it blindly for one.
+The texture-space V direction is still a device-reported property
+(`ClipSpace::yToV`, negative on Vulkan) — read it rather than assuming,
+even though OpenGL and its opposite convention are gone (D29/T0144).

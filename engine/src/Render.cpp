@@ -21,7 +21,6 @@
 #include <LoadEngineDll.h>
 #endif
 
-#include <EngineFactoryOpenGL.h>
 #include <EngineFactoryVk.h>
 
 #include <MapHelper.hpp>
@@ -43,7 +42,7 @@ const LogCategory kDiligentLog("render.diligent");
 const char* g_activeBackendName = "unknown";
 const char* g_activeAdapter = "unknown";
 
-/// The fullscreen blit shaders (T0137). HLSL, translated per backend by Diligent.
+/// The fullscreen blit shaders (T0137). HLSL, compiled by Diligent for Vulkan.
 ///
 /// **Self-contained on purpose.** DiligentFX ships `FullScreenTriangleVS.fx`
 /// and every PostProcess effect uses it, so reusing it was the first thing
@@ -61,20 +60,12 @@ const char* g_activeAdapter = "unknown";
 /// render-to-texture pass that ignores this comes out vertically flipped on
 /// exactly one of them". Deriving the flip from the same value the rest of the
 /// engine uses means there is one answer to be wrong about, not two.
-/// **The stage-output variable must be called `VSOut` in both shaders, and this
-/// is not style.** Diligent's HLSL-to-GLSL converter names each GLSL varying
-/// after the *parameter variable*, so a VS writing `out BlitVSOutput o` emits
-/// `_o_uv` while a PS reading `in BlitVSOutput i` expects `_i_uv`, and OpenGL
-/// fails to link with:
-///
-///     "_i_uv" not declared as an output from the previous stage
-///
-/// **Vulkan links it regardless**, because SPIR-V matches varyings by location
-/// rather than by name -- so this is a bug that passes on one backend and fails
-/// on the other, which is exactly why the present path uses one code path for
-/// both. Every DiligentFX post-process shader names it `VSOut` for this reason,
-/// and their struct lives in a shared `.fxh` so the two declarations cannot
-/// drift; ours are duplicated, so they must be kept textually identical.
+/// The stage-output variable is called `VSOut` in both shaders, matching
+/// DiligentFX's own convention. It used to be load-bearing — the GL-era
+/// HLSL-to-GLSL converter named varyings after the parameter variable, so
+/// differing names failed to link on exactly one backend — and it is kept
+/// because the two struct declarations are duplicated here and must stay
+/// textually identical either way.
 constexpr char kBlitVS[] = R"(
 cbuffer BlitConstants { float4 g_Params; };   // x = yToV
 
@@ -204,8 +195,6 @@ const char* backendName(RenderBackend backend) {
     switch (backend) {
     case RenderBackend::Vulkan:
         return "Vulkan";
-    case RenderBackend::OpenGL:
-        return "OpenGL";
     case RenderBackend::Default:
         return "default";
     }
@@ -286,15 +275,12 @@ struct RenderLayer::Impl {
     /// @returns whether the draw was issued.
     bool blitTo(Diligent::ITexture* source, Diligent::ITextureView* destination);
 
-    /// Fills `desc` from the config. Separate so both backends get the same
-    /// answer -- a buffer count that differs by backend is a latency difference
-    /// nobody chose.
+    /// Fills `desc` from the config.
     void describeSwapChain(Diligent::SwapChainDesc& desc) const {
         desc.BufferCount = config.bufferCount;
     }
 
     bool createVulkan(const Diligent::NativeWindow& window, int width, int height);
-    bool createOpenGL(const Diligent::NativeWindow& window, int width, int height);
     void describeAdapter();
 };
 
@@ -310,10 +296,11 @@ RenderLayer::Impl::BlitPipeline* RenderLayer::Impl::ensureBlitPipeline(
 
     Diligent::ShaderCreateInfo shaderInfo;
     shaderInfo.SourceLanguage = Diligent::SHADER_SOURCE_LANGUAGE_HLSL;
-    // OpenGL has no separate sampler objects in the HLSL sense, so Diligent's
-    // converter pairs `g_Source` with `g_Source_sampler` by name. Without this
-    // the GL build reports an unbound sampler and the Vulkan build does not,
-    // which is the kind of split that gets found on the wrong machine.
+    // Pairs `g_Source` with `g_Source_sampler` by name, so binding the texture
+    // binds its sampler with it. A GL-era requirement originally; kept because
+    // the pipeline below, its immutable sampler and its variable table are all
+    // written against the combined name and there is nothing to gain from
+    // splitting them.
     shaderInfo.Desc.UseCombinedTextureSamplers = true;
 
     Diligent::RefCntAutoPtr<Diligent::IShader> vs;
@@ -542,89 +529,6 @@ bool RenderLayer::Impl::createVulkan(const Diligent::NativeWindow& window, int w
     return true;
 }
 
-bool RenderLayer::Impl::createOpenGL(const Diligent::NativeWindow& window, int width, int height) {
-#if DILIGENT_OPENGL_EXPLICIT_LOAD
-    auto* factoryFn = Diligent::LoadGraphicsEngineOpenGL();
-    if (factoryFn == nullptr) {
-        HP_LOG_WARN(kLog, "OpenGL: the engine library could not be loaded");
-        return false;
-    }
-    Diligent::IEngineFactoryOpenGL* factory = factoryFn();
-#else
-    Diligent::IEngineFactoryOpenGL* factory = Diligent::GetEngineFactoryOpenGL();
-#endif
-    if (factory == nullptr) {
-        return false;
-    }
-    factory->SetMessageCallback(&diligentMessage);
-
-    Diligent::EngineGLCreateInfo info;
-    info.Window = window;
-
-    // T0130.3. Without this, GL clips Z to [-1, 1] while Vulkan clips to
-    // [0, 1], and every projection matrix in the engine would need to know
-    // which backend it was built for. Diligent honours it through
-    // glClipControl when GL_ARB_clip_control is present, and silently reports
-    // a [-1, 1] NDC when it is not -- so asking is not the same as getting,
-    // and the result is checked below rather than assumed.
-    info.ZeroToOneNDZ = true;
-
-    Diligent::SwapChainDesc desc;
-    describeSwapChain(desc);
-    desc.Width = static_cast<Diligent::Uint32>(width);
-    desc.Height = static_cast<Diligent::Uint32>(height);
-
-    // GL creates device, context and swap chain in one call -- the context is
-    // the GL context, which is inseparable from the window it was made against.
-    factory->CreateDeviceAndSwapChainGL(info, &device, &context, desc, &swapChain);
-    if (!device || !context || !swapChain) {
-        HP_LOG_WARN(kLog, "OpenGL: device or swap chain creation failed");
-        swapChain.Release();
-        context.Release();
-        device.Release();
-        return false;
-    }
-
-    // D15's floor. Particles are GPU-compute-only, so a GL device without
-    // compute shaders cannot run them -- and the failure a floor prevents is
-    // not a crash, it is an emitter that dispatches nothing and a scene that is
-    // quietly missing its effects. Fail here, where the message can say why.
-    const Diligent::DeviceFeatures& features = device->GetDeviceInfo().Features;
-    if (features.ComputeShaders != Diligent::DEVICE_FEATURE_STATE_ENABLED) {
-        HP_LOG_ERROR(kLog, "OpenGL device has no compute shader support. D15 sets an OpenGL 4.3 "
-                           "floor because particles are GPU-compute-only; a device below it would "
-                           "run with effects silently absent. Refusing the device rather than "
-                           "starting without it.");
-        swapChain.Release();
-        context.Release();
-        device.Release();
-        return false;
-    }
-
-    // T0130.3's floor, and the same shape of argument as the compute floor
-    // above. Reverse-Z needs a [0, 1] clip space to be worth anything: mapping
-    // a float depth buffer through [-1, 1] throws away exactly the precision
-    // reverse-Z exists to gain. A device that cannot do clip control would
-    // therefore need a second projection convention, a second depth comparison
-    // and a second clear value throughout the renderer -- two code paths that
-    // must agree, to support drivers that predate 2014. Refuse it instead.
-    if (device->GetDeviceInfo().NDC.MinZ != 0.0F) {
-        HP_LOG_ERROR(kLog, "OpenGL device reports a [-1, 1] clip-space Z: the driver did not "
-                           "honour the [0, 1] request, so GL_ARB_clip_control and "
-                           "GL_EXT_clip_control are both absent. T0130.3 requires a [0, 1] clip "
-                           "space on every backend so there is one projection convention rather "
-                           "than two. Refusing the device rather than rendering with mirrored "
-                           "depth.");
-        swapChain.Release();
-        context.Release();
-        device.Release();
-        return false;
-    }
-
-    active = RenderBackend::OpenGL;
-    return true;
-}
-
 void RenderLayer::Impl::describeAdapter() {
     if (!device) {
         return;
@@ -653,28 +557,34 @@ void RenderLayer::onAttach() {
     const int width = impl_->window->width();
     const int height = impl_->window->height();
 
-    // Vulkan first, OpenGL second, and the order is the whole of "Default".
-    // A requested backend is *not* silently substituted: asking for Vulkan and
-    // getting GL would make a bug report unreadable.
+    // Vulkan, whatever was asked for -- `Default` and `Vulkan` are the same
+    // device since D29 removed the OpenGL fallback. The switch stays so a new
+    // enumerator cannot be added without deciding what it creates.
     bool ok = false;
     switch (impl_->config.backend) {
     case RenderBackend::Vulkan:
-        ok = impl_->createVulkan(window, width, height);
-        break;
-    case RenderBackend::OpenGL:
-        ok = impl_->createOpenGL(window, width, height);
-        break;
     case RenderBackend::Default:
         ok = impl_->createVulkan(window, width, height);
-        if (!ok) {
-            HP_LOG_INFO(kLog, "Vulkan unavailable, falling back to OpenGL");
-            ok = impl_->createOpenGL(window, width, height);
-        }
         break;
     }
 
     if (!ok) {
-        HP_LOG_ERROR(kLog, "no graphics device could be created ({} requested)",
+        // **The only failure mode there is, so it has to be a good one** (D29,
+        // T0144.2). There is no fallback: a machine that cannot create a Vulkan
+        // device does not render, full stop, and this message is what the
+        // player's log ends with. Name the requirement, the floor and the
+        // usual causes rather than leaving "no device" to be triaged as an
+        // engine crash. The layer stays inert -- every other method checks for
+        // that and does nothing -- so the failure is this message, never a
+        // crash and never silence.
+        HP_LOG_ERROR(kLog,
+                     "no graphics device could be created ({} requested). Vulkan is the "
+                     "engine's only graphics backend (D29) -- there is no OpenGL or other "
+                     "fallback. This machine either has no Vulkan driver installed, no GPU "
+                     "that supports Vulkan 1.0 (2012-class hardware or newer: NVIDIA Kepler, "
+                     "AMD GCN, Intel Skylake), or is a VM/remote session with no GPU "
+                     "acceleration. Updating the graphics driver from the GPU vendor is the "
+                     "usual fix; the renderer will not start until a Vulkan device exists.",
                      backendName(impl_->config.backend));
         return;
     }
@@ -747,17 +657,11 @@ void RenderLayer::onRender() {
 
     // The present path (T0028, fixed by T0137).
     //
-    // **A sampled fullscreen pass, not a copy, and one path for both backends.**
-    // The copy this replaced needed an exact format match, which it had on
-    // OpenGL and never on Vulkan -- whose surface is BGRA against the scene
-    // target's RGBA -- so the engine's *default* backend showed a clear colour
-    // and looked broken. Sampling converts format and colour space in hardware
-    // and handles a size difference besides.
-    //
-    // Keeping the copy as a fast path when formats happen to align was
-    // considered and rejected: OpenGL would then never exercise the shader, so
-    // the shader could rot while the backend that needs it is the one nobody
-    // runs by default. That is the shape of the bug T0135 had just closed.
+    // **A sampled fullscreen pass, not a copy.** The copy this replaced needed
+    // an exact format match, which Vulkan never has -- its surface is BGRA
+    // against the scene target's RGBA -- so the engine's default backend showed
+    // a clear colour and looked broken. Sampling converts format and colour
+    // space in hardware and handles a size difference besides.
     if (impl_->presentSource != nullptr) {
         HP_PROFILE_ZONE_NAMED("present blit");
         impl_->blitTo(impl_->presentSource, rtv);

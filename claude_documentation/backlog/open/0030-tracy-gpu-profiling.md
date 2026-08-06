@@ -25,7 +25,7 @@ lives.
 
 - [ ] GPU zones appear in the Tracy viewer, aligned with CPU zones on the timeline
 - [ ] Each `IRenderLayer` (T0027) shows as its own GPU zone
-- [ ] Works on the Vulkan backend at minimum; OpenGL is a bonus
+- [ ] Works on the Vulkan backend — the only backend since D29/T0144
 - [ ] No measurable overhead when profiling is disabled
 - [ ] Calibration is right — GPU and CPU timelines line up rather than drift
 
@@ -39,7 +39,9 @@ lives.
 - [ ] 30.4 Implement `HP_PROFILE_GPU_ZONE` for the Vulkan backend
 - [ ] 30.5 Per-render-layer GPU zones
 - [ ] 30.6 Verify calibration against a deliberately GPU-heavy frame
-- [ ] 30.7 Decide whether OpenGL is worth supporting, or Vulkan-only is enough
+- [ ] 30.7 ~~Decide whether OpenGL is worth supporting~~ **Decided by
+      D29/T0144 (2026-08-06): OpenGL is removed, Vulkan-only.** Nothing to
+      do here beyond deleting this line when the ticket starts
 
 ## Notes / findings
 

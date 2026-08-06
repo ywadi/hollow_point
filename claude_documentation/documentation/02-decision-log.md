@@ -7,6 +7,11 @@ these, read the rationale first — most were chosen against a specific failure.
 
 ## D1 — Zig as the compiler, CMake + Ninja retained
 
+**Amended by D29 (2026-08-06):** the "Vulkan and OpenGL on both targets"
+half of this era's setup is gone — OpenGL is removed and Vulkan is the only
+backend. D1's substance (zig/MinGW, CMake+Ninja, cross-compiling from either
+host) is untouched.
+
 **Decision:** `zig cc`/`c++`/`ar`/`rc` drive the compile via CMake toolchain
 files; Ninja stays the incremental engine; `build.zig` orchestrates.
 
@@ -26,6 +31,10 @@ or the root `CMakeLists.txt` instead.
 ---
 
 ## D2 — Windows target is Vulkan + OpenGL, no Direct3D
+
+**Amended by D29 (2026-08-06): OpenGL is removed on both targets.** The
+Windows target is Vulkan only. What survives of this entry is the other half —
+no Direct3D, and why.
 
 Chosen by the user from three options. Pure Zig, one toolchain, cross-compiles
 from either host. D3D would need the MSVC ABI and a real Windows SDK, which

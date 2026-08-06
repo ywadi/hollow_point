@@ -88,13 +88,14 @@ bool compileEngineShader(Diligent::IRenderDevice* device, std::string_view name,
     info.Desc = {path.c_str(),
                  stage == ShaderStage::Vertex ? Diligent::SHADER_TYPE_VERTEX
                                               : Diligent::SHADER_TYPE_PIXEL,
-                 // Combined texture samplers: what the GL backend needs, and
-                 // what `PBR_Renderer` passes for the same reason.
-                 device->GetDeviceInfo().IsGLDevice()};
-    // **HLSL, and that is D2's consequence rather than a preference.** OpenGL is
-    // the only fallback on Windows, and Diligent's portable path is HLSL --
-    // through glslang for Vulkan and converted for GL. GLSL written directly
-    // does not reach both backends through one pipeline.
+                 // Separate samplers, which is what Vulkan wants. Combined
+                 // samplers existed for the GL backend, which D29 removed.
+                 /*UseCombinedTextureSamplers = */ false};
+    // HLSL: this function exercises *Diligent's* compile path over the embedded
+    // sources -- what it proves is that the factory resolves names and includes
+    // correctly, and Diligent's HLSL front end (glslang, for Vulkan) is the one
+    // it ships. The engine's real pipelines compile the same bytes through
+    // slang instead (D28, `SurfacePipeline::build`).
     info.SourceLanguage = Diligent::SHADER_SOURCE_LANGUAGE_HLSL;
     info.EntryPoint = "main";
     // By name: it resolves to a string embedded in this binary, and any

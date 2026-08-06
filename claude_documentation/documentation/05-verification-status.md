@@ -1,6 +1,6 @@
 # Verification status
 
-Last updated: 2026-08-03
+Last updated: 2026-08-06 (OpenGL removal, D29/T0144)
 
 Status markers: ✅ VERIFIED (observed, with evidence) · ⚠️ UNVERIFIED (believed,
 never exercised) · ❌ BROKEN · 🔜 TODO
@@ -12,6 +12,10 @@ never exercised) · ❌ BROKEN · 🔜 TODO
 ### Build harness ✅
 Zig-based, incremental, cross-compiling from either host. See
 `03-build-harness.md`.
+
+*(Target counts and DLL lists below predate D29/T0144, which removed the
+OpenGL backend and its ~100 targets on 2026-08-06; they record what those
+verification runs produced at the time.)*
 
 - ✅ **Linux x86_64** — full build, exit 0, ~1111 targets
 - ✅ **Windows x86_64, cross-compiled from Linux** — full build, exit 0,
@@ -173,13 +177,13 @@ is string-in/string-out; the VFS path is T0024's.
 ### GPU testing — hardware coverage, and how to know what you got ✅/⚠️ (T0135)
 
 **You no longer have to read this to find out what the gpu bucket ran on — the
-bucket says so itself.** Every `-Dtest=gpu` run prints a banner naming each
-backend, its adapter, and whether that adapter is a software rasteriser:
+bucket says so itself.** Every `-Dtest=gpu` run prints a banner naming the
+backend, its adapter, and whether that adapter is a software rasteriser
+(Vulkan only since D29/T0144 removed OpenGL, 2026-08-06):
 
 ```
 [hp gpu] ---- adapters this run (T0135) ----
 [hp gpu] Vulkan  -> NVIDIA GeForce RTX 2080  [hardware]
-[hp gpu] OpenGL  -> NVIDIA GeForce RTX 2080/PCIe/SSE2  [hardware]
 [hp gpu] ------------------------------------
 ```
 
@@ -190,18 +194,23 @@ path at all, and a permanently-red bucket is one people stop running. The
 reasoning and the rejected alternatives are on T0135.
 
 **Coverage depends on the machine, and the two differ completely.** Both are
-real and both are supported; the harness detects which it is on.
+real and both are supported; the harness detects which it is on. **OpenGL rows
+below are struck by D29/T0144 (2026-08-06)** — they record what was verified
+while the backend existed, and the WSL laptop's only hardware path went with
+it.
 
 | Host | Backend | Device | Status |
 |---|---|---|---|
 | Pop!_OS desktop (bare metal) | Vulkan | `NVIDIA GeForce RTX 2080` | ✅ hardware |
-| Pop!_OS desktop (bare metal) | OpenGL | `NVIDIA GeForce RTX 2080/PCIe/SSE2` | ✅ hardware |
-| WSL laptop | OpenGL | `D3D12 (NVIDIA GeForce RTX 4070 Laptop GPU)` | ✅ hardware, needs the d3d12 path |
+| ~~Pop!_OS desktop (bare metal)~~ | ~~OpenGL~~ | ~~`NVIDIA GeForce RTX 2080/PCIe/SSE2`~~ | backend removed |
+| ~~WSL laptop~~ | ~~OpenGL~~ | ~~`D3D12 (NVIDIA GeForce RTX 4070 Laptop GPU)`~~ | backend removed |
 | WSL laptop | Vulkan | `llvmpipe` | ⚠️ **software — no hardware path exists** |
 
-On the desktop, **both backends reach hardware with no environment variables at
-all**; 14 gpu cases and 652 assertions pass there, which is the first hardware
-evidence this project has had on the **Vulkan** backend.
+On the desktop, Vulkan reaches hardware with no environment variables at all.
+**On the WSL laptop the gpu bucket is now software-only** (lavapipe): its one
+hardware route was OpenGL over Mesa's d3d12 driver, and D29 removed it. NVIDIA's
+WSL package ships no Vulkan ICD, so that machine verifies logic, not the
+driver.
 
 On WSL, Mesa cannot find the GPU on its own — there is no `/dev/dri` node, so
 the probe falls back to `swrast` — and the harness now sets `GALLIUM_DRIVER=d3d12`
@@ -217,19 +226,19 @@ is not in Ubuntu's `mesa-vulkan-drivers`. The only loadable ICD is lavapipe.
 **Two closed tickets claimed hardware they never had** (T0027 said "a real GPU",
 T0028 said "an NVIDIA RTX 4070"); both are corrected in place.
 
-**One thing the desktop cannot test:** forcing its *OpenGL* path to software.
-`LIBGL_ALWAYS_SOFTWARE=1` is a Mesa variable and NVIDIA's proprietary GL driver
-ignores it, so the software-classification path was proven on Vulkan (via
+The software-classification path was proven on Vulkan: via
 `VK_ICD_FILENAMES=…/lvp_icd.json`, which correctly failed under
-`-Dgpu-require-hardware`) and not on OpenGL.
+`-Dgpu-require-hardware`. (It was never proven on OpenGL — NVIDIA's proprietary
+GL driver ignores `LIBGL_ALWAYS_SOFTWARE=1` — and no longer needs to be, since
+D29 removed that backend.)
 
 ### What the editor shows ⚠️
 
-`hp_editor --backend=opengl` displays a lit quad. **The `--backend` flag is not
-optional**: the dev present path is a `CopyTexture` needing an exact format
-match, and a Vulkan surface is BGRA against the scene target's RGBA, so Vulkan
-shows a clear colour and looks broken. T0033 deletes that path by sampling the
-texture in a shader.
+`hp_editor` displays a lit quad on Vulkan, its only backend. The paragraph that
+used to sit here — "`--backend=opengl` is not optional, Vulkan shows a clear
+colour" — described the `CopyTexture` dev present path, which T0137 replaced
+with a sampled fullscreen pass precisely because the copy could never work on
+Vulkan's BGRA surface; D29 then removed the OpenGL backend entirely.
 
 The scene is a **throwaway generated at startup** into a temp directory — there
 is no content pipeline and **no committed asset of any kind** in this repository.
@@ -248,8 +257,9 @@ Every mesh rendered to date was written by code at run time.
 - ⚠️ **The Windows `.exe` has never been run.** It links and has the right
   format; that is all that is known. `wine` is available at `/usr/bin/wine` and
   was going to be tried.
-- ⚠️ **Vulkan backend.** The headless run used OpenGL via llvmpipe. `--mode vk`
-  is untested.
+- ~~⚠️ **Vulkan backend.** The headless run used OpenGL via llvmpipe. `--mode
+  vk` is untested.~~ Superseded: Vulkan runs the whole gpu bucket on an
+  RTX 2080 (T0135, above), and since D29/T0144 it is the only backend.
 - ⚠️ **ozz** compiles and links, but **no code calls it**. Its API has never
   been exercised. (enkiTS and meshoptimizer no longer belong here — see below.)
 - ⚠️ **`dist` on Windows** — the Linux path is verified (4 shared + 82 static);

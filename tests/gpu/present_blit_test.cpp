@@ -71,7 +71,6 @@ Device bringUp(hp::RenderBackend backend) {
     windowConfig.width = 320;
     windowConfig.height = 240;
     windowConfig.resizable = true;
-    windowConfig.openGLContext = backend == hp::RenderBackend::OpenGL;
 
     device.window = hp::Window::create(windowConfig);
     if (!device.window) {
@@ -292,8 +291,4 @@ void exerciseBlit(hp::RenderBackend backend, const char* backendName) {
 
 TEST_CASE("present blit reproduces its source on Vulkan") {
     exerciseBlit(hp::RenderBackend::Vulkan, "Vulkan");
-}
-
-TEST_CASE("present blit reproduces its source on OpenGL") {
-    exerciseBlit(hp::RenderBackend::OpenGL, "OpenGL");
 }

@@ -6,7 +6,7 @@
 #
 # Consequence worth knowing: MinGW-w64 has no atlbase.h, and DiligentCore gates
 # its D3D11/D3D12 backends on ATL (DiligentCore/CMakeLists.txt:160-181). Those
-# probes fail on their own and the engine configures itself for Vulkan + OpenGL.
+# probes fail on their own; Vulkan is the only backend either way (D29).
 # That is expected, not a misconfiguration. Direct3D would require the MSVC ABI
 # and a real Windows SDK, which cannot be driven from a Linux host.
 

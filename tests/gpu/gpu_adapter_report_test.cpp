@@ -69,9 +69,6 @@ Device bringUp(hp::RenderBackend backend) {
     windowConfig.width = 320;
     windowConfig.height = 240;
     windowConfig.resizable = true;
-    // The GL backend needs a context created with the window; Vulkan must not
-    // have one.
-    windowConfig.openGLContext = backend == hp::RenderBackend::OpenGL;
 
     device.window = hp::Window::create(windowConfig);
     if (!device.window) {
@@ -189,8 +186,8 @@ TEST_CASE("gpu adapter report") {
     std::printf("\n[hp gpu] ---- adapters this run (T0135) ----\n");
     std::fflush(stdout);
 
+    // Vulkan only: the OpenGL half of this report went with the backend (D29).
     reportBackend(hp::RenderBackend::Vulkan, "Vulkan");
-    reportBackend(hp::RenderBackend::OpenGL, "OpenGL");
 
     if (requireHardware()) {
         MESSAGE("-Dgpu-require-hardware is in force: a software adapter fails this case");

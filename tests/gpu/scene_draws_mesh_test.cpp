@@ -46,7 +46,6 @@ Device bringUp(hp::RenderBackend backend) {
     windowConfig.title = "hp mesh draw test";
     windowConfig.width = 256;
     windowConfig.height = 256;
-    windowConfig.openGLContext = backend == hp::RenderBackend::OpenGL;
 
     Device device;
     device.window = hp::Window::create(windowConfig);
@@ -230,8 +229,4 @@ void exerciseMeshDraw(hp::RenderBackend backend, const char* backendName) {
 TEST_CASE("a mesh is drawn and reaches the target on the default backend"
           * doctest::test_suite("gpu")) {
     exerciseMeshDraw(hp::RenderBackend::Default, "default");
-}
-
-TEST_CASE("a mesh is drawn and reaches the target on OpenGL" * doctest::test_suite("gpu")) {
-    exerciseMeshDraw(hp::RenderBackend::OpenGL, "OpenGL");
 }

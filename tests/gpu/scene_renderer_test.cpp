@@ -47,7 +47,6 @@ Device bringUp(hp::RenderBackend backend) {
     windowConfig.width = 320;
     windowConfig.height = 240;
     windowConfig.resizable = true;
-    windowConfig.openGLContext = backend == hp::RenderBackend::OpenGL;
 
     Device device;
     device.window = hp::Window::create(windowConfig);
@@ -177,10 +176,6 @@ TEST_CASE("the scene renderer builds and submits on the default backend"
     exerciseSceneRenderer(hp::RenderBackend::Default, "default");
 }
 
-TEST_CASE("the scene renderer builds and submits on OpenGL" * doctest::test_suite("gpu")) {
-    exerciseSceneRenderer(hp::RenderBackend::OpenGL, "OpenGL");
-}
-
 // --- the offscreen target and the published frame (28.4, 28.5) ---------------
 
 namespace {
@@ -299,8 +294,4 @@ void exerciseSceneView(hp::RenderBackend backend, const char* backendName) {
 TEST_CASE("the scene view publishes an offscreen frame on the default backend"
           * doctest::test_suite("gpu")) {
     exerciseSceneView(hp::RenderBackend::Default, "default");
-}
-
-TEST_CASE("the scene view publishes an offscreen frame on OpenGL" * doctest::test_suite("gpu")) {
-    exerciseSceneView(hp::RenderBackend::OpenGL, "OpenGL");
 }

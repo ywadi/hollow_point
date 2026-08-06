@@ -64,7 +64,6 @@ Device bringUp(hp::RenderBackend backend) {
     windowConfig.title = "hp lit surface test";
     windowConfig.width = kSize;
     windowConfig.height = kSize;
-    windowConfig.openGLContext = backend == hp::RenderBackend::OpenGL;
 
     Device device;
     device.window = hp::Window::create(windowConfig);
@@ -398,9 +397,4 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
 TEST_CASE("a lit surface is the colour it was authored as, on the default backend"
           * doctest::test_suite("gpu")) {
     exerciseLitSurface(hp::RenderBackend::Default, "default");
-}
-
-TEST_CASE("a lit surface is the colour it was authored as, on OpenGL"
-          * doctest::test_suite("gpu")) {
-    exerciseLitSurface(hp::RenderBackend::OpenGL, "OpenGL");
 }

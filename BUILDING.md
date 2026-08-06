@@ -250,9 +250,9 @@ so a stale reference cannot reach main either way.
 
 ## What gets built
 
-The engine libraries, plus the `GraphicsEngineOpenGL` and `GraphicsEngineVk`
-shared libraries (`.so` on Linux, `.dll` on Windows). There is no application
-target yet.
+The engine libraries, plus the `GraphicsEngineVk` shared library (`.so` on
+Linux; on Windows the backend links statically into the engine DLL). There is
+no application target yet.
 
 To add one, create `apps/<name>/CMakeLists.txt` using Diligent's
 `add_sample_app()` — it wires the platform entry points and copies the required
@@ -313,8 +313,12 @@ survives a cross-compile. Flip the `ozz_build_*` options in the root
 
 | Target | Backends |
 |---|---|
-| Linux | Vulkan, OpenGL |
-| Windows | Vulkan, OpenGL |
+| Linux | Vulkan |
+| Windows | Vulkan |
+
+**Vulkan only — the OpenGL fallback was removed** (D29, T0144, 2026-08-06):
+the root `CMakeLists.txt` sets `DILIGENT_NO_OPENGL`, so the GL backend's
+targets do not build at all.
 
 **Windows builds have no Direct3D.** DiligentCore gates D3D11/D3D12 on
 `atlbase.h`, which is MSVC-only and absent from the MinGW-w64 ABI that Zig

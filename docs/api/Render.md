@@ -18,13 +18,15 @@ enum class RenderBackend
 |---|---|
 | `Default` | 0 |
 | `Vulkan` | 1 |
-| `OpenGL` | 2 |
 
  Which graphics backend to run on.
 
- No Direct3D, and that is deliberate rather than missing: zig targets Windows
- through the MinGW ABI, MinGW has no `atlbase.h`, and DiligentCore gates
- D3D11/D3D12 on ATL. Both targets get Vulkan and OpenGL.
+ **Vulkan is the only backend (D29).** OpenGL was removed — a small studio
+ cannot support two backends, the second one was worth low single digits of
+ players, and keeping it pinned the engine's shaders to the subset both
+ compilers accept (D28). No Direct3D either, and that is deliberate rather
+ than missing: zig targets Windows through the MinGW ABI, MinGW has no
+ `atlbase.h`, and DiligentCore gates D3D11/D3D12 on ATL.
 
 ## `RenderConfig`
 
@@ -135,8 +137,8 @@ bool ready() const
 RenderBackend backend() const
 ```
 
- @returns the backend actually in use, which may differ from the one
-          requested when `Default` was asked for or a fallback happened.
+ @returns the backend actually in use. `Vulkan` once a device is up;
+          `Default` only while no device has been created.
 
 ## `RenderLayer::adapterDescription`
 

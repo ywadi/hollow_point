@@ -107,6 +107,37 @@ TEST_CASE("an orthographic projection uses the same reverse-Z convention") {
     CHECK(ndcDepth(projection, 50.05F) == doctest::Approx(0.5F));
 }
 
+TEST_CASE("the projection is Diligent's [0, 1] mapping with the planes swapped, byte for byte") {
+    // The regression guard for T0144.3: simplifying the clip-space machinery
+    // must not move the matrix. The expected value is constructed through
+    // Diligent's own helper with the exact arguments the engine is meant to
+    // pass -- reversed planes, [0, 1] clip space -- so a drift in the
+    // implementation fails exactly rather than approximately, and a
+    // simplification that produces the same construction provably changes
+    // nothing.
+    hp::Camera camera;
+    camera.verticalFov = 1.0472F;
+    camera.nearPlane = 0.25F;
+    camera.farPlane = 500.0F;
+    const float aspect = 16.0F / 9.0F;
+
+    const hp::float4x4 expected = hp::float4x4::Projection(
+        camera.verticalFov, aspect, camera.farPlane, camera.nearPlane,
+        /*NegativeOneToOne = */ false);
+    CHECK(hp::projectionMatrix(camera, aspect, zeroToOne()) == expected);
+
+    hp::Camera ortho;
+    ortho.orthographic = true;
+    ortho.orthographicSize = 5.0F;
+    ortho.nearPlane = 0.1F;
+    ortho.farPlane = 100.0F;
+    const float height = ortho.orthographicSize * 2.0F;
+    const hp::float4x4 expectedOrtho =
+        hp::float4x4::Ortho(height, height, ortho.farPlane, ortho.nearPlane,
+                            /*NegativeOneToOne = */ false);
+    CHECK(hp::projectionMatrix(ortho, 1.0F, zeroToOne()) == expectedOrtho);
+}
+
 TEST_CASE("reverse-Z is what makes a float depth buffer worth having") {
     // The measurement behind the decision, rather than a restatement of it.
     //

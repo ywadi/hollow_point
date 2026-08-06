@@ -156,7 +156,9 @@ interface, no waiting, and the skinned-mesh conservative-bounds question above
 is unaffected.
 
 Also: the frustum/AABB math in 45.3 already exists — `AdvancedMath.hpp`
-(`ViewFrustum`, `ExtractViewFrustumPlanesFromMatrix` with its OpenGL flag,
+(`ViewFrustum`, `ExtractViewFrustumPlanesFromMatrix` — its OpenGL flag is
+always false here since D29/T0144; note `hp::extractFrustum` in
+`CameraSystem.cpp` already derives the same planes for the [0, 1] clip space —
 `GetBoxVisibility`, bound-box transform). Consume it (T0056), do not re-derive
 it. World-space bounds come from T0101's world transforms.
 
