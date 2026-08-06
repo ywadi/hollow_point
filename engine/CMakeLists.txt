@@ -381,4 +381,8 @@ target_include_directories(hp_engine PRIVATE
 # must ask for exactly the file the build staged.
 target_include_directories(hp_engine SYSTEM PRIVATE "${HP_SLANG_ROOT}/include")
 target_compile_definitions(hp_engine PRIVATE
-    HP_SLANG_LIBRARY_NAME="${HP_SLANG_LIBRARY_NAME}")
+    HP_SLANG_LIBRARY_NAME="${HP_SLANG_LIBRARY_NAME}"
+    # Baked into the SPIR-V cache's file name (T0141.3): bytecode compiled by
+    # one slang is not evidence about another, so a pin bump must read as a
+    # cold cache rather than as stale hits.
+    HP_SLANG_VERSION="${HP_SLANG_VERSION}")

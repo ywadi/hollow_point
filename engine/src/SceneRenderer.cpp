@@ -876,6 +876,15 @@ bool SceneRenderer::create(Diligent::IRenderDevice* device, Diligent::IDeviceCon
         static_cast<Diligent::Uint32>(Diligent::GLTF::DefaultVertexAttributes.size()));
     info.InputLayout = inputLayout;
 
+    // **The `IRenderStateCache` slot stays null, and that is a decision, not
+    // an omission** (T0141.3, 2026-08-06). What the slot would cache today is
+    // nothing: with `EnableIBL` off the base constructor compiles zero
+    // shaders, and `SurfacePipeline::build` creates its shaders and PSOs
+    // against the device directly. The measured startup cost was slang's cold
+    // compile, and that is paid off by the persistent SPIR-V bytecode cache
+    // in `SlangCompiler.cpp` instead. Revisit when T0087 turns IBL on -- the
+    // BRDF precompute then runs through this slot -- or if PSO creation from
+    // cached SPIR-V ever shows up in a measurement.
     impl->renderer = std::make_unique<SurfacePipeline>(device, nullptr, context, info);
 
     // The checkerboard, created up front rather than on first miss: it is 16x16

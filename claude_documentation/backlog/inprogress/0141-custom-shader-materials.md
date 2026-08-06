@@ -63,7 +63,7 @@ surface stage rather than being Diligent's fixed shader.
 - [ ] **Custom shader materials** — attach a shader to a material, declare its
       parameter interface
 - [ ] Custom shader parameters appear in the inspector automatically
-- [ ] Shader compilation is cached, not repeated every launch
+- [x] Shader compilation is cached, not repeated every launch (141.3, 2026-08-06 — persistent SPIR-V cache, measured 11.9s → 2.3s on the heaviest gpu case)
 - [ ] A shader that fails to compile renders the **same magenta checkerboard** a
       missing material does, **and** logs the compiler's error — never a crash,
       never a silently wrong surface
@@ -306,11 +306,19 @@ T0060 already says it must not foreclose and does not.
       reflects constant-buffer contents at runtime
       (`LoadConstantBufferReflection`, one bool, currently false). Both beat
       annotating and parsing, which was this subtask's plan
-- [ ] 141.3 PSO management via `RenderStateCache` and `BytecodeCache` (was 60.5).
+- [x] 141.3 PSO management via `RenderStateCache` and `BytecodeCache` (was 60.5).
       **T0142 measured the argument for this** (2026-08-06): slang's cold
       compile is 2–4x slower than glslang's on identical permutations — the
       debug-channel gpu test went 3.2s → 7.9s — so the cache is what turns
-      that from a startup cost into a one-time miss. Consider pulling forward
+      that from a startup cost into a one-time miss. Consider pulling forward.
+      **Done 2026-08-06 as a persistent SPIR-V cache on `IBytecodeCache`**;
+      `IRenderStateCache` was evaluated and deliberately not adopted — with
+      IBL off the base constructor compiles nothing through it, and our
+      `build()` talks to the device directly, so the slot would cache nothing
+      today (reasoning at the construction site; revisit trigger: T0087's
+      IBL, or PSO creation showing up in a measurement). Measured on the gpu
+      suite: the channel-inspection case 11.88s uncached → 2.25s warm, lit
+      surface 3.24s → 0.67s — full numbers in the notes
 - [ ] 141.4 Error shader on compile failure: the shared checkerboard, plus a
       console error naming the shader and the compiler's message (was 60.7)
 - [→] 141.5 **Moved to T0142.8** — Slang's runtime API is built for it
@@ -767,8 +775,7 @@ zero failures.**
 
 | | | Blocked on |
 |---|---|---|
-| **141.3** | `RenderStateCache` / `BytecodeCache` | — **next** |
-| **141.7 / 141.8** | parallax + height, triplanar | — |
+| **141.7 / 141.8** | parallax + height, triplanar | — **next** |
 | **141.4** | error shader on compile failure | 142.15 (the `.slang` asset) |
 | **141.14** | generated shader-contract docs, gated in CI | 141.6 settling |
 | **141.9** | tessellation | deferred: *when a silhouette must change* |
@@ -777,6 +784,56 @@ Moved to T0142 and tracked there: 141.1 → **142.15**, 141.2 → **142.9**,
 141.5 → **142.8**, 141.13 → **142.14**, 141.15 → **142.16**.
 
 ## Notes / findings
+
+### 141.3 landed 2026-08-06 — the SPIR-V cache, and why the RenderStateCache half was declined
+
+**What landed.** `compileSlangToSpirv` now fronts a **persistent
+`IBytecodeCache`** (Diligent's, from GraphicsTools — not a cache of our own):
+key = content hash of the shader and every transitive include resolved through
+the same compound factory the compiler uses, plus the macros — computed by
+their `XXH128State`, so editing any header, including a per-pipeline generated
+struct, changes the key and there is no staleness rule to remember. Two inputs
+their hash cannot see ride in as synthetic macros: the prepended
+`HLSLDefinitions.fxh` (content-hashed with a hand-rolled FNV-1a, stable across
+libc++ versions) and a hand-bumped schema constant standing for
+compile-request state (target, matrix layout). The file lives beside the
+executable, named with the pinned slang version so a pin bump is a cold cache
+rather than stale hits, written through on every new entry via temp+rename,
+and `HP_SPIRV_CACHE=0` disables the whole thing for measurement or suspicion.
+Failures are never persisted — a fixed shader must not stay broken.
+
+**Measured, Linux gpu suite, RTX 4070 Laptop (seconds per doctest case):**
+
+| case | cache disabled | first run (filling) | warm process |
+|---|---|---|---|
+| each surface channel | 11.88 | 2.58 | 2.25 |
+| lit surface | 3.24 | 1.40 | 0.67 |
+| world+HUD composite | 2.97 | 0.61 | 0.53 |
+| assigned material | 1.05 | 0.66 | 0.15 |
+| missing material | 0.56 | 0.52 | 0.13 |
+
+Even the *filling* run wins big, because the suite builds fresh
+`SurfacePipeline`s per `SceneView` and identical permutations start hitting
+within the process. Cache size after the whole suite: 179 KB; the editor's own
+run writes 26 KB beside `hp_editor`. Both targets green (fast 302, integration
+89, gpu 17/505 x2), docs green; wine writes its cache beside the `.exe`.
+
+**`IRenderStateCache` was evaluated and declined, with the trigger written
+down.** The constructor slot exists, but with `EnableIBL` off `PBR_Renderer`'s
+constructor compiles zero shaders through its cached device, and our `build()`
+creates shaders and PSOs against the device directly — so constructing one
+today would cache nothing and add the Archiver subsystem for it. The measured
+cost was slang's frontend, which the bytecode cache erases. Revisit when
+T0087 turns IBL on (the BRDF precompute runs through that slot) or if PSO
+creation from cached SPIR-V ever appears in a profile. T0151 composes with
+this from the other side — it bounds how many variants exist; this amortises
+each one — and records that the cache stays right whatever it decides.
+
+**Not verified:** the cache under a *read-only* executable directory degrades
+to warnings-and-recompile by construction, but no test installs the tree
+read-only to prove it; and concurrent processes sharing one cache file
+last-writer-wins on the whole file — acceptable for a dev cache, noted rather
+than solved.
 
 ### 141.12 landed 2026-08-06 — material assets reach the pixels, and the first single-sided draw found an engine-wide winding inversion
 
