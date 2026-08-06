@@ -27,7 +27,13 @@
 // reads as slabs standing proud. It costs **nothing**: same loop, same samples,
 // same intersection. Only the ray's starting point moves.
 //
-// **Verified rather than asserted:** at `kReferencePlane == 1` this reproduces
+// **It is a parameter, not a literal, since T0160** — declared in the
+// `HpMaterialParams` block below and valued by `rock.hpmat`, so an artist
+// changes how this rock reads without touching a shader, and doing so rebuilds
+// no pipeline. It was the first knob in this repository to have nowhere to
+// live, and it is T0160's acceptance test for that reason.
+//
+// **Verified rather than asserted:** at `referencePlane == 1` this reproduces
 // the engine's own march exactly — luminance variation 26.7202 either way, the
 // number the standard material produces on this scene.
 //
@@ -75,17 +81,37 @@
 // whole-output hook, and keeps state between them — the first material to do
 // either.
 
-struct HpMaterial : IHpMaterial
+// **The shader's own parameter, declared here and valued in `rock.hpmat`**
+// (T0160). This block used to be a `static const float kReferencePlane = 0.5;`
+// inside the struct below, with a comment explaining that it was a literal
+// "because that vocabulary is the engine's and this knob is this shader's" —
+// which was true of the engine's *material* vocabulary and stopped being the
+// end of the story when a module gained one of its own.
+//
+// **Outside the `#if` below, and that is a rule rather than a tidiness
+// choice.** Everything else in this file lives inside
+// `#if HP_USE_HEIGHT_MAP && USE_TEXCOORD0`, so it exists in some permutations
+// and not others. A declaration that came and went with the macro set would
+// make "what does this shader expose" a question with several answers, and
+// neither the `.hpmat` nor an inspector row can be permutation-dependent.
+// Unused permutations strip the block from their bytecode and pay nothing.
+cbuffer HpMaterialParams
 {
-#if HP_USE_HEIGHT_MAP && USE_TEXCOORD0
     /// Where the height field sits relative to the polygon.
     ///
     /// 1 is the engine's behaviour — white on the surface, everything beneath.
-    /// 0.5 puts half the range above. A literal rather than a `.hpmat`
-    /// parameter because that vocabulary is the engine's and this knob is this
-    /// shader's; a game shader carrying its own constants is the ordinary case.
-    static const float kReferencePlane = 0.5;
+    /// 0.5 puts half the range above, so the same height map reads as slabs
+    /// standing proud rather than as relief hanging under a pane. It costs
+    /// nothing: same loop, same samples, same intersection — only the ray's
+    /// starting point moves.
+    [HpRange(0.0, 1.0)]
+    [HpTooltip("Which height sits on the polygon plane. 1 is fully sunken, 0.5 puts half the relief above the face.")]
+    float referencePlane;
+}
 
+struct HpMaterial : IHpMaterial
+{
+#if HP_USE_HEIGHT_MAP && USE_TEXCOORD0
     /// Steps in the shadow march. Fewer than the view march, by design: a
     /// shadow ray answers *blocked or not*, not *where*.
     static const int kShadowSteps = 8;
@@ -229,13 +255,13 @@ struct HpMaterial : IHpMaterial
         // it rather than from white, so heights above it are *negative* — in
         // front of the polygon. To meet them the ray must start there,
         // `(1 - reference)` of the range out along the view vector, and then
-        // step inward exactly as before. At `kReferencePlane == 1` both
+        // step inward exactly as before. At `referencePlane == 1` both
         // adjustments are identically zero.
-        const float above = 1.0 - kReferencePlane;
+        const float above = 1.0 - referencePlane;
 
         float currentDepth = -above;
         float2 currentUv = uv + fullOffset * above;
-        float depthAtUv = kReferencePlane - heightAt(currentUv, duv1, duv2);
+        float depthAtUv = referencePlane - heightAt(currentUv, duv1, duv2);
         for (int i = 0; i < 32; ++i)
         {
             if (currentDepth >= depthAtUv)
@@ -244,7 +270,7 @@ struct HpMaterial : IHpMaterial
             }
             currentUv -= deltaUv;
             currentDepth += layerDepth;
-            depthAtUv = kReferencePlane - heightAt(currentUv, duv1, duv2);
+            depthAtUv = referencePlane - heightAt(currentUv, duv1, duv2);
         }
 
         // Occlusion refinement: intersect the ray with the height field between
@@ -253,7 +279,7 @@ struct HpMaterial : IHpMaterial
         // parallax.
         float2 previousUv = currentUv + deltaUv;
         float depthAfter = depthAtUv - currentDepth;
-        float depthBefore = (kReferencePlane - heightAt(previousUv, duv1, duv2)) -
+        float depthBefore = (referencePlane - heightAt(previousUv, duv1, duv2)) -
                             (currentDepth - layerDepth);
         float weight = saturate(depthAfter / max(depthAfter - depthBefore, 1e-6));
 
@@ -315,11 +341,11 @@ struct HpMaterial : IHpMaterial
         // from the coordinate hook's return — and the cached gradients keep
         // the sample's mip stable. One extra sample, clearer than caching the
         // march's interpolated depth.
-        float hitDepth = kReferencePlane - heightAt(In.UV0, gradX, gradY);
+        float hitDepth = referencePlane - heightAt(In.UV0, gradX, gradY);
 
         // The ray climbs from the hit depth to the top of the height range
         // (depth `-(1 - reference)`), in the light's tangent-space direction.
-        const float above = 1.0 - kReferencePlane;
+        const float above = 1.0 - referencePlane;
         float totalRise = hitDepth + above;
         if (totalRise <= kMinRise)
         {
@@ -348,7 +374,7 @@ struct HpMaterial : IHpMaterial
         float shadow = 0.0;
         for (int i = 0; i < kShadowSteps; ++i)
         {
-            float fieldDepth = kReferencePlane - heightAt(rayUv, gradX, gradY);
+            float fieldDepth = referencePlane - heightAt(rayUv, gradX, gradY);
             if (fieldDepth < rayDepth)
             {
                 // The field rises above the ray: occluded. Blockers close to

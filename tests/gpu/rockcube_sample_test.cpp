@@ -575,6 +575,165 @@ TEST_CASE("parallax self-shadowing darkens the frame, measured against itself wi
     tearDown(device);
 }
 
+TEST_CASE("the sample's shader parameter comes from its .hpmat, not from the shader") {
+    // **T0160's acceptance test, on the first material shader ever authored
+    // here.** `rock_pom.slang`'s reference plane was a `static const float`
+    // with a comment saying it had to be, "because that vocabulary is the
+    // engine's and this knob is this shader's". It is now a declared parameter
+    // and `rock.hpmat` gives it 0.5.
+    //
+    // The proof is that **the material file alone changes the image**: the
+    // shader bytes are byte-identical between the two renders, only the
+    // `.hpmat` differs, and the frames differ. The off-switch is the VFS, the
+    // same per-file override a patch uses (D13) — but overriding the *material*
+    // rather than the shader, which is the whole difference this ticket makes.
+    //
+    // 1.0 is the engine's own behaviour (everything sunken, nothing above the
+    // polygon plane) and 0.5 is what the sample ships, so the two frames are
+    // the same scene with the relief sitting half a range apart.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+    const std::filesystem::path root = findRepoRoot();
+    if (root.empty()) {
+        MESSAGE("samples/rockcube/content not found; skipping");
+        tearDown(device);
+        return;
+    }
+
+    const auto renderWithPlane = [&](const char* plane, std::vector<std::uint8_t>& pixels,
+                                     const char* frameName) -> bool {
+        if (!mountContent(root)) {
+            return false;
+        }
+        if (plane != nullptr) {
+            // Patch the committed material's value and mount the copy in
+            // front. The assert-on-replace rule: if the parameter is renamed,
+            // fail here with a message rather than downstream with two
+            // identical frames and no reason.
+            const auto source = hp::Vfs::readText("materials/rock.hpmat");
+            REQUIRE(source.has_value());
+            const std::string needle = "value: 0.5";
+            const std::size_t at = source->find(needle);
+            REQUIRE_MESSAGE(at != std::string::npos,
+                            "rock.hpmat no longer carries 'value: 0.5' for referencePlane; "
+                            "update this test's patch alongside the material");
+            std::string patched = *source;
+            patched.replace(at, needle.size(), std::string("value: ") + plane);
+
+            std::error_code ec;
+            const std::filesystem::path scratch =
+                std::filesystem::temp_directory_path() / "hp-rockcube-plane";
+            std::filesystem::remove_all(scratch, ec);
+            std::filesystem::create_directories(scratch / "materials", ec);
+            std::ofstream file(scratch / "materials" / "rock.hpmat", std::ios::binary);
+            file << patched;
+            file.close();
+            if (!hp::Vfs::mount(scratch.string(), {}, hp::MountOrder::Prepend)) {
+                return false;
+            }
+        }
+
+        hp::AssetPool pool;
+        for (const char* path : {"textures/rock_basecolour.png", "textures/rock_orm.png",
+                                 "textures/rock_height.png", "textures/rock_normal.png",
+                                 "shaders/rock_pom.slang", "materials/rock.hpmat",
+                                 "models/cube.gltf"}) {
+            const hp::ImportResult result =
+                hp::importAsset(device.render->device(), device.render->context(), pool, path);
+            if (!result.loaded || result.placeholder) {
+                return false;
+            }
+        }
+
+        const auto text = hp::Vfs::readText("scenes/rockcube.hpscene");
+        if (!text.has_value()) {
+            return false;
+        }
+        hp::Scene scene;
+        if (hp::loadSceneFromString(scene, *text, "scenes/rockcube.hpscene").status !=
+            hp::SceneLoadStatus::Ok) {
+            return false;
+        }
+        scene.propagateTransforms();
+
+        hp::SceneView view;
+        if (!view.create(device.render->device(), device.render->context(), kSize, kSize)) {
+            return false;
+        }
+        view.setClearColour(kClear[0], kClear[1], kClear[2], kClear[3]);
+
+        hp::SceneViewStats stats;
+        if (view.render(device.render->context(), scene, pool, 0, &stats) == nullptr ||
+            stats.submitted != 1) {
+            return false;
+        }
+        if (!view.readback(device.render->context(), pixels)) {
+            return false;
+        }
+        writePpm(frameName, pixels, kSize);
+        return true;
+    };
+
+    std::vector<std::uint8_t> shipped;
+    std::vector<std::uint8_t> sunken;
+    REQUIRE(renderWithPlane(nullptr, shipped, "rockcube_plane_committed"));
+    REQUIRE(renderWithPlane("1.0", sunken, "rockcube_plane_one"));
+
+    // **Neither frame is the checkerboard.** Without this, a shader that
+    // stopped compiling would register as an enormous "difference" and pass —
+    // the trap that produced two false green results on 2026-08-06.
+    const double magentaShipped = magentaShareOfCovered(shipped);
+    const double magentaSunken = magentaShareOfCovered(sunken);
+    MESSAGE("magenta shares: shipped " << magentaShipped << ", plane 1.0 " << magentaSunken);
+    REQUIRE(magentaShipped < 0.05);
+    REQUIRE(magentaSunken < 0.05);
+
+    // The silhouette does not move: parallax displaces texels inside the face,
+    // never the face. A different covered count would mean something other
+    // than the parameter changed.
+    const long long coveredShipped = covered(shipped);
+    const long long coveredSunken = covered(sunken);
+    MESSAGE("covered: shipped " << coveredShipped << ", plane 1.0 " << coveredSunken);
+    CHECK(coveredShipped == coveredSunken);
+
+    double difference = 0.0;
+    long long compared = 0;
+    long long moved = 0;
+    for (std::size_t i = 0; i + 3 < shipped.size() && i + 3 < sunken.size(); i += 4) {
+        const bool clearA = shipped[i] == 0 && shipped[i + 1] == 0 && shipped[i + 2] == 255;
+        const bool clearB = sunken[i] == 0 && sunken[i + 1] == 0 && sunken[i + 2] == 255;
+        if (clearA || clearB) {
+            continue;
+        }
+        const double lumaA =
+            0.2126 * shipped[i] + 0.7152 * shipped[i + 1] + 0.0722 * shipped[i + 2];
+        const double lumaB = 0.2126 * sunken[i] + 0.7152 * sunken[i + 1] + 0.0722 * sunken[i + 2];
+        const double delta = lumaA > lumaB ? lumaA - lumaB : lumaB - lumaA;
+        difference += delta;
+        if (delta > 10.0) {
+            ++moved;
+        }
+        ++compared;
+    }
+    REQUIRE(compared > 0);
+    difference /= static_cast<double>(compared);
+    MESSAGE("reference plane 0.5 vs 1.0: mean abs difference " << difference << "; moved>10 "
+                                                               << moved << " of " << compared);
+
+    // A real, large population of moved texels. The bounds sit well under the
+    // measured values so a texture tweak does not flake them; what they catch
+    // is the parameter never arriving, which measures **zero** on both.
+    CHECK(difference > 1.0);
+    CHECK(moved > 1000);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
 TEST_CASE("the rock cube's faces cull from inside, so they wind outward") {
     // D33's whole chain in one assertion. From inside a closed, single-sided
     // mesh every triangle is back-facing, so a correct build draws **nothing**.

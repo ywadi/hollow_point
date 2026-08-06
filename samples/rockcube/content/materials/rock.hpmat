@@ -30,7 +30,7 @@
 # which multiplies into the ORM texture's blue and green channels. The rock set's
 # blue is zero (test_assets/README.md), so the surface is a dielectric because
 # the *texture* says so rather than because this file asserts it.
-version: 1
+version: 2
 material:
   baseColourTexture: 1570000000000010
   # Occlusion in red, roughness in green, metallic in blue — glTF's ORM packing,
@@ -66,3 +66,15 @@ material:
   # dominant light for self-shadowing. The engine is unchanged; this is what
   # D26, D28 and T0159's opened contract exist to make expressible.
   shader: 1570000000000020
+  # **The module's own parameter** (T0160), and the line this whole file
+  # existed without. `rock_pom.slang` declares `referencePlane` in its
+  # `HpMaterialParams` block; until T0160 it was a compile-time literal,
+  # because a game shader's own knobs had nowhere to live. Changing this number
+  # rebuilds no pipeline and invalidates no cook — it is written into a
+  # constant buffer per draw, exactly as `heightScale` above is.
+  #
+  # 0.5 puts half the height range above the polygon plane. 1.0 is the engine's
+  # own behaviour, everything sunken.
+  params:
+    - name: referencePlane
+      value: 0.5
