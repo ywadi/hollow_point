@@ -78,3 +78,19 @@ material:
   params:
     - name: referencePlane
       value: 0.5
+    # **The vertex stage's knobs** (T0146.3). The same module now overrides
+    # `vertex()` as well, leaning the top of the cube as it turns — the one
+    # thing the parallax above cannot do, because parallax moves texels and
+    # not geometry. `heightScale` two lines up records the cost of that
+    # limitation; this is the other half of the answer.
+    #
+    # 0.18 m of lean on a 2 m cube is about 10 degrees at the top: enough to
+    # read as motion at a glance, small enough that the rock still looks like
+    # rock. Set `swayAmplitude` to 0 and the geometry is exactly what it was
+    # before T0146 — no pipeline rebuild, no cook invalidation.
+    - name: swayAmplitude
+      value: 0.18
+    # Radians per second: a ~4.5 second period against the cube's own 15
+    # second rotation, so the two motions never quite line up.
+    - name: swayRate
+      value: 1.4

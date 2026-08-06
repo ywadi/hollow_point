@@ -107,10 +107,80 @@ cbuffer HpMaterialParams
     [HpRange(0.0, 1.0)]
     [HpTooltip("Which height sits on the polygon plane. 1 is fully sunken, 0.5 puts half the relief above the face.")]
     float referencePlane;
+
+    /// How far the top of the cube leans, in metres (T0146.3).
+    ///
+    /// **Zero is off, and off is exactly the pre-T0146 geometry** — the hook
+    /// still runs, adds zero and the transform chain is untouched. Changing
+    /// this rebuilds no pipeline, which is the T0160 property being shown
+    /// again one stage up.
+    [HpRange(0.0, 0.5)]
+    [HpTooltip("How far the top of the cube leans, in metres. 0 turns the sway off.")]
+    float swayAmplitude;
+
+    /// Radians per second of the lean's oscillation. 1.4 is a ~4.5 second
+    /// period, slow enough to read as weight rather than as a wobble.
+    [HpRange(0.0, 8.0)]
+    [HpTooltip("Radians per second of the sway. 1.4 is roughly a 4.5-second period.")]
+    float swayRate;
 }
 
 struct HpMaterial : IHpMaterial
 {
+    /// **The vertex hook** (T0146.3, D36) — and it is here to make one
+    /// contrast concrete.
+    ///
+    /// Everything else in this file is parallax: it displaces where a texel is
+    /// *sampled from*, so the rock reads as carved, and the outline of the
+    /// cube never moves by so much as a pixel. That is POM's honest limitation
+    /// — `HpParallaxUv`'s own comment says so, T0156.6 evaluated the
+    /// pixel-shader alternatives and recommended against them, and the
+    /// `.hpmat` beside this file records why its `heightScale` had to come
+    /// down because of it.
+    ///
+    /// This moves the geometry. Same object, same frame: relief from the pixel
+    /// stage, silhouette from the vertex stage.
+    ///
+    /// ## Why a lean rather than a push along the normals
+    ///
+    /// The obvious "breathing" demo displaces each vertex along its normal,
+    /// and **it splits this mesh open**. The cube is flat-shaded: every corner
+    /// carries three vertices with three different face normals, so pushing
+    /// along them sends the three copies to three different places and the
+    /// edges gape. That is a property of the mesh, not of the hook, and it is
+    /// the first thing anyone writing a vertex shader against hard-edged
+    /// geometry hits — so this samples the other technique instead, the one
+    /// that keeps the surface watertight: a **lean**, driven by height, which
+    /// is wind sway on a trunk with the trunk removed.
+    ///
+    /// `lean` is quadratic in height because a linear ramp reads as a shear —
+    /// the whole body sliding — rather than as something bending where it is
+    /// thinnest.
+    ///
+    /// ## What a field of grass would change
+    ///
+    /// One term: `+ In.WorldPos.x * phasePerMetre` inside the `sin`, so
+    /// neighbouring instances of the same mesh do not sway in lockstep.
+    /// `In.WorldPos` is handed over for exactly that, and it is why D36
+    /// supplies the world position as an *input* rather than as Godot's
+    /// `world_vertex_coords` mode. It is left out **here** on purpose: this
+    /// scene has one cube, and a phase that varied with position would put the
+    /// sample's rest pose somewhere other than its authored transform at
+    /// `Time == 0` — which is what keeps every committed frame in
+    /// `rockcube_sample_test.cpp` byte-identical to its pre-T0146 baseline.
+    [mutating] override void vertex(HpVertexInput In, inout HpVertexOutput Out)
+    {
+        // The cube is 2 m on a side, centred on its origin, so object-space Y
+        // runs -1 to 1: this is 0 at the base and 1 at the top.
+        float height = saturate(In.Position.y * 0.5 + 0.5);
+        float lean = height * height;
+        // Object space, so the lean travels with the cube's own yaw as it
+        // spins rather than being pinned to a world axis. That is the
+        // difference D36's decision buys and the reason the triplanar note in
+        // `rock.hpmat` exists one stage down.
+        Out.Position.x = In.Position.x + swayAmplitude * lean * sin(In.Time * swayRate);
+    }
+
 #if HP_USE_HEIGHT_MAP && USE_TEXCOORD0
     /// Steps in the shadow march. Fewer than the view march, by design: a
     /// shadow ray answers *blocked or not*, not *where*.

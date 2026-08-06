@@ -925,3 +925,120 @@ TEST_CASE("the cube's lighting is anchored to the world, not to the mesh") {
     tearDown(device);
 }
 
+
+TEST_CASE("the sample's vertex hook moves the silhouette, and rests at time zero (T0146.3)") {
+    // **The claim the whole vertex stage exists for, on the shipped sample.**
+    //
+    // Every other technique on this cube is parallax: `rock_pom.slang` marches
+    // a height field to decide where a texel is sampled *from*, and the
+    // outline never moves by a pixel — the self-shadowing case above measures
+    // exactly that, `covered: on 46723, off 46723`. This case renders the same
+    // committed content at two clock times and requires the outline to move,
+    // in both directions: pixels the cube covers now and did not, and pixels it
+    // has left.
+    //
+    // **Time zero is the rest pose, exactly.** The sway is
+    // `swayAmplitude * lean * sin(Time * swayRate)`, and `sin(0)` is zero, so
+    // the first render below is the same geometry the sample had before T0146
+    // — which is why the committed-content case above still measures
+    // `18.079% of the frame, luminance variation 26.7341`, the number it
+    // measured when the vertex shader was DiligentFX's.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+    const std::filesystem::path root = findRepoRoot();
+    if (root.empty()) {
+        MESSAGE("samples/rockcube/content not found; skipping");
+        tearDown(device);
+        return;
+    }
+    REQUIRE(mountContent(root));
+
+    hp::AssetPool pool;
+    for (const char* path : {"textures/rock_basecolour.png", "textures/rock_orm.png",
+                             "textures/rock_height.png", "textures/rock_normal.png",
+                             "shaders/rock_pom.slang", "materials/rock.hpmat",
+                             "models/cube.gltf"}) {
+        const hp::ImportResult result =
+            hp::importAsset(device.render->device(), device.render->context(), pool, path);
+        REQUIRE(result.loaded);
+        REQUIRE_FALSE(result.placeholder);
+    }
+
+    const auto text = hp::Vfs::readText("scenes/rockcube.hpscene");
+    REQUIRE(text.has_value());
+    hp::Scene scene;
+    REQUIRE(hp::loadSceneFromString(scene, *text, "scenes/rockcube.hpscene").status ==
+            hp::SceneLoadStatus::Ok);
+
+    hp::SceneView view;
+    REQUIRE(view.create(device.render->device(), device.render->context(), kSize, kSize));
+    view.setClearColour(kClear[0], kClear[1], kClear[2], kClear[3]);
+
+    const auto renderAt = [&](double seconds, std::vector<std::uint8_t>& pixels,
+                              const char* frameName) -> bool {
+        hp::SceneViewStats stats;
+        if (view.render(device.render->context(), scene, pool, 0, &stats, seconds) == nullptr ||
+            stats.submitted != 1) {
+            return false;
+        }
+        if (!view.readback(device.render->context(), pixels)) {
+            return false;
+        }
+        writePpm(frameName, pixels, kSize);
+        return true;
+    };
+
+    // `swayRate` is 1.4 rad/s in `rock.hpmat`, so pi/2 radians of phase is
+    // 1.122 s — the peak of the lean, and the largest silhouette change the
+    // authored amplitude produces.
+    std::vector<std::uint8_t> atRest;
+    std::vector<std::uint8_t> atPeak;
+    REQUIRE(renderAt(0.0, atRest, "rockcube_sway_rest"));
+    REQUIRE(renderAt(1.122, atPeak, "rockcube_sway_peak"));
+
+    // **Neither frame is the checkerboard.** Without this a module that
+    // stopped compiling would register an enormous "difference" and pass — the
+    // trap this suite has fallen into twice.
+    const double magentaRest = magentaShareOfCovered(atRest);
+    const double magentaPeak = magentaShareOfCovered(atPeak);
+    MESSAGE("magenta shares: rest " << magentaRest << ", peak " << magentaPeak);
+    REQUIRE(magentaRest < 0.05);
+    REQUIRE(magentaPeak < 0.05);
+
+    const auto isCovered = [](const std::vector<std::uint8_t>& rgba, std::size_t i) {
+        return !(rgba[i] < 10 && rgba[i + 1] < 10 && rgba[i + 2] > 245);
+    };
+    long long gained = 0;
+    long long lost = 0;
+    for (std::size_t i = 0; i + 3 < atRest.size(); i += 4) {
+        const bool was = isCovered(atRest, i);
+        const bool is = isCovered(atPeak, i);
+        if (is && !was) {
+            ++gained;
+        } else if (was && !is) {
+            ++lost;
+        }
+    }
+    const long long restCovered = covered(atRest);
+    MESSAGE("sway silhouette: rest covers " << restCovered << " px, peak covers "
+                                            << covered(atPeak) << " px; gained " << gained
+                                            << ", lost " << lost);
+
+    // **Both directions, and a real population.** A lean of 0.18 m at the top
+    // of a 2 m cube, 5 m from a camera whose frame is 5.77 m tall at that
+    // distance, is about 16 px of travel across a 512-pixel frame — so a few
+    // hundred pixels change hands along the moving edges. The thresholds are a
+    // small fraction of that so a driver's rasterisation does not decide the
+    // outcome, and they are still far above the zero that parallax alone
+    // produces.
+    CHECK(restCovered > 0);
+    CHECK(gained > 200);
+    CHECK(lost > 200);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
