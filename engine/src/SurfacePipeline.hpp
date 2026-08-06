@@ -37,6 +37,29 @@ namespace hp {
 /// Creates and caches pipeline states that run the engine's shaders.
 class SurfacePipeline final : public Diligent::PBR_Renderer {
 public:
+    /// The engine's own unshaded permutation (T0141.12, 141.15).
+    ///
+    /// **A user-defined PSO flag, because DiligentFX's `PSO_FLAG_UNSHADED` is
+    /// the wrong tool and that is measured, not guessed.** Their flag is a
+    /// depth/wireframe-pass mode: the `PSOKey` constructor strips every texture
+    /// and vertex-attribute flag when it is set, and their footer outputs the
+    /// frame-wide `UnshadedColor` -- the *material* never reaches the target.
+    /// What the engine needs is Godot's `unshaded`: full surface stage, no
+    /// lighting. The missing-material checkerboard is exactly that -- it must
+    /// *sample* the placeholder texture and must not be dimmable by scene
+    /// lights.
+    ///
+    /// `build()` turns this bit into the `HP_UNSHADED` macro the shader
+    /// contract already declares (`HpMaterial.fxh`), so the shader-side switch
+    /// is compile-time -- the lighting code is not in the pipeline at all,
+    /// which is the entire point of unshaded (141.15).
+    ///
+    /// User-defined bits survive the `PSOKey` constructor untouched and are
+    /// ignored by `DefineMacros` and the generated-struct builders, which is
+    /// what makes this safe to carry through their machinery.
+    static constexpr Diligent::PBR_Renderer::PSO_FLAGS kPsoFlagUnshaded =
+        Diligent::PBR_Renderer::PSO_FLAG_FIRST_USER_DEFINED;
+
     /// Fills in the engine's renderer settings.
     ///
     /// **One place, because two places is how the last bug got in.**

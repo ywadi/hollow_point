@@ -7,8 +7,10 @@
 #include <hp/Assets.hpp>
 #include <hp/DepthConvention.hpp>
 #include <hp/Log.hpp>
+#include <hp/Material.hpp>
 #include <hp/Profiling.hpp>
 
+#include <GLTFBuilder.hpp>
 #include <GLTFLoader.hpp>
 #include <GraphicsTypesX.hpp>
 #include <GraphicsUtilities.h>
@@ -21,7 +23,9 @@
 
 #include <array>
 #include <cstring>
+#include <optional>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // The shader-side structures, included the way Diligent's own consumers do it:
@@ -83,7 +87,15 @@ constexpr Diligent::PBR_Renderer::PSO_FLAGS kFeatureMask =
     static_cast<Diligent::PBR_Renderer::PSO_FLAGS>(
         Diligent::PBR_Renderer::PSO_FLAG_VERTEX_ATTRIBS |
         Diligent::PBR_Renderer::PSO_FLAG_DEFAULT_TEXTURES |
-        Diligent::PBR_Renderer::PSO_FLAG_USE_LIGHTS);
+        Diligent::PBR_Renderer::PSO_FLAG_USE_LIGHTS |
+        // A material asset's UV transforms (T0060) are shader math behind this
+        // flag; without it the attribs are written and silently ignored. Set
+        // per material, only when a transform is not the identity.
+        Diligent::PBR_Renderer::PSO_FLAG_ENABLE_TEXCOORD_TRANSFORM |
+        // The engine's unshaded permutation (T0141.12/141.15) -- the
+        // missing-material fallback and `Material::unlit` both need pixels
+        // scene lights cannot dim.
+        SurfacePipeline::kPsoFlagUnshaded);
 
 /// Features the engine **turns on**, as opposed to what the mask above permits.
 ///
@@ -100,6 +112,143 @@ constexpr Diligent::PBR_Renderer::PSO_FLAGS kFeatureMask =
 /// keeps everything else off.
 constexpr Diligent::PBR_Renderer::PSO_FLAGS kEnabledFeatures =
     Diligent::PBR_Renderer::PSO_FLAG_USE_LIGHTS;
+
+// --- material assets on the GPU (T0141.12) ----------------------------------
+//
+// A `hp::Material` is authoring data; what the renderer binds is a
+// `GLTF::Material`, because that is what `WritePBRMaterialShaderAttribs` reads
+// and reimplementing its packing is how a layout drifts silently (D24). The
+// conversion below is the whole translation, in one place.
+
+/// The five texture slots a material asset carries, in renderer terms.
+struct MaterialTextureSlot {
+    /// Which renderer slot this feeds.
+    Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID slot;
+
+    /// Index in the glTF attribute table -- must match the
+    /// `TextureAttribIndices` mapping `SurfacePipeline::configure` sets up.
+    Diligent::Uint32 attribIndex;
+
+    /// The texture the material names, default when none.
+    Guid texture;
+
+    /// Which UV channel the slot samples with.
+    std::uint8_t uv;
+};
+
+/// The material's slots, in one place so conversion and binding cannot
+/// disagree about which GUID feeds which slot.
+std::array<MaterialTextureSlot, 5> materialTextureSlots(const Material& material) {
+    return {{
+        {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_BASE_COLOR,
+         Diligent::GLTF::DefaultBaseColorTextureAttribId, material.baseColourTexture,
+         material.baseColourUv},
+        {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_PHYS_DESC,
+         Diligent::GLTF::DefaultMetallicRoughnessTextureAttribId,
+         material.metallicRoughnessTexture, material.metallicRoughnessUv},
+        {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_NORMAL,
+         Diligent::GLTF::DefaultNormalTextureAttribId, material.normalTexture,
+         material.normalUv},
+        {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_OCCLUSION,
+         Diligent::GLTF::DefaultOcclusionTextureAttribId, material.occlusionTexture,
+         material.occlusionUv},
+        {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_EMISSIVE,
+         Diligent::GLTF::DefaultEmissiveTextureAttribId, material.emissiveTexture,
+         material.emissiveUv},
+    }};
+}
+
+Diligent::TEXTURE_ADDRESS_MODE toDiligentWrap(TextureWrap wrap) {
+    switch (wrap) {
+    case TextureWrap::Repeat:
+        return Diligent::TEXTURE_ADDRESS_WRAP;
+    case TextureWrap::Mirror:
+        return Diligent::TEXTURE_ADDRESS_MIRROR;
+    case TextureWrap::Clamp:
+        return Diligent::TEXTURE_ADDRESS_CLAMP;
+    }
+    return Diligent::TEXTURE_ADDRESS_WRAP;
+}
+
+/// Whether a channel's transform actually transforms anything.
+///
+/// This is what decides `PSO_FLAG_ENABLE_TEXCOORD_TRANSFORM` per material: the
+/// flag is per-pipeline shader math, and paying it on every material because
+/// one tiles differently would be the wrong trade.
+bool isIdentity(const UvChannel& channel) {
+    return channel.scale.x == 1.0F && channel.scale.y == 1.0F && channel.offset.x == 0.0F &&
+           channel.offset.y == 0.0F && channel.rotation == 0.0F;
+}
+
+/// Converts a material asset into the renderer's vocabulary.
+///
+/// @param material the authored material.
+/// @param placeholderBaseColour activates the base-colour slot even though the
+///        material names no texture there -- the missing-material fallback
+///        binds the checkerboard placeholder into it (T0141.12), and without an
+///        active slot the shader's UV selector stays -1 and the texture is
+///        never sampled.
+/// @returns the converted material. Texture *ids* are all -1: they index a
+///          model's own texture array, which a material asset does not have --
+///          binding happens by GUID against the pool instead.
+Diligent::GLTF::Material toGltfMaterial(const Material& material, bool placeholderBaseColour) {
+    Diligent::GLTF::Material gltf;
+
+    Diligent::GLTF::Material::ShaderAttribs& basic = gltf.Attribs;
+    basic.BaseColorFactor =
+        float4{material.baseColour.x, material.baseColour.y, material.baseColour.z,
+               material.baseColour.w};
+    basic.EmissiveFactor = float3{material.emissive.x, material.emissive.y, material.emissive.z};
+    basic.MetallicFactor = material.metallic;
+    basic.RoughnessFactor = material.roughness;
+    basic.NormalScale = material.normalScale;
+    basic.OcclusionFactor = material.occlusionStrength;
+    // `AlphaMode` documents itself as value-matched to Diligent's enum; this is
+    // where that promise is spent, so it is asserted here rather than trusted.
+    static_assert(static_cast<int>(AlphaMode::Opaque) ==
+                  Diligent::GLTF::Material::ALPHA_MODE_OPAQUE);
+    static_assert(static_cast<int>(AlphaMode::Mask) == Diligent::GLTF::Material::ALPHA_MODE_MASK);
+    static_assert(static_cast<int>(AlphaMode::Blend) ==
+                  Diligent::GLTF::Material::ALPHA_MODE_BLEND);
+    basic.AlphaMode = static_cast<int>(material.alphaMode);
+    basic.AlphaCutoff = material.alphaCutoff;
+    // The data-model truth. The *shader* keys unshaded off the PSO bit rather
+    // than this field, but an inspector or a debugger reading the buffer should
+    // see the honest value.
+    basic.Workflow = material.unlit ? Diligent::GLTF::Material::PBR_WORKFLOW_UNLIT
+                                    : Diligent::GLTF::Material::PBR_WORKFLOW_METALL_ROUGH;
+    gltf.DoubleSided = material.doubleSided;
+
+    Diligent::GLTF::MaterialBuilder builder{gltf};
+    for (const MaterialTextureSlot& slot : materialTextureSlots(material)) {
+        const bool active = slot.texture.isValid() ||
+                            (placeholderBaseColour &&
+                             slot.slot == Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_BASE_COLOR);
+        if (!active) {
+            // Inactive slot: UV selector stays -1, which the shader reads as
+            // "no texture here, use the factor". The renderer's default texture
+            // is still bound, and this is what makes that binding inert.
+            continue;
+        }
+        Diligent::GLTF::Material::TextureShaderAttribs& attribs =
+            builder.GetTextureAttrib(slot.attribIndex);
+        const UvChannel& channel = slot.uv == 0 ? material.uv0 : material.uv1;
+        attribs.SetUVSelector(slot.uv);
+        attribs.SetWrapUMode(toDiligentWrap(channel.wrapU));
+        attribs.SetWrapVMode(toDiligentWrap(channel.wrapV));
+        // Composed exactly as the glTF loader composes KHR_texture_transform:
+        // scale times rotation (negated -- UV rotation is counter-clockwise,
+        // which is a clockwise rotation of the image), offset as the bias.
+        attribs.UVScaleAndRotation = Diligent::float2x2::Scale(channel.scale.x, channel.scale.y) *
+                                     Diligent::float2x2::Rotation(-channel.rotation);
+        attribs.UBias = channel.offset.x;
+        attribs.VBias = channel.offset.y;
+        builder.SetTextureId(slot.attribIndex, -1);
+    }
+    builder.Finalize();
+
+    return gltf;
+}
 
 } // namespace
 
@@ -140,6 +289,50 @@ struct SceneRenderer::Impl {
     };
     std::unordered_map<Guid, ModelBindings> bindings;
 
+    /// One material *asset*, converted and bound (T0141.12).
+    ///
+    /// Everything a draw needs when a surface's slot resolves to something
+    /// other than the model's imported material: the converted attribs, the
+    /// SRB with the asset's textures (or the placeholder, or the renderer
+    /// defaults), and the PSO bits the material adds.
+    struct MaterialBinding {
+        /// The converted attribs `WritePBRMaterialShaderAttribs` reads.
+        Diligent::GLTF::Material gltf;
+
+        /// The SRB binding this material's textures.
+        Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> srb;
+
+        /// What it was built from. **The rebuild trigger**: when the pool
+        /// returns a different object under the same GUID -- a hot reload
+        /// (T0058) -- the binding is rebuilt. A texture replaced *behind* an
+        /// unchanged material object is not detected here; that is T0058's
+        /// invalidation problem and is recorded there rather than half-solved
+        /// with a per-frame pool walk.
+        std::shared_ptr<Material> source;
+
+        /// Keeps the bound textures alive as long as the SRB names them.
+        std::vector<std::shared_ptr<TextureAsset>> textures;
+
+        /// PSO bits this material adds: unshaded, the UV-transform math.
+        Diligent::PBR_Renderer::PSO_FLAGS extraFlags = Diligent::PBR_Renderer::PSO_FLAG_NONE;
+    };
+
+    /// Assigned materials, keyed by asset GUID.
+    std::unordered_map<Guid, MaterialBinding> materials;
+
+    /// The one missing-material binding (T0141.12): `missingMaterial()` with
+    /// the checkerboard bound as its base colour. Built once, on first need --
+    /// every missing slot in the scene draws through this.
+    std::optional<MaterialBinding> fallback;
+
+    /// The checkerboard placeholder (T0023.6), pinned for the SRBs that bind it.
+    std::shared_ptr<TextureAsset> placeholder;
+
+    /// Missing materials already reported, so the log line fires **once per
+    /// GUID** rather than per draw per frame -- the T0141 rule: report on the
+    /// transition, never from the draw path.
+    std::unordered_set<Guid> reportedMissing;
+
     /// Scratch, reused across frames so a draw does not allocate.
     Diligent::GLTF::ModelTransforms transforms;
 
@@ -154,14 +347,43 @@ struct SceneRenderer::Impl {
     /// @returns the bindings, or nullptr if they could not be created.
     ModelBindings* ensureBindings(Guid guid, const Diligent::GLTF::Model& model);
 
+    /// Converts and binds one material asset, once per asset (T0141.12).
+    ///
+    /// @param context the context, for the texture state transitions.
+    /// @param pool where the material's textures are resolved from.
+    /// @param resolved an `Assigned` slot resolution.
+    /// @returns the binding, or nullptr when the SRB could not be created.
+    MaterialBinding* ensureMaterialBinding(Diligent::IDeviceContext* context,
+                                           const AssetPool& pool,
+                                           const ResolvedMaterial& resolved);
+
+    /// The missing-material binding: `missingMaterial()` plus the checkerboard.
+    /// @param context the context, for the texture state transitions.
+    /// @returns the binding, or nullptr when it could not be built.
+    MaterialBinding* ensureFallbackBinding(Diligent::IDeviceContext* context);
+
+    /// Does the actual conversion and SRB construction for the two above.
+    /// @param context the context, for the texture state transitions.
+    /// @param material the authored material.
+    /// @param pool where texture GUIDs resolve; null for the fallback, whose
+    ///        material names none.
+    /// @param placeholderBaseColour bind the checkerboard as the base colour.
+    /// @param out receives the binding.
+    /// @returns whether the binding is usable.
+    bool buildMaterialBinding(Diligent::IDeviceContext* context, const Material& material,
+                              const AssetPool* pool, bool placeholderBaseColour,
+                              MaterialBinding& out);
+
     /// Draws one model at one transform.
     /// @param context the context to record into.
     /// @param model the model to draw.
-    /// @param item the draw item supplying the world transform.
+    /// @param item the draw item supplying the world transform and the
+    ///        per-surface material overrides.
     /// @param guid the mesh asset's identity, for the binding cache.
+    /// @param pool where material and texture overrides resolve from.
     /// @returns whether anything was submitted.
     bool drawModel(Diligent::IDeviceContext* context, const Diligent::GLTF::Model& model,
-                   const DrawItem& item, Guid guid);
+                   const DrawItem& item, Guid guid, const AssetPool& pool);
 };
 
 SceneRenderer::Impl::ModelBindings*
@@ -245,9 +467,141 @@ SceneRenderer::Impl::ensureBindings(Guid guid, const Diligent::GLTF::Model& mode
     return &bindings[guid];
 }
 
+bool SceneRenderer::Impl::buildMaterialBinding(Diligent::IDeviceContext* context,
+                                               const Material& material, const AssetPool* pool,
+                                               bool placeholderBaseColour, MaterialBinding& out) {
+    HP_PROFILE_ZONE();
+
+    out.gltf = toGltfMaterial(material, placeholderBaseColour);
+
+    renderer->CreateResourceBinding(&out.srb);
+    if (!out.srb) {
+        HP_LOG_ERROR(kLog, "could not create a shader resource binding for a material asset");
+        return false;
+    }
+    renderer->InitCommonSRBVars(out.srb, frameAttribs);
+
+    // Textures the SRB will bind but nothing has transitioned yet. Model
+    // textures are transitioned by the glTF loader; pool textures and the
+    // placeholder have no context at load time, so their first binding is
+    // where the transition happens. `OldState = UNKNOWN` uses the state
+    // Diligent tracks, so a texture two materials share transitions once.
+    std::vector<Diligent::StateTransitionDesc> barriers;
+
+    const auto bindSlot = [&](Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID slot,
+                              Diligent::ITextureView* view) {
+        if (view == nullptr) {
+            view = renderer->defaultTexture(slot);
+        }
+        if (view == nullptr) {
+            // Only reachable with `CreateDefaultTextures` off, which this
+            // renderer never does; see `ensureBindings`.
+            HP_LOG_ERROR(kLog, "no texture and no default for material slot {}",
+                         static_cast<int>(slot));
+            return;
+        }
+        renderer->SetMaterialTexture(out.srb, view, slot);
+    };
+
+    for (const MaterialTextureSlot& slot : materialTextureSlots(material)) {
+        Diligent::ITextureView* view = nullptr;
+
+        std::shared_ptr<TextureAsset> texture;
+        if (slot.texture.isValid() && pool != nullptr) {
+            texture = pool->get<TextureAsset>(slot.texture);
+        }
+        if (texture && texture->valid()) {
+            view = texture->shaderResource();
+            barriers.emplace_back(texture->texture(), Diligent::RESOURCE_STATE_UNKNOWN,
+                                  Diligent::RESOURCE_STATE_SHADER_RESOURCE,
+                                  Diligent::STATE_TRANSITION_FLAG_UPDATE_STATE);
+            out.textures.push_back(std::move(texture));
+        } else if (slot.texture.isValid()) {
+            // Named and not in the pool: the texture-level miss, T0023.6's
+            // case rather than T0060.10's, and it gets the same checkerboard.
+            if (placeholder && placeholder->valid()) {
+                view = placeholder->shaderResource();
+            }
+        } else if (placeholderBaseColour &&
+                   slot.slot == Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_BASE_COLOR &&
+                   placeholder && placeholder->valid()) {
+            // The missing-material fallback: the checkerboard *is* the base
+            // colour map (T0141.12).
+            view = placeholder->shaderResource();
+        }
+
+        bindSlot(slot.slot, view);
+    }
+
+    if (!barriers.empty() && context != nullptr) {
+        context->TransitionResourceStates(static_cast<Diligent::Uint32>(barriers.size()),
+                                          barriers.data());
+    }
+
+    if (material.unlit) {
+        out.extraFlags |= SurfacePipeline::kPsoFlagUnshaded;
+    }
+    // The UV-transform math is per pipeline; pay for it only when a bound
+    // channel actually transforms. An unused channel's settings are inert by
+    // construction, so only channels a slot selects are consulted.
+    for (const MaterialTextureSlot& slot : materialTextureSlots(material)) {
+        if (!slot.texture.isValid()) {
+            continue;
+        }
+        const UvChannel& channel = slot.uv == 0 ? material.uv0 : material.uv1;
+        if (!isIdentity(channel)) {
+            out.extraFlags |= Diligent::PBR_Renderer::PSO_FLAG_ENABLE_TEXCOORD_TRANSFORM;
+            break;
+        }
+    }
+
+    return true;
+}
+
+SceneRenderer::Impl::MaterialBinding*
+SceneRenderer::Impl::ensureMaterialBinding(Diligent::IDeviceContext* context,
+                                           const AssetPool& pool,
+                                           const ResolvedMaterial& resolved) {
+    auto it = materials.find(resolved.guid);
+    // Rebuilt when the pool holds a different object under the same GUID --
+    // same identity, new data, which is what a hot reload (T0058) looks like
+    // from here. Mirrors `ensureBindings`' rule for models.
+    if (it != materials.end() && it->second.source == resolved.material) {
+        return &it->second;
+    }
+
+    MaterialBinding built;
+    if (!buildMaterialBinding(context, *resolved.material, &pool, /*placeholderBaseColour=*/false,
+                              built)) {
+        return nullptr;
+    }
+    built.source = resolved.material;
+
+    MaterialBinding& stored = materials[resolved.guid];
+    stored = std::move(built);
+    return &stored;
+}
+
+SceneRenderer::Impl::MaterialBinding*
+SceneRenderer::Impl::ensureFallbackBinding(Diligent::IDeviceContext* context) {
+    if (fallback) {
+        return &*fallback;
+    }
+
+    MaterialBinding built;
+    // `missingMaterial()` decides what the fallback *is* (unlit, magenta,
+    // opaque -- T0060.10); this only puts it on the GPU. One definition.
+    if (!buildMaterialBinding(context, missingMaterial(), /*pool=*/nullptr,
+                              /*placeholderBaseColour=*/true, built)) {
+        return nullptr;
+    }
+    fallback = std::move(built);
+    return &*fallback;
+}
+
 bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                                     const Diligent::GLTF::Model& model, const DrawItem& item,
-                                    Guid guid) {
+                                    Guid guid, const AssetPool& pool) {
     HP_PROFILE_ZONE();
 
     constexpr Diligent::Uint32 kSceneIndex = 0;
@@ -320,11 +674,42 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
             }
             Diligent::IShaderResourceBinding* srb =
                 modelBindings->material[primitive.MaterialId];
+            const Diligent::GLTF::Material& imported = model.Materials[primitive.MaterialId];
+            const Diligent::GLTF::Material* material = &imported;
+            Diligent::PBR_Renderer::PSO_FLAGS extraFlags = Diligent::PBR_Renderer::PSO_FLAG_NONE;
+
+            // **The three-state table, drawn** (T0060.10 decides it, this
+            // spends it). `Imported` keeps the model's own material -- the
+            // common case and byte-identical to what drew before this existed.
+            const ResolvedMaterial resolved =
+                resolveMaterialSlot(pool, item.materials, primitive.MaterialId);
+            if (resolved.state == MaterialSlot::Assigned) {
+                if (MaterialBinding* binding = ensureMaterialBinding(context, pool, resolved)) {
+                    material = &binding->gltf;
+                    srb = binding->srb;
+                    extraFlags = binding->extraFlags;
+                }
+                // A failed binding falls back to the imported material rather
+                // than dropping the draw; the failure was logged when the
+                // build was attempted, once, not here.
+            } else if (resolved.state == MaterialSlot::Missing) {
+                if (reportedMissing.insert(resolved.guid).second) {
+                    // Once per GUID, on the first sighting -- the transition.
+                    // The draw path below stays silent (T0141).
+                    HP_LOG_WARN(kLog,
+                                "material {} is not loaded; rendering the missing-material "
+                                "pattern in its place",
+                                resolved.guid.toString());
+                }
+                if (MaterialBinding* binding = ensureFallbackBinding(context)) {
+                    material = &binding->gltf;
+                    srb = binding->srb;
+                    extraFlags = binding->extraFlags;
+                }
+            }
             if (srb == nullptr) {
                 continue;
             }
-
-            const Diligent::GLTF::Material& material = model.Materials[primitive.MaterialId];
 
             // The mask is what keeps this ticket out of T0079/T0087/T0096 --
             // see `kFeatureMask`. Material flags are intersected with it rather
@@ -352,11 +737,46 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                     Diligent::PBR_Renderer::PSO_FLAG_USE_AO_MAP |
                     Diligent::PBR_Renderer::PSO_FLAG_USE_EMISSIVE_MAP);
             const Diligent::PBR_Renderer::PSO_FLAGS flags =
-                (vertexFlags | kMaterialFlags | kEnabledFeatures) & kFeatureMask;
+                (vertexFlags | kMaterialFlags | kEnabledFeatures | extraFlags) & kFeatureMask;
 
+            // Alpha mode reaches the pipeline from whichever material is
+            // actually drawn: it selects the blend state and the compile-time
+            // cutout test in `SurfacePipeline::build`. Before T0141.12 this
+            // was hardwired to opaque, which was honest only because nothing
+            // could author a non-opaque material yet.
+            //
+            // **The fallback inherits the imported material's sidedness.** The
+            // missing-material pattern's first rule is visible, never
+            // invisible -- and `missingMaterial()` is single-sided, so letting
+            // it drive the cull mode would cull exactly the double-sided
+            // surfaces whose material went missing. Shading is the fallback's;
+            // which faces exist stays the surface's.
+            const bool doubleSided = resolved.state == MaterialSlot::Missing
+                                         ? imported.DoubleSided
+                                         : material->DoubleSided;
+            static_assert(static_cast<int>(Diligent::PBR_Renderer::ALPHA_MODE_BLEND) ==
+                              static_cast<int>(Diligent::GLTF::Material::ALPHA_MODE_BLEND),
+                          "the two alpha enums must stay value-identical for this cast");
+            // **`CULL_MODE_FRONT`, and it is measured, not a typo** (T0141.12).
+            // Which cull enum keeps a mesh's *geometric* front faces depends on
+            // the whole chain -- glTF's CCW winding, the engine's left-handed
+            // view, Vulkan's viewport flip -- and in this engine a glTF front
+            // face reaches the rasteriser as a hardware **back** face.
+            // `CULL_MODE_BACK` here removed a single-sided quad that faced the
+            // camera dead-on, with the draw submitted and nothing logged; the
+            // probe that settled it was flipping this enum and watching the
+            // quad appear. `SV_IsFrontFace` agrees (false on those fragments),
+            // which is also why the two-sided normal flip behaves as it does.
+            // Nothing before this line ever drew a single-sided mesh, so no
+            // test could have caught it earlier. The deeper convention -- that
+            // hardware and geometric facing disagree engine-wide -- is
+            // recorded on T0141 and deliberately not re-decided here: flipping
+            // `FrontCounterClockwise` instead would invert `SV_IsFrontFace`
+            // for every existing surface and with it every measured baseline.
             const Diligent::PBR_Renderer::PSOKey key{
                 Diligent::PBR_Renderer::RenderPassType::Main, flags,
-                material.DoubleSided ? Diligent::CULL_MODE_NONE : Diligent::CULL_MODE_BACK};
+                static_cast<Diligent::PBR_Renderer::ALPHA_MODE>(material->Attribs.AlphaMode),
+                doubleSided ? Diligent::CULL_MODE_NONE : Diligent::CULL_MODE_FRONT};
 
             Diligent::IPipelineState* pso = renderer->pipeline(graphics, key);
             if (pso == nullptr) {
@@ -394,7 +814,7 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                                    Diligent::MAP_FLAG_DISCARD, materialAttribs);
                 if (materialAttribs != nullptr) {
                     const Diligent::GLTF_PBR_Renderer::PBRMaterialShaderAttribsData data{
-                        flags, renderer->GetSettings().TextureAttribIndices, material};
+                        flags, renderer->GetSettings().TextureAttribIndices, *material};
                     Diligent::GLTF_PBR_Renderer::WritePBRMaterialShaderAttribs(materialAttribs,
                                                                                data);
                 }
@@ -457,6 +877,22 @@ bool SceneRenderer::create(Diligent::IRenderDevice* device, Diligent::IDeviceCon
     info.InputLayout = inputLayout;
 
     impl->renderer = std::make_unique<SurfacePipeline>(device, nullptr, context, info);
+
+    // The checkerboard, created up front rather than on first miss: it is 16x16
+    // and the alternative is a draw path that can fail to build a texture,
+    // which is a worse place to be than paying a kilobyte on startup. Its
+    // absence is survivable -- the fallback then binds the renderer's white
+    // default and the mesh still draws, just less loudly wrong.
+    impl->placeholder = makePlaceholderTexture(device);
+    if (impl->placeholder && impl->placeholder->valid()) {
+        // Created without a context, so the transition happens here -- the
+        // same pattern the glTF loader and `PBR_Renderer`'s own defaults use.
+        const Diligent::StateTransitionDesc barrier{
+            impl->placeholder->texture(), Diligent::RESOURCE_STATE_UNKNOWN,
+            Diligent::RESOURCE_STATE_SHADER_RESOURCE,
+            Diligent::STATE_TRANSITION_FLAG_UPDATE_STATE};
+        context->TransitionResourceStates(1, &barrier);
+    }
 
     Diligent::CreateUniformBuffer(device, impl->renderer->GetPRBFrameAttribsSize(),
                                   "hp PBR frame attribs", &impl->frameAttribs);
@@ -673,7 +1109,7 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
         selectLightsFor(lights, objectPosition, item.layers, kMaxLights, impl.selected);
         writeFrameAttribs(impl.selected);
 
-        if (impl.drawModel(context, *mesh->model(), item, item.mesh)) {
+        if (impl.drawModel(context, *mesh->model(), item, item.mesh, pool)) {
             ++counted.submitted;
         }
     }

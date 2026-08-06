@@ -167,6 +167,26 @@ RTX 2080 — their arithmetic, to the byte.
       test, against the real resource signature the probe never had. The
       public `probePrecompiledSpirvPipeline` went with it; `zig build docs`
       regenerated.*
+- [ ] 142.14 **VFS-backed shader source through `ISlangFileSystem`** (was
+      T0141.13, numbered 2026-08-06 — it had been "moved to T0142" with no
+      number to land on). A game's `.slang` is content (D13) and must reach the
+      compiler through the VFS. **Resolution order: engine → game → DiligentFX**,
+      engine and DiligentFX names reserved, extending the same compound factory
+      `FactoryFileSystem` already bridges — one resolution order, both
+      compilers. **Hard blocker for 142.15.**
+- [ ] 142.15 **The `.slang` material asset, and a `shader` field on
+      `Material`** (was T0141.1, numbered 2026-08-06 — same orphan). A material
+      must be able to name a shader before anything can cook (142.7), reload
+      (142.8) or reflect (142.9) one; T0060 deliberately did not foreclose the
+      field. The module implements `IHpMaterial` (142.2) and arrives through
+      142.14. A material whose shader is missing renders T0141.12's
+      checkerboard; one whose shader will not compile is T0141.4's case.
+- [ ] 142.16 **Unshaded as a game-facing option** (was T0141.15, numbered
+      2026-08-06 — same orphan). Under D28 an interface method with a default —
+      not a PSO permutation bit and not a macro, though `Material::unlit`'s
+      data path keeps the permutation T0141.12 built. Must stay compile-time in
+      effect: the default folds away under static specialisation, and that is
+      to be verified rather than hoped.
 - [ ] 142.13 **Retire the HLSL path.** When the engine's shaders are Slang, the
       hand-written `.psh`/`.fxh` in `engine/shaders/` go, along with
       `cmake/hp_embed_shaders.cmake` if cooking replaces embedding. **Two paths
@@ -184,11 +204,11 @@ RTX 2080 — their arithmetic, to the byte.
 
 | T0141 subtask | Effect |
 |---|---|
-| 141.1 custom shader asset | **Superseded** — the asset is a `.slang` module |
+| 141.1 custom shader asset | **Superseded** by **142.15** — the asset is a `.slang` module |
 | 141.2 parameter reflection | **Superseded** by 142.9, and reconsidered against Diligent's existing reflection |
 | 141.5 hot reload | **Superseded** by 142.8 |
-| 141.13 VFS shader source | **Reshaped** — resolution order still engine → game → DiligentFX, but through `ISlangFileSystem` |
-| 141.15 `HP_UNSHADED` | **Reshaped** — an interface method with a default, not a macro |
+| 141.13 VFS shader source | **Reshaped** into **142.14** — resolution order still engine → game → DiligentFX, but through `ISlangFileSystem` |
+| 141.15 `HP_UNSHADED` | **Reshaped** into **142.16** — an interface method with a default, not a macro |
 | 141.6 `HpMaterial.fxh` | **Becomes** 142.2. The field list and its rules survive; the language changes |
 | 141.7 / 141.8 parallax, triplanar | **Unaffected** — still a displaced `VSOutput` copy handed to their getters |
 | 141.10 / 141.11 | **Done**, and 141.11 is the acceptance test for 142.3 |

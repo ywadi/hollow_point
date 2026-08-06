@@ -295,9 +295,12 @@ T0060 already says it must not foreclose and does not.
 
 ## Subtasks
 
-- [→] 141.1 **Moved to T0142.** A custom shader material is a `.slang`
+- [→] 141.1 **Moved to T0142.15.** A custom shader material is a `.slang`
       module implementing `IHpMaterial` (D28); the asset shape follows from the
-      language, so designing it against HLSL would be work done twice
+      language, so designing it against HLSL would be work done twice.
+      *(Numbered 2026-08-06 — this line previously said only "moved to T0142"
+      with no subtask on the receiving end, which is the one-way-reference
+      failure the backlog rules exist to prevent.)*
 - [→] 141.2 **Moved to T0142.9.** Slang reflects parameters from *source*,
       so the inspector works before a shader compiles — and Diligent already
       reflects constant-buffer contents at runtime
@@ -321,7 +324,8 @@ T0060 already says it must not foreclose and does not.
       list, the "adding is free, removing breaks shipped games" promise and the
       "nothing is exposed before the system behind it exists" rule all carry over
       unchanged — only the language does not
-- [→] 141.15 **Moved to T0142** — under D28 this is an interface method with a
+- [→] 141.15 **Moved to T0142.16** *(numbered 2026-08-06; was an orphan)* —
+      under D28 this is an interface method with a
       default implementation, not a PSO permutation bit and not a macro, so the
       design below is superseded even though the requirement is not.
       **Original:** **Unshaded as a game-facing option** — `#define HP_UNSHADED 1`,
@@ -340,7 +344,8 @@ T0060 already says it must not foreclose and does not.
       side already has: `HpSurface.psh` is no more public than `engine/src/*.cpp`.
       **Not before 141.6 settles** — a generator written against a contract that
       is still moving is work done twice
-- [→] 141.13 **Moved to T0142** — the resolution order below still holds
+- [→] 141.13 **Moved to T0142.14** *(numbered 2026-08-06; was an orphan)* —
+      the resolution order below still holds
       (engine, then game, then DiligentFX; engine and DiligentFX names reserved),
       but it is enforced through `ISlangFileSystem` rather than Diligent's
       factory, because Slang compiles first. **Original:** **A VFS-backed shader source**, so a game's shader is content like
@@ -365,9 +370,19 @@ T0060 already says it must not foreclose and does not.
 - [x] 141.11 **The textured-render regression test** T0134 could not write (was
       60.11) — a textured mesh with its pixels asserted, which is what catches an
       unwritten `PBRFrameAttribs::Renderer` and its garbage `MipBias`
-- [ ] 141.12 **Render the missing-material fallback** — T0060.10 defines the
+- [x] 141.12 **Render the missing-material fallback** — T0060.10 defines the
       convention and the three-state table; this draws it, and must reach the
-      same code path as 141.4's failed-compile pattern
+      same code path as 141.4's failed-compile pattern.
+      **Done 2026-08-06, and it turned out to be the whole three-state table,
+      not just the third row**: drawing the fallback needs exactly the
+      machinery that renders any `hp::Material` (convert to `GLTF::Material`,
+      bind textures by GUID, key the PSO), so `Assigned` materials reach the
+      pixels with it — which item 6's `shader` field presupposes anyway.
+      Asserted on hardware: unlit magenta checks with **no light in the
+      scene**, warning once per GUID across three frames; an assigned unlit
+      green material renders exactly (0, 255, 0). Found and fixed on the way:
+      single-sided culling was inverted engine-wide (see notes) and the
+      placeholder/pool textures were 2D where the shader wants 2D arrays
 - [ ] 141.9 **Tessellation / displacement**, or an explicit decision not to.
       Further out than the other two: `PBR_Renderer` creates no hull or domain
       shaders, so this is new pipeline work rather than new shader code
@@ -746,20 +761,79 @@ zero failures.**
 
 ### Remaining, in dependency order
 
+*(Corrected 2026-08-06: the earlier version of this table still listed
+141.1/141.2/141.5/141.13 as remaining here after they moved to T0142, with
+141.13 blocking work that had moved with it.)*
+
 | | | Blocked on |
 |---|---|---|
-| **141.12** | draw the missing-material checkerboard | — **next** |
+| **141.3** | `RenderStateCache` / `BytecodeCache` | — **next** |
 | **141.7 / 141.8** | parallax + height, triplanar | — |
-| **141.13** | VFS-backed shader source | — |
-| **141.1 / 141.2** | custom shader asset, parameter reflection | 141.13 |
-| **141.15** | `HP_UNSHADED` as a PSO permutation | 141.1 |
-| **141.3** | `RenderStateCache` / `BytecodeCache` | — |
-| **141.4** | error shader on compile failure | 141.1 |
-| **141.5** | shader hot reload | 141.13 |
+| **141.4** | error shader on compile failure | 142.15 (the `.slang` asset) |
 | **141.14** | generated shader-contract docs, gated in CI | 141.6 settling |
 | **141.9** | tessellation | deferred: *when a silhouette must change* |
 
+Moved to T0142 and tracked there: 141.1 → **142.15**, 141.2 → **142.9**,
+141.5 → **142.8**, 141.13 → **142.14**, 141.15 → **142.16**.
+
 ## Notes / findings
+
+### 141.12 landed 2026-08-06 — material assets reach the pixels, and the first single-sided draw found an engine-wide winding inversion
+
+**What landed.** `SceneRenderer` now resolves every surface's slot through
+`resolveMaterialSlot` and draws the three-state table: `Imported` unchanged,
+`Assigned` renders the material asset (converted to `GLTF::Material` via
+`MaterialBuilder`, textures bound by GUID from the pool, SRB cached per asset
+and rebuilt on pointer change), `Missing` renders `missingMaterial()` with the
+checkerboard bound as its base colour. Drawing the fallback required exactly
+the machinery that renders any material asset, so the `Assigned` row came with
+it rather than after it. The unlit half is the engine's own PSO permutation:
+`SurfacePipeline::kPsoFlagUnshaded`, a **user-defined** flag that `build()`
+turns into the contract's `HP_UNSHADED` macro — DiligentFX's own
+`PSO_FLAG_UNSHADED` was evaluated and is the wrong tool: its `PSOKey`
+constructor strips every texture flag and its footer outputs the frame-wide
+`UnshadedColor`, so the checkerboard could never be sampled through it.
+
+**Measured, on hardware (RTX 4070 Laptop, Vulkan, both targets):** a missing
+material in a scene with **no light at all** renders (127, 0, 127) centre mean
+with 1442 loud-magenta and 1342 near-black centre pixels — the checks, undimmed,
+which is the unlit proof; the warning fires **once** across three frames. An
+assigned unlit green material renders exactly **(0, 255, 0)**; the imported
+control in the same scene is exactly (0, 0, 0). Suites: 302 fast + 89
+integration + 17 gpu (505 assertions), both targets, zero failures; docs green.
+
+**The winding finding, and it is engine-wide.** The first single-sided draw
+this engine ever made came back invisible: **a glTF front face reaches the
+rasteriser as a hardware back face** (glTF's CCW winding x the left-handed
+view x Vulkan's viewport flip), so `CULL_MODE_BACK` culls exactly the faces a
+single-sided material means to keep. Probed three ways: flipping the cull enum
+made the quad appear, an `SV_IsFrontFace` colour probe returned *false* on
+fragments facing the camera, and setting `FrontCounterClockwise = true`
+inverted the flip for every existing surface — the lit suite went black,
+because its lights sit behind the quads and every measured baseline was
+calibrated against the two-sided flip. Resolution for now: single-sided
+materials cull `FRONT` (one line in `SceneRenderer`, argued in place), and the
+convention question — whether hardware facing should be realigned with
+geometric facing, which would re-baseline every pixel test and change
+two-sided lighting — is **left open here deliberately. T0086 must look at this
+before shadow bias is tuned**, and T0086's Refs now say so.
+
+**Also fixed on the way:** `makePlaceholderTexture` and `loadTexture` created
+plain 2D textures; every material slot in the shader is `Texture2DArray`
+(matching the glTF loader and `PBR_Renderer`'s defaults), and Vulkan refuses
+the mismatch — both now create one-slice arrays. Alpha mode now reaches the
+pipeline from the drawn material (it was hardwired opaque), the shader gained
+`RenderPBR.psh`'s compile-time cutout discard and runtime blend premultiply,
+and `PSO_FLAG_ENABLE_TEXCOORD_TRANSFORM` is set per material when a bound UV
+channel's transform is not the identity — without it the material's UV
+transforms were written and silently ignored.
+
+**Not verified:** `AlphaMode::Mask` and `Blend` land in the pipeline state and
+the shader, but no pixel test pins them yet — T0045's sorted transparent queue
+is where blend becomes testable honestly. Texture hot reload behind an
+unchanged material object is not detected by the binding cache (recorded for
+T0058). UV-transform rotation composition mirrors the glTF loader's
+(`Scale * Rotation(-r)`) but has no pixel test.
 
 ### D26's mechanism is proven on hardware, 2026-08-05 — first increment of 141.10
 

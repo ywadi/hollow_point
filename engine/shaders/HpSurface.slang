@@ -356,6 +356,17 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(TMaterial material, VSOutput V
     // default routes through D27's `HpSurface` function.
     material.surface(surfaceIn, surfaceOut);
 
+#if PBR_ALPHA_MODE == PBR_ALPHA_MODE_MASK
+    // The cutout test, mirroring `RenderPBR.psh` (T0060's `AlphaMode::Mask`).
+    // Compile-time on the key's alpha mode, exactly as theirs is -- an opaque
+    // pipeline carries no discard at all, which matters because a shader with
+    // any `discard` in it disables early depth on most hardware.
+    if (surfaceOut.BaseColor.a < g_Material.Basic.AlphaMaskCutoff)
+    {
+        discard;
+    }
+#endif
+
     PSOutput Out;
 
     // -----------------------------------------------------------------------
@@ -465,6 +476,15 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(TMaterial material, VSOutput V
     Out.Color.rgb = ResolveLighting(shading, lighting);
     Out.Color.a = surfaceOut.BaseColor.a;
 #endif
+
+    // Premultiplied alpha for blended surfaces, mirroring `RenderPBR.psh`.
+    // `SurfacePipeline` sets `SrcBlend = ONE` for `ALPHA_MODE_BLEND`, which
+    // *assumes* the shader has already multiplied -- one without the other
+    // over-brightens every transparent surface by exactly its alpha.
+    if (g_Material.Basic.AlphaMode == PBR_ALPHA_MODE_BLEND)
+    {
+        Out.Color.rgb *= Out.Color.a;
+    }
 
     return Out;
 }

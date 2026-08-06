@@ -184,7 +184,20 @@ std::shared_ptr<TextureAsset> loadTexture(Diligent::IRenderDevice* device,
     }
 
     auto asset = std::make_shared<TextureAsset>();
-    loader->CreateTexture(device, &asset->impl_->texture);
+    {
+        // **A one-slice array, not a plain 2D texture** (T0141.12). The surface
+        // shader declares every material slot as `Texture2DArray` -- the same
+        // shape `PBR_Renderer`'s defaults and the glTF loader's textures have --
+        // and Vulkan refuses a 2D view in an array slot. The loader would create
+        // TEX_2D, so the texture is created here from the loader's own desc and
+        // data with only the dimension changed; the subresource layout of a
+        // one-slice array is identical.
+        Diligent::TextureDesc desc = loader->GetTextureDesc();
+        desc.Type = Diligent::RESOURCE_DIM_TEX_2D_ARRAY;
+        desc.ArraySize = 1;
+        const Diligent::TextureData data = loader->GetTextureData();
+        device->CreateTexture(desc, &data, &asset->impl_->texture);
+    }
     if (!asset->impl_->texture) {
         HP_LOG_ERROR(kLog, "the device refused a texture for '{}'", path);
         return nullptr;
@@ -218,7 +231,11 @@ std::shared_ptr<TextureAsset> makePlaceholderTexture(Diligent::IRenderDevice* de
 
     Diligent::TextureDesc desc;
     desc.Name = "hp placeholder";
-    desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
+    // A one-slice array, because the surface shader's material slots are
+    // `Texture2DArray` (T0141.12) and this texture's whole purpose is to be
+    // bound into one when an asset is missing. Vulkan refuses a 2D view there.
+    desc.Type = Diligent::RESOURCE_DIM_TEX_2D_ARRAY;
+    desc.ArraySize = 1;
     desc.Width = kSize;
     desc.Height = kSize;
     desc.MipLevels = 1;

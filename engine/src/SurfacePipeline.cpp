@@ -295,6 +295,12 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
     // rather than a free function building pipelines beside the renderer.
     Diligent::ShaderMacroHelper macros = DefineMacros(key);
 
+    // The engine's own permutation bits, appended after DiligentFX's.
+    // `HP_UNSHADED` is the shader contract's name for it (`HpMaterial.fxh`
+    // defaults it to 0), so defining it here is what turns the user-defined
+    // PSO bit into the compile-time branch the contract promises.
+    macros.Add("HP_UNSHADED", (key.GetFlags() & kPsoFlagUnshaded) != 0 ? 1 : 0);
+
     // The generated interface structs, which the shaders include by name --
     // exactly as `RenderPBR.psh` does. Reusing the base class's generators is
     // what keeps our pixel shader and their vertex shader agreeing about
@@ -441,6 +447,19 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
     // exactly like a transform bug and is not one.
     psoInfo.GraphicsPipeline.RasterizerDesc.CullMode = key.GetCullMode();
 
+    // `FrontCounterClockwise` stays at Diligent's default (false), and the
+    // consequence is measured rather than assumed: with the engine's
+    // left-handed view on Vulkan, a glTF front face reaches the rasteriser
+    // wound counter-clockwise -- a hardware **back** face under this setting.
+    // Setting the flag true would align hardware facing with geometric facing,
+    // and was tried: it inverts `SV_IsFrontFace` for every existing surface,
+    // the two-sided normal flip inverts with it, and the whole lit suite went
+    // black because its test lights sit behind the quads and were calibrated
+    // against the flip. Changing this is a real decision about the engine's
+    // winding convention (recorded on T0141), not a one-line fix; until it is
+    // taken, single-sided culling compensates in `SceneRenderer` by culling
+    // `FRONT`, and T0086's shadow bias must revisit this before shipping.
+
     // Blend state follows the alpha mode, the same way. Opaque and mask do not
     // blend; `Blend` is premultiplied alpha, matching what T0106.4 will want for
     // particles. **Depth writes stay on for blended geometry here** because
@@ -448,7 +467,7 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
     // transparent queue, and turning writes off before that exists would trade
     // one wrong image for another.
     Diligent::RenderTargetBlendDesc& blend = psoInfo.GraphicsPipeline.BlendDesc.RenderTargets[0];
-    if (key.GetAlphaMode() == Diligent::GLTF::Material::ALPHA_MODE_BLEND) {
+    if (key.GetAlphaMode() == Diligent::PBR_Renderer::ALPHA_MODE_BLEND) {
         blend.BlendEnable = true;
         blend.SrcBlend = Diligent::BLEND_FACTOR_ONE;
         blend.DestBlend = Diligent::BLEND_FACTOR_INV_SRC_ALPHA;
