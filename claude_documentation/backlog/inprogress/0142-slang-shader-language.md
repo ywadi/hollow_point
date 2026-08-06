@@ -50,7 +50,23 @@ RTX 2080 — their arithmetic, to the byte.
       directions. Two files outside the directory are deliberate exceptions,
       argued in the notes: DiligentCore's `HLSLDefinitions.fxh`, which is read
       not authored, and `Render.cpp`'s 12-line fullscreen blit.)*
-- [ ] `slangc` is pinned in `.harness/`, offline after bootstrap, on both hosts.
+- [x] `slangc` is pinned in `.harness/`, offline after bootstrap, on both hosts.
+      *(2026-08-06. The Linux host was proven when 142.1 landed. The **Windows
+      host** was proven by CI and nobody went back to look: run 31082064445,
+      job "Tests (Windows host, native)" on `windows-latest`, was the first
+      after 142.1 changed `bootstrap.ps1` and therefore a cold harness cache —*
+      `Cache not found for input keys: harness-windows-858663e0...`*, then*
+      `==> installing slang 2026.14.1 (linux-x86_64)` *and*
+      `==> installing slang 2026.14.1 (windows-x86_64)`*, then*
+      `slang 2026.14.1 (linux-x86_64 + windows-x86_64)` *in the toolchain
+      summary, then* `zig build test -Dtest=all -Dtarget=windows` *green at
+      302 fast / 214,660 assertions and 89 integration / 515. **Offline after
+      bootstrap** is the offline-configure job plus the fact that nothing in
+      the build fetches slang. **Not proven, and it is a different claim**: no
+      shader has been compiled through `slangc` **on** a Windows host, because
+      a GitHub Windows runner has no GPU and the compile happens at
+      pipeline-build time. That is 142.11's territory and it is answered there
+      by the Windows **target**, not by the Windows host.)*
 - [~] A shipped game links no Slang and reads cooked output only. *The
       **link** half is fact: `readelf -d libhp_engine.so` lists only libm,
       libc, ld-linux, libpthread and libdl — no slang, and `ldd hp_editor`
@@ -179,16 +195,39 @@ RTX 2080 — their arithmetic, to the byte.
       Slang cannot see a `MeshRenderer` and never will. What unifies is the
       *presentation*: the editor should consume one description of "a named,
       typed, editable value" whichever side produced it.
-- [ ] 142.11 **Windows and D3D12.** The D28 probe was Linux and Vulkan only.
+- [x] 142.11 **Windows and D3D12.** The D28 probe was Linux and Vulkan only.
       DXIL output, and the `SLANG_ParameterGroup_*` naming behaviour on the D3D12
       backend, are both unverified.
-      *2026-08-06: the Windows half is now verified under wine — the Windows
+      *2026-08-06, first pass: the Windows half is verified — the Windows
       suite loads `slang-compiler.dll`, compiles, and its pixels match its own
-      baseline digit-for-digit. Still owed: a native Windows host run. And a
-      finding that reshapes the D3D12 half: **this toolchain has no D3D12
-      backend at all** — MinGW gates it out on ATL (recorded in D25), so
-      DXIL/D3D12 verification is moot until the toolchain decision reopens, and
-      should be closed against D25 rather than left implying work.*
+      baseline digit-for-digit. And a finding that reshapes the D3D12 half:
+      **this toolchain has no D3D12 backend at all** — MinGW gates it out on
+      ATL (recorded in D25), so DXIL/D3D12 verification is moot until the
+      toolchain decision reopens, and should be closed against D25 rather than
+      left implying work.*
+      ***Closed 2026-08-06.* Both halves resolve, and one of them resolves by
+      correcting this ticket rather than by new work.**
+      **D3D12/DXIL is moot, not pending.** D25 records that DiligentCore's own
+      probes report `HAS_ATL=FALSE, D3D11_SUPPORTED=FALSE, D3D12_SUPPORTED=FALSE,
+      MINGW_BUILD=TRUE`, and D29 then made Vulkan the only backend outright.
+      There is no D3D12 backend to emit DXIL for and no signature to name
+      `SLANG_ParameterGroup_*` into. Verifying it would require MSVC, a real
+      Windows SDK, and giving up cross-compiling Windows from Linux (D1/D3) —
+      which is a *toolchain* decision the decision log already took, not a
+      slang question. **If D25 ever reopens, this is the work that comes back**,
+      and D25's Refs now say so.
+      **The Windows run is not owed, and this ticket said otherwise because
+      `CLAUDE.md` did.** "Still owed: a native Windows host run" rested on the
+      belief that the Windows suite runs under wine here. It does not. Measured:
+      `+- test (windows-x86_64, gpu) as a real Windows process via WSL interop
+      success 55s`, against `NVIDIA GeForce RTX 4070 Laptop GPU`, loading
+      `slang-compiler.dll` through the real Windows loader — 26 cases, 562
+      assertions. `build.zig` calls wine "a degraded path, not a normal one"
+      and prints which runner it chose precisely so this is read rather than
+      assumed (T0125); two sessions assumed. Corrected in `CLAUDE.md` (commit
+      3da6656). **The distinct claim that remains is the Windows *host* build**,
+      which is T0142's `slangc is pinned` Done-when, and CI proves that
+      separately — see there.*
 - [x] 142.12 **Delete or promote the probe.** `tests/gpu/slang_spirv_probe_test.cpp`
       and `hp::probePrecompiledSpirvPipeline` are experimental scaffolding from
       D28, gated behind `HP_SLANG_PROBE_DIR`. They become the real integration
@@ -301,6 +340,41 @@ RTX 2080 — their arithmetic, to the byte.
 | 141.10 / 141.11 | **Done**, and 141.11 is the acceptance test for 142.3 |
 
 ## Notes / findings
+
+### Corrected 2026-08-06 — "under wine" is wrong everywhere it appears in this ticket
+
+Every claim below that says the Windows suite ran **under wine** is wrong, and
+the error is one of reading rather than of measurement — the pixel values, the
+compile counts and the byte comparisons all stand. What was misread is *what
+executed them*.
+
+`build.zig`'s `runnerFor` prefers **WSL interop** on a Linux host with a
+Windows target: `binfmt_misc` hands the `.exe` to the real Windows loader, so
+it runs as a genuine Windows process against the real driver (T0004). Wine is
+the fallback for a real Linux box, and the code calls it *"a degraded path, not
+a normal one"* (T0125). The build prints which one it picked. Measured here:
+
+```
++- test (linux-x86_64, gpu) natively success 12s
++- test (windows-x86_64, gpu) as a real Windows process via WSL interop success 55s
+```
+
+and across that run, 58 device lines say `NVIDIA GeForce RTX 4070 Laptop GPU`
+against 57 saying `llvmpipe (LLVM 20.1.2, 256 bits)` — **the Windows target on
+real hardware, the Linux target on software Vulkan.** So this ticket's evidence
+is *stronger* than it claimed, not weaker: `slang-compiler.dll` is being loaded
+by Windows itself, and the SPIR-V it produces is being consumed by a real
+NVIDIA driver.
+
+The Linux target gets llvmpipe because this host's Vulkan ICD list is
+`asahi, gfxstream, intel_hasvk, intel, lvp, nouveau, radeon, virtio` — `lvp` is
+lavapipe and there is no NVIDIA ICD, though `libcuda.so`/`libd3d12.so` are
+present. Environment configuration, not an engine defect; recorded because it
+decides what a Linux-target gpu number is evidence *of*.
+
+`CLAUDE.md` was the source of the error and is fixed (commit 3da6656). CI is
+the one place the word still belongs: a GitHub ubuntu runner really is a plain
+Linux box and really does use wine.
 
 ### For 142.9, measured on the pinned slangc: parameters and hints need no parser
 

@@ -1132,6 +1132,17 @@ single-toolchain hermetic cross-compile the harness is built around, which is a
 real price. It is written down here so it can be weighed, rather than discovered
 later as "the engine does not support DLSS".
 
+**What comes back with it, so a reopening is costed rather than cheap** (added
+2026-08-06 by T0142.11): DLSS and DirectSR are the visible half. The other half
+is **T0142.11's D3D12 work, which closed as *moot* against this entry rather
+than as done** — DXIL output from `slangc`, and Slang's `SLANG_ParameterGroup_*`
+resource naming against a D3D12 signature, are both unverified and unverifiable
+while there is no D3D12 backend to run them on. D29 has since made Vulkan the
+only backend outright, so reopening this is two decisions, not one. **If that
+happens, T0142.11's text is the specification of what to verify** — it is in
+`completed/0142-slang-shader-language.md`, and it is written for exactly this
+reader.
+
 ---
 
 ## D26 — The engine owns the **surface stage**; DiligentFX supplies the lighting. Diligent's source is never modified
@@ -1526,10 +1537,19 @@ day by T0142's first implementation session; the remainder still stand.)*
   identical** pixel values to the glslang baseline, against the real resource
   signature, on both targets.
 - No compile-time or runtime performance measurement.
-- ~~Nothing on Windows~~ **Verified under wine** (the Windows suite loads
-  `slang-compiler.dll` and matches its baseline); a native Windows host run is
-  still owed. **D3D12/DXIL is moot** rather than unverified: this toolchain
-  has no D3D12 backend at all (MinGW/ATL, see D25).
+- ~~Nothing on Windows~~ **Verified, and the first correction here undersold
+  it.** That line originally read "verified under wine ... a native Windows
+  host run is still owed", which was wrong twice (T0142.11, 2026-08-06). The
+  Windows suite runs **as a real Windows process via WSL interop** — the build
+  prints the runner and it says so — loading `slang-compiler.dll` through the
+  Windows loader and rendering on an `NVIDIA GeForce RTX 4070 Laptop GPU`;
+  wine is the fallback path and was not taken. Separately, `bootstrap.ps1` has
+  run **on a Windows host** in CI from a cold harness cache, installing both
+  pinned slang packages, with the Windows-target suites green after it. What is
+  still not proven is a *shader compile* on a Windows host, which needs a GPU a
+  CI runner does not have. **D3D12/DXIL is moot** rather than unverified: this
+  toolchain has no D3D12 backend at all (MinGW/ATL, see D25), and D29 removed
+  every backend but Vulkan.
 - `RenderPBR.psh` itself has not been compiled through Slang — and no longer
   needs to be: the engine's own pixel shader replaced it (D26/T0141.10).
 - **New, found by measurement**: Slang's HLSL and GLSL outputs rename every
