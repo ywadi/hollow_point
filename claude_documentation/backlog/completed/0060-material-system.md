@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 450 |
 | **Created** | 2026-08-03 |
-| **Refs** | [0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) — **must reconcile this ticket's material model with `PBR_Renderer`'s material attribs, or diverge deliberately and say so.** T0028 adopted DiligentFX's PBR renderer; read T0134.1 before designing materials. [../inprogress/0141-custom-shader-materials.md](../inprogress/0141-custom-shader-materials.md) — **took the renderer half of this ticket on 2026-08-05**; see "Re-cut" below. [../open/0059-prefabs.md](../open/0059-prefabs.md) 59.10 |
+| **Refs** | [0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) — **must reconcile this ticket's material model with `PBR_Renderer`'s material attribs, or diverge deliberately and say so.** T0028 adopted DiligentFX's PBR renderer; read T0134.1 before designing materials. [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — **took the renderer half of this ticket on 2026-08-05**; see "Re-cut" below. [../open/0059-prefabs.md](../open/0059-prefabs.md) 59.10 |
 | **Scope** | **The material data model only.** Anything that decides how a surface is *shaded* is T0141's, including the standard material shader |
 
 **From T0143 (2026-08-06): `hp::Material` gains fields after this ticket closed.**
@@ -87,7 +87,7 @@ T0045 needs material *identity and blend mode* to sort and bucket on. T0086 need
 shader. So this ticket keeps exactly what unblocks them and gives up the rest —
 which is what "T0060 should follow what T0141 can do" means in practice.
 
-### Descoped 2026-08-05 — moved to [../inprogress/0141-custom-shader-materials.md](../inprogress/0141-custom-shader-materials.md)
+### Descoped 2026-08-05 — moved to [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md)
 
 Not dropped, and not "later" in the vague sense: T0141 exists, is blocked by this
 ticket, and carries the notes rather than leaving them here to rot.

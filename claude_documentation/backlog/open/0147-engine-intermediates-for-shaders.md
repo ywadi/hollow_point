@@ -8,11 +8,11 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 458 |
 | **Created** | 2026-08-06 |
-| **Refs** | [../inprogress/0141-custom-shader-materials.md](../inprogress/0141-custom-shader-materials.md) — its Done-when promises intermediates and no subtask delivers the sampled ones; [0093-visibility-and-fog-of-war.md](0093-visibility-and-fog-of-war.md) — the visibility field arrives with it, through this mechanism; [0094-gameplay-extensible-rendering.md](0094-gameplay-extensible-rendering.md) — 94.4/94.5 are the game-fed half of this; [../completed/0046-frame-render-targets.md](../completed/0046-frame-render-targets.md) — every target already carries `BIND_SHADER_RESOURCE`, and design-gaps item 8 flagged the scene-colour seam into it; [0096-hdr-pipeline-and-tonemapping.md](0096-hdr-pipeline-and-tonemapping.md) — sidedness rules; [0106-vfx-sprites-and-flipbooks.md](0106-vfx-sprites-and-flipbooks.md) — soft particles are this ticket's depth read; [0089-fog-and-atmospherics.md](0089-fog-and-atmospherics.md) — fog is another consumer |
+| **Refs** | [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — its Done-when promises intermediates and no subtask delivers the sampled ones; [0093-visibility-and-fog-of-war.md](0093-visibility-and-fog-of-war.md) — the visibility field arrives with it, through this mechanism; [0094-gameplay-extensible-rendering.md](0094-gameplay-extensible-rendering.md) — 94.4/94.5 are the game-fed half of this; [../completed/0046-frame-render-targets.md](../completed/0046-frame-render-targets.md) — every target already carries `BIND_SHADER_RESOURCE`, and design-gaps item 8 flagged the scene-colour seam into it; [0096-hdr-pipeline-and-tonemapping.md](0096-hdr-pipeline-and-tonemapping.md) — sidedness rules; [0106-vfx-sprites-and-flipbooks.md](0106-vfx-sprites-and-flipbooks.md) — soft particles are this ticket's depth read; [0089-fog-and-atmospherics.md](0089-fog-and-atmospherics.md) — fog is another consumer |
 
 ## Why
 
-**T0141's Done-when promises it and nothing delivers it:** *"Custom shaders
+**T0141's Done-when promised it and nothing delivered it:** *"Custom shaders
 receive engine intermediates — visibility (T0093), screen position, depth,
 world position — not just a finished colour."* Audited 2026-08-06:
 `HpSurfaceInput` carries `ScreenPos` (the raw `SV_POSITION`, so the fragment's
@@ -21,6 +21,12 @@ shader can reach is anything **sampled from the frame**: the scene depth
 *texture* (what is behind this transparent fragment), the scene *colour*
 (refraction, distortion, frosted glass), T0093's visibility, or any texture a
 game's own pass produced (T0094).
+
+**T0141 closed 2026-08-06 with that Done-when at `[~]`**, the interpolated half
+shipped and the sampled half named as this ticket's — so nothing here waits on
+it any more, and nothing there will tick when this lands. **The evidence goes
+in this ticket**, and its closure is what makes the promise true; a closed
+T0141 will not be edited again.
 
 The consumers are already queued, which is why this is one mechanism and not
 four retrofits: T0106.5's soft particles fade against sampled scene depth;

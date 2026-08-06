@@ -9,7 +9,7 @@
 | **Order** | 548 |
 | **Created** | 2026-08-06 |
 | **Blocks** | [0080-particles.md](0080-particles.md) — 80.2 *is* a compute dispatch (D15: "GPU compute... this subtask is the system"), and no compute pipeline exists to write it against |
-| **Refs** | **D15** (the commitment), **D32** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)); [../inprogress/0142-slang-shader-language.md](../inprogress/0142-slang-shader-language.md) — `SlangCompiler` grows a stage; D22 — the shape any gameplay exposure must take; T0050 — transitions are not thread-safe, and dispatch placement must respect it; T0030 — dispatches need GPU zones |
+| **Refs** | **D15** (the commitment), **D32** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)); [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md) — `SlangCompiler` grows a stage; D22 — the shape any gameplay exposure must take; T0050 — transitions are not thread-safe, and dispatch placement must respect it; T0030 — dispatches need GPU zones |
 
 ## Why
 

@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 456 |
 | **Created** | 2026-08-06 |
-| **Refs** | **D30**/**D32** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)); [../inprogress/0141-custom-shader-materials.md](../inprogress/0141-custom-shader-materials.md) — 141.7's vertex-displacement note names this exact change; [../inprogress/0142-slang-shader-language.md](../inprogress/0142-slang-shader-language.md) — one compiler for both stages is what makes this cheap; T0041 — skinning must be built against *our* vertex shader, see "Sequencing"; [0145-lighting-stage-own-the-light-loop.md](0145-lighting-stage-own-the-light-loop.md) — the same ladder, one stage earlier |
+| **Refs** | **D30**/**D32** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)); [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — 141.7's vertex-displacement note names this exact change; [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md) — one compiler for both stages is what makes this cheap; T0041 — skinning must be built against *our* vertex shader, see "Sequencing"; [0155-terrain-rendering.md](0155-terrain-rendering.md) — **the likely first consumer of 146.7's tessellation**, whose 155.2 LOD decision is where it is first *wanted*; [0156-parallax-under-triplanar.md](0156-parallax-under-triplanar.md) — 156.6 evaluates silhouette POM, and its outcome moves 146.7's trigger in one direction or the other; [0145-lighting-stage-own-the-light-loop.md](0145-lighting-stage-own-the-light-loop.md) — the same ladder, one stage earlier |
 
 ## Why
 
@@ -92,6 +92,55 @@ compile (142.6), on top of the capability.
       `.slang`, measure the compile-request count and cold-compile delta
 - [ ] 146.6 Name the motion-vector seam for T0111's remainder (a comment and a
       line here, not an implementation)
+- [ ] 146.7 **Tessellation / displacement, or an explicit decision not to**
+      (was T0141.9, inherited 2026-08-06 when T0141 closed — see "Inherited
+      from T0141" below). **Deferred with a named trigger, not scheduled**:
+      *when a silhouette must change at a density the mesh does not carry.*
+      `PBR_Renderer` creates no hull or domain shaders at all, so this is new
+      **pipeline** work rather than new shader code — which is why it lands
+      here, where the pre-rasteriser stages become the engine's, and not on the
+      ticket that happens to want it first
+
+## Inherited from T0141, 2026-08-06 — tessellation, and a trigger that needed sharpening
+
+**141.9 came here when T0141 closed**, and the choice of destination was
+argued rather than defaulted, because there were two plausible ones.
+
+**Why here and not T0155 (terrain).** Terrain is the obvious *consumer* —
+displacement is what makes a heightmap read as landscape, and 155.2 is
+literally the decision "clipmap, chunked quadtree, or theirs extended", where
+GPU tessellation is a candidate. But what tessellation actually needs is
+**hull and domain stages in the PSO**: `PBR_Renderer::CreatePSO` sets `pVS` and
+`pPS` and nothing else, and D26 is what made adding stages possible at all.
+That is this ticket's code — the one that stops the vertex shader being
+Diligent's and moves `kVertexShader` into the engine's own module. Homing a
+general pipeline capability on terrain would have shaped it like terrain, and
+the second consumer (a hero asset, a wall that must have a real silhouette)
+would have found it in the wrong place. **T0155 gets the cross-reference
+instead**, on 155.2, which is where the want will first appear.
+
+**The trigger needed sharpening, and that is the useful part of the move.**
+T0141 deferred this *"when a silhouette must change"*. This ticket **delivers
+silhouette change** — 146.3's worked example asserts a pixel moves far from its
+rest position, and the Done-when says "silhouettes included, the thing 141.7's
+parallax explicitly cannot do". So the trigger as written is discharged by the
+ticket that inherited it, which would have read as "do it now" to anyone
+arriving cold.
+
+What tessellation adds over 146.1–146.6 is **new geometry**, not moved
+geometry: vertex displacement is bounded by the mesh's existing density, so a
+low-poly wall pushed along its normals still has a faceted outline. The trigger
+is therefore restated: **when a silhouette must change at a density the mesh
+does not carry.** Two things would pull it in — T0155's LOD scheme choosing
+tessellation, and T0156.6's silhouette-POM evaluation coming back negative
+(if pixel-shader silhouettes work, the pressure drops; if they do not, this is
+the remaining answer). Both tickets say so on their own side.
+
+**What T0141 established and this inherits unchanged:** tessellation is
+reachable *only* because D26 chose C2 — we own PSO creation. C1 (patching
+DiligentFX's shaders) could never have reached it, because the missing piece
+was C++ PSO construction rather than shader text, and that was the finding that
+settled C1-vs-C2 as a capability question rather than a maintenance one.
 
 ## Notes / findings
 

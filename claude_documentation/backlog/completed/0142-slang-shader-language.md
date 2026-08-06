@@ -2,13 +2,13 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Large |
 | **Phase** | 4 — Render layer |
 | **Order** | 415 |
 | **Created** | 2026-08-06 |
-| **Refs** | **D28** (the decision), D26, D27, **D29**/[T0144](../completed/0144-remove-opengl-backend.md) — removed the OpenGL backend and with it the single-source constraint, unblocking 142.2 and closing 142.13's GL half; [T0141](../inprogress/0141-custom-shader-materials.md) — this supersedes how 141.1, 141.2, 141.5, 141.13 and 141.15 are built; [T0143](../open/0143-extended-material-features.md) — the extended lineup is authored in Slang once this lands; T0087, T0096, T0086 — each adds shading their own shader work must reach; [../open/0151-shader-variants-and-compile-cost.md](../open/0151-shader-variants-and-compile-cost.md) — owns the session/module-API disposition, precompiled modules against 142.6's 2–4x, and must decide cooked-output shape *with* 142.7; [../open/0150-compute-pipelines.md](../open/0150-compute-pipelines.md) — grows `SlangCompiler`'s stage mapping beyond the two-value ternary |
+| **Refs** | **D28** (the decision), D26, D27, **D29**/[T0144](../completed/0144-remove-opengl-backend.md) — removed the OpenGL backend and with it the single-source constraint, unblocking 142.2 and closing 142.13's GL half; [T0141](../completed/0141-custom-shader-materials.md) — this supersedes how 141.1, 141.2, 141.5, 141.13 and 141.15 are built; [T0143](../open/0143-extended-material-features.md) — the extended lineup is authored in Slang once this lands; T0087, T0096, T0086 — each adds shading their own shader work must reach; [../open/0151-shader-variants-and-compile-cost.md](../open/0151-shader-variants-and-compile-cost.md) — owns the session/module-API disposition, precompiled modules against 142.6's 2–4x, and must decide cooked-output shape *with* 142.7; [../open/0150-compute-pipelines.md](../open/0150-compute-pipelines.md) — grows `SlangCompiler`'s stage mapping beyond the two-value ternary |
 
 ## Why
 
@@ -139,7 +139,7 @@ RTX 2080 — their arithmetic, to the byte.
       *Done 2026-08-06: forwarded verbatim per compile request; the textured
       permutation (119 macros, `USE_AO_MAP`, `TextureAttribId` constants and
       all) compiles and renders identically.*
-- [ ] 142.6 **Choose the interchange format and measure it.** Slang → HLSL → DXC
+- [~] 142.6 **Choose the interchange format and measure it.** Slang → HLSL → DXC
       keeps Diligent's whole pipeline and lets Slang stay ignorant of nothing;
       Slang → SPIR-V skips a step. **Measure both** — cold compile time and first
       frame — rather than picking on taste. The bytecode path is proven to work
@@ -160,6 +160,26 @@ RTX 2080 — their arithmetic, to the byte.
       142.7's cooking, both of which make the cold compile a cache miss
       rather than a startup cost. First-frame-in-the-editor was not measured
       separately.*
+      ***Closed `[~]` 2026-08-06 — the decision is made; the editor number is
+      not obtainable on this host, and that was measured rather than
+      assumed.*** The **format** question is answered: Slang → HLSL is
+      disqualified outright, so there is no second candidate to stopwatch
+      against and "measure both" is moot rather than skipped. The **cost**
+      question is answered by the 2–4x above and mitigated twice since —
+      141.3's persistent cache (11.88s → 2.25s on the heaviest gpu case) and
+      142.7's cooking (a frame rendered from a cooked archive with **zero**
+      compiles). **The editor first-frame number was attempted and
+      abandoned:** the editor has no bounded-frame mode and no timestamped
+      first-present marker, so the only available proxy was frames rendered in
+      a fixed 15-second window — and here that is noise. Warm 174 frames,
+      cache disabled 171, cold-filling 144, warm again **295**: two identical
+      warm runs differ by 1.7x, more than the effect being measured, because
+      the Linux target renders through `llvmpipe` (this host has no NVIDIA
+      Vulkan ICD). A number off that would have been worse than none. **What
+      it would take**, written down rather than left implicit: a logged
+      time-to-first-present, and either a host where the Linux target reaches
+      real hardware or the same measurement on the Windows target, which
+      does.*
 - [x] 142.7 **Cook shaders as compiled assets.** Slang → cooked output at cook
       time, keyed on content hash like everything else. **But `Cook.hpp`'s
       invariant does not hold**: it promises anything cooked can be re-cooked from
@@ -309,6 +329,40 @@ RTX 2080 — their arithmetic, to the byte.
       code is gone: `compileEngineShader` compiled through Diligent's HLSL front
       end and now goes through slang — which is what caught the include-resolution
       divergence in the notes.*
+
+## Closed 2026-08-06 — Slang is the shader language, and the pixels never noticed the change
+
+**D28's bet was that a compiler swap could be invisible.** It was, to six
+significant figures, twice: once when the shader moved to Slang (142.3) and
+again when it moved behind an `interface` (142.2). The ten frame dumps the
+textured-surface tests write are **byte-identical** across both changes, and
+every printed guard value is digit-identical on both targets — base colour
+(116, 108, 69) var 16.382, shading normal 12.165, occlusion 6.3734, rock
+(85, 80, 57) 14.5219, metal (12, 12, 11) 6.8905, lit quad (211, 144, 144). A
+compiler swap that reproduces floats to six digits is executing equivalent
+arithmetic, not similar arithmetic.
+
+| The claim | The evidence |
+|---|---|
+| A game authors a `.slang` material and it renders, without the engine changing | 142.15 — a three-line module overriding `baseColor` renders exactly (255, 0, 0); the methods it does *not* override still govern, which is the partial-override claim |
+| The engine's own shaders are `.slang`, mechanically | 142.13 — `engine/shaders/` holds two `.slang` files and `hp_embed_shaders.cmake` **refuses to run** if a `.psh`/`.vsh`/`.fxh` appears, verified in both directions |
+| `slangc` is pinned on both hosts | CI run 31082064445, Windows host, cold harness cache: `==> installing slang 2026.14.1` for both packages, then 302 fast + 89 integration green with `-Dtarget=windows` |
+| A shipped game reads cooked output | 142.7/**D34** — the same scene renders the byte-identical frame from a cooked archive with **zero** compiles; a variant that missed the cook is one loud unrecoverable line plus the fallback, never a silent substitution |
+| The engine links no Slang | `readelf -d libhp_engine.so` lists libm, libc, ld-linux, libpthread, libdl — the runtime is `dlopen`ed |
+
+**Final verification, this tree, 2026-08-06:** `zig build all` exit 0 with no
+`^FAILED:|error:`; fast 310/214,690 and integration 89/515 on both targets; gpu
+26 cases / 562 assertions on both targets; `zig build docs` green. The Windows
+target runs **as a real Windows process via WSL interop** on an RTX 4070 — see
+the correction note below, because this ticket said "under wine" throughout and
+was wrong about it.
+
+**What is honestly not finished**, and each is a `[~]` or a Descoped row rather
+than a quiet omission: `dist` still stages the slang runtime by glob, twice on
+Linux (T0128 owns the layout); the editor first-frame number could not be
+measured on this host and 142.6 says exactly why; and the whole editor half —
+hot reload, the inspector, and the reflection-mechanism decision — went to
+T0032 with its open question intact.
 
 ## Descoped 2026-08-06 — the editor half went to T0032, with its open question
 

@@ -8,7 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 600 |
 | **Created** | 2026-08-02 |
-| **Refs** | [../inprogress/0142-slang-shader-language.md](../inprogress/0142-slang-shader-language.md) — **inherited its editor half** (142.8/142.9/142.10 → 32.7/32.8/32.9), including an undecided question this ticket must settle; [../inprogress/0141-custom-shader-materials.md](../inprogress/0141-custom-shader-materials.md) — the same work reached T0142 from 141.2/141.5 first, so the chain is 141.2 → 142.9 → 32.8 and 141.5 → 142.8 → 32.7; [../completed/0085-layers-and-masks.md](../completed/0085-layers-and-masks.md) — 85.6's mask editor widget also waits here; [0035-hierarchy-and-inspector.md](0035-hierarchy-and-inspector.md) — the inspector panel itself, which 32.8/32.9 describe the *contents* of; [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) **D28** (Slang), **D12** (the editor is a module host) |
+| **Refs** | [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md) — **inherited its editor half** (142.8/142.9/142.10 → 32.7/32.8/32.9), including an undecided question this ticket must settle; [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — the same work reached T0142 from 141.2/141.5 first, so the chain is 141.2 → 142.9 → 32.8 and 141.5 → 142.8 → 32.7; [../completed/0085-layers-and-masks.md](../completed/0085-layers-and-masks.md) — 85.6's mask editor widget also waits here; [0035-hierarchy-and-inspector.md](0035-hierarchy-and-inspector.md) — the inspector panel itself, which 32.8/32.9 describe the *contents* of; [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) **D28** (Slang), **D12** (the editor is a module host) |
 
 ## Why
 

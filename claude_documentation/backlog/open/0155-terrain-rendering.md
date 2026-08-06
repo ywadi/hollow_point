@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 464 |
 | **Created** | 2026-08-06 |
-| **Refs** | [../../documentation/12-vendored-capabilities.md](../../documentation/12-vendored-capabilities.md) — **read this first**, it is why this ticket exists; [0153-surface-detiling.md](0153-surface-detiling.md) — **terrain is de-tiling's worst case** and this ticket is its most demanding consumer; [0154-noise-generation.md](0154-noise-generation.md) — procedural heightmaps and erosion both need it; [0086-shadows.md](0086-shadows.md) — their terrain reuses the *same* cascaded path, so this depends on it rather than duplicating it; [0088-sky-atmosphere-time-of-day.md](0088-sky-atmosphere-time-of-day.md) — the sky above it, and the sample that carries the terrain; [0045-culling-and-render-queues.md](0045-culling-and-render-queues.md) — LOD selection is queue work; [0097-texture-import-pipeline.md](0097-texture-import-pipeline.md) — heightmaps and splat masks are content; **D24**, **D26** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) |
+| **Refs** | [../../documentation/12-vendored-capabilities.md](../../documentation/12-vendored-capabilities.md) — **read this first**, it is why this ticket exists; [0153-surface-detiling.md](0153-surface-detiling.md) — **terrain is de-tiling's worst case** and this ticket is its most demanding consumer; [0154-noise-generation.md](0154-noise-generation.md) — procedural heightmaps and erosion both need it; [0086-shadows.md](0086-shadows.md) — their terrain reuses the *same* cascaded path, so this depends on it rather than duplicating it; [0088-sky-atmosphere-time-of-day.md](0088-sky-atmosphere-time-of-day.md) — the sky above it, and the sample that carries the terrain; [0045-culling-and-render-queues.md](0045-culling-and-render-queues.md) — LOD selection is queue work; [0097-texture-import-pipeline.md](0097-texture-import-pipeline.md) — heightmaps and splat masks are content; [0146-vertex-stage-hook.md](0146-vertex-stage-hook.md) — **owns tessellation (146.7)**, deferred with a trigger this ticket is the likeliest to pull; **D24**, **D26** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) |
 
 ## Why
 
@@ -106,7 +106,14 @@ source in front of you.
 
 - [ ] 155.1 **Read `EarthHemisphere.cpp` and make the adopt-vs-build call.** First,
       and with the source open. Record rejections
-- [ ] 155.2 The LOD scheme — clipmap, chunked quadtree, or theirs extended
+- [ ] 155.2 The LOD scheme — clipmap, chunked quadtree, or theirs extended.
+      **If the answer is GPU tessellation, the stage work is `T0146.7` and it
+      is not built** — `PBR_Renderer` creates no hull or domain shaders, so
+      adding them is pipeline work that lives with the ticket that owns the
+      pre-rasteriser stages (inherited there from T0141.9 on 2026-08-06, with
+      the trigger *"when a silhouette must change at a density the mesh does
+      not carry"*). **This ticket is its likeliest trigger**; do not
+      re-derive the capability here
 - [ ] 155.3 Heightmap as content: format, streaming, and T0097's path
 - [ ] 155.4 Texture blending: height-aware, slope/altitude rules, layer count
 - [ ] 155.5 De-tiling on terrain (consumes T0153; this is its hardest case)

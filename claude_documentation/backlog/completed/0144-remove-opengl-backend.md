@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 412 |
 | **Created** | 2026-08-06 |
-| **Refs** | **D29** (the decision), **amends D1**; [T0142](../inprogress/0142-slang-shader-language.md) — **this unblocks 142.2**, which cannot proceed while GL constrains the shader source; T0130 — reverse-Z, which `DepthConvention` implements and which must survive the simplification; T0025, T0027, T0135 — GL paths they created |
+| **Refs** | **D29** (the decision), **amends D1**; [T0142](../completed/0142-slang-shader-language.md) — **this unblocks 142.2**, which cannot proceed while GL constrains the shader source; T0130 — reverse-Z, which `DepthConvention` implements and which must survive the simplification; T0025, T0027, T0135 — GL paths they created |
 
 ## Why
 

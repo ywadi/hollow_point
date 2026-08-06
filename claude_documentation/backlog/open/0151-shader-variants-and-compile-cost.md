@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 445 |
 | **Created** | 2026-08-06 |
-| **Refs** | [../inprogress/0141-custom-shader-materials.md](../inprogress/0141-custom-shader-materials.md) — its Done-when requires "variant growth bounded by a decision that is written down", and this ticket is where that decision's mechanisms live; 141.3 (the cache) and [../inprogress/0142-slang-shader-language.md](../inprogress/0142-slang-shader-language.md) 142.6 (the measured 2–4x) / 142.7 (cooking) are the near-term mitigations this composes with; [0143-extended-material-features.md](0143-extended-material-features.md) — 143.8's permutation count is the pressure gauge; [0153-surface-detiling.md](0153-surface-detiling.md) — **153.8 registers three de-tiling tiers as a further axis**, and it is the standing proof that the axis list is open: any bound written here must accommodate axes that do not exist yet; **D28**, **D30**, **D34** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) — **D34 bounds this ticket's output**: whatever mechanism it picks, a shipped game receives per-variant SPIR-V and links no compiler |
+| **Refs** | [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — its Done-when requires "variant growth bounded by a decision that is written down", and this ticket is where that decision's mechanisms live; 141.3 (the cache) and [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md) 142.6 (the measured 2–4x) / 142.7 (cooking) are the near-term mitigations this composes with; [0143-extended-material-features.md](0143-extended-material-features.md) — 143.8's permutation count is the pressure gauge; [0153-surface-detiling.md](0153-surface-detiling.md) — **153.8 registers three de-tiling tiers as a further axis**, and it is the standing proof that the axis list is open: any bound written here must accommodate axes that do not exist yet; **D28**, **D30**, **D34** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) — **D34 bounds this ticket's output**: whatever mechanism it picks, a shipped game receives per-variant SPIR-V and links no compiler |
 
 ## Why
 
@@ -102,7 +102,10 @@ whose register pressure is the *maximum* over registered materials.
       against 142.6's numbers
 - [ ] 151.4 Move one engine axis to a link-time constant end to end, measure,
       and only then decide the rest (one proof before a policy)
-- [ ] 151.5 Write the bound, cross-reference T0141/142.7/143.8
+- [ ] 151.5 Write the bound, cross-reference T0141/142.7/143.8. **T0141 closed
+      2026-08-06 having descoped that Done-when to this ticket** — nothing there
+      bounds the variant *count*, and nobody rereads a closed ticket, so the bound
+      is this ticket's alone to write
 - [ ] 151.6 Record the dynamic-dispatch trigger and its bindless prerequisite
 
 ## Notes / findings

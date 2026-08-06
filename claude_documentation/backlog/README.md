@@ -20,66 +20,35 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-06 — fourteenth revision of the day, and the 141/142 authoring
-chain is finished end to end. 142.7 (cooking) and 142.13 (retiring the HLSL
-path) both landed, on top of 141.12, 141.3, 141.7, 141.8, 142.14, 142.15, 141.4
-and 142.16, with T0152's engine half (152.2–4) in between. A game authors a
-`.slang` material — broken ones included, unshaded ones included — the engine
-answers correctly in every case, `engine/shaders/` holds nothing but `.slang`
-and refuses to build if that stops being true, and the result cooks to SPIR-V
-that renders byte-identically with no compiler present (**D34**).** The fourth revision was
-the first derived from the code rather than from the tickets, and it demoted
-142.7 for a reason that has since been discharged: shader source was
-embedded-only and `Material` carried no shader field, so a game's `.slang` could
-not reach the compiler and no material could name one. 142.14 and 142.15 fixed
-both, which is what made cooking a real asset rather than a format invented for
-one that did not exist.
+**Set 2026-08-06 — fifteenth revision of the day, and the one that empties the
+141/142 chain. `T0141` and `T0142` both closed**: the engine owns the surface
+stage, a game authors a `.slang` material and sees it render exactly, a broken
+one is loud magenta plus one logged compiler error, the result cooks to SPIR-V
+that renders byte-identically with no compiler present (**D34**), and the
+contract a game writes against is now **generated into `docs/shaders/` and
+gated in CI** (141.14). What is left of those two tickets left them: the editor
+half is **T0032**, tessellation is **T0146.7**, the sampled intermediates are
+**T0147**, the variant bound is **T0151**. Nothing is parked.
 
 The owner's reason for this section: *"This way we know what needs to happen next
 even if the context and session restart."* The [Board](#board) below is every
 ticket there is; this is what is in flight **now**, in order.
 
-**This sequence is subtask-level, because the work braids.** T0141 and T0142 are
-both in progress and neither finishes before the other starts — T0141 owns the
-rendering, T0142 owns the language, and the authoring path crosses between them.
-Listing them as two ticket rows hid the order *inside* them, which is how the
-previous revision put cooking ahead of the asset it cooks.
-
 **Just landed, and therefore not upcoming:** all of **T0060** (the material
-asset); from **T0141**, 141.0 (D26), 141.6 (the contract, D27), **141.10** (the
-engine draws every mesh through its own shader — byte-identical to DiligentFX's),
-**141.11** (the textured-render guard, plus per-channel debug views) and
-**141.12** (the missing-material checkerboard — and with it the whole
-three-state table: material *assets* now reach the pixels, `Assigned` included)
-**141.3** (the persistent SPIR-V cache — the measured 2–4x slang cold
-compile is now a one-time miss; 11.9s → 2.3s on the heaviest gpu case) and
-**141.7** (parallax occlusion — the owner's "screen displacement", proven by
-a differential pixel test, and the stress test that found `IHpMaterial`
-missing its before-sampling hook, now `surfaceCoordinates`) and **141.8**
-(triplanar — a UV-less mesh rendered in rock from world position alone, the
-case no other sampling path can fake); from **T0142**, **142.14** (game
-shaders through the VFS, engine names enforced-reserved) and **142.15** (the
-`.slang` material asset — a game module overriding one method renders, exact
-to the pixel, and T0142's headline Done-when is met); **142.7** (cooked
-shaders, **D34** — cooked output is the *same artefact* as 141.3's cache under
-one content-hash key, differing only in that it ships as content and that a
-miss is fatal rather than a recompile; T0151's joint question is answered with
-it, and the honest finding is that cooking does **not** replace
-`hp_embed_shaders.cmake`, because the key is a hash over the source);
-**142.13** (the HLSL path retired — `HpMaterial.slang` is the contract, the
-"only `.slang` in `engine/shaders/`" rule is a **build failure** rather than a
-convention, `compileEngineShader` stopped being a second compiler, and doing
-that immediately found slang and Diligent disagreeing about include
-resolution); from **T0141** again,
-**141.4** (a module that fails to compile renders the checkerboard, with the
-compiler's error logged once, not per frame) and **142.16** (unshaded as an
-interface method — exact semantics, and the honest finding that slang does
-not fold the dead lighting at the SPIR-V level, handed to T0151); and
-from **T0142**, the whole mechanism — 142.1 (`slangc` pinned), **142.2
-(`IHpMaterial`)**, 142.3, 142.4, 142.5, 142.12. The engine's material shader
-compiles through Slang to **SPIR-V** and the frames are byte-identical to the
-pre-Slang build. Also **D29, executed**: **T0144** removed the OpenGL backend —
-Vulkan only, the gpu suite runs each case once.
+asset) and all of **T0141** and **T0142** — the decision (141.0/**D26**), the
+contract (141.6/142.2/**D27**/**D28**), the engine's own pixel shader byte-identical to
+DiligentFX's (141.10), the textured-render guard and per-channel debug views
+(141.11), the missing-material checkerboard and with it the whole three-state
+table (141.12), the persistent SPIR-V cache (141.3), parallax occlusion (141.7),
+triplanar on a UV-less mesh (141.8), the loud-failure path (141.4), the shader
+contract's generated reference (141.14); and from T0142, `slangc` pinned on both
+hosts (142.1), the Slang port with pixels unchanged (142.3), generated structs and
+macros through `ISlangFileSystem` (142.4/142.5), cooked shaders (142.7/**D34**),
+Windows and the D3D12 question closed against **D25** (142.11), the probe deleted
+by being superseded (142.12), the HLSL path retired mechanically (142.13), game
+shaders through the VFS with engine names *enforced* reserved (142.14), the
+`.slang` material asset (142.15) and unshaded as an interface method (142.16).
+Also **D29, executed**: **T0144** removed the OpenGL backend — Vulkan only.
 
 **Two decisions were amended this week and both are load-bearing.** **D26** no
 longer claims the engine owns texture sampling — it owns `main` and calls their
@@ -88,65 +57,59 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0143](open/0143-extended-material-features.md) | extended material features | **Everything DiligentFX's PBR has, plus the ability to override it** — clearcoat, sheen, anisotropy, iridescence, transmission, volume. Amends D24. Wiring rather than new maths, because their getters are already included and callable |
-| 2 | [T0152](inprogress/0152-winding-convention.md) | the winding convention: the remainder | **The engine half landed 2026-08-06** (152.2–4: header declared, assets re-wound, cull reverted — and the old lit baseline turned out to encode the inversion via a clamped `NdotV`; before/after in the ticket). Remaining: the determinant rule (152.5), the chirality probe and the owner's mirror decision (152.6), the conventions-doc section (152.7) |
-| 3 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | **Shader-independent**, so it may slot anywhere — see below |
-| 4 | [T0086](open/0086-shadows.md) | shadows | Last because it needs the surface stage *and* adds `ShadowFactor` to the material contract, so it wants that contract settled in Slang first — **and T0152 must land first** — 141.12's winding finding was corrected by D33 (the assets, not the engine), and shadow bias tuned before the assets are re-wound bakes the inversion into every tuned value. **Now also behind T0145** (D30): the shadow lookup lives inside the light loop T0145 moves into the engine, so the loop must land before shadow sampling is written — or it is written twice |
-
-### The three orphaned subtasks are numbered now — resolved 2026-08-06
-
-**141.1, 141.13 and 141.15 had been marked `[→]` "Moved to T0142" with no
-subtask on the receiving end** — listed as remaining work in *neither* ticket.
-They now exist as **142.15**, **142.14** and **142.16** respectively, T0141's
-`[→]` lines point at those numbers, and T0141's "Remaining, in dependency
-order" table has been corrected to match. Kept here as a paragraph rather than
-deleted, because the failure mode — a move with no number to land on — is the
-one-way-reference trap the backlog rules exist to prevent, and it happened
-once.
+| 1 | [T0156](open/0156-parallax-under-triplanar.md) | parallax under triplanar | **First, so the demo scene can follow.** 141.7 and 141.8 landed hours apart and nobody wrote their intersection; `Material.hpp` says parallax is inert under triplanar, which describes what shipped rather than what is possible. The owner wants it as a proper game-dev-facing option and wants a demo scene on top of it — a cube or terrain surface in rock, triplanar and POM together, viewable in the editor. Smaller than it looks: triplanar's projections are world-axis-aligned, so each tangent frame is a *constant* and 141.7's derivative-frame construction, the expensive half, is not needed. Cost is ~1x on flat ground and ~2x on slopes under `pow(abs(n), 4)` weights, peaking exactly where the value does |
+| 2 | [T0143](open/0143-extended-material-features.md) | extended material features | **Everything DiligentFX's PBR has, plus the ability to override it** — clearcoat, sheen, anisotropy, iridescence, transmission, volume. Amends D24. Wiring rather than new maths, because their getters are already included and callable |
+| 3 | [T0152](inprogress/0152-winding-convention.md) | the winding convention: the remainder | **The engine half landed 2026-08-06** (152.2–4: header declared, assets re-wound, cull reverted — and the old lit baseline turned out to encode the inversion via a clamped `NdotV`; before/after in the ticket). Remaining: the determinant rule (152.5), the chirality probe and the owner's mirror decision (152.6), the conventions-doc section (152.7) |
+| 4 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | **Shader-independent**, so it may slot anywhere — see below |
+| 5 | [T0086](open/0086-shadows.md) | shadows | Last because it needs the surface stage *and* adds `ShadowFactor` to the material contract, so it wants that contract settled in Slang first — **and T0152 must land first** — 141.12's winding finding was corrected by D33 (the assets, not the engine), and shadow bias tuned before the assets are re-wound bakes the inversion into every tuned value. **Now also behind T0145** (D30): the shadow lookup lives inside the light loop T0145 moves into the engine, so the loop must land before shadow sampling is written — or it is written twice |
 
 ### T0045 is the movable one, and that is the useful thing to know about it
 
 What it needs from the material work is **identity and blend mode** — `Guid` plus
 `AlphaMode` — which T0060 delivered in full, and nothing at all from the surface
-stage; its own dependency note says so. It is listed twelfth only because the
-T0141/T0142 chain carries the blocking relationships and should not queue behind
-it. Moving it earlier costs nothing, so **if that chain stalls — on the owner, or
-on the orphan numbering above — this is what to pick up instead of waiting.**
+stage; its own dependency note says so. It is listed late only because the
+T0141/T0142 chain carried the blocking relationships; that chain has now closed,
+so **moving it earlier costs nothing** and it is the obvious pick if anything
+above stalls on the owner.
 
 ### This is not the `Order` column, and where they disagree they do so on purpose
 
 [Execution order](#execution-order) is the derived order across the whole
 backlog and is not being replaced. The visible disagreement is T0045: it carries
-**Order 440**, so it sorts between T0142 (415) and T0141 (455) on the board,
-while this sequence takes it after both. Neither view is wrong — 440 is still
-where T0045 belongs in the long-run derivation, and this is what is in flight.
-If the sequence position turns out to be the permanent one, **re-sequence the
-ticket and say why in the ticket**, rather than leaving the two views to drift
-apart quietly.
+**Order 440**, so it sorts earlier on the board, while this sequence takes it
+after T0156, T0143 and T0152. Neither view is wrong — 440 is still where T0045
+belongs in the long-run derivation, and this is what is in flight. If the
+sequence position turns out to be the permanent one, **re-sequence the ticket and
+say why in the ticket**, rather than leaving the two views to drift apart quietly.
+
+### Where T0141 and T0142's remainder went — read this before reopening either
+
+Both closed 2026-08-06 with their unfinished work **moved rather than parked**,
+which is the T0095 → T0105 and T0054/T0056 → T0025 shape. Nobody rereads a
+closed ticket, so the destinations are listed here too:
+
+| Remainder | Now | Note |
+|---|---|---|
+| hot reload in the editor (141.5 → 142.8) | **T0032.7** | The engine half already works; the editor half has nowhere to live yet |
+| material inspector from reflection (141.2 → 142.9) | **T0032.8** | **Carries a live undecided question** — Diligent already reflects constant-buffer contents via `IShader::GetConstantBufferDesc()`, one bool away (`LoadConstantBufferReflection`, currently false), so Slang's reflection is *not* the automatic answer. Moved as text, not as a pointer |
+| one inspector over two reflection systems (142.10) | **T0032.9** | `entt::meta` and shader reflection do not merge; the *presentation* is what unifies |
+| tessellation / displacement (141.9) | **T0146.7** | Hull and domain stages are PSO work, so it lands where the pre-rasteriser stages become the engine's. **Trigger sharpened**: *when a silhouette must change at a density the mesh does not carry* — T0146 already delivers silhouette change at the density a mesh has. T0156.6 moves it either way |
+| the *sampled* engine intermediates | **T0147** | Scene depth, scene colour, T0093's visibility, game-fed textures |
+| "variant growth bounded by a written decision" | **T0151** | 141.3 and 142.7 bound a variant's *cost*; nothing bounds the *count* |
+| `dist` stages the slang runtime by glob, twice on Linux | **T0128** | 142's *"a shipped game reads cooked output only"* is `[~]` for this reason |
+
+The three orphaned subtasks that had been marked `[→]` with no subtask on the
+receiving end (141.1, 141.13, 141.15) were numbered as 142.15, 142.14 and 142.16
+and are all closed. Kept as a sentence rather than deleted, because a move with
+no number to land on is the one-way-reference trap the backlog rules exist to
+prevent, and it happened once.
 
 ### What is deliberately not here
-
-**T0142's editor half** — 142.8 (hot reload), 142.9 (the material inspector from
-reflection) and 142.10 (one inspector over two reflection systems). All three
-want editor scaffolding that does not exist yet (T0032 and after), so sequencing
-them here would be listing work nobody can start. 142.9 also carries an
-undecided question worth keeping visible rather than filed: Diligent already
-reflects constant-buffer contents via `IShader::GetConstantBufferDesc()` and it
-is **one bool away** (`LoadConstantBufferReflection`, currently false), so
-Slang's reflection is not the automatic answer.
-
-**Two remainders that are closeable rather than work.** 142.11's D3D12 half
-should be **closed against D25** — this toolchain has no D3D12 backend at all,
-MinGW gates it out on ATL — leaving only a native-Windows-host run genuinely
-owed. 142.6's remaining first-frame measurement is largely answered by item 2.
 
 **Nothing else in Phase 4** — T0096, T0087, T0117 and the rest — and that is not
 a judgement that they matter less. The items above have blocking relationships
 **to each other**; the rest do not, so listing them would be the Order column
 again, one scroll higher.
-
-**T0141.9 (tessellation)** stays out with a named trigger rather than a
-position: **when a silhouette must change.**
 
 ### Keeping it true
 
@@ -235,15 +198,16 @@ wrong in the confident voice of a document that is normally right.
 | 445 | [T0134](completed/0134-pbr-renderer-adoption.md) | How far DiligentFX's PBR renderer goes, and what inherits it | 4 — Render layer | ✅ DONE | High | Moderate |
 | 450 | [T0060](completed/0060-material-system.md) | Material assets | 4 — Render layer | ✅ DONE | High | Moderate |
 | 412 | [T0144](completed/0144-remove-opengl-backend.md) | Remove the OpenGL backend; Vulkan only | 4 — Render layer | ✅ DONE | High | Moderate |
-| 415 | [T0142](inprogress/0142-slang-shader-language.md) | Slang as HollowPoint's shader language | 4 — Render layer | 🚧 IN PROGRESS | High | Large |
+| 415 | [T0142](completed/0142-slang-shader-language.md) | Slang as HollowPoint's shader language | 4 — Render layer | ✅ DONE | High | Large |
 | 425 | [T0143](open/0143-extended-material-features.md) | Everything DiligentFX's PBR has, and the ability to extend it | 4 — Render layer | 🔜 TODO | High | Moderate |
-| 455 | [T0141](inprogress/0141-custom-shader-materials.md) | The surface stage: standard and custom material shaders | 4 — Render layer | 🚧 IN PROGRESS | High | Complex |
+| 455 | [T0141](completed/0141-custom-shader-materials.md) | The surface stage: standard and custom material shaders | 4 — Render layer | ✅ DONE | High | Complex |
 | 460 | [T0096](open/0096-hdr-pipeline-and-tonemapping.md) | HDR pipeline, tonemapping and the linear-workflow policy | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 445 | [T0151](open/0151-shader-variants-and-compile-cost.md) | Shader variants bounded: precompiled modules, link-time specialisation | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 456 | [T0146](open/0146-vertex-stage-hook.md) | The vertex stage: own the vertex main, and a game vertex hook | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 458 | [T0147](open/0147-engine-intermediates-for-shaders.md) | Engine intermediates: scene depth, scene colour, game-fed inputs | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 459 | [T0152](inprogress/0152-winding-convention.md) | The winding convention: hardware facing equals glTF facing | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
 | 460 | [T0153](open/0153-surface-detiling.md) | Surface de-tiling: breaking texture repetition, exposed to the game | 4 — Render layer | 🔜 TODO | Medium | Moderate |
+| 461 | [T0156](open/0156-parallax-under-triplanar.md) | Parallax under triplanar, and the silhouette question | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 462 | [T0154](open/0154-noise-generation.md) | Noise: CPU generator, Slang functions, and the bake-to-texture bridge | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 464 | [T0155](open/0155-terrain-rendering.md) | Terrain rendering: their reference implementation is the floor, not the ceiling | 4 — Render layer | 🔜 TODO | Medium | Very Complex |
 | 465 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | 🔜 TODO | High | Complex |

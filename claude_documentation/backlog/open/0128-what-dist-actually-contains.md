@@ -9,7 +9,7 @@
 | **Order** | 740 |
 | **Created** | 2026-08-04 |
 | **Found by** | T0105.4 |
-| **Refs** | [../completed/0105-module-linkage-loose-ends.md](../completed/0105-module-linkage-loose-ends.md), T0109, T0043, T0013, **D34** / [T0142](../inprogress/0142-slang-shader-language.md) 142.7 — **cooking makes dropping the slang runtime possible, and this ticket is where it is decided.** Measured 2026-08-06: `dist` stages the compiler **twice** on Linux (`bin/` and `lib/`, 43.7 MB each of a 281 MB tree) and once on Windows (31.5 MB of 162 MB), by glob. T0142's Done-when *"a shipped game links no Slang and reads cooked output only"* cannot close until a `dist` layout exists that omits it |
+| **Refs** | [../completed/0105-module-linkage-loose-ends.md](../completed/0105-module-linkage-loose-ends.md), T0109, T0043, T0013, **D34** / [T0142](../completed/0142-slang-shader-language.md) 142.7 — **cooking makes dropping the slang runtime possible, and this ticket is where it is decided.** Measured 2026-08-06: `dist` stages the compiler **twice** on Linux (`bin/` and `lib/`, 43.7 MB each of a 281 MB tree) and once on Windows (31.5 MB of 162 MB), by glob. T0142's Done-when *"a shipped game links no Slang and reads cooked output only"* cannot close until a `dist` layout exists that omits it |
 
 ## Why
 

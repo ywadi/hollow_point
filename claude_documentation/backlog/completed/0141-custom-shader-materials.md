@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Complex |
 | **Phase** | 4 — Render layer |
@@ -10,7 +10,7 @@
 | **Created** | 2026-08-05 |
 | **Blocked by** | T0060.1 + T0060.6 only — the material *asset* and per-surface assignment. **Not** the rest of T0060, which was re-cut into this ticket on 2026-08-05 |
 | **Blocks** | **T0086** — shadow sampling must be written against *our* pixel shader, not `RenderPBR.psh` (141.0 is decided; 141.10 is what T0086 now waits on). Height mapping, parallax occlusion, triplanar and vertex displacement — 141.7/141.8 — which no material parameter can express |
-| **Refs** | [../completed/0060-material-system.md](../completed/0060-material-system.md) (split from it), [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md), T0093, T0053, T0094, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D24, [../open/0145-lighting-stage-own-the-light-loop.md](../open/0145-lighting-stage-own-the-light-loop.md) — the lighting rung above this ticket's surface stage (D30), [../open/0146-vertex-stage-hook.md](../open/0146-vertex-stage-hook.md) — owns the `kVertexShader` move this ticket's 141.7 note anticipates, [../open/0147-engine-intermediates-for-shaders.md](../open/0147-engine-intermediates-for-shaders.md) — delivers the *sampled* intermediates this ticket's Done-when promises, [../open/0151-shader-variants-and-compile-cost.md](../open/0151-shader-variants-and-compile-cost.md) — where the "variant growth bounded by a written decision" Done-when gets its decision; [0152-winding-convention.md](0152-winding-convention.md) — **corrects 141.12's winding diagnosis** (D33): the inversion was the test assets' winding contradicting their normals, not the engine's chain; the cull-`FRONT` workaround reverts there |
+| **Refs** | [../completed/0060-material-system.md](../completed/0060-material-system.md) (split from it), [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md), T0093, T0053, T0094, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D24, [../open/0145-lighting-stage-own-the-light-loop.md](../open/0145-lighting-stage-own-the-light-loop.md) — the lighting rung above this ticket's surface stage (D30), [../open/0146-vertex-stage-hook.md](../open/0146-vertex-stage-hook.md) — owns the `kVertexShader` move this ticket's 141.7 note anticipates, [../open/0147-engine-intermediates-for-shaders.md](../open/0147-engine-intermediates-for-shaders.md) — delivers the *sampled* intermediates this ticket's Done-when promises, [../open/0151-shader-variants-and-compile-cost.md](../open/0151-shader-variants-and-compile-cost.md) — where the "variant growth bounded by a written decision" Done-when gets its decision; [../inprogress/0152-winding-convention.md](../inprogress/0152-winding-convention.md) — **corrects 141.12's winding diagnosis** (D33): the inversion was the test assets' winding contradicting their normals, not the engine's chain; the cull-`FRONT` workaround reverts there |
 
 ## Why
 
@@ -60,28 +60,41 @@ surface stage rather than being Diligent's fixed shader.
 
 ## Done when
 
-- [ ] **Custom shader materials** — attach a shader to a material, declare its
-      parameter interface
-- [ ] Custom shader parameters appear in the inspector automatically
+- [~] **Custom shader materials** — attach a shader to a material, declare its
+      parameter interface. *Attaching is done and proven (142.15: `Material::shader`,
+      a `.slang` module overriding one method renders exactly). **Declaring a
+      parameter interface is not**: a custom module has no parameters of its own
+      yet, and the mechanism is undecided — descoped to **T0032.8** with the
+      decision intact.*
 - [x] Shader compilation is cached, not repeated every launch (141.3, 2026-08-06 — persistent SPIR-V cache, measured 11.9s → 2.3s on the heaviest gpu case)
 - [x] A shader that fails to compile renders the **same magenta checkerboard** a
       missing material does, **and** logs the compiler's error — never a crash,
       never a silently wrong surface (141.4, 2026-08-06 — asserted with a log
       capture: one error across three frames)
-- [ ] Shader hot reload in the editor
-- [ ] **Custom shaders receive engine intermediates** — visibility (T0093),
-      screen position, depth, world position — not just a finished colour
-- [ ] Variant growth is bounded by a decision that is written down, not by
-      whatever the permutations happen to be
-- [ ] **The standard material renders through the surface stage** — absorbed
-      from 60.2, and the reason this ticket exists before T0086
+- [~] **Custom shaders receive engine intermediates** — visibility (T0093),
+      screen position, depth, world position — not just a finished colour.
+      *Delivered in halves: `ScreenPos`, `WorldPos`, `CameraPos`, `ViewDir` and
+      the rest of `HpSurfaceInput` are in the contract and generated into
+      `docs/shaders/`. The **sampled** half — scene depth, scene colour, T0093's
+      visibility, game-fed textures — is **T0147**, which exists because no
+      subtask here delivered it.*
+- [x] **The standard material renders through the surface stage** — absorbed
+      from 60.2, and the reason this ticket exists before T0086 (141.10,
+      2026-08-05 — `SceneRenderer` draws through `SurfacePipeline`, and a red
+      quad under a white light is (211, 144, 144) through both shaders: the
+      same bytes, not "close")
 - [x] **Parallax occlusion mapping works on a standard material** — the owner's
       "screen displacement", and the concrete proof the ceiling is lifted
       (141.7, 2026-08-06 — differential pixel test on an oblique rock quad)
-- [ ] A **textured** mesh renders with its pixels asserted — absorbed from 60.11,
-      the regression guard T0134 could not write
-- [ ] **What is *not* delivered is written down with a trigger**, not left vague
-      — see "Tessellation is deferred, with a named trigger"
+- [x] A **textured** mesh renders with its pixels asserted — absorbed from 60.11,
+      the regression guard T0134 could not write (141.11, 2026-08-06 — rock
+      centre (108, 105, 95) variation 14.13 over 21,781 unique colours, plus a
+      per-channel debug view that immediately found three bugs)
+- [x] **What is *not* delivered is written down with a trigger**, not left vague
+      — "Tessellation is deferred, with a named trigger", and the trigger was
+      **sharpened rather than inherited** when 141.9 moved to T0146.7: it is now
+      *when a silhouette must change at a density the mesh does not carry*,
+      because T0146 itself delivers silhouette change at the density a mesh has
 
 ## Capability answer 2026-08-05 — exactly what the surface stage buys, and what it does not
 
@@ -440,9 +453,6 @@ T0060 already says it must not foreclose and does not.
       green material renders exactly (0, 255, 0). Found and fixed on the way:
       single-sided culling was inverted engine-wide (see notes) and the
       placeholder/pool textures were 2D where the shader wants 2D arrays
-- [ ] 141.9 **Tessellation / displacement**, or an explicit decision not to.
-      Further out than the other two: `PBR_Renderer` creates no hull or domain
-      shaders, so this is new pipeline work rather than new shader code
 
 ## Decided 2026-08-05, with the owner — one pattern, three causes, and the console tells you which
 
@@ -825,12 +835,88 @@ zero failures.**
 | | | Blocked on |
 |---|---|---|
 | **141.14** | generated shader-contract docs, gated in CI | ~~141.6 settling~~ — **done 2026-08-06** |
-| **141.9** | tessellation | deferred: *when a silhouette must change* |
+| ~~**141.9**~~ | tessellation | **left this ticket 2026-08-06 → T0146.7**, trigger sharpened — see Descoped |
+
+**Nothing remains.** This ticket closed 2026-08-06.
 
 Moved to T0142 and tracked there: 141.1 → **142.15**, 141.13 → **142.14**,
 141.15 → **142.16** — all three closed. Two went one hop further when T0142
 descoped its editor half on 2026-08-06: 141.2 → 142.9 → **T0032.8**, and
 141.5 → 142.8 → **T0032.7**. Follow the chain rather than the first arrow.
+
+## Closed 2026-08-06 — the ceiling the owner named is lifted, and the evidence is pixels
+
+**The question this ticket opened with was** *"if an editor wants to use screen
+displacement for texture, thats a custom shader or not even possible on the
+engine it self?"*, and the honest answer on 2026-08-05 was **not possible at
+all**. It is now three things, each proven on hardware rather than argued:
+
+| The claim | The evidence |
+|---|---|
+| The engine owns the surface stage (**D26**) | `SceneRenderer` draws every mesh through `SurfacePipeline`; a red quad under a white light is **(211, 144, 144)** through DiligentFX's shader and **(211, 144, 144)** through ours — the same bytes, not "close" (141.10) |
+| Screen displacement works | Zero-scale vs no-height-map frames **bit-identical** (mean abs diff 0.0); `heightScale = 0.08` moves the frame by **15.69** mean abs per channel on a 40° oblique rock quad, unlit, so every differing pixel is a displaced texel (141.7) |
+| A game can write its own | A three-line `.slang` module overriding `baseColor` renders exactly (255, 0, 0) unshaded and exactly (0, 0, 0) shaded with no light — the un-overridden lighting default still governing is the partial-override claim, measured (142.15) |
+| Nothing fails silently | A missing material, an unloadable one and a module that will not compile all render **one** magenta checkerboard, with the compiler's error logged **once** per module across three frames and the draw path silent (141.4, 141.12) |
+| The contract is documented and cannot go stale | `docs/shaders/` is generated from `HpMaterial.slang` and `IHpMaterial`, regenerated by every build and gated by CI (141.14) |
+
+**Final verification, this tree, 2026-08-06:**
+
+```
+zig build all                  EXIT: 0, no ^FAILED:|error:
+zig build test -Dtest=all      fast 310/214,690 + integration 89/515, both targets
+zig build test -Dtest=gpu      26 cases / 562 assertions, both targets
+zig build docs                 green; docs/api and docs/shaders both current
++- test (linux-x86_64, gpu) natively success
++- test (windows-x86_64, gpu) as a real Windows process via WSL interop success
+```
+
+The Windows target reaches an **NVIDIA GeForce RTX 4070 Laptop GPU**; the Linux
+target on this host reaches `llvmpipe` only, because there is no NVIDIA Vulkan
+ICD here. So every pixel claim above is proven on both a real driver and a
+software one — stated because it decides what a Linux-target number is evidence
+of.
+
+**What is honestly not finished** is in the two `[~]` Done-whens and the
+Descoped table below, and none of it is hidden: a custom module has no
+parameters of its own yet (T0032.8, and the mechanism is undecided), there is
+no hot reload (T0032.7), the *sampled* engine intermediates do not exist
+(T0147), the variant bound is unwritten (T0151), and tessellation is deferred
+with a sharpened trigger (T0146.7).
+
+## Descoped 2026-08-06 — what left this ticket, and where it went
+
+**These are no longer this ticket's checklist**, which is the point: leaving a
+box unticked forever is what "moved" is supposed to prevent. Each left because
+it needs something that does not exist, and each is written onto the receiving
+ticket in full rather than as a link.
+
+| Was | Went to | Because |
+|---|---|---|
+| 141.9 tessellation / displacement | **T0146 (146.7)** | Hull and domain stages are **PSO construction**, and T0146 is where the pre-rasteriser stages become the engine's. Deferred there with a **sharpened** trigger — see below |
+| Custom shader parameters in the inspector (Done-when; was 141.2 → 142.9) | **T0032 (32.8)** | There is no inspector. The undecided mechanism moved as text, not a pointer |
+| Shader hot reload in the editor (Done-when; was 141.5 → 142.8) | **T0032 (32.7)** | There is no editor. The engine half already works — a changed module is picked up whenever a pipeline builds |
+| The *sampled* engine intermediates (half of a Done-when) | **T0147** | Scene depth, scene colour, T0093's visibility and game-fed textures need systems that do not exist. The interpolated half shipped here |
+| "Variant growth bounded by a written decision" (Done-when) | **T0151** | The decision's mechanisms — precompiled modules, link-time specialisation, the dynamic-dispatch escape hatch — are all T0151's, probed on the pinned slangc. 141.3 and 142.7 bound the *cost* of a variant; nothing here bounds the *count* |
+
+**Why 141.9 went to T0146 and not to T0155 (terrain), argued rather than
+defaulted.** Terrain is the obvious consumer — 155.2 is the LOD-scheme
+decision, and GPU tessellation is a candidate answer. But what tessellation
+needs is hull and domain **stages in the PSO**, and `PBR_Renderer::CreatePSO`
+sets `pVS` and `pPS` and nothing else. T0146 is the ticket that stops the
+vertex shader being Diligent's, so it is the one whose code grows a stage.
+Homing a general capability on terrain would have shaped it like terrain, and
+the second consumer would have found it in the wrong place. T0155's 155.2
+carries the cross-reference instead, which is where the want appears first.
+
+**And the trigger was wrong by the time it moved.** This ticket deferred
+tessellation *"when a silhouette must change"* — and **T0146 delivers exactly
+that**, at the mesh's existing vertex density; its own Done-when says
+"silhouettes included, the thing 141.7's parallax explicitly cannot do". So the
+trigger as written would have read as "do it now" to whoever picked T0146 up.
+It is restated there as **when a silhouette must change at a density the mesh
+does not carry**, which is the real distinction: vertex displacement moves
+geometry, tessellation makes it. T0156.6's silhouette-POM evaluation moves the
+trigger in one direction or the other, and T0156 says so.
 
 ## Notes / findings
 

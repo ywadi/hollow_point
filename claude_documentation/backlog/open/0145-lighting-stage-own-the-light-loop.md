@@ -9,7 +9,7 @@
 | **Order** | 465 |
 | **Created** | 2026-08-06 |
 | **Blocks** | **T0086** — the shadow lookup lives *inside* the loop this ticket moves, so the loop must land before shadow sampling is written (see "Sequencing"). [T0149](0149-style-bundles.md) — a toon style is a rung-3 override, so styles cannot exist before this |
-| **Refs** | **D30** (the decision this executes), **D31** (the mirrored vocabulary), [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md); [../inprogress/0141-custom-shader-materials.md](../inprogress/0141-custom-shader-materials.md) — the surface stage this sits behind; [../inprogress/0142-slang-shader-language.md](../inprogress/0142-slang-shader-language.md) — the interface mechanism; [0143-extended-material-features.md](0143-extended-material-features.md) — its features accumulate *inside* this loop; [0093-visibility-and-fog-of-war.md](0093-visibility-and-fog-of-war.md) — visibility must stay out of light accumulation; T0079 — the light data this loop consumes |
+| **Refs** | **D30** (the decision this executes), **D31** (the mirrored vocabulary), [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md); [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — the surface stage this sits behind; [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md) — the interface mechanism; [0143-extended-material-features.md](0143-extended-material-features.md) — its features accumulate *inside* this loop; [0093-visibility-and-fog-of-war.md](0093-visibility-and-fog-of-war.md) — visibility must stay out of light accumulation; T0079 — the light data this loop consumes |
 
 ## Why
 
