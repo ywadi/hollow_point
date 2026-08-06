@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 440 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0050, T0085, T0086, T0089, T0120, [../completed/0081-camera-system.md](../completed/0081-camera-system.md), [../completed/0027-render-stack.md](../completed/0027-render-stack.md), [../completed/0085-layers-and-masks.md](../completed/0085-layers-and-masks.md) — **the `cullingMask` obligation is discharged**; T0085 honours it in `parseScene`, leaving frustum culling and sorting here |
+| **Refs** | T0050, T0085, T0086, T0089, T0120, [../completed/0081-camera-system.md](../completed/0081-camera-system.md), [../completed/0027-render-stack.md](../completed/0027-render-stack.md), [../completed/0085-layers-and-masks.md](../completed/0085-layers-and-masks.md) — **the `cullingMask` obligation is discharged**; T0085 honours it in `parseScene`, leaving frustum culling and sorting here; [0152-winding-convention.md](../inprogress/0152-winding-convention.md) — **queue draws select cull mode against `WindingConvention.hpp`** (D33): single-sided is `CULL_BACK`, `FrontCounterClockwise` is declared not defaulted, and any transparent-queue pixel baseline written before T0152 landed is calibrated against backwards-wound assets |
 
 ## Dependency note 2026-08-05 — unblocked, and shader-independent
 
