@@ -1105,7 +1105,7 @@ bool SceneRenderer::valid() const {
 std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawList& list,
                                   const ResolvedView& view, const AssetPool& pool,
                                   const LightList& lights,
-                                  DrawSubmitStats* stats) {
+                                  DrawSubmitStats* stats, double timeSeconds) {
     HP_PROFILE_ZONE();
 
     DrawSubmitStats counted;
@@ -1132,6 +1132,16 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
                 context, impl.frameAttribs, Diligent::MAP_WRITE, Diligent::MAP_FLAG_DISCARD};
             if (frame) {
                 Diligent::HLSL::CameraAttribs& camera = frame->Camera;
+                // **Value-initialised first, for the fields below that nothing
+                // assigns** (T0159.6). The buffer is mapped `MAP_FLAG_DISCARD`,
+                // so `uiFrameIndex`, `f2Jitter`, the scene bounds and the
+                // DoF/exposure block would otherwise hold whatever the driver
+                // handed back -- undefined memory in a buffer shaders read.
+                // Nothing compiled reads those fields *today*, which is exactly
+                // why this must be here before something does: the failure it
+                // prevents arrives with no diagnostic, varying per frame. Same
+                // treatment `Renderer` gets below, for the same T0134 reason.
+                camera = Diligent::HLSL::CameraAttribs{};
                 camera.mView = view.view;
                 camera.mProj = view.projection;
                 camera.mViewProj = view.viewProjection;
@@ -1234,6 +1244,13 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
                         {&lamp, &source.position, &source.direction, 1.0F}, lightArray + i);
                 }
                 params.LightCount = static_cast<int>(lightCount);
+
+                // **The frame's clock, at last** (T0159.5). The field has
+                // existed in `PBRRendererShaderParameters` the whole time and
+                // was zeroed by the value-initialisation above; this is the
+                // line that had never been written. Scrolling UVs, flowmaps
+                // and pulsing emissive all animate on it.
+                params.Time = static_cast<float>(timeSeconds);
 
                 // Tonemapping parameters. Unused while `PSO_FLAG_ENABLE_TONE_MAPPING`
                 // is masked off, and set to Diligent's own defaults anyway so that

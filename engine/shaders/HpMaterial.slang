@@ -3,13 +3,26 @@
 // The contract a game's shader compiles against (T0141.6, D27; Slang since
 // T0142.13, D28).
 //
-// **This is the only engine header a game shader includes**, and that is a
-// decision with a cost, recorded as D27. A game shader may not include
-// `PBR_Shading.fxh` or any other DiligentFX header: doing so would make
-// DiligentFX's internals part of this engine's public contract, so every
-// upstream rename would silently break every shader in every shipped game. We
-// include DiligentFX; they include us. A rename upstream is then ported once,
-// here, behind a header whose shape does not move.
+// **A game's module includes nothing and may reach anything** (D27, as
+// amended 2026-08-06). The module is compiled *inside* `HpSurface.slang`, so
+// everything that file can see is in scope for an override: this contract,
+// DiligentFX's getters (`GetBaseColor`, `PerturbNormal`, ...), the frame,
+// primitive and material constant buffers (`g_Frame`, `g_Primitive`,
+// `g_Material` -- including `g_Frame.Lights[]` under `PBR_MAX_LIGHTS`), the
+// permutation macros, and the engine's own helpers (`HpParallaxMarch`,
+// `g_HeightMap`). **That is deliberate, with no warning and no version
+// check**: this engine is permanently on Diligent (D24, D29), and a shipped
+// game never meets a newer engine under D12's lockstep, so an upstream rename
+// is development-time friction caught by a loud compile failure -- magenta
+// plus one logged error -- not breakage in the field.
+//
+// The trade to understand before reaching past this file: `HpSurfaceInput`
+// below is a **promise** that holds across engine updates; everything else is
+// whatever DiligentFX and the engine currently ship, and it may be renamed by
+// an upgrade. Reaching for an internal is also a *signal* -- it means this
+// contract is missing something, and the capability matrix
+// (`13-shader-capability-matrix.md`) is where that gap should be recorded so
+// it becomes a widening rather than a workaround every game repeats.
 //
 // ## The authoring shape, stated once and correctly
 //
@@ -75,7 +88,9 @@
 // | `Visibility` | T0093 — vision-based visibility |
 // | `AmbientOcclusionIBL` | T0087 — environment lighting |
 // | `Velocity` | T0111 — motion vectors |
-// | `Time` | **the field exists and is never written** (T0159.5). `PBRFrameAttribs::Time` is there; `hp::Time` has the clock; `SceneRenderer` does not connect them |
+//
+// `Time` sat in that table — the field existed in `PBRFrameAttribs` and was
+// never written — until T0159.5 connected the clock and added it below.
 //
 // ## The struct is a contract, not a wire format
 //
@@ -131,6 +146,15 @@ struct HpSurfaceInput
     /// fallback `SelectUV` makes on the standard path.
     float2 UV1;
 
+    /// `UV0` as the mesh delivered it, **before** the coordinate hook ran
+    /// (T0159.3). After a parallax march `UV0` is the *displaced* coordinate,
+    /// whose screen-space derivatives are discontinuous — a frame built from
+    /// them collapses (measured: ~0.006 UV of reach against the 0.14 needed,
+    /// T0158). This is the smooth coordinate whose `ddx`/`ddy` stay valid, for
+    /// any technique that needs continuous derivatives after displacement.
+    /// Identical to `UV0` when the hook displaced nothing.
+    float2 UV0Base;
+
     /// World-space position of this fragment. The basis for triplanar
     /// projection (T0141.8) and for anything that varies with where a surface
     /// is rather than how it is unwrapped.
@@ -141,16 +165,24 @@ struct HpSurfaceInput
     /// not gets this.
     float3 Normal;
 
-    /// World-space tangent and the handedness of the bitangent in `w`.
+    /// World-space tangent, unit length, with `w` reserved for the bitangent's
+    /// handedness. **Zero when the mesh carries no tangents** — real since
+    /// T0159.4, which ended two years of this field being assigned zero
+    /// unconditionally. A surface function must tolerate the zero case rather
+    /// than producing a black surface: the engine cannot invent tangents a
+    /// mesh does not carry, and screen-space derivatives (what `HpParallaxUv`
+    /// and DiligentFX's `PerturbNormal` build their frames from) are the
+    /// fallback that needs no vertex data.
     ///
-    /// **Zero ALWAYS, not only when the mesh lacks tangents** (T0159.4). The
-    /// assignment in `HpSurface.slang` is unconditional, even though
-    /// `RenderPBR.vsh` writes a world-space tangent whenever the mesh carries
-    /// one. This sentence said "zero when the mesh has no tangents" until an
-    /// audit measured otherwise. Normal mapping and parallax both
-    /// need this, so a surface function that uses either must tolerate its
-    /// absence rather than producing a black surface — the engine cannot invent
-    /// tangents a mesh does not carry.
+    /// **`w` is always +1, by decision rather than measurement** (T0159.4):
+    /// glTF authors handedness as ±1 in the tangent's fourth component, and
+    /// Diligent's vertex path carries `float3` — the loader drops `w` before
+    /// the engine ever sees it. So `bitangent = cross(Normal, Tangent.xyz)`
+    /// here, and a mesh whose UVs are mirrored (authored `w = -1`) will have
+    /// its bitangent flipped. If that ever matters in practice, the fix is
+    /// widening the wire format upstream, not guessing here — recorded so the
+    /// symptom (normal-mapped lighting inverted on mirrored islands, from
+    /// vertex tangents only) finds its cause.
     float4 Tangent;
 
     /// Normalised direction from the fragment **to the camera**. Computed here
@@ -168,6 +200,13 @@ struct HpSurfaceInput
     /// World-space camera position. Present because a surface function that
     /// needs distance-based behaviour should not have to reconstruct it.
     float3 CameraPos;
+
+    /// Seconds since the application's clock started, scaled by its time
+    /// scale — the value the frame loop hands `SceneRenderer` (T0159.5).
+    /// Frame-wide and identical for every fragment; what scrolling UVs,
+    /// flowmaps and pulsing emissive animate on. **Zero in a caller that
+    /// passes no time** (a bare `render()` call), never undefined.
+    float Time;
 };
 
 /// What a surface function fills in.

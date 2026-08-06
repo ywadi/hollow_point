@@ -91,6 +91,12 @@ struct RenderPassContext {
     /// to carry the clip-space Z range too; T0144.3 removed it with the OpenGL
     /// backend, and the projection no longer needs anything from the device.)
     ClipSpace clip{};
+
+    /// The frame's time in seconds (T0159.5), from whatever clock drives the
+    /// caller of `RenderStack::render`. A scene layer forwards it to
+    /// `SceneRenderer`, where it reaches shaders as `HpSurfaceInput::Time`.
+    /// Zero when the caller passes none — defined, never stale.
+    double timeSeconds = 0.0;
 };
 
 /// What a layer clears before it draws.
@@ -255,11 +261,16 @@ public:
     ///        default-constructed `ClipSpace` looks plausible and flips
     ///        nothing, which silently inverts a layer's render-to-texture
     ///        sampling.
+    /// @param timeSeconds the frame's time in seconds, handed to every layer
+    ///        through `RenderPassContext::timeSeconds` (T0159.5). Defaulted to
+    ///        zero — unlike `clip`, a missing time is a *defined* value with a
+    ///        visible symptom (nothing animates), not a silent inversion.
     /// @returns how many layers actually rendered, which is what a test asserts
     ///          on to prove `enabled` is honoured.
     std::size_t render(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context,
                        Diligent::ITextureView* colour, Diligent::ITextureView* depth,
-                       FrameTargets* targets, int width, int height, ClipSpace clip);
+                       FrameTargets* targets, int width, int height, ClipSpace clip,
+                       double timeSeconds = 0.0);
 
 private:
     struct Impl;

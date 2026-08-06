@@ -458,6 +458,24 @@ void HpSurface(in HpSurfaceInput In, inout HpSurfaceOutput Out)
 // documented vocabulary; `VSOutput` is the per-permutation wire format, and a
 // material that touches it accepts that its fields come and go with the mesh.
 //
+// **Every hook is `[mutating]`, so a material can keep per-fragment state
+// across them** (T0159.2). A tangent frame built in `surfaceCoordinates` can
+// be cached in a member and read back in `surface()` -- which is what parallax
+// self-shadowing needs, and what T0158 measured could not be rebuilt after the
+// march moved the UV. Three facts, verified on the pinned `slangc 2026.14.1`
+// rather than assumed:
+//
+//   * a **non-mutating** `override` still satisfies a `[mutating]`
+//     requirement, so every existing module compiles unchanged;
+//   * a default implementation on a `[mutating]` requirement is legal, so the
+//     standard material pays nothing;
+//   * state written through one hook is visible in the next -- the emitted
+//     code threads one `inout this` through the specialised calls.
+//
+// Member state starts **zero-initialised**, not undefined: `main` constructs
+// the material with `= {}`, which also keeps slang's uninitialized-variable
+// diagnostic out of every stateful module's compile log.
+//
 // **A game delivers a conformance as content** (T0142.15): a `.slang` module
 // reaching the compiler through the VFS (T0142.14), named by
 // `Material::shader`, included below as `HpMaterialModule.generated` and
@@ -489,7 +507,7 @@ interface IHpMaterial
     /// axis-aligned frame (T0156). A method that transforms `VSOutput`
     /// cannot express a multi-projection technique; the seam that will is
     /// T0153.1's per-tap sampling override, decided there.
-    VSOutput surfaceCoordinates(VSOutput VSOut, HpSurfaceInput In)
+    [mutating] VSOutput surfaceCoordinates(VSOutput VSOut, HpSurfaceInput In)
     {
 #if HP_USE_HEIGHT_MAP && USE_TEXCOORD0 && !HP_TRIPLANAR
         VSOut.UV0 = HpParallaxUv(VSOut.UV0, In);
@@ -500,7 +518,7 @@ interface IHpMaterial
     /// Base colour, linear RGB + alpha, after every texture and factor.
     /// Default: DiligentFX's getter -- sRGB decode, UV selection and the
     /// vertex-colour multiply included; returns the factor for an empty slot.
-    float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    [mutating] float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
     {
 #if HP_TRIPLANAR
         float4 baseColor = float4(1.0, 1.0, 1.0, 1.0);
@@ -523,7 +541,7 @@ interface IHpMaterial
     /// in green and metallic in blue -- times the material factors.
     /// `GetPhysicalDesc` returns all ones for an empty slot, so the factors
     /// survive untextured materials unchanged.
-    float2 metallicRoughness(VSOutput VSOut, HpSurfaceInput In)
+    [mutating] float2 metallicRoughness(VSOutput VSOut, HpSurfaceInput In)
     {
 #if HP_TRIPLANAR && USE_PHYS_DESC_MAP
         float4 physicalDesc = HpTriplanarSample(g_PhysicalDescriptorMap,
@@ -537,7 +555,7 @@ interface IHpMaterial
     }
 
     /// How much ambient light reaches the fragment, 0 to 1.
-    float occlusion(VSOutput VSOut, HpSurfaceInput In)
+    [mutating] float occlusion(VSOutput VSOut, HpSurfaceInput In)
     {
 #if HP_TRIPLANAR && USE_AO_MAP
         return HpTriplanarSample(g_OcclusionMap, g_OcclusionMap_sampler, HpTriplanarBasis(In),
@@ -551,7 +569,7 @@ interface IHpMaterial
     }
 
     /// Emissive radiance, linear RGB, deliberately not clamped to 1 (T0096).
-    float3 emissive(VSOutput VSOut, HpSurfaceInput In)
+    [mutating] float3 emissive(VSOutput VSOut, HpSurfaceInput In)
     {
 #if HP_TRIPLANAR && USE_EMISSIVE_MAP
         float3 emissive = TO_LINEAR(HpTriplanarSample(g_EmissiveMap, g_EmissiveMap_sampler,
@@ -576,7 +594,7 @@ interface IHpMaterial
     /// already-flipped normal flips twice -- a double-sided surface lit
     /// correctly from the front and inverted from behind, which looks like a
     /// handedness bug and is not one.
-    float3 shadingNormal(VSOutput VSOut, HpSurfaceInput In, float3 geometricNormal,
+    [mutating] float3 shadingNormal(VSOutput VSOut, HpSurfaceInput In, float3 geometricNormal,
                          bool isFrontFace)
     {
         PerturbNormalInfo normalInfo = GetPerturbNormalInfo(
@@ -611,7 +629,7 @@ interface IHpMaterial
     /// the hook overrides this method. A game cannot define `HpSurface`
     /// itself -- the engine's body is already in scope when the module is
     /// included -- so this method is the whole of it.
-    void surface(HpSurfaceInput In, inout HpSurfaceOutput Out)
+    [mutating] void surface(HpSurfaceInput In, inout HpSurfaceOutput Out)
     {
         HpSurface(In, Out);
     }
@@ -678,7 +696,7 @@ struct HpStandardMaterial : IHpMaterial
 /// instantiates it with `HpStandardMaterial` and slang emits direct calls, no
 /// dispatch. This is the body `main` used to be; it moved behind a type
 /// parameter so the same code renders any conforming material.
-PSOutput evaluateSurface<TMaterial : IHpMaterial>(TMaterial material, VSOutput VSOut,
+PSOutput evaluateSurface<TMaterial : IHpMaterial>(inout TMaterial material, VSOutput VSOut,
                                                   bool IsFrontFace)
 {
     // **Every optional field is guarded, and the guards are the same macros
@@ -703,6 +721,14 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(TMaterial material, VSOutput V
 #else
     surfaceIn.UV1 = float2(0.0, 0.0);
 #endif
+    // **The undisplaced UV0, preserved** (T0159.3). `UV0` above is refreshed
+    // from the coordinate hook's return, so after a parallax march it is the
+    // *displaced* coordinate whose screen-space derivatives are discontinuous.
+    // This copy is taken before the hook runs and never overwritten -- the
+    // smooth, interpolated coordinate a technique that needs continuous
+    // derivatives (a shadow march's tangent frame, T0158's measurement) reads
+    // instead.
+    surfaceIn.UV0Base = surfaceIn.UV0;
     surfaceIn.WorldPos = VSOut.WorldPos.xyz;
     // **The unflipped geometric normal, kept separately.** `GetPerturbNormalInfo`
     // applies the two-sided flip itself, from the `IsFrontFace` it is handed --
@@ -736,15 +762,28 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(TMaterial material, VSOutput V
     // distinction can be made.
     geometricNormal = float3(0.0, 0.0, 0.0);
 #endif
-    // Zero until the vertex shader carries tangents. Documented in
-    // `HpMaterial.slang` as "zero when the mesh has no tangents", so a surface
-    // function already has to tolerate it -- this is that case, not a new one.
+#if USE_VERTEX_TANGENTS
+    // **The mesh's tangent, at last** (T0159.4). `RenderPBR.vsh` rotates the
+    // vertex tangent into world space and normalizes per vertex; interpolation
+    // denormalizes slightly, so it is renormalized here. `w` is **always +1**,
+    // a decision rather than data: Diligent's vertex path carries `float3`
+    // (`VSTangentAttrib` is `VT_FLOAT32, 3`), so glTF's handedness never
+    // survives the loader -- see the contract's field comment for what that
+    // means to a shader.
+    surfaceIn.Tangent = float4(normalize(VSOut.Tangent), 1.0);
+#else
+    // Zero when the mesh carries no tangents -- the documented fallback a
+    // surface function must tolerate, because the engine cannot invent
+    // tangents a mesh does not have.
     surfaceIn.Tangent = float4(0.0, 0.0, 0.0, 1.0);
+#endif
     // **Computed, not interpolated.** `HpMaterial.slang` argues the case: a field
     // in the contract does not imply an interpolator, and burning one on a value
     // this cheap would be paid by every draw whether a shader reads it or not.
     surfaceIn.CameraPos = g_Frame.Camera.f4Position.xyz;
     surfaceIn.ViewDir = normalize(surfaceIn.CameraPos - surfaceIn.WorldPos);
+    // Frame-wide, one cbuffer read -- no interpolator, per the contract's rule.
+    surfaceIn.Time = g_Frame.Renderer.Time;
 #if USE_VERTEX_COLORS
     surfaceIn.VertexColor = VSOut.Color;
 #else
@@ -959,9 +998,14 @@ PSOutput main(in VSOutput VSOut,
     // custom material module defines `HpMaterial`, and this is the one line
     // that instantiates it -- statically specialised like the standard one,
     // so an override costs a direct call, not a dispatch.
-    HpMaterial material;
+    //
+    // `= {}` because the hooks are `[mutating]` (T0159.2) and the material is
+    // passed `inout`: a stateful module's members start at zero rather than
+    // undefined, and slang's uninitialized-variable diagnostic stays out of
+    // the compile log it would otherwise enter for every stateful module.
+    HpMaterial material = {};
 #else
-    HpStandardMaterial material;
+    HpStandardMaterial material = {};
 #endif
     return evaluateSurface(material, VSOut, IsFrontFace);
 }

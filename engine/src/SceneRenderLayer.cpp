@@ -126,7 +126,8 @@ void SceneRenderLayer::onRenderLayer(const RenderPassContext& pass) {
     // share one scene and each draw only its own objects.
     drawList_ = parseScene(*scene_, view->camera.cullingMask);
     const LightList lights = gatherLights(*scene_);
-    renderer_.render(pass.context, drawList_, *view, *pool_, lights, &lastFrame);
+    renderer_.render(pass.context, drawList_, *view, *pool_, lights, &lastFrame,
+                     pass.timeSeconds);
 }
 
 void configureAsHud(SceneRenderLayer& layer, std::uint8_t slot, int order) {

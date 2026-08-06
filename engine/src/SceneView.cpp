@@ -132,7 +132,8 @@ int SceneView::height() const {
 
 Diligent::ITextureView* SceneView::render(Diligent::IDeviceContext* context, Scene& scene,
                                           const AssetPool& pool, std::uint8_t viewSlot,
-                                          SceneViewStats* stats) {
+                                          SceneViewStats* stats,
+                                          double timeSeconds) {
     HP_PROFILE_ZONE();
 
     SceneViewStats counted;
@@ -216,7 +217,7 @@ Diligent::ITextureView* SceneView::render(Diligent::IDeviceContext* context, Sce
     const LightList lights = gatherLights(scene);
 
     DrawSubmitStats submitted;
-    impl.renderer.render(context, impl.drawList, *view, pool, lights, &submitted);
+    impl.renderer.render(context, impl.drawList, *view, pool, lights, &submitted, timeSeconds);
     counted.submitted = submitted.submitted;
     counted.missingMesh = submitted.missingMesh;
 

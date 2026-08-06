@@ -104,7 +104,11 @@ public:
         view_.resize(width, height);
 
         hp::SceneViewStats stats;
-        Diligent::ITextureView* colour = view_.render(render_.context(), scene_, assets_, 0, &stats);
+        // The application clock's scaled elapsed time (T0159.5) — what makes
+        // `HpSurfaceInput::Time` non-zero in the editor, so time-driven
+        // shaders animate here and not only in tests.
+        Diligent::ITextureView* colour = view_.render(render_.context(), scene_, assets_, 0,
+                                                      &stats, app_.clock().elapsed());
         if (colour == nullptr) {
             render_.setPresentSource(nullptr);
             return;

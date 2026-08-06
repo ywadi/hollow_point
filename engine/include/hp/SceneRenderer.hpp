@@ -127,9 +127,16 @@ public:
     /// @param lights what illuminates the scene, from `gatherLights`. **An
     ///        empty list renders black**, which is not an error and is exactly
     ///        what every frame did before T0079.
+    /// @param timeSeconds the frame's time, in seconds — `Clock::elapsed()`
+    ///        from whichever clock owns this view's timeline (T0159.5). Reaches
+    ///        shaders as `g_Frame.Renderer.Time` and the contract's
+    ///        `HpSurfaceInput::Time`. Defaulted to zero so a caller that has no
+    ///        clock (a thumbnail, a one-shot test render) gets a defined value,
+    ///        not a stale or undefined one.
     std::size_t render(Diligent::IDeviceContext* context, const DrawList& list,
                        const ResolvedView& view, const AssetPool& pool,
-                       const LightList& lights = {}, DrawSubmitStats* stats = nullptr);
+                       const LightList& lights = {}, DrawSubmitStats* stats = nullptr,
+                       double timeSeconds = 0.0);
 
 private:
     struct Impl;

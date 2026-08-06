@@ -32,6 +32,24 @@ hands it to the same getters. `HpSurfaceInput` remains the stable,
 documented vocabulary; `VSOutput` is the per-permutation wire format, and a
 material that touches it accepts that its fields come and go with the mesh.
 
+**Every hook is `[mutating]`, so a material can keep per-fragment state
+across them** (T0159.2). A tangent frame built in `surfaceCoordinates` can
+be cached in a member and read back in `surface()` -- which is what parallax
+self-shadowing needs, and what T0158 measured could not be rebuilt after the
+march moved the UV. Three facts, verified on the pinned `slangc 2026.14.1`
+rather than assumed:
+
+  * a **non-mutating** `override` still satisfies a `[mutating]`
+    requirement, so every existing module compiles unchanged;
+  * a default implementation on a `[mutating]` requirement is legal, so the
+    standard material pays nothing;
+  * state written through one hook is visible in the next -- the emitted
+    code threads one `inout this` through the specialised calls.
+
+Member state starts **zero-initialised**, not undefined: `main` constructs
+the material with `= {}`, which also keeps slang's uninitialized-variable
+diagnostic out of every stateful module's compile log.
+
 **A game delivers a conformance as content** (T0142.15): a `.slang` module
 reaching the compiler through the VFS (T0142.14), named by
 `Material::shader`, included below as `HpMaterialModule.generated` and
@@ -49,7 +67,7 @@ have published it to every agent writing a material.)*
 ### `IHpMaterial::surfaceCoordinates`
 
 ```hlsl
-VSOutput surfaceCoordinates(VSOutput VSOut, HpSurfaceInput In) { ... }
+[mutating] VSOutput surfaceCoordinates(VSOutput VSOut, HpSurfaceInput In) { ... }
 ```
 
 *Has a default implementation — a material that does not override it gets the standard material's behaviour.*
@@ -72,7 +90,7 @@ T0153.1's per-tap sampling override, decided there.
 ### `IHpMaterial::baseColor`
 
 ```hlsl
-float4 baseColor(VSOutput VSOut, HpSurfaceInput In) { ... }
+[mutating] float4 baseColor(VSOutput VSOut, HpSurfaceInput In) { ... }
 ```
 
 *Has a default implementation — a material that does not override it gets the standard material's behaviour.*
@@ -84,7 +102,7 @@ vertex-colour multiply included; returns the factor for an empty slot.
 ### `IHpMaterial::metallicRoughness`
 
 ```hlsl
-float2 metallicRoughness(VSOutput VSOut, HpSurfaceInput In) { ... }
+[mutating] float2 metallicRoughness(VSOutput VSOut, HpSurfaceInput In) { ... }
 ```
 
 *Has a default implementation — a material that does not override it gets the standard material's behaviour.*
@@ -97,7 +115,7 @@ survive untextured materials unchanged.
 ### `IHpMaterial::occlusion`
 
 ```hlsl
-float occlusion(VSOutput VSOut, HpSurfaceInput In) { ... }
+[mutating] float occlusion(VSOutput VSOut, HpSurfaceInput In) { ... }
 ```
 
 *Has a default implementation — a material that does not override it gets the standard material's behaviour.*
@@ -107,7 +125,7 @@ How much ambient light reaches the fragment, 0 to 1.
 ### `IHpMaterial::emissive`
 
 ```hlsl
-float3 emissive(VSOutput VSOut, HpSurfaceInput In) { ... }
+[mutating] float3 emissive(VSOutput VSOut, HpSurfaceInput In) { ... }
 ```
 
 *Has a default implementation — a material that does not override it gets the standard material's behaviour.*
@@ -117,7 +135,7 @@ Emissive radiance, linear RGB, deliberately not clamped to 1 (T0096).
 ### `IHpMaterial::shadingNormal`
 
 ```hlsl
-float3 shadingNormal(VSOutput VSOut, HpSurfaceInput In, float3 geometricNormal, bool isFrontFace) { ... }
+[mutating] float3 shadingNormal(VSOutput VSOut, HpSurfaceInput In, float3 geometricNormal, bool isFrontFace) { ... }
 ```
 
 *Has a default implementation — a material that does not override it gets the standard material's behaviour.*
@@ -134,7 +152,7 @@ handedness bug and is not one.
 ### `IHpMaterial::surface`
 
 ```hlsl
-void surface(HpSurfaceInput In, inout HpSurfaceOutput Out) { ... }
+[mutating] void surface(HpSurfaceInput In, inout HpSurfaceOutput Out) { ... }
 ```
 
 *Has a default implementation — a material that does not override it gets the standard material's behaviour.*

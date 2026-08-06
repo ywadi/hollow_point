@@ -51,6 +51,7 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | `HpSurfaceInput` | struct | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::UV0` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::UV1` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceInput::UV0Base` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::WorldPos` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::Normal` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::Tangent` | field | [`HpMaterial`](HpMaterial.md) |
@@ -58,6 +59,7 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | `HpSurfaceInput::VertexColor` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::ScreenPos` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::CameraPos` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceInput::Time` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceOutput` | struct | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceOutput::BaseColor` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceOutput::Normal` | field | [`HpMaterial`](HpMaterial.md) |

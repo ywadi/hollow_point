@@ -86,21 +86,38 @@ void tearDown(Device& device) {
 }
 
 /// A quad with positions and normals, wound per WindingConvention (T0152).
-void writeQuadGltf(const std::filesystem::path& directory) {
+///
+/// @param withTangents also writes a `TANGENT` accessor — glTF's `VEC4`, world
+///        +X with `w = 1`. What T0159.4's contract cases render with: the
+///        loader drops `w` (their wire format is `float3`), and the engine
+///        publishes the interpolated tangent through `HpSurfaceInput`.
+void writeQuadGltf(const std::filesystem::path& directory, bool withTangents = false) {
     std::error_code ec;
     std::filesystem::create_directories(directory, ec);
 
-    const float vertices[] = {
-        -4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-         4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-         4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-        -4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-    };
-    const std::uint16_t indices[] = {0, 2, 1, 0, 3, 2};
-
     std::vector<unsigned char> bin;
-    const auto* vb = reinterpret_cast<const unsigned char*>(vertices);
-    bin.insert(bin.end(), vb, vb + sizeof vertices);
+    if (withTangents) {
+        // position(3) normal(3) tangent(4) = 10 floats, stride 40.
+        const float vertices[] = {
+            -4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F, 1.0F, 0.0F, 0.0F, 1.0F,
+             4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F, 1.0F, 0.0F, 0.0F, 1.0F,
+             4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F, 1.0F, 0.0F, 0.0F, 1.0F,
+            -4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F, 1.0F, 0.0F, 0.0F, 1.0F,
+        };
+        const auto* vb = reinterpret_cast<const unsigned char*>(vertices);
+        bin.insert(bin.end(), vb, vb + sizeof vertices);
+    } else {
+        const float vertices[] = {
+            -4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
+             4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
+             4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
+            -4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
+        };
+        const auto* vb = reinterpret_cast<const unsigned char*>(vertices);
+        bin.insert(bin.end(), vb, vb + sizeof vertices);
+    }
+    const std::size_t vertexBytes = bin.size();
+    const std::uint16_t indices[] = {0, 2, 1, 0, 3, 2};
     const auto* ib = reinterpret_cast<const unsigned char*>(indices);
     bin.insert(bin.end(), ib, ib + sizeof indices);
     while (bin.size() % 4 != 0) {
@@ -112,14 +129,25 @@ void writeQuadGltf(const std::filesystem::path& directory) {
                    static_cast<std::streamsize>(bin.size()));
     }
 
+    const std::string attributes =
+        withTangents ? R"("POSITION": 0, "NORMAL": 1, "TANGENT": 2)"
+                     : R"("POSITION": 0, "NORMAL": 1)";
+    const std::string stride = withTangents ? "40" : "24";
+    const std::string tangentAccessor =
+        withTangents
+            ? R"(,
+    { "bufferView": 0, "byteOffset": 24, "componentType": 5126, "count": 4, "type": "VEC4" })"
+            : "";
+    const std::string indexAccessor = withTangents ? "3" : "2";
+
     const std::string json = R"({
   "asset": { "version": "2.0" },
   "scene": 0,
   "scenes": [ { "nodes": [ 0 ] } ],
   "nodes": [ { "mesh": 0 } ],
   "meshes": [ { "primitives": [ {
-      "attributes": { "POSITION": 0, "NORMAL": 1 },
-      "indices": 2,
+      "attributes": { )" + attributes + R"( },
+      "indices": )" + indexAccessor + R"(,
       "material": 0
   } ] } ],
   "materials": [ {
@@ -128,13 +156,15 @@ void writeQuadGltf(const std::filesystem::path& directory) {
   } ],
   "buffers": [ { "uri": "quad.bin", "byteLength": )" + std::to_string(bin.size()) + R"( } ],
   "bufferViews": [
-    { "buffer": 0, "byteOffset": 0,  "byteLength": 96, "byteStride": 24 },
-    { "buffer": 0, "byteOffset": 96, "byteLength": 12 }
+    { "buffer": 0, "byteOffset": 0,  "byteLength": )" + std::to_string(vertexBytes) +
+                             R"(, "byteStride": )" + stride + R"( },
+    { "buffer": 0, "byteOffset": )" + std::to_string(vertexBytes) + R"(, "byteLength": 12 }
   ],
   "accessors": [
     { "bufferView": 0, "byteOffset": 0,  "componentType": 5126, "count": 4, "type": "VEC3",
       "min": [-4.0, -4.0, 3.0], "max": [4.0, 4.0, 3.0] },
-    { "bufferView": 0, "byteOffset": 12, "componentType": 5126, "count": 4, "type": "VEC3" },
+    { "bufferView": 0, "byteOffset": 12, "componentType": 5126, "count": 4, "type": "VEC3" })" +
+                             tangentAccessor + R"(,
     { "bufferView": 1, "byteOffset": 0,  "componentType": 5123, "count": 6, "type": "SCALAR" }
   ]
 })";
@@ -193,14 +223,15 @@ void countChecks(const std::vector<std::uint8_t>& rgba, int& magenta, int& black
 ///        exercises the material-names-a-missing-shader path.
 /// @param unlit the material's unlit flag.
 bool renderCustom(Device& device, const std::string& moduleSource, bool shaderInPool, bool unlit,
-                  std::vector<std::uint8_t>& pixels, int frames = 1) {
+                  std::vector<std::uint8_t>& pixels, int frames = 1, double timeSeconds = 0.0,
+                  bool withTangents = false) {
     std::error_code ec;
     const std::filesystem::path scratch =
         std::filesystem::temp_directory_path() / "hp-custom-shader";
     std::filesystem::remove_all(scratch, ec);
     std::filesystem::create_directories(scratch / "models", ec);
     std::filesystem::create_directories(scratch / "materials", ec);
-    writeQuadGltf(scratch / "models");
+    writeQuadGltf(scratch / "models", withTangents);
     if (!moduleSource.empty()) {
         std::ofstream file(scratch / "materials" / "custom.slang");
         file << moduleSource;
@@ -257,7 +288,8 @@ bool renderCustom(Device& device, const std::string& moduleSource, bool shaderIn
 
     hp::SceneViewStats stats;
     for (int i = 0; i < frames; ++i) {
-        if (view.render(device.render->context(), scene, pool, 0, &stats) == nullptr) {
+        if (view.render(device.render->context(), scene, pool, 0, &stats, timeSeconds) ==
+            nullptr) {
             return false;
         }
     }
@@ -453,6 +485,159 @@ struct HpMaterial : IHpMaterial
     // link-time constants) and the ticket note should be updated.
     REQUIRE(shadedBytes > 0);
     REQUIRE(unshadedBytes > 0);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
+TEST_CASE("a material keeps state between hooks, and unwritten state is zero") {
+    // **T0159.2, measured on the device rather than only on the compiler.**
+    // Green can arrive in `surface()` only through a member written in
+    // `surfaceCoordinates` — the hooks are the first and last of the sequence,
+    // with every channel getter between them — and the blue channel reads a
+    // member *nothing* writes, which the engine promises starts at zero
+    // (`main` constructs the material `= {}`). Exact: (0, 255, 0). A regression
+    // in the `[mutating]` declarations fails to compile; a regression in the
+    // zero-initialisation turns blue non-zero.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    const char* kStatefulModule = R"(
+struct HpMaterial : IHpMaterial
+{
+    float3 stash;
+    float neverWritten;
+
+    [mutating] override VSOutput surfaceCoordinates(VSOutput VSOut, HpSurfaceInput In)
+    {
+        stash = float3(0.0, 1.0, 0.0);
+        return VSOut;
+    }
+
+    [mutating] override void surface(HpSurfaceInput In, inout HpSurfaceOutput Out)
+    {
+        Out.BaseColor = float4(stash.x, stash.y, neverWritten, 1.0);
+    }
+
+    override bool unshaded()
+    {
+        return true;
+    }
+}
+)";
+    std::vector<std::uint8_t> pixels;
+    REQUIRE(renderCustom(device, kStatefulModule, /*shaderInPool=*/true, /*unlit=*/false, pixels));
+    const Rgb centre = centreOf(pixels);
+    MESSAGE("stateful module: (" << centre.r << ", " << centre.g << ", " << centre.b << ")");
+    CHECK(centre.r == 0);
+    CHECK(centre.g == 255);
+    CHECK(centre.b == 0);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
+TEST_CASE("the mesh's tangent reaches the contract, and a mesh without one reads zero") {
+    // **T0159.4's both halves, exact.** The quad's authored tangent is world
+    // +X, so `abs(In.Tangent.xyz)` is pure red when the plumbing works and
+    // pure black where the documented zero fallback applies. Before T0159 the
+    // first half rendered black too — the field was assigned zero
+    // unconditionally, and the contract's own doc said otherwise.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    const char* kTangentModule = R"(
+struct HpMaterial : IHpMaterial
+{
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return float4(abs(In.Tangent.xyz), 1.0);
+    }
+    override bool unshaded()
+    {
+        return true;
+    }
+}
+)";
+    std::vector<std::uint8_t> withTangents;
+    REQUIRE(renderCustom(device, kTangentModule, /*shaderInPool=*/true, /*unlit=*/false,
+                         withTangents, /*frames=*/1, /*timeSeconds=*/0.0,
+                         /*withTangents=*/true));
+    const Rgb tangent = centreOf(withTangents);
+    MESSAGE("with tangents: (" << tangent.r << ", " << tangent.g << ", " << tangent.b << ")");
+    CHECK(tangent.r == 255);
+    CHECK(tangent.g == 0);
+    CHECK(tangent.b == 0);
+
+    std::vector<std::uint8_t> withoutTangents;
+    REQUIRE(renderCustom(device, kTangentModule, /*shaderInPool=*/true, /*unlit=*/false,
+                         withoutTangents));
+    const Rgb zero = centreOf(withoutTangents);
+    MESSAGE("without tangents: (" << zero.r << ", " << zero.g << ", " << zero.b << ")");
+    CHECK(zero.r == 0);
+    CHECK(zero.g == 0);
+    CHECK(zero.b == 0);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
+TEST_CASE("the frame's time reaches the contract, and an untimed render reads zero") {
+    // **T0159.5 through the whole path**: the caller's seconds into
+    // `SceneView::render`, through `SceneRenderer`'s frame attribs, into
+    // `g_Frame.Renderer.Time`, out through `HpSurfaceInput::Time`. The module
+    // brackets the value rather than comparing floats exactly; both outcomes
+    // are exact colours.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    const char* kTimeModule = R"(
+struct HpMaterial : IHpMaterial
+{
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        if (In.Time > 0.4 && In.Time < 0.6)
+        {
+            return float4(0.0, 1.0, 0.0, 1.0); // the passed 0.5 arrived
+        }
+        return float4(1.0, 0.0, 0.0, 1.0);     // zero, or something stale
+    }
+    override bool unshaded()
+    {
+        return true;
+    }
+}
+)";
+    std::vector<std::uint8_t> timed;
+    REQUIRE(renderCustom(device, kTimeModule, /*shaderInPool=*/true, /*unlit=*/false, timed,
+                         /*frames=*/1, /*timeSeconds=*/0.5));
+    const Rgb at = centreOf(timed);
+    MESSAGE("time 0.5: (" << at.r << ", " << at.g << ", " << at.b << ")");
+    CHECK(at.r == 0);
+    CHECK(at.g == 255);
+    CHECK(at.b == 0);
+
+    // No time passed: the documented zero, not undefined memory — red's
+    // exactness is the assertion that it is *defined*.
+    std::vector<std::uint8_t> untimed;
+    REQUIRE(renderCustom(device, kTimeModule, /*shaderInPool=*/true, /*unlit=*/false, untimed));
+    const Rgb zero = centreOf(untimed);
+    MESSAGE("no time: (" << zero.r << ", " << zero.g << ", " << zero.b << ")");
+    CHECK(zero.r == 255);
+    CHECK(zero.g == 0);
+    CHECK(zero.b == 0);
 
     hp::Vfs::shutdown();
     tearDown(device);

@@ -220,7 +220,7 @@ std::size_t size() const
 ## `RenderStack::render`
 
 ```cpp
-std::size_t render(Diligent::IRenderDevice * device, Diligent::IDeviceContext * context, Diligent::ITextureView * colour, Diligent::ITextureView * depth, FrameTargets * targets, int width, int height, ClipSpace clip)
+std::size_t render(Diligent::IRenderDevice * device, Diligent::IDeviceContext * context, Diligent::ITextureView * colour, Diligent::ITextureView * depth, FrameTargets * targets, int width, int height, ClipSpace clip, double timeSeconds)
 ```
 
  Renders every enabled layer, in order, into `colour`.
@@ -241,5 +241,9 @@ std::size_t render(Diligent::IRenderDevice * device, Diligent::IDeviceContext * 
         default-constructed `ClipSpace` looks plausible and flips
         nothing, which silently inverts a layer's render-to-texture
         sampling.
+ @param timeSeconds the frame's time in seconds, handed to every layer
+        through `RenderPassContext::timeSeconds` (T0159.5). Defaulted to
+        zero — unlike `clip`, a missing time is a *defined* value with a
+        visible symptom (nothing animates), not a silent inversion.
  @returns how many layers actually rendered, which is what a test asserts
           on to prove `enabled` is honoured.

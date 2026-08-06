@@ -123,12 +123,15 @@ public:
     /// @param pool where mesh GUIDs resolve.
     /// @param viewSlot which camera slot to resolve. Slot 0 is the world.
     /// @param stats optional; filled with what the frame did.
+    /// @param timeSeconds the frame's time in seconds, forwarded to
+    ///        `SceneRenderer::render` (T0159.5) — pass the owning clock's
+    ///        `elapsed()`. Zero when omitted, so shaders see a defined value.
     /// @returns the colour target to display, or **nullptr when nothing was
     ///          published** — no camera, or the view could not be built. A null
     ///          return is the signal not to emit a `FrameRenderedEvent`.
     Diligent::ITextureView* render(Diligent::IDeviceContext* context, Scene& scene,
                                    const AssetPool& pool, std::uint8_t viewSlot = 0,
-                                   SceneViewStats* stats = nullptr);
+                                   SceneViewStats* stats = nullptr, double timeSeconds = 0.0);
 
     /// @returns the colour target's shader-resource view, or nullptr. **Valid
     ///          for the current frame only** — a resize recreates it.
