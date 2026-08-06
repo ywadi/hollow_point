@@ -171,6 +171,10 @@ small set of named tiers, and the per-system overrides policy) closes it.
 Gamma/brightness (`gamma`, `brightness`: zero hits) belongs in the same
 section.
 
+*Update 2026-08-06: T0148 (post-process stack) is now a fifth consumer --
+its 148.5 wires per-effect quality to the same unbuilt T0078 section rather
+than inventing a shape of its own.*
+
 ## 5. Device loss -- [absent]
 
 `device lost`, `device removed` -- **zero hits**. T0025 owns device lifetime
@@ -260,6 +264,12 @@ modes, composed effects and decals. Two things are still outside:
   T0106 explicitly flagged that constraint into T0046 while distortion was
   not. One sentence in T0046 keeps the door open; discovering it after the
   frame layout solidifies is a refactor.
+
+  *Update 2026-08-06: the scene-colour-during-transparents read now has an
+  owner -- T0147 (engine intermediates), whose 147.2 places the snapshot in
+  the frame; a distortion* pass *composes from T0147's read plus T0148's
+  chain. The half of this item that remains open is ribbons/trails (T0080's
+  buffer-layout constraint), unchanged.*
 
 ## 9. Screenshot capture -- [mentioned, unowned]
 

@@ -1602,3 +1602,257 @@ adopted — **unreachable**. That is the concrete, recurring price of the fallba
   renderer, and the failure must be a clear message rather than a crash.
 
 **T0144 owns the removal.**
+
+---
+
+## D30 — Shading control is a ladder, and the engine owns the light loop
+
+**Decided 2026-08-06, on the owner's goal**, in their words: *"I want the game
+devs to be able to either use Diligent PBR and Lights and so on as is, OR
+override them with their own shaders, or just parts of it with their own
+shaders"*, *"we need to have Godot-like control but even more"*, and the
+constraint that grounds both: *"a junior game dev can just start using it, and
+an advanced game dev can take control big time."*
+
+**Amends D24** — the lighting *functions* stay Diligent's, called by default;
+the *loop that calls them* becomes ours. **Extends D27** — the contract grows a
+lighting stage under exactly the rules the surface stage already obeys.
+**T0145** executes the loop; T0146 (vertex), T0147 (intermediates), T0148
+(post), T0149 (styles) and T0150 (compute) fill the other rungs.
+
+### Progressive disclosure is the design principle, not a nicety
+
+That last sentence of the owner's is a **requirement on the shape of the API**:
+every level of control must be reachable **without learning the level above
+it**. A developer who picks a style never sees a shader; one who overrides
+`baseColor` never learns what a light loop is; one who owns the loop still
+never touches PSO creation. The ladder, with each rung's boundary stated:
+
+| Rung | The developer... | The engine still owns | Mechanism | Status |
+|---|---|---|---|---|
+| 0 | picks a style in the inspector | everything | style bundles (**T0149**) | not built |
+| 1 | edits material parameters | every shader | `.hpmat` (T0060) | **live** |
+| 2 | overrides one surface method, inherits the rest | `main`, lighting, the loop | `IHpMaterial` defaults (D28, 142.2) | **live** |
+| 3 | overrides the response to **one light** | the loop, attenuation, the shadow lookup | per-light method with a default (**T0145**) | not built |
+| 4 | owns the **light loop** and the shading model | the pass, its targets, the light *data* | lighting-stage method with a default (**T0145**) | not built |
+| 5 | owns passes, targets and pipelines | frame anatomy (D17), device lifetime (D22) | `IRenderLayer` (T0027/T0094), compute (T0150), post (T0148) | partial |
+
+Each rung is a **promise with D27's terms**: a method with a default is added
+freely and removed never. And each rung obeys D27's other rule — nothing is
+exposed before the system behind it exists, so the per-light method gains a raw
+shadow factor **with T0086**, not before.
+
+### Why the loop must be ours — the seam was measured, not assumed
+
+Where an override could attach inside DiligentFX's public `PBR_Shading.fxh`
+(verified against the vendored submodule, 2026-08-06):
+
+| Seam | What it is | Verdict |
+|---|---|---|
+| `ResolveLighting` (:847) | four terms: base + emissive, sheen, clearcoat | thin, overridable |
+| `GetBaseLayerLighting` (:813) | **one line**: `Base.Punctual + GetBaseLayerIBL` | thin, overridable |
+| `ApplyPunctualLight` (:601–721) | range attenuation, spot cone, **shadow-map lookup + `FilterShadowMapFixedPCF` (:655)**, then the base-layer BRDF **inline** — `SmithGGX_BRDF` at :690, not through any seam | **the per-light BRDF has no hook** |
+
+The clearcoat layer goes through `ApplyDirectionalLightGGX` (:718); the base
+layer does not. So Godot's per-light rung **cannot be offered by calling their
+loop body** — there is no point inside `ApplyPunctualLight` where a game's
+shading model could be substituted. Offering rung 3 means the engine mirrors
+the loop body — attenuation, cone, shadow lookup, ~120 lines — into its own
+lighting stage and calls `SmithGGX_BRDF` and friends from there *as the
+default*. Rung 4 then falls out of the same move for free: the whole stage is
+already a method with a default.
+
+The struct economics support the same split: the per-light hook's natural
+vocabulary (`SurfaceReflectanceInfo`) is **four primitive fields**
+(`Common/public/PBR_Common.fxh:362`), while the coarse hooks drag
+`SurfaceShadingInfo` (12 fields, nested layer structs, `#if`-conditional
+members) and `SurfaceLightingInfo`. The fine-grained promise is the cheap one
+to keep; the coarse ones are where D31's mirroring earns its cost.
+
+### Godot's ceiling, verified — and where "even more" is a real claim
+
+Surveyed against Godot **4.7.1-stable** (current, 2026-08-06; sources in
+T0145):
+
+- Godot's `light()` receives `ATTENUATION` with **shadow already folded in**;
+  there is no raw shadow factor, and the open proposal asking for one
+  (godot-proposals #15040) is the evidence the ceiling is felt.
+- The light **loop is fixed engine C++**. `light()` is a per-light callback;
+  a `light_post()` for cel shading has been an open proposal since 2019
+  (#484). Rung 4 does not exist in Godot at any price short of a fork.
+- **No partial override exists between materials** — a `ShaderMaterial`
+  replaces the whole shader, and StandardMaterial3D → shader conversion is
+  one-way code generation. Rung 2 — inherit everything, override one method —
+  is something Godot does not have at all.
+
+So "Godot-like" is rungs 0–3, and "even more" is specifically: rung 2's
+piecewise inheritance, rung 4, the raw shadow factor (when T0086 exists), and
+rung 5's C++ pass ownership (D22) where Godot's equivalent proposals
+(#4287, #10778) remain open.
+
+### Sequencing — this is materially cheaper before T0086, on both sides
+
+The shadow lookup lives **inside** `ApplyPunctualLight`. If T0086 builds shadow
+sampling against Diligent's loop first, moving to our loop afterwards relocates
+shadow sampling a second time — the same argument T0141 recorded for the pixel
+shader, one level deeper, and the same reason T0086 already waits on 141.10.
+T0145 must land its loop **before** T0086 starts; both tickets record it.
+
+### What was rejected
+
+- **Handing games `PBR_Shading.fxh` or the loop directly.** D27's trap
+  unchanged: every upstream rename breaks every shipped game. We include them;
+  games include us.
+- **Toon-by-post-process as the stylisation mechanism.** A post pass cannot
+  see per-light data — it quantises the *sum*, so a two-light surface bands
+  wrongly and rim terms are unrecoverable. Fine as one style's deliberate
+  choice; wrong as the only mechanism. Godot's open #484 is what that ceiling
+  looks like from inside.
+- **Slang dynamic dispatch as the override transport.** Measured on the pinned
+  2026.14.1 (probes in T0151): existential dispatch to SPIR-V **works** —
+  `-conformance` registration, an `OpSwitch` over type IDs — but an existential
+  material **may not hold opaque members** (`error[E33080]`), so textures
+  require `DescriptorHandle<T>` bindless handles (compiles; demands
+  `RuntimeDescriptorArray` descriptor indexing the engine has not adopted),
+  and the dispatch is a per-wave branch over every registered material.
+  Static specialisation (D28) stays; the dynamic path is recorded in T0151 as
+  the pipeline-count escape hatch, with a trigger, not a default.
+- **A second, stylised renderer.** D24's revisit clause named "a stylised
+  non-PBR renderer" as what would reopen it. The ladder is the answer that
+  keeps it closed: a toon look is a rung-3/4 override *inside* the one forward
+  path — same passes, same shadow maps, same culling — not a second render
+  path with its own bugs.
+
+### Costs, stated rather than discovered
+
+- **~120 mirrored lines** whose upstream original keeps moving: every
+  DiligentFX bump needs a diff of `ApplyPunctualLight` against our stage.
+  The D26 class of cost, one level deeper; T0145 owns a drift guard so the
+  check is mechanical rather than remembered.
+- **Every rung is API surface promised forever.** The mitigation is D27's,
+  unchanged: generous but deliberate, decided per method.
+- **Registers.** An interface-heavy main with per-light methods may cost
+  occupancy against the fused original. Unmeasured; T0145 measures before/after
+  on the byte-identical baseline.
+
+### Not verified
+
+- No rung-3 or rung-4 override has compiled end to end. Above rung 2 the
+  ladder is designed here, not built; T0145's acceptance test is the existing
+  byte-identical baseline discipline (141.11/142.3).
+- The ~120-line estimate is from reading :601–721, not from a completed port.
+- No performance measurement of an overridden loop exists.
+
+---
+
+## D31 — The lighting contract **mirrors** DiligentFX's types; it never re-exports them
+
+**Decided 2026-08-06, with D30.** Rung 3 and 4 signatures must name a light and
+a surface. The question is whose types those are, and it is the same question
+D27 answered for functions, now for **data**.
+
+**Decision: the contract's types are the engine's** — call them `HpLight`,
+`HpShadedSurface` — restating the fields the ladder needs, converted from
+`PBRLightAttribs` / `SurfaceShadingInfo` inside the engine's own shader code.
+A game shader never names a Diligent struct.
+
+### Why mirror wins
+
+- **D27's argument, applied to fields.** An upstream rename of
+  `PBRLightAttribs.IntensityR` is then a compile error in **one file of ours**,
+  not a break in every shipped game's shaders. Re-exporting (aliasing) their
+  structs hands every field name to upstream forever.
+- **The conditional-member hazard, which re-export cannot fix.**
+  `SurfaceShadingInfo`'s sheen, clearcoat, anisotropy, iridescence,
+  transmission and volume members exist **only under their `#if`s** — a
+  re-exported struct changes *shape* per permutation, so a game shader reading
+  `.Sheen` compiles on some materials and not others. A mirrored struct keeps
+  every field present (zeroed when the feature is off, T0143), which is a
+  genuine improvement, not just insulation.
+- **Their packing is not an interface anyone would choose.** `PBRLightAttribs`
+  carries `DirectionX/DirectionY/DirectionZ` as separate floats and intensity
+  as `IntensityR/G/B` — constant-buffer packing artifacts. The mirror hands a
+  game `float3 direction; float3 color;`, and the packed original stays what
+  the engine writes to the GPU.
+
+### The cost, and what is unmeasured
+
+Conversion code in the engine's lighting stage — a repack per light, per
+fragment, in registers. **Expected negligible** (the same values are loaded
+either way; no extra memory traffic) and **not measured**; T0145 measures it
+against the byte-identical baseline. The mirror itself grows with T0143's
+features, one struct field per feature, in the one file that already changes
+when a feature turns on.
+
+**Rejected — a second CPU-side buffer in engine layout**: writing `HpLight`
+per frame beside `PBRLightAttribs` doubles the light data and adds a second
+writer to keep in step (the exact drift shape that hid `TextureAttribIndices`).
+Conversion at point of use has one source of truth.
+
+**Not verified:** none of the mirror exists yet; the register cost above is a
+prediction. If measurement shows the repack costs real occupancy, the fallback
+is mirroring *layout-compatibly* so conversion is a reinterpretation — noted so
+the option is seen when the number arrives, not invented under pressure.
+
+---
+
+## D32 — Shader types: one override mechanism per domain, and particle simulation stays out of reach
+
+**Decided 2026-08-06, with D30.** Godot ships six shader *types* — spatial,
+canvas_item, particles, sky, fog, texture_blit (4.7) — plus compute in raw GLSL
+through `RenderingDevice`. HollowPoint has exactly one authorable domain today
+(the surface material), and the absence of the rest was a gap nobody had
+written down. This entry makes each one a decision.
+
+**The mechanism does not multiply; the domains do.** Every domain a game can
+author uses D28's one shape — a Slang `interface` whose defaults are the
+engine's behaviour — arriving **with its owning system**, never before
+(D27's rule):
+
+| Domain | Godot's | Ours | Arrives with |
+|---|---|---|---|
+| surface material | `spatial` | `IHpMaterial` | **live** (142.2) |
+| per-light / lighting | `light()` | lighting stage | **T0145** |
+| vertex | `vertex()` | vertex stage | **T0146** |
+| post effect | CompositorEffect (4.3) | post stack | **T0148** |
+| sky | `sky` | sky shader override | T0088, when it exists |
+| fog | `fog` | fog override | T0089/T0091, when they exist |
+| compute | raw GLSL via `RenderingDevice` | **Slang**, same modules as materials | **T0150** |
+| 2D / UI | `canvas_item` | undecided with T0069's library | Phase 12 |
+
+Sky and fog carry the obligation on their own tickets: when the system lands,
+its shader is authored against an interface a game can implement, not as a
+sealed engine file. That costs the owning ticket one design constraint now and
+saves the retrofit D27 exists to prevent.
+
+### Particles are the deliberate exception, and it is D15's line, not an oversight
+
+Godot exposes particle *process* shaders — `start()`/`process()` — so gameplay
+authors simulation. HollowPoint **does not**, and the divergence is deliberate:
+
+- D15's enabling constraint is that particles are **cosmetic** — gameplay
+  never reads their state, which is what buys GPU-only simulation, a single
+  dispatch over shared buffers, and a fixed budget with enforced degradation.
+- A game-authored process shader punctures all three: it invites reading back
+  what it wrote, it fragments the one-dispatch model, and a budget cannot be
+  enforced against arbitrary spawning logic.
+- What games author is particle **appearance** — T0106's sprites, flipbooks
+  and blend modes, which flow through the same material mechanism as every
+  other surface — and effect *composition* (T0107).
+
+**Revisit when** a wanted effect is genuinely inexpressible as authored curves
+plus emission shapes (T0080) — at that point the D15 trade is re-argued in the
+open, rather than eroded by a hook that seemed harmless.
+
+### Also deliberately absent, so the absences are decisions
+
+- **A visual (node-graph) shader editor.** Godot ships one and its own docs
+  concede it does not cover the language. Rungs 0–1 (styles, parameters) are
+  this engine's answer to "junior developer, no code"; a node graph is an
+  editor-era question for the owner, not an engine gap.
+- **Stencil render modes.** Godot added them in 4.5, still marked
+  experimental. Nothing here owns stencil-driven material effects; if a game
+  needs them, that is a T0045/T0094-shaped conversation and this line is where
+  it starts.
+- **Geometry shaders.** Godot refuses them too; tessellation is already
+  covered by 141.9's named trigger.
