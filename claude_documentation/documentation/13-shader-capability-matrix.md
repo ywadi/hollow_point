@@ -35,17 +35,17 @@ owning ticket.
 
 | Capability | Status | Owner |
 |---|---|---|
-| Stable inputs (`HpSurfaceInput`) | **P** — tangent zeroed, front-facing unreachable from most hooks, undisplaced UV lost | T0159 |
+| Stable inputs (`HpSurfaceInput`) | **P** — tangent, undisplaced UV (`UV0Base`) and `Time` landed 2026-08-06 (T0159); front-facing still reaches only `shadingNormal` | (front-facing: unowned) |
 | Coordinate hook (`surfaceCoordinates`) | **Y** | — |
 | Per-channel hooks (`baseColor`, `occlusion`, …) | **Y** | — |
 | Whole-output hook (`surface`) | **Y** | — |
 | Per-tap sampling seam | **–** | T0153.1 |
-| Cross-hook state | **–** | T0159 |
+| Cross-hook state | **Y** — hooks are `[mutating]`, members zero-initialised (2026-08-06, T0159) | — |
 | Game-declared parameters and textures | **–** | T0160 |
-| Light access | **–** | T0159 (read) / T0145 (replace the loop) |
+| Light access | **P** — readable since D27's amendment (2026-08-06, T0159): `g_Frame.Lights[]` is in scope, **but its order is unspecified for directional lights** (unstable sort on equal keys — pick by intensity, never index). Replacing the loop is T0145 | T0145 |
 | Vertex hook | **–** | T0146 |
 | Screen resources (depth, scene colour, fed textures) | **–** | T0147 |
-| Time / frame counter | **–** — the field exists and is never written | T0159 |
+| Time / frame counter | **P** — `HpSurfaceInput::Time` landed 2026-08-06 (T0159): the caller's clock reaches shaders through every render path. The *frame counter* (`uiFrameIndex`) is still only zeroed, never written | (frame counter: unowned) |
 | Per-instance data | **–** — layout exists, bytes undefined | T0160's note |
 | Pass and pipeline control | **–** | T0148 / T0150 / T0094 |
 
@@ -53,16 +53,16 @@ owning ticket.
 
 | Family | Needs, beyond what exists | Blocked on |
 |---|---|---|
-| **Parallax** — POM, relief, cone-step | cross-hook state (self-shadowing), parameters for its knobs | T0159, T0160 |
-| **De-tiling / macro variation** | per-tap seam, cross-hook state, declared textures | T0153.1, T0159, T0160 |
+| **Parallax** — POM, relief, cone-step | parameters for its knobs (self-shadowing landed 2026-08-06 — `rock_pom.slang` marches a shadow ray on T0159's contract) | T0160 |
+| **De-tiling / macro variation** | per-tap seam, declared textures (cross-hook state landed) | T0153.1, T0160 |
 | **Layered surfaces** — snow, wetness, moss, detail maps | declared textures and parameters | **T0160 alone** |
 | **World-aligned masks, game triplanar** | nothing | *expressible today* |
-| **Anisotropy, sheen, clearcoat, skin** | real tangent, the light loop, extended features | T0159, T0145, T0143 |
+| **Anisotropy, sheen, clearcoat, skin** | the light loop, extended features (the real tangent landed — zero only when the mesh has none, `w` always +1) | T0145, T0143 |
 | **Rim / Fresnel / unshaded** | nothing | *expressible today* |
 | **Vertex motion** — wind, sway, billboarding, displacement, morph, per-instance | a vertex stage that does not exist | **T0146 — zero of six expressible** |
-| **Transparency** — dissolve, fade, refraction, decals, dithered LOD | time, parameters, scene colour, per-instance, a LOD system | T0159, T0160, T0147, T0039/T0040 |
+| **Transparency** — dissolve, fade, refraction, decals, dithered LOD | parameters, scene colour, per-instance, a LOD system (time landed) | T0160, T0147, T0039/T0040 |
 | **Screen-space** — soft particles, heat haze, frosted glass, fog-of-war | bound screen resources | **T0147** |
-| **Time-driven** — scrolling, flowmaps, pulsing emissive | time; flowmaps also want a declared texture | **T0159 (one line)**, T0160 |
+| **Time-driven** — scrolling, flowmaps, pulsing emissive | scrolling and pulsing emissive are *expressible today* (`In.Time`, 2026-08-06); flowmaps still want a declared texture | T0160 |
 | **NPR** — cel, ramp, hatching, outlines, custom BRDF | the light loop; outlines also need a vertex stage and a pass | **T0145**, T0146, T0148 |
 
 ---
@@ -76,17 +76,18 @@ thing the audit produced:
 
 - **The tangent frame.** Built per fragment in `HpParallaxUv`, built *again*
   inside DiligentFX's `PerturbNormal`, and handed to a game **zero** times. The
-  rock cube sample computes it a **third** time.
-- **The undisplaced UV0.** `evaluateSurface` copies it in, then overwrites it
-  from the coordinate hook's return.
+  rock cube sample computes it a **third** time — and since T0159 it can at
+  least *keep* its copy across hooks rather than rebuilding per hook.
+- ~~The undisplaced UV0~~ — **landed 2026-08-06** as
+  `HpSurfaceInput::UV0Base` (T0159.3).
 - **Camera matrices, viewport size, mip bias, the previous camera.** All written
   every frame; none of it contract.
 
 ### (b) It exists upstream but never reaches the contract
 
-- **The vertex tangent.** `RenderPBR.vsh` writes it, `drawModel` sets the flag
-  when the mesh carries one — and `HpSurface.slang` assigns
-  `float4(0, 0, 0, 1)` unconditionally.
+- ~~The vertex tangent~~ — **landed 2026-08-06** (T0159.4):
+  `HpSurfaceInput::Tangent` is the mesh's world-space tangent when it has one,
+  zero when it does not, `w` always +1 because their wire format is `float3`.
 - **Front-facing.** Enters `main`, reaches only `shadingNormal`.
 - **Per-primitive `CustomData`.** In the layout; the write is skipped when null
   and the engine passes null, so those sixteen bytes are **undefined memory**.

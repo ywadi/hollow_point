@@ -51,6 +51,19 @@ it is largely provided already by `EnvMapRenderer`.
 
 ## Notes / findings
 
+### A symptom this ticket owns, measured 2026-08-06 on T0159
+
+**The black pixel speckle on the rock cube sample is the N·L clamp, not the
+parallax or self-shadow math.** Normal-mapped texels tip past every light's
+horizon and clamp to pure black with no ambient to catch them; POM aggravates
+it at grazing view by relocating which texels are seen. Measured on the sample
+with the self-shadow march forced off: the near-black count is bit-identical
+either way — 431 at the test pose, 10000 at yaw 0.9 where it peaks (of ~47k
+covered pixels). The scene's `normalScale: 0.8` note documents the same
+mechanism. When this ticket lands ambient/IBL, those pixels become dark instead
+of black and the speckle disappears — worth re-rendering the sample then as the
+before/after.
+
 ### Inherited from T0134 / D24 (2026-08-05) — configure DiligentFX's IBL, do not supersede it
 
 **D24 answers this ticket's open question: configure.** The mechanism, so it is

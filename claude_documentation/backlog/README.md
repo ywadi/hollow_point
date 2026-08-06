@@ -20,8 +20,21 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-06 — eighteenth revision of the day: the sequence is now one
-thing — *give game developers full power over shaders*.**
+**Set 2026-08-06 — nineteenth revision of the day: `T0159` closed — the
+contract is open. The sequence stays one thing: *give game developers full
+power over shaders*.**
+
+T0159 landed all of it: D27's amendment is in force and documented where a
+shader author reads (`docs/shaders/HpMaterial.md`), the hooks are `[mutating]`
+with zero-initialised state, the real tangent, the undisplaced UV and `Time`
+are in `HpSurfaceInput`, and the sample renders parallax self-shadowing from
+its own `.slang` — 72 pixels darkened >10 luminance at the test pose, black
+pixels bit-identical, asserted on both targets. With it, **T0158's 158.2
+closed** as game content rather than waiting for T0145. Two discoveries worth
+carrying: directional lights arrive in **unspecified order** (unstable sort on
+equal keys — T0145 must decide the contract), and the black speckle on the
+rock cube is the **N·L clamp with no ambient** (T0087's, measured 431→10000
+pixels by pose, unchanged by any of this).
 
 A capability audit of all 40 techniques a real game shader might want found that
 **most of them are impossible here**, and that the contract had been shaped
@@ -99,16 +112,15 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0159](open/0159-open-the-material-contract.md) | open the contract | **The cheapest large unlock, and it is mostly deletion.** Amends D27 so a game shader may reach DiligentFX and engine internals; makes the hooks `[mutating]` so a material can keep state across them (~3 lines, measured backward-compatible); publishes the undisplaced UV and the real tangent; writes `Time`, whose field has existed and been zero all along. Self-shadowing lands as the acceptance test rather than the goal |
-| 2 | [T0160](open/0160-material-declared-parameters.md) | material-declared parameters and textures | **The single largest row-unblocker in the matrix — ~13 of 40 techniques**, and the one a game developer hits on *day one* rather than when attempting something advanced. A game cannot ship a tunable material at all today: the first shader ever authored here hard-codes its one knob as a literal because there is nowhere to put it. Not something opening DiligentFX can fix — Diligent has no such thing either |
-| 3 | [T0146](open/0146-vertex-stage-hook.md) | the vertex stage hook | **Zero of six techniques expressible.** Wind, foliage sway, billboarding, displacement, morph targets, per-instance offsets — the only family with an empty intersection. We use DiligentFX's vertex shader as-is, so there is no hook to open; this one is built, not exposed. Also carries custom interpolators, which every future per-vertex technique needs |
-| 4 | [T0147](open/0147-engine-intermediates-for-shaders.md) | screen resources for shaders | Refraction, soft particles, heat haze, fog-of-war. A shader cannot sample a depth buffer that is not bound to the pipeline, whatever it includes — so this is binding work, not contract work |
-| 5 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | the light loop | **The whole NPR family** — cel, ramp, hatching, custom BRDFs — plus skin, sheen and anisotropy's shading half. T0159 lets a game *read* lights; this lets it replace the loop. **Must land after T0159**, or its interface freezes before hooks are mutable and the break is paid twice |
+| 1 | [T0160](open/0160-material-declared-parameters.md) | material-declared parameters and textures | **The single largest row-unblocker in the matrix — ~13 of 40 techniques**, and the one a game developer hits on *day one* rather than when attempting something advanced. A game cannot ship a tunable material at all today: the first shader ever authored here hard-codes its one knob as a literal because there is nowhere to put it. Not something opening DiligentFX can fix — Diligent has no such thing either |
+| 2 | [T0146](open/0146-vertex-stage-hook.md) | the vertex stage hook | **Zero of six techniques expressible.** Wind, foliage sway, billboarding, displacement, morph targets, per-instance offsets — the only family with an empty intersection. We use DiligentFX's vertex shader as-is, so there is no hook to open; this one is built, not exposed. Also carries custom interpolators, which every future per-vertex technique needs |
+| 3 | [T0147](open/0147-engine-intermediates-for-shaders.md) | screen resources for shaders | Refraction, soft particles, heat haze, fog-of-war. A shader cannot sample a depth buffer that is not bound to the pipeline, whatever it includes — so this is binding work, not contract work |
+| 4 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | the light loop | **The whole NPR family** — cel, ramp, hatching, custom BRDFs — plus skin, sheen and anisotropy's shading half. T0159 lets a game *read* lights; this lets it replace the loop. **Must land after T0159**, or its interface freezes before hooks are mutable and the break is paid twice |
 
 Then, unchanged in substance and pushed behind the above: `T0143` (extended
 material features), `T0152` (the winding remainder), `T0045` (culling and render
-queues), `T0086` (shadows), and `T0158`, whose 158.2 unblocks the moment T0159
-lands.
+queues), `T0086` (shadows), and `T0158`, whose 158.2 **closed with T0159** —
+its remainder is 158.3 (with T0145) and the reference/tuning subtasks.
 
 ### T0045 is the movable one, and that is the useful thing to know about it
 
@@ -258,7 +270,7 @@ wrong in the confident voice of a document that is normally right.
 | 462 | [T0154](open/0154-noise-generation.md) | Noise: CPU generator, Slang functions, and the bake-to-texture bridge | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 463 | [T0157](completed/0157-rock-cube-sample.md) | The rock cube sample: the authoring path's first real test | 4 — Render layer | ✅ DONE | Medium | Moderate |
 | 464 | [T0158](inprogress/0158-parallax-depth-cues.md) | Making parallax read as relief: the reference plane and self-shadowing | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
-| 465 | [T0159](open/0159-open-the-material-contract.md) | Open the material contract: DiligentFX exposed, state across hooks | 4 — Render layer | 🔜 TODO | High | Moderate |
+| 465 | [T0159](completed/0159-open-the-material-contract.md) | Open the material contract: DiligentFX exposed, state across hooks | 4 — Render layer | ✅ DONE | High | Moderate |
 | 466 | [T0160](open/0160-material-declared-parameters.md) | Material-declared parameters and resources | 4 — Render layer | 🔜 TODO | High | Complex |
 | 464 | [T0155](open/0155-terrain-rendering.md) | Terrain rendering: their reference implementation is the floor, not the ceiling | 4 — Render layer | 🔜 TODO | Medium | Very Complex |
 | 465 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | 🔜 TODO | High | Complex |

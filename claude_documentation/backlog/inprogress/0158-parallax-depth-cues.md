@@ -72,11 +72,17 @@ practice and is not wasted work when tessellation later lands above it.
       no extra samples. This is Unreal's `BumpOffset` *Reference Plane* by
       another name, and it is the direct answer to "make it pop out" for a
       technique that structurally cannot
-- [~] 158.2 **Parallax self-shadowing.** *Attempted in the material and blocked by the contract — see the findings. The march is written and correct; what a material cannot obtain is a usable tangent frame at `surface()` time. Moves behind T0145 with 158.3.* A second, shorter march from the hit
-      point toward the light; if the height field blocks it, darken. Fewer steps
-      than the view march — a shadow ray answers *blocked or not*, not *where* —
-      and it wants a soft falloff rather than a binary result, per Tatarchuk's
-      approximate soft shadows
+- [x] 158.2 **Parallax self-shadowing.** *Landed 2026-08-06 — in the sample's
+      own `.slang`, on T0159's opened contract, not behind T0145 as the earlier
+      note predicted.* The `[mutating]` hooks carry the tangent frame from
+      `surfaceCoordinates` to `surface()`, and the amended D27 puts
+      `g_Frame.Lights[]` in scope; the Tatarchuk-style soft march gained a
+      reach clamp, a horizon fade and a light-share cap, all three found by
+      watching the spinning cube live. Measured: 72 pixels darkened >10
+      luminance (max drop 51.7) at the test pose, zero added black pixels,
+      asserted in `tests/gpu/rockcube_sample_test.cpp`. What stays with
+      158.3/T0145 is the real per-light answer — the sample approximates it by
+      capping the bite at the marched light's incident share
 - [ ] 158.3 **How many lights get a shadow march — with T0145.** Naively this is
       one march *per light*, which is the real cost risk and is a **lighting**
       decision, not a material one. The likely answer is "the dominant light
@@ -141,7 +147,8 @@ correctness proof; the picture is the point of it.
 > mutating is a backward-compatible, ~3-line change, not a redesign. The
 > blocker was never Slang; it was that *we* did not declare it. **T0159** does,
 > and self-shadowing lands there. The measurements below stand exactly as
-> recorded; only the conclusion "cannot" was overstated.
+> recorded; only the conclusion "cannot" was overstated. *(Confirmed 2026-08-06
+> later the same day: it landed — see 158.2 above for the numbers.)*
 
 ### Why it could not be written *as the contract stood*
 

@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 466 |
 | **Created** | 2026-08-06 |
-| **Blocked by** | nothing — independent of [0159-open-the-material-contract.md](0159-open-the-material-contract.md), and the two together are "a game can do anything" |
+| **Blocked by** | nothing — independent of [0159-open-the-material-contract.md](../completed/0159-open-the-material-contract.md), and the two together are "a game can do anything" |
 | **Refs** | [../../documentation/13-shader-capability-matrix.md](../../documentation/13-shader-capability-matrix.md) — **this is the single largest row-unblocker in it, ~13 techniques**; [../../documentation/11-material-format.md](../../documentation/11-material-format.md) — the `.hpmat` gains a section; [0151-shader-variants-and-compile-cost.md](0151-shader-variants-and-compile-cost.md) — **registers that parameters add no PSO axis**, which is the point; [0035-hierarchy-and-inspector.md](0035-hierarchy-and-inspector.md) — the inspector rows these produce; [0153-surface-detiling.md](0153-surface-detiling.md), [0149-style-bundles.md](0149-style-bundles.md) — consumers; **D13**, **D23**, **D28**, **D34** |
 
 ## Why
