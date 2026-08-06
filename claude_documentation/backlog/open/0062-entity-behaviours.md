@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 270 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), [../../documentation/09-gameplay-authoring.md](../../documentation/09-gameplay-authoring.md) (owns), [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D23, T0053 (Blocks this), [../completed/0022-scene-serialization.md](../completed/0022-scene-serialization.md), T0095, T0071, T0072, T0073, T0076 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), [../../documentation/09-gameplay-authoring.md](../../documentation/09-gameplay-authoring.md) (owns), [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D23, T0053 (Blocks this), [../completed/0022-scene-serialization.md](../completed/0022-scene-serialization.md), T0095, T0071, T0072, T0073, T0076, [../completed/0157-rock-cube-sample.md](../completed/0157-rock-cube-sample.md) — **landed the load-bearing half of 62.11 on 2026-08-06** because it could not build a sample without it; see the subtask and the findings below for exactly what is left |
 
 ## Why
 
@@ -84,8 +84,18 @@ which this ticket owns.**
 - [ ] 62.9 Tiered ticking and `setProcess(false)`; **`setEnabled(bool)` is a
       separate, semantic thing** and must not be the same function
 - [ ] 62.10 `HP_SYSTEM` registration into the existing phases
-- [ ] 62.11 `ModuleContext` gains a `Scene*`; `ModuleApi` gains the phase hooks;
-      an app owns a `Scene`. **~30 lines and it blocks every other subtask**
+- [x] 62.11 `ModuleContext` gains a `Scene*`; `ModuleApi` gains the phase hooks;
+      an app owns a `Scene`. **~30 lines and it blocked every other subtask** —
+      **landed by T0157 on 2026-08-06**, and it no longer blocks anything here.
+      What exists: `ModuleContext::services` (scene, asset pool, render device
+      and context), `ModuleApi::onUpdate` at frame **phase 4**,
+      `ModuleHost::setServices`/`update`, `Application::setServices`, and frame
+      **phases 7 and 9 actually propagating** the named scene — they were empty,
+      so nothing a module moved ever reached a world matrix. What is **not**
+      done and is still this ticket's: `onFixedUpdate` and `onLateUpdate` hooks
+      (deliberately not added, because how a behaviour *declares* its phase is
+      62.7/62.10's answer and adding all three first would fix it early), and
+      the whole declaration layer above them
 - [ ] 62.12 Measure: dispatch cost per behaviour, and whether `final`
       devirtualises under `zig cc`. The "just always tick" default rests on it
 - [ ] 62.13 Editor: "Add Component" surface, not a separate behaviour dropdown
@@ -269,6 +279,43 @@ the declaration layer, which is one header.
   only `generation` and `name`, `ModuleApi` has no phase hooks, and **nothing in
   `apps/` owns a `Scene`**. So no gameplay code of any shape can be written
   today. ~30 lines, and it blocks every other subtask here.
+
+### 62.11 landed on 2026-08-06, in T0157, and left two things behind
+
+T0157 needed a gameplay module to rotate a cube and found exactly what the
+paragraph above predicted, so it built the plumbing rather than a workaround.
+The measurement that mattered: **frame phases 7 and 9 were empty**, so even with
+a scene handed to a module, a transform it moved never reached a world matrix —
+the entity sits still and nothing reports a problem. `Application` now
+propagates the scene it was given, which is what makes the hook worth having.
+
+**Two findings for this ticket, both sharper than they look.**
+
+**A module-owned component type outliving its module is a use-after-free**, and
+nothing prevents it. An `entt` storage pool for a type the module defined holds
+type-erased operations in the module's image; unload the module and
+`~basic_registry` calls into memory that is no longer mapped. Reproduced as a
+SIGSEGV in `~basic_registry` while writing
+`tests/integration/rockcube_module_test.cpp`, and `forgetType` does **not**
+help — it removes the reflection, and the storage is a separate thing nothing
+removes.
+
+What saves the editor today is an ordering that was chosen for another reason
+entirely: `Application::run` calls `layers_.clear()` — destroying the scene —
+before `modules_` is destroyed, because a layer holding a GPU resource must
+release it before the surface it was made against (T0025). **So the guarantee
+gameplay depends on is a side effect of a comment about swap chains**, and
+anything that reorders that teardown reintroduces the crash silently. This
+ticket should either remove a module's component storage on unload or make the
+ordering explicit and asserted. It is also the argument against hot-reloading a
+module while a scene holding its components is live, which 62.x will have to
+answer.
+
+**The per-frame hook is one hook, not three.** `onFixedUpdate` and
+`onLateUpdate` are real phases the loop already runs, and they were deliberately
+left out: how a behaviour declares which phase it wants is 62.7/62.10's
+question, and adding all three entry points first would answer it by accident.
+Every one of them costs a build-id bump, so the order matters.
 - **62.12 — measurement.** The decision to let every behaviour tick every frame
   by default rests on an *estimated* ~2–5 ns dispatch. That is arithmetic, not a
   measurement, and this ticket owns turning it into one — including whether

@@ -448,6 +448,9 @@ add_subdirectory(engine)
 include("${CMAKE_CURRENT_LIST_DIR}/cmake/HpGameplayModule.cmake")
 
 add_subdirectory(samples/sandbox)
+# The second sample, and the evidence for 157.1's question: a second gameplay
+# module costs exactly this line plus its own CMakeLists.txt.
+add_subdirectory(samples/rockcube)
 
 # Apps are globbed, so adding one needs no edit here. They deliberately do NOT
 # use Diligent's add_sample_app(): that is DiligentSamples' framework, and the

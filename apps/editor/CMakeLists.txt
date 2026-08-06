@@ -26,8 +26,13 @@ target_compile_features(hp_editor PRIVATE cxx_std_20)
 # hp::executableDirectory() at run time, because a configure-time path is a
 # *host* path and a Windows binary cannot open it.
 target_compile_definitions(hp_editor PRIVATE
-    HP_SANDBOX_MODULE_NAME="$<TARGET_FILE_NAME:hp_sandbox>")
-add_dependencies(hp_editor hp_sandbox)
+    HP_SANDBOX_MODULE_NAME="$<TARGET_FILE_NAME:hp_sandbox>"
+    # The second sample (T0157), named the same way and for the same reason.
+    # The editor knowing two module names by macro is the shape T0024's project
+    # replaces — a project says which modules it loads — and until it exists,
+    # naming them here is honest about the fact that nothing else can.
+    HP_ROCKCUBE_MODULE_NAME="$<TARGET_FILE_NAME:hp_rockcube>")
+add_dependencies(hp_editor hp_sandbox hp_rockcube)
 
 set_target_properties(hp_editor PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/apps/editor")

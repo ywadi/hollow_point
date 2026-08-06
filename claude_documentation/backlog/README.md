@@ -20,13 +20,28 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-06 — sixteenth revision of the day: `T0156` closed** — parallax
-composes with triplanar, measured on both devices with zero-scale bit-identical,
-the blend seam characterised and accepted, the 153.1 sampling seam decided once
-for both tickets, and silhouette POM evaluated and closed against T0146.7's
-tessellation trigger. **T0157 (the rock cube sample) takes its place at the
-top**, because it is what T0156 was for. Before that, the fifteenth revision
-emptied the 141/142 chain. `T0141` and `T0142` both closed**: the engine owns the surface
+**Set 2026-08-06 — seventeenth revision of the day: `T0157` closed** — **there
+is now something to open and look at.** The rock cube sample renders a
+hand-authored `.hpscene` with a `.hpmat`, parallax occlusion and triplanar on a
+UV-less cube, rotating, in the editor — and every byte of it comes through the
+VFS from a gameplay module across the real boundary.
+
+It cost more than a sample should have, and that is the useful part. **T0062's
+62.11 landed here** because `ModuleContext` carried a generation and a name and
+nothing else, so no gameplay code of any shape could be written; a module now
+gets a scene, an asset pool and a device, plus a per-frame hook at phase 4.
+**Frame phases 7 and 9 turned out to be empty**, so even with a scene a module
+could move a transform that no renderer would ever read. The awkwardness log is
+on the ticket with an owning ticket per item; the largest is that **a scene can
+only reference an asset by GUID**, so hand-authoring one means hand-authoring
+five `.hpmeta` identities first — **T0024**'s to remove. **T0143 takes the top
+spot.**
+
+Before that, the sixteenth revision closed `T0156` — parallax composes with
+triplanar, measured on both devices with zero-scale bit-identical, the blend
+seam characterised and accepted, the 153.1 sampling seam decided once for both
+tickets, and silhouette POM evaluated and closed against T0146.7's tessellation
+trigger. The fifteenth revision emptied the 141/142 chain. `T0141` and `T0142` both closed**: the engine owns the surface
 stage, a game authors a `.slang` material and sees it render exactly, a broken
 one is loud magenta plus one logged compiler error, the result cooks to SPIR-V
 that renders byte-identically with no compiler present (**D34**), and the
@@ -39,7 +54,7 @@ The owner's reason for this section: *"This way we know what needs to happen nex
 even if the context and session restart."* The [Board](#board) below is every
 ticket there is; this is what is in flight **now**, in order.
 
-**Just landed, and therefore not upcoming:** all of **T0060** (the material
+**Just landed, and therefore not upcoming:** all of **T0157** (the rock cube sample, and with it T0062's **62.11** and frame phases 7 and 9), all of **T0060** (the material
 asset) and all of **T0141** and **T0142** — the decision (141.0/**D26**), the
 contract (141.6/142.2/**D27**/**D28**), the engine's own pixel shader byte-identical to
 DiligentFX's (141.10), the textured-render guard and per-channel debug views
@@ -62,11 +77,10 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0157](inprogress/0157-rock-cube-sample.md) | the rock cube sample | **Straight after T0156, because it is what T0156 is for.** A rotating cube with the rock material, POM and triplanar together — and the first thing in this project you can open and look at. Its second job is the real one: `loadSceneFromString` has **no caller outside `tests/`**, so a hand-authored scene loaded by a sample is the first evidence the format is *authorable* rather than merely round-trippable. T0156 left the ground ready: `heightTexture`, `heightScale`, `triplanar` and `triplanarScale` all reflect and serialise, and the gpu suite renders the exact material this sample shows |
-| 2 | [T0143](open/0143-extended-material-features.md) | extended material features | **Everything DiligentFX's PBR has, plus the ability to override it** — clearcoat, sheen, anisotropy, iridescence, transmission, volume. Amends D24. Wiring rather than new maths, because their getters are already included and callable |
-| 3 | [T0152](inprogress/0152-winding-convention.md) | the winding convention: the remainder | **The engine half landed 2026-08-06** (152.2–4: header declared, assets re-wound, cull reverted — and the old lit baseline turned out to encode the inversion via a clamped `NdotV`; before/after in the ticket). Remaining: the determinant rule (152.5), the chirality probe and the owner's mirror decision (152.6), the conventions-doc section (152.7) |
-| 4 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | **Shader-independent**, so it may slot anywhere — see below |
-| 5 | [T0086](open/0086-shadows.md) | shadows | Last because it needs the surface stage *and* adds `ShadowFactor` to the material contract, so it wants that contract settled in Slang first — **and T0152 must land first** — 141.12's winding finding was corrected by D33 (the assets, not the engine), and shadow bias tuned before the assets are re-wound bakes the inversion into every tuned value. **Now also behind T0145** (D30): the shadow lookup lives inside the light loop T0145 moves into the engine, so the loop must land before shadow sampling is written — or it is written twice |
+| 1 | [T0143](open/0143-extended-material-features.md) | extended material features | **Everything DiligentFX's PBR has, plus the ability to override it** — clearcoat, sheen, anisotropy, iridescence, transmission, volume. Amends D24. Wiring rather than new maths, because their getters are already included and callable |
+| 2 | [T0152](inprogress/0152-winding-convention.md) | the winding convention: the remainder | **The engine half landed 2026-08-06** (152.2–4: header declared, assets re-wound, cull reverted — and the old lit baseline turned out to encode the inversion via a clamped `NdotV`; before/after in the ticket). Remaining: the determinant rule (152.5), the chirality probe and the owner's mirror decision (152.6), the conventions-doc section (152.7) |
+| 3 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | **Shader-independent**, so it may slot anywhere — see below |
+| 4 | [T0086](open/0086-shadows.md) | shadows | Last because it needs the surface stage *and* adds `ShadowFactor` to the material contract, so it wants that contract settled in Slang first — **and T0152 must land first** — 141.12's winding finding was corrected by D33 (the assets, not the engine), and shadow bias tuned before the assets are re-wound bakes the inversion into every tuned value. **Now also behind T0145** (D30): the shadow lookup lives inside the light loop T0145 moves into the engine, so the loop must land before shadow sampling is written — or it is written twice |
 
 ### T0045 is the movable one, and that is the useful thing to know about it
 
@@ -214,7 +228,7 @@ wrong in the confident voice of a document that is normally right.
 | 460 | [T0153](open/0153-surface-detiling.md) | Surface de-tiling: breaking texture repetition, exposed to the game | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 461 | [T0156](completed/0156-parallax-under-triplanar.md) | Parallax under triplanar, and the silhouette question | 4 — Render layer | ✅ DONE | High | Moderate |
 | 462 | [T0154](open/0154-noise-generation.md) | Noise: CPU generator, Slang functions, and the bake-to-texture bridge | 4 — Render layer | 🔜 TODO | Medium | Moderate |
-| 463 | [T0157](inprogress/0157-rock-cube-sample.md) | The rock cube sample: the authoring path's first real test | 4 — Render layer | 🚧 IN PROGRESS | Medium | Moderate |
+| 463 | [T0157](completed/0157-rock-cube-sample.md) | The rock cube sample: the authoring path's first real test | 4 — Render layer | ✅ DONE | Medium | Moderate |
 | 464 | [T0155](open/0155-terrain-rendering.md) | Terrain rendering: their reference implementation is the floor, not the ceiling | 4 — Render layer | 🔜 TODO | Medium | Very Complex |
 | 465 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | 🔜 TODO | High | Complex |
 | 492 | [T0148](open/0148-post-process-stack.md) | The post-process stack: engine and game effects at one seam | 4 — Render layer | 🔜 TODO | Medium | Complex |

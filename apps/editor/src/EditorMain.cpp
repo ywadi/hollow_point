@@ -172,14 +172,16 @@ private:
         HP_LOG_INFO(kLog, "engine {}, {} instance(s), {} consumer(s)", hp::engineVersion(),
                     hp::engineInstanceCount(), hp::engineConsumerCount());
 
-        // T0048: the module the editor and the runtime both host. Until
-        // this existed, 'loaded at runtime by editor and runtime' was true
-        // of the engine's capability and false of the binaries.
-        loadSampleModule();
-
         // The render layer owns the device (T0025). The editor runs until its
         // window is closed, so this is where a device is actually visible.
-        if (window() != nullptr) {
+        if (window() == nullptr) {
+            // Headless: no device and no scene, so a module gets neither. Load
+            // them anyway — the boundary is still worth crossing, and a module
+            // that only registers types works perfectly well here.
+            loadGameplayModules();
+            return;
+        }
+        {
             // **Order matters, and it is the opposite of the obvious one.**
             // `LayerStack::render` walks layers in push order, and
             // `hp::RenderLayer` clears, blits and presents in a single
@@ -204,7 +206,37 @@ private:
             // can currently answer.
             render.setClearColour(0.16F, 0.22F, 0.34F, 1.0F);
 
-            populateDemoScene(render);
+            // **What this application is running, declared once** (T0062.11).
+            // Two things read it: the frame's transform phases, and every
+            // gameplay module at every entry point. Before this existed a
+            // module was handed nothing at all, so no gameplay code of any
+            // shape could be written — which is what T0157 found and what
+            // T0062 records.
+            hp::ModuleServices services;
+            services.scene = &scene_->scene();
+            services.assets = &scene_->assets();
+            if (render.ready()) {
+                services.device = render.device();
+                services.deviceContext = render.context();
+            }
+            setServices(services);
+
+            // **After the device exists, and that is the change T0157 forced.**
+            // The modules used to load first, which was fine while the only one
+            // registered reflected types. A module that loads its own content
+            // needs a device to load it *onto*, and the device does not exist
+            // until the render layer is pushed — so loading a module before
+            // that point hands it a null device and the sample renders nothing.
+            loadGameplayModules();
+
+            // The throwaway quad, now a **fallback**. A gameplay module that
+            // built a scene is the interesting case and this must not draw a
+            // stray quad through the middle of it; a build with no sample
+            // module still wants something on screen rather than a flat clear
+            // colour. T0033's viewport panel replaces both.
+            if (scene_->scene().size() == 0) {
+                populateDemoScene(render);
+            }
         }
     }
 
@@ -322,15 +354,29 @@ private:
         HP_LOG_INFO(kLog, "demo scene ready: a lit quad.");
     }
 
-    /// Loads the sample gameplay module, if it is where one of the layouts puts
-    /// it.
+    /// Loads the sample gameplay modules this build knows about.
+    ///
+    /// **Two names in a list, and that is the honest shape of it today.** A
+    /// project decides which modules an application hosts (T0024); until one
+    /// exists, the alternative to naming them here is a hard-coded single
+    /// module, which is what this was.
+    void loadGameplayModules() {
+        loadModule(HP_SANDBOX_MODULE_NAME, "sandbox");
+        loadModule(HP_ROCKCUBE_MODULE_NAME, "rockcube");
+    }
+
+    /// Loads one gameplay module, if it is where one of the layouts puts it.
     ///
     /// Absence is **not** an error. An app with no gameplay module is a
     /// legitimate state today and will stay legitimate for a shipped tool, so
     /// this logs what happened and carries on. A refusal — a stale build id, a
     /// library that is not a module — is different and is already reported by
     /// the loader with what to rebuild.
-    void loadSampleModule() {
+    ///
+    /// @param fileName the module's file name, as CMake reported it.
+    /// @param sampleDir the directory under `samples/` the build writes it to.
+    /// @returns nothing.
+    void loadModule(const std::string& fileName, const std::string& sampleDir) {
         const std::string dir = hp::executableDirectory();
         // The layouts this binary can find itself in, in order:
         //   beside the exe        -- dist on Windows, and any co-located export
@@ -340,12 +386,10 @@ private:
         // is a *host* path, which a Windows binary cannot open (a lesson the
         // boundary suite already paid for twice).
         const std::string candidates[] = {
-            dir + HP_PATH_SEP + HP_SANDBOX_MODULE_NAME,
-            dir + HP_PATH_SEP ".." HP_PATH_SEP "lib" HP_PATH_SEP + HP_SANDBOX_MODULE_NAME,
-            dir +
-                HP_PATH_SEP ".." HP_PATH_SEP ".." HP_PATH_SEP "samples" HP_PATH_SEP
-                            "sandbox" HP_PATH_SEP +
-                HP_SANDBOX_MODULE_NAME,
+            dir + HP_PATH_SEP + fileName,
+            dir + HP_PATH_SEP ".." HP_PATH_SEP "lib" HP_PATH_SEP + fileName,
+            dir + HP_PATH_SEP ".." HP_PATH_SEP ".." HP_PATH_SEP "samples" HP_PATH_SEP + sampleDir +
+                HP_PATH_SEP + fileName,
         };
 
         for (const std::string& candidate : candidates) {
@@ -362,8 +406,7 @@ private:
             HP_LOG_ERROR(kLog, "gameplay module refused: {}", result.message);
             return;
         }
-        HP_LOG_INFO(kLog, "no gameplay module found ({}); continuing without one",
-                    HP_SANDBOX_MODULE_NAME);
+        HP_LOG_INFO(kLog, "no gameplay module found ({}); continuing without one", fileName);
     }
 
     void onUpdate(double deltaSeconds) override {

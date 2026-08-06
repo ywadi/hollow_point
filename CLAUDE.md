@@ -207,7 +207,7 @@ open upstream with its fix PR closed unmerged, and it is **not** fixable by
 moving paths around inside `/mnt/c`. See **D18**. Check with `df -h ~`: `ext4`
 or `overlay` is right, `9p` or `drvfs` means you are still on the Windows side.
 
-**Run the editor:** `./build/linux-x86_64-release/apps/editor/hp_editor`
+**Run the editor:** `./build/linux-x86_64-release/apps/editor/hp_editor` — it opens on the rock cube sample (T0157), or a throwaway quad if `hp_rockcube` is not built. **Never leave it running**: it is a GUI on somebody's desktop.
 
 ---
 
@@ -438,8 +438,10 @@ push.
   scripting (**D12**, **D14**). A build id refuses a mismatched module (T0104).
 - `apps/editor` and `apps/runtime` are **consumers** of the engine. The editor
   disappears on export, so anything the game needs at runtime lives in `engine/`.
-- `samples/sandbox/` is the engine's own sample gameplay module. **It is not
-  "the game"** — real games are separate projects (T0109).
+- `samples/` holds the engine's own sample gameplay modules — `sandbox` for the
+  boundary, `rockcube` for the authoring path (a hand-authored scene, a `.hpmat`,
+  POM and triplanar, rotating). **Neither is "the game"** — real games are
+  separate projects (T0109).
 - All content is addressed through a **virtual filesystem** (**D13**); packs,
   patches and DLC are one mechanism, not three.
 - Particles are **GPU-only and purely cosmetic** — gameplay never reads their

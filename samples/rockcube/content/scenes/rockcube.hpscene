@@ -1,0 +1,89 @@
+# The rock cube scene (T0157.3).
+#
+# **Written by hand from `10-scene-file-format.md`, never saved out of code.**
+# That distinction is the whole point of this file: saving a scene and loading it
+# back proves the format round-trips, which T0022 already tests. Typing one
+# proves it is *authorable*, which nothing tested until this file existed — every
+# caller of `loadSceneFromString` was in `tests/`.
+#
+# Three entities, one of each thing a scene needs: something to look through,
+# something to look at, and something to light it.
+#
+# ## Coordinates, since every number below depends on them
+#
+# The camera looks along **+Z** with an identity rotation, +Y is up, and one unit
+# is one metre. The cube is 2 m on a side, centred on the origin in its own space
+# (`samples/rockcube/content/models/cube.gltf`), so at `position: [0, 0, 5]` its
+# near face is 4 m from the camera plane.
+#
+# ## What had to be computed rather than written
+#
+# Both rotations are **quaternions**, because that is what `Transform::rotation`
+# is and the format has no Euler affordance. Neither was guessed:
+#
+#   * the sun's is `Rot(Y, pi - 0.7) * Rot(X, -0.7)`, the rake the gpu suite
+#     measured in `tests/gpu/textured_surface_test.cpp` — light travelling
+#     `(-0.49, -0.64, 0.59)`, which is *from* above, *from* the camera's side and
+#     *from* the +X side. A light convention is glTF's negative-Z (see
+#     `hp/Light.hpp`), so an identity rotation would rake it in from behind the
+#     cube — the exact arrangement the editor's demo scene documents as looking
+#     like a renderer bug;
+#   * the camera's is `Rot(X, atan(1.5 / 5))`, which pitches its view down by
+#     16.7 degrees onto a cube 5 m away and 1.5 m below it. Positive X rotation
+#     pitches *down* here, and that sign is derived rather than assumed:
+#     `Rot(X, a)` maps forward `(0, 0, 1)` to `(0, -sin a, cos a)`.
+#
+# Writing those two lines is T0157's clearest finding about the format. See the
+# ticket's awkwardness log.
+version: 1
+entities:
+  - guid: 1570000000000101
+    name: Camera
+    components:
+      Transform:
+        position: [0, 1.5, 0]
+        rotation: [0.145213, 0, 0, 0.9894]
+        scale: [1, 1, 1]
+      Camera:
+        verticalFov: 1.0472
+        nearPlane: 0.1
+        farPlane: 1000
+
+  - guid: 1570000000000102
+    name: Sun
+    components:
+      Transform:
+        # A directional light takes only its *direction* from the transform, so
+        # this position is documentation rather than data — it says where the
+        # lamp would be if it were one.
+        position: [3, 4, 1]
+        rotation: [-0.117579, 0.882421, 0.322109, 0.322109]
+        scale: [1, 1, 1]
+      Light:
+        type: Directional
+        colour: [1, 0.96, 0.9]
+        intensity: 6
+        enabled: true
+
+  - guid: 1570000000000103
+    name: RockCube
+    components:
+      Transform:
+        position: [0, 0, 5]
+        rotation: [0, 0, 0, 1]
+        scale: [1, 1, 1]
+      MeshRenderer:
+        mesh: 15700000000000c0
+        # One entry, because the mesh has one surface. A model with five
+        # materials wants five, indexed to match its own material list.
+        materials: [15700000000000a1]
+        layers: 1
+      # **A component this engine has never heard of.** It belongs to the
+      # gameplay module beside this file, which registers it as `RockCubeSpin`
+      # before loading the scene — there is no separate path for gameplay types
+      # (D23). Load this scene *without* that module and the subtree is
+      # preserved verbatim as an unknown component and written back by the next
+      # save, rather than being dropped.
+      RockCubeSpin:
+        axis: [0, 1, 0]
+        degreesPerSecond: 24

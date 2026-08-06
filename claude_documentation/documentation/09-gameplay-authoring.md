@@ -11,6 +11,31 @@ and [T0076](../backlog/open/0076-autoloads.md) (services).
 Owned by **T0062**. If the code and this document ever disagree, fix both in the
 same commit.
 
+## What exists today, so this page is not mistaken for the present
+
+**A gameplay module can now be written, and it looks nothing like the code
+below.** T0157 landed 62.11's plumbing on 2026-08-06 because it could not build
+a sample without it, and the working example is
+[`samples/rockcube/src/RockCube.cpp`](../../samples/rockcube/src/RockCube.cpp) —
+a module that loads a scene, registers a component the engine has never seen,
+and rotates an entity every frame.
+
+Read it for what the boundary really costs today, and read the rest of this
+page for where it is going. The gap between them is precisely T0062's scope:
+
+| This page promises | Today, in the sample |
+|---|---|
+| no `ModuleContext` | `onLoad(hp::ModuleContext&)`, and services come off it |
+| no `entt::` anything | `scene->registry().view<Spin, Transform>()` |
+| no `HP_EXPORT`, no `extern "C"` | `HP_GAMEPLAY_MODULE(...)`, once per module |
+| `_process(delta)` on a behaviour | one `onUpdate` per **module**, at frame phase 4 |
+| `setPosition` marking the transform dirty | `scene->setLocalTransform(...)`, by hand and easy to forget |
+
+The last row is the one with teeth, and it is the reason this page argues for a
+base class: a raw write through `get<Transform>()` is invisible to propagation,
+and the symptom is an entity that does not move while every value in the
+inspector changes.
+
 ---
 
 ## The goal, stated so it can be judged

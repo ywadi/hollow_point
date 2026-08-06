@@ -1,0 +1,37 @@
+# The rock cube's material (T0157.4).
+#
+# Written by hand from claude_documentation/documentation/11-material-format.md,
+# not saved out of the engine. Everything absent keeps its default, which is what
+# makes a material this short a complete one.
+#
+# **Triplanar plus a height map is the pairing this sample exists to show**
+# (T0141.7, T0141.8, T0156): the textures project from world space, so the cube
+# needs no UVs at all, and the parallax march runs per projection so the relief
+# reads as carved rather than painted.
+#
+# Three deliberate absences:
+#
+#   * **normalTexture** — a triplanar material ignores it (141.8). Naming one
+#     here would put a line in the file that nothing reads, which is the mistake
+#     `Camera::cullingMask` spent three tickets being.
+#   * **metallic** — left at 1, which multiplies into the ORM texture's blue
+#     channel. The rock set's blue is zero (test_assets/README.md), so the
+#     surface is a dielectric because the *texture* says so.
+#   * **roughness** — left at 1 for the same reason, against the green channel.
+version: 1
+material:
+  baseColourTexture: 1570000000000010
+  # Occlusion in red, roughness in green, metallic in blue — glTF's ORM packing,
+  # so one texture fills two slots and that is not a mistake.
+  metallicRoughnessTexture: 1570000000000011
+  occlusionTexture: 1570000000000011
+  heightTexture: 1570000000000012
+  # In projection units under triplanar, so this is depth as a fraction of one
+  # tile — and one tile is 2 metres at the scale below. Deep enough to read as
+  # relief on a 2-metre cube, shallow enough that the march does not swim at the
+  # grazing angles a rotating cube spends half its time at.
+  heightScale: 0.05
+  triplanar: true
+  # Tiles per metre. Half a tile per metre puts exactly one tile across each
+  # 2-metre face, which is the setting T0141.8 and T0156 measured against.
+  triplanarScale: 0.5

@@ -262,6 +262,8 @@ if(TARGET hp_tests_integration)
     # would receive a POSIX path it cannot open. The test composes them against
     # exe_dir() at run time, which is correct on both targets and under interop.
     add_dependencies(hp_tests_integration hp_stamped_module hp_stale_module hp_sandbox)
+    # The rock cube sample (T0157): the module that actually moves something.
+    add_dependencies(hp_tests_integration hp_rockcube)
     add_dependencies(hp_tests_integration hp_throwing_module)
     # The real sample gameplay module is loaded from where it is built, by a
     # path relative to this binary, rather than copied next to it.
@@ -273,6 +275,7 @@ if(TARGET hp_tests_integration)
     # A relative path cannot go stale.
     target_compile_definitions(hp_tests_integration PRIVATE
         HP_SANDBOX_MODULE_NAME="$<TARGET_FILE_NAME:hp_sandbox>"
+        HP_ROCKCUBE_MODULE_NAME="$<TARGET_FILE_NAME:hp_rockcube>"
         HP_STAMPED_MODULE_NAME="$<TARGET_FILE_NAME:hp_stamped_module>"
         HP_STALE_MODULE_NAME="$<TARGET_FILE_NAME:hp_stale_module>"
         HP_UNLOAD_PROBE_NAME="$<TARGET_FILE_NAME:hp_unload_probe>"
