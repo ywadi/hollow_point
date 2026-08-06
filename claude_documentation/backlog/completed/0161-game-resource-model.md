@@ -167,8 +167,9 @@ old slot binder's white/checkerboard/GUID logic transferred to author names.
   author-declared `SamplerState` (palette listed in the line); a surface
   buffer; an array-of-textures; a second constant buffer.
 - Scene path after migration: 400 custom draws at 1.86–1.93 ms/frame against
-  the 1.87 ms pre-migration baseline — the 34 ns/draw the gate measured is
-  invisible end to end.
+  the 1.87 ms pre-migration baseline on the RTX 2080, and 0.607 ms against
+  0.630 pre-migration on llvmpipe — the 34–40 ns/draw the gate measured is
+  invisible end to end, on both devices.
 
 ### Findings the next stage should know
 
