@@ -112,6 +112,103 @@ cbuffer cbMaterialAttribs
 // never been evaluated.
 #include "PBR_Textures.fxh"
 
+#if HP_USE_HEIGHT_MAP && USE_TEXCOORD0
+// The engine's own height slot (T0141.7), added to the signature by
+// `SurfacePipeline::CreateCustomSignature` -- not one of DiligentFX's
+// seventeen, so their getters never see it and T0143 can enable every one of
+// theirs without colliding. Compiled only into permutations whose material
+// carries a height map; the signature declares it for all of them, which is
+// the same superset pattern the seventeen already use.
+Texture2DArray g_HeightMap;
+SamplerState   g_HeightMap_sampler;
+
+/// Parallax occlusion (T0141.7): the owner's "screen displacement", and the
+/// technique D26 exists to make expressible. Marches the view ray through the
+/// height field and returns the UV where it lands; every texture then samples
+/// the surface the eye actually hits, so relief looks carved rather than
+/// painted. Silhouettes stay flat -- that is POM's honest limitation, recorded
+/// on the ticket, and changing an outline is tessellation (141.9).
+float2 HpParallaxUv(float2 uv, HpSurfaceInput In)
+{
+    // The tangent frame from screen-space derivatives -- the same trick
+    // DiligentFX's `PerturbNormal` uses for normal mapping, and for the same
+    // reason: it needs no vertex tangents, so parallax works on any mesh that
+    // has texture coordinates at all.
+    float3 dp1 = ddx(In.WorldPos);
+    float3 dp2 = ddy(In.WorldPos);
+    float2 duv1 = ddx(uv);
+    float2 duv2 = ddy(uv);
+
+    // **Oriented toward the viewer explicitly, not by `SV_IsFrontFace`.**
+    // In this engine hardware facing and geometric facing disagree (the
+    // winding finding on T0141), and the flipped contract normal can point
+    // away from the camera on perfectly front-facing surfaces. Parallax only
+    // makes sense on the side being looked at, so the normal is forced there.
+    float3 N = normalize(In.Normal);
+    if (dot(N, In.ViewDir) < 0.0)
+    {
+        N = -N;
+    }
+
+    float3 dp2perp = cross(dp2, N);
+    float3 dp1perp = cross(N, dp1);
+    float3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+    float3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+    float invMax = rsqrt(max(max(dot(T, T), dot(B, B)), 1e-12));
+    T *= invMax;
+    B *= invMax;
+
+    float3 viewTS = float3(dot(T, In.ViewDir), dot(B, In.ViewDir), dot(N, In.ViewDir));
+    if (viewTS.z <= 1e-4)
+    {
+        // Grazing or degenerate: the offset diverges as 1/z, and past the
+        // horizon there is no meaningful march. Flat is the stable answer.
+        return uv;
+    }
+
+    // More layers at grazing angles, where each texel of offset crosses more
+    // relief; fewer head-on, where the offset is tiny anyway.
+    const float numLayers = lerp(32.0, 8.0, saturate(viewTS.z));
+    const float layerDepth = 1.0 / numLayers;
+    // Full-scale offset. White (height 1) is the surface, black is
+    // `heightScale` UV units deep -- the convention the material documents.
+    const float2 fullOffset = viewTS.xy / viewTS.z * g_Material.Basic.CustomData.x;
+    const float2 deltaUv = fullOffset / numLayers;
+
+    // **`SampleGrad` with the pre-march gradients, and it is required, not a
+    // refinement.** The march's UVs diverge between neighbouring pixels, so
+    // implicit derivatives inside the loop are undefined; the artefact is a
+    // seam of wrong mips exactly where the effect is strongest.
+    float currentDepth = 0.0;
+    float2 currentUv = uv;
+    float depthAtUv = 1.0 - g_HeightMap.SampleGrad(g_HeightMap_sampler,
+                                                   float3(currentUv, 0.0), duv1, duv2).r;
+    for (int i = 0; i < 32; ++i)
+    {
+        if (currentDepth >= depthAtUv)
+        {
+            break;
+        }
+        currentUv -= deltaUv;
+        currentDepth += layerDepth;
+        depthAtUv = 1.0 - g_HeightMap.SampleGrad(g_HeightMap_sampler,
+                                                 float3(currentUv, 0.0), duv1, duv2).r;
+    }
+
+    // Occlusion refinement: intersect the ray with the height field between
+    // the last two samples instead of snapping to a layer, which is what
+    // separates parallax *occlusion* mapping from stair-stepped steep
+    // parallax.
+    float2 previousUv = currentUv + deltaUv;
+    float depthAfter = depthAtUv - currentDepth;
+    float depthBefore = (1.0 - g_HeightMap.SampleGrad(g_HeightMap_sampler,
+                                                      float3(previousUv, 0.0), duv1, duv2).r) -
+                        (currentDepth - layerDepth);
+    float weight = saturate(depthAfter / max(depthAfter - depthBefore, 1e-6));
+    return lerp(currentUv, previousUv, weight);
+}
+#endif
+
 /// The standard material's surface function.
 ///
 /// **The engine's own material is written against the same contract a game's is**
@@ -157,6 +254,20 @@ void HpSurface(in HpSurfaceInput In, inout HpSurfaceOutput Out)
 // ---------------------------------------------------------------------------
 interface IHpMaterial
 {
+    /// The surface-stage coordinate hook (T0141.7, 141.8): whatever this
+    /// returns is the `VSOutput` every getter below samples with, so
+    /// displacing its texture coordinates re-aims every map at once.
+    /// Default: parallax occlusion over the material's height map when it
+    /// carries one, untouched otherwise. Runs before any texture is read --
+    /// this *is* the "hook before sampling" D26 was decided to create.
+    VSOutput surfaceCoordinates(VSOutput VSOut, HpSurfaceInput In)
+    {
+#if HP_USE_HEIGHT_MAP && USE_TEXCOORD0
+        VSOut.UV0 = HpParallaxUv(VSOut.UV0, In);
+#endif
+        return VSOut;
+    }
+
     /// Base colour, linear RGB + alpha, after every texture and factor.
     /// Default: DiligentFX's getter -- sRGB decode, UV selection and the
     /// vertex-colour multiply included; returns the factor for an empty slot.
@@ -338,6 +449,17 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(TMaterial material, VSOutput V
     // of it, and hand *that* to the same getters. Owning `main` is what makes
     // the surface stage; owning the sampling never was.
     // -----------------------------------------------------------------------
+
+    // **The coordinate hook runs first** (141.7/141.8): the returned copy is
+    // what every getter samples, and the contract's UVs are refreshed from it
+    // so a game's `HpSurface` sees the coordinates that were actually used.
+    VSOut = material.surfaceCoordinates(VSOut, surfaceIn);
+#if USE_TEXCOORD0
+    surfaceIn.UV0 = VSOut.UV0;
+#endif
+#if USE_TEXCOORD1
+    surfaceIn.UV1 = VSOut.UV1;
+#endif
 
     HpSurfaceOutput surfaceOut;
     surfaceOut.BaseColor = material.baseColor(VSOut, surfaceIn);

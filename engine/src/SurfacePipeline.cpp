@@ -7,6 +7,7 @@
 #include <hp/Profiling.hpp>
 #include <hp/ShaderSources.hpp>
 
+#include <CommonlyUsedStates.h>
 #include <GLTFLoader.hpp>
 #include <GraphicsTypesX.hpp>
 #include <RenderDevice.h>
@@ -135,7 +136,33 @@ std::string addVkInputLocations(const std::string& vsInput) {
 SurfacePipeline::SurfacePipeline(Diligent::IRenderDevice* device,
                                  Diligent::IRenderStateCache* cache,
                                  Diligent::IDeviceContext* context, const CreateInfo& info)
-    : Diligent::PBR_Renderer(device, cache, context, info) {}
+    // `InitSignature = false`, then `CreateSignature()` here: the base
+    // constructor would call `CreateCustomSignature` through the base vtable
+    // and the engine's resources would silently not join the signature. This
+    // is the pattern the flag exists for.
+    : Diligent::PBR_Renderer(device, cache, context, info, /*InitSignature = */ false) {
+    CreateSignature();
+}
+
+void SurfacePipeline::CreateCustomSignature(Diligent::PipelineResourceSignatureDescX&& desc) {
+    // **The height map** (T0141.7): the engine's own texture slot, beside
+    // DiligentFX's seventeen rather than squatting in a disabled one --
+    // reusing, say, the clearcoat slot would make T0143 a breaking change.
+    // Mutable like the material textures; a one-slice `Texture2DArray`, the
+    // shape every texture in this engine binds as. Wrap sampler, because a
+    // height map tiles with the surface it displaces.
+    //
+    // Declared in the signature for **every** pipeline, used only by
+    // permutations carrying `kPsoFlagHeightMap` -- the same superset pattern
+    // as the seventeen: a signature resource an SPIR-V module never names
+    // costs nothing at draw time.
+    desc.AddResource(Diligent::SHADER_TYPE_PIXEL, kHeightMapVariable,
+                     Diligent::SHADER_RESOURCE_TYPE_TEXTURE_SRV,
+                     Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE);
+    desc.AddImmutableSampler(Diligent::SHADER_TYPE_PIXEL, "g_HeightMap_sampler",
+                             Diligent::Sam_LinearWrap);
+    Diligent::PBR_Renderer::CreateCustomSignature(std::move(desc));
+}
 
 Diligent::IPipelineState* SurfacePipeline::pipeline(const Diligent::GraphicsPipelineDesc& graphics,
                                                     const PSOKey& key) {
@@ -300,6 +327,7 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
     // defaults it to 0), so defining it here is what turns the user-defined
     // PSO bit into the compile-time branch the contract promises.
     macros.Add("HP_UNSHADED", (key.GetFlags() & kPsoFlagUnshaded) != 0 ? 1 : 0);
+    macros.Add("HP_USE_HEIGHT_MAP", (key.GetFlags() & kPsoFlagHeightMap) != 0 ? 1 : 0);
 
     // The generated interface structs, which the shaders include by name --
     // exactly as `RenderPBR.psh` does. Reusing the base class's generators is

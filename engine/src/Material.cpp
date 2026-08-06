@@ -77,6 +77,8 @@ void registerMaterialTypes() {
         .property<&Material::normalTexture>("normalTexture")
         .property<&Material::occlusionTexture>("occlusionTexture")
         .property<&Material::emissiveTexture>("emissiveTexture")
+        .property<&Material::heightTexture>("heightTexture")
+        .property<&Material::heightScale>("heightScale")
         .property<&Material::uv0>("uv0")
         .property<&Material::uv1>("uv1")
         .property<&Material::baseColourUv>("baseColourUv")

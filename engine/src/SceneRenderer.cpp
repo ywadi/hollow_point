@@ -95,7 +95,9 @@ constexpr Diligent::PBR_Renderer::PSO_FLAGS kFeatureMask =
         // The engine's unshaded permutation (T0141.12/141.15) -- the
         // missing-material fallback and `Material::unlit` both need pixels
         // scene lights cannot dim.
-        SurfacePipeline::kPsoFlagUnshaded);
+        SurfacePipeline::kPsoFlagUnshaded |
+        // Parallax occlusion over a material's height map (T0141.7).
+        SurfacePipeline::kPsoFlagHeightMap);
 
 /// Features the engine **turns on**, as opposed to what the mask above permits.
 ///
@@ -218,6 +220,10 @@ Diligent::GLTF::Material toGltfMaterial(const Material& material, bool placehold
     basic.Workflow = material.unlit ? Diligent::GLTF::Material::PBR_WORKFLOW_UNLIT
                                     : Diligent::GLTF::Material::PBR_WORKFLOW_METALL_ROUGH;
     gltf.DoubleSided = material.doubleSided;
+    // The height scale rides in `CustomData.x` (T0141.7) -- the per-material
+    // channel DiligentFX reserves for exactly this, so no new constant buffer
+    // and no layout of our own. The shader reads it under `HP_USE_HEIGHT_MAP`.
+    basic.CustomData.x = material.heightScale;
 
     Diligent::GLTF::MaterialBuilder builder{gltf};
     for (const MaterialTextureSlot& slot : materialTextureSlots(material)) {
@@ -460,6 +466,13 @@ SceneRenderer::Impl::ensureBindings(Guid guid, const Diligent::GLTF::Model& mode
             renderer->SetMaterialTexture(srb, view, slot);
         }
 
+        // The engine's height slot (T0141.7): a glTF material has no height
+        // map, so every model SRB binds the flat white default.
+        if (Diligent::IShaderResourceVariable* height = srb->GetVariableByName(
+                Diligent::SHADER_TYPE_PIXEL, SurfacePipeline::kHeightMapVariable)) {
+            height->Set(renderer->GetWhiteTexSRV());
+        }
+
         built.material[i] = std::move(srb);
     }
 
@@ -531,6 +544,41 @@ bool SceneRenderer::Impl::buildMaterialBinding(Diligent::IDeviceContext* context
         }
 
         bindSlot(slot.slot, view);
+    }
+
+    // **The engine's own height slot, outside the seventeen** (T0141.7).
+    // Bound by name because `SetMaterialTexture` only knows Diligent's
+    // attrib ids. White is the no-map binding and means "flat": a constant
+    // height field gives the parallax march a zero offset, so an unbound-slot
+    // permutation and a flat material agree by construction.
+    {
+        Diligent::ITextureView* view = nullptr;
+        std::shared_ptr<TextureAsset> texture;
+        if (material.heightTexture.isValid() && pool != nullptr) {
+            texture = pool->get<TextureAsset>(material.heightTexture);
+        }
+        if (texture && texture->valid()) {
+            view = texture->shaderResource();
+            barriers.emplace_back(texture->texture(), Diligent::RESOURCE_STATE_UNKNOWN,
+                                  Diligent::RESOURCE_STATE_SHADER_RESOURCE,
+                                  Diligent::STATE_TRANSITION_FLAG_UPDATE_STATE);
+            out.textures.push_back(std::move(texture));
+        } else if (material.heightTexture.isValid() && placeholder && placeholder->valid()) {
+            // Named and not loaded: the checkerboard, uniformly with every
+            // other texture-level miss (T0023.6). As a height field it renders
+            // as a waffle of square bumps -- loud, which is the point.
+            view = placeholder->shaderResource();
+        }
+        if (view == nullptr) {
+            view = renderer->GetWhiteTexSRV();
+        }
+        if (Diligent::IShaderResourceVariable* variable = out.srb->GetVariableByName(
+                Diligent::SHADER_TYPE_PIXEL, SurfacePipeline::kHeightMapVariable)) {
+            variable->Set(view);
+        }
+        if (material.heightTexture.isValid()) {
+            out.extraFlags |= SurfacePipeline::kPsoFlagHeightMap;
+        }
     }
 
     if (!barriers.empty() && context != nullptr) {
@@ -736,8 +784,13 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                     // is either an unread texture or an unbound sampler.
                     Diligent::PBR_Renderer::PSO_FLAG_USE_AO_MAP |
                     Diligent::PBR_Renderer::PSO_FLAG_USE_EMISSIVE_MAP);
-            const Diligent::PBR_Renderer::PSO_FLAGS flags =
+            Diligent::PBR_Renderer::PSO_FLAGS flags =
                 (vertexFlags | kMaterialFlags | kEnabledFeatures | extraFlags) & kFeatureMask;
+            if ((flags & Diligent::PBR_Renderer::PSO_FLAG_USE_TEXCOORD0) == 0) {
+                // Parallax displaces texture coordinates; a mesh without any
+                // renders flat rather than compiling a march it cannot feed.
+                flags &= ~SurfacePipeline::kPsoFlagHeightMap;
+            }
 
             // Alpha mode reaches the pipeline from whichever material is
             // actually drawn: it selects the blend state and the compile-time

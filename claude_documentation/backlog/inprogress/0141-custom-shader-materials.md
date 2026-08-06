@@ -74,8 +74,9 @@ surface stage rather than being Diligent's fixed shader.
       whatever the permutations happen to be
 - [ ] **The standard material renders through the surface stage** — absorbed
       from 60.2, and the reason this ticket exists before T0086
-- [ ] **Parallax occlusion mapping works on a standard material** — the owner's
+- [x] **Parallax occlusion mapping works on a standard material** — the owner's
       "screen displacement", and the concrete proof the ceiling is lifted
+      (141.7, 2026-08-06 — differential pixel test on an oblique rock quad)
 - [ ] A **textured** mesh renders with its pixels asserted — absorbed from 60.11,
       the regression guard T0134 could not write
 - [ ] **What is *not* delivered is written down with a trigger**, not left vague
@@ -360,9 +361,18 @@ T0060 already says it must not foreclose and does not.
       any other (D13). Resolution order is **engine, then game, then DiligentFX**
       — a project must not be able to shadow `HpMaterial.fxh` and redefine the
       contract — which makes engine and DiligentFX header names reserved
-- [ ] 141.7 **Height mapping and parallax occlusion** — needs the surface stage;
+- [x] 141.7 **Height mapping and parallax occlusion** — needs the surface stage;
       `PBR_Renderer` has no path for it and `GetPSMainSource` cannot reach before
-      texture sampling. Raised from T0060 on 2026-08-05
+      texture sampling. Raised from T0060 on 2026-08-05.
+      **Done 2026-08-06**: `Material::heightTexture`/`heightScale`, the
+      engine's own `g_HeightMap` signature slot (added through
+      `CreateCustomSignature`, the designed extension point), a POM march in
+      the surface stage behind an `HP_USE_HEIGHT_MAP` permutation, and — the
+      stress-test answer — **`IHpMaterial` grew `surfaceCoordinates`**, the
+      before-sampling hook D26 was decided for, which the interface turned out
+      not to have. Measured: zero-scale vs no-map frames **bit-identical**
+      (diff 0.0); a 0.08 scale moves the frame by 15.69 mean abs per-channel
+      on an oblique rock quad, and the PPM looks carved. See notes
 - [ ] 141.8 **Triplanar projection** — same reason: a surface-stage technique,
       not a material parameter. Raised from T0060 on 2026-08-05
 - [x] 141.0 **Decide C1/C2/C3 and record it** — **C2, decided 2026-08-05 by the
@@ -775,7 +785,7 @@ zero failures.**
 
 | | | Blocked on |
 |---|---|---|
-| **141.7 / 141.8** | parallax + height, triplanar | — **next** |
+| **141.8** | triplanar | — **next** |
 | **141.4** | error shader on compile failure | 142.15 (the `.slang` asset) |
 | **141.14** | generated shader-contract docs, gated in CI | 141.6 settling |
 | **141.9** | tessellation | deferred: *when a silhouette must change* |
@@ -784,6 +794,54 @@ Moved to T0142 and tracked there: 141.1 → **142.15**, 141.2 → **142.9**,
 141.5 → **142.8**, 141.13 → **142.14**, 141.15 → **142.16**.
 
 ## Notes / findings
+
+### 141.7 landed 2026-08-06 — parallax occlusion, and the interface really was short
+
+**The sequence's bet paid off**: writing the first real technique against
+`IHpMaterial` found the contract missing its most important hook. The six
+methods could change what a channel *returns* but nothing could displace the
+coordinates every getter samples **before** sampling — which is the exact
+capability D26 was decided to create. The interface now has
+`surfaceCoordinates(VSOutput, HpSurfaceInput) -> VSOutput`, defaulted to
+parallax-when-height-mapped, run first in `evaluateSurface`, with the
+contract's `UV0/UV1` refreshed from its result so a game's `HpSurface` sees
+the displaced coordinates. Adding it pre-141.1 was free; after games author
+against the interface it would have been a versioning event. (Triplanar,
+141.8, overrides this same method — one hook, two techniques.)
+
+**The mechanics.** The height map is the **engine's own signature slot** —
+`SurfacePipeline::CreateCustomSignature` appends `g_HeightMap` plus an
+immutable wrap sampler to the one shared signature; squatting in a disabled
+DiligentFX slot (clearcoat, sheen…) was rejected because T0143 will enable
+all of them. The override only dispatches because the constructor now passes
+`InitSignature = false` and calls `CreateSignature()` itself — the base
+constructor would have called it through the base vtable, silently. The march
+is steep-parallax with occlusion interpolation, 8–32 layers by view angle,
+`SampleGrad` with pre-march gradients (required, not a refinement: implicit
+derivatives are undefined in the divergent loop), tangent frame from screen
+derivatives so **no vertex tangents are needed**, and the normal is oriented
+toward the viewer explicitly because of the winding finding — the flipped
+contract normal points away from the camera on front-facing surfaces here,
+and `viewTS.z` would go negative and disable the march everywhere.
+`heightScale` rides in `PBRMaterialShaderAttribs.CustomData.x`, the
+per-material channel DiligentFX reserves — no new buffer. Permutation bit
+`kPsoFlagHeightMap` (user-defined, macro `HP_USE_HEIGHT_MAP`), stripped for
+meshes without UV0.
+
+**Measured (gpu suite, both targets green, 18 cases):** no-height vs
+zero-scale frames **bit-identical** (mean abs diff 0.0 — the march moves
+nothing when told to move nothing, across two different pipelines); no-height
+vs `heightScale = 0.08` differs by **15.69** mean abs per channel on a 40°
+oblique rock quad, and `test-frames/parallax_on.ppm` visibly bulges where
+`rock_height.png` says rock. The comparison is **unlit** so every differing
+pixel is a displaced texel, not a lighting response.
+
+**Known limitations, written rather than discovered:** the height lookup reads
+raw UV0, so a material whose uv0 channel carries a non-identity transform
+misaligns relief against its colour maps (revisit if authored); `loadTexture`
+still decodes every image as sRGB (T0097 owns per-asset colour space), so the
+height curve is warped-but-monotonic — displacement direction and test both
+unaffected; silhouettes stay flat, which is POM's nature and 141.9's trigger.
 
 ### 141.3 landed 2026-08-06 — the SPIR-V cache, and why the RenderStateCache half was declined
 

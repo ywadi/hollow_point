@@ -118,6 +118,7 @@ per-field code in `Material.cpp` at all.
 | `alphaCutoff` | `0.5` | The threshold `Mask` compares against; ignored otherwise |
 | `doubleSided` | `false` | Whether back faces are drawn |
 | `unlit` | `false` | Whether lighting is skipped and `baseColour` shown directly |
+| `heightScale` | `0.04` | How deep `heightTexture`'s parallax reads, in UV0 units (T0141.7) |
 | `*Texture` | unset | A `TextureAsset`'s GUID, or absent for none |
 | `uv0`, `uv1` | identity | Per-channel scale, offset, rotation and wrap |
 | `*Uv` | `0` | Which UV channel that texture slot samples with |
@@ -138,6 +139,7 @@ purpose:
 | Slot | Here | Why |
 |---|---|---|
 | base colour, metallic-roughness, normal, occlusion, emissive | **yes** | The metallic-roughness set the renderer binds today |
+| height | **yes** | **The engine's own slot, not one of Diligent's** (T0141.7): parallax occlusion in the surface stage. Samples and displaces UV0 |
 | clearcoat ×3, sheen ×2, anisotropy, iridescence ×2, transmission, thickness | no | **Extended materials, off by D24.** Each widens the PSO permutation space *and* the material attribs buffer whether or not anything uses it |
 | diffuse, specular-glossiness | no | The legacy spec-gloss workflow. glTF 2.0 core is metallic-roughness, and supporting both is two shading paths for one result |
 

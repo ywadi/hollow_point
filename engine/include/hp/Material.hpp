@@ -39,11 +39,12 @@
 // | clearcoat ×3, sheen ×2, anisotropy, iridescence ×2, transmission, thickness | no | **Extended materials, off by D24.** Each one widens the PSO permutation space *and* the material attribs buffer whether or not a material uses it. Turning one on is a decision to argue on its own ticket |
 // | diffuse, specular-glossiness | no | The legacy spec-gloss workflow. glTF 2.0 core is metallic-roughness; supporting both means two shading paths for one result |
 //
-// **There is no displacement or height slot, and Diligent does not have one.**
-// `PBR_Renderer` has no parallax-occlusion or tessellation path at all, so a
-// `displacementTexture` field here would be a field nothing reads — which is the
-// mistake `Camera::cullingMask` spent three tickets being. Height-mapped
-// surfaces need shader work, not a material field, and that belongs with T0141.
+// **The height slot is the engine's own, not one of Diligent's 17** (T0141.7).
+// `PBR_Renderer` has no parallax-occlusion path — that was the ceiling D26
+// lifted — so `heightTexture` binds to a resource `SurfacePipeline` adds to
+// the signature itself, and the parallax runs in the engine's surface stage.
+// The field arrived *with* the shader that reads it, per the rule that a field
+// nothing reads is the mistake `Camera::cullingMask` spent three tickets being.
 //
 // **Metallic and roughness are one texture, not two**, and that is glTF's
 // packing rather than a simplification: roughness in green, metallic in blue, of
@@ -216,6 +217,22 @@ struct Material {
 
     /// Emitted light, multiplied by `emissive`.
     Guid emissiveTexture;
+
+    /// Height map for parallax occlusion (T0141.7). White is high, black is
+    /// deep, red channel read. Default means none, and the surface is flat.
+    ///
+    /// **Samples and displaces UV0**, deliberately: the offset is computed in
+    /// UV0's space, and applying one channel's offset to another channel's
+    /// unwrap would be wrong for exactly the lightmap-style case UV1 exists
+    /// for. A mesh without texture coordinates renders flat — parallax has
+    /// nothing to displace.
+    Guid heightTexture;
+
+    /// How deep the parallax reads, in UV0 units at full height range.
+    ///
+    /// 0.04 is a strong effect on tiling surfaces; 0 disables the march's
+    /// effect without changing the pipeline. Ignored without `heightTexture`.
+    float heightScale = 0.04F;
 
     /// The first UV channel's transform, used by every slot whose selector is 0.
     UvChannel uv0;

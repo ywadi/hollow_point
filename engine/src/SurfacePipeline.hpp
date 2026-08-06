@@ -60,6 +60,22 @@ public:
     static constexpr Diligent::PBR_Renderer::PSO_FLAGS kPsoFlagUnshaded =
         Diligent::PBR_Renderer::PSO_FLAG_FIRST_USER_DEFINED;
 
+    /// The material carries a height map and the surface stage runs parallax
+    /// occlusion over it (T0141.7). Becomes the `HP_USE_HEIGHT_MAP` macro.
+    ///
+    /// A permutation bit rather than a runtime branch for the same reason
+    /// `HP_UNSHADED` is one: the march is a texture-sampling loop, and every
+    /// material without a height map must not carry it in registers. Only
+    /// meaningful together with `PSO_FLAG_USE_TEXCOORD0` — parallax displaces
+    /// texture coordinates, so a mesh without any renders flat and the caller
+    /// strips the bit.
+    static constexpr Diligent::PBR_Renderer::PSO_FLAGS kPsoFlagHeightMap =
+        static_cast<Diligent::PBR_Renderer::PSO_FLAGS>(
+            Diligent::PBR_Renderer::PSO_FLAG_FIRST_USER_DEFINED << 1ULL);
+
+    /// The height map's resource names in the signature and the shader.
+    static constexpr const char* kHeightMapVariable = "g_HeightMap";
+
     /// Fills in the engine's renderer settings.
     ///
     /// **One place, because two places is how the last bug got in.**
@@ -127,6 +143,18 @@ public:
     [[nodiscard]] Diligent::ITextureView* defaultTexture(TEXTURE_ATTRIB_ID id) const;
 
 private:
+    /// Adds the engine's own resources to the base signature (T0141.7).
+    ///
+    /// **This is the designed extension point**: `CreateSignature` builds the
+    /// whole descriptor and hands it here before creating the object, so the
+    /// engine's height map joins the one signature every SRB and pipeline
+    /// already shares — no second signature, no second `CommitShaderResources`.
+    ///
+    /// It only dispatches virtually because the constructor passes
+    /// `InitSignature = false` and runs `CreateSignature()` in its own body:
+    /// the base constructor would call it through the base vtable.
+    void CreateCustomSignature(Diligent::PipelineResourceSignatureDescX&& desc) override;
+
     /// Builds one pipeline. Called only on a cache miss.
     [[nodiscard]] Diligent::RefCntAutoPtr<Diligent::IPipelineState>
     build(const Diligent::GraphicsPipelineDesc& graphics, const PSOKey& key);
