@@ -49,6 +49,32 @@ struct SlangMacro {
     const char* definition;
 };
 
+/// One resource-typed global the compiled program declares, as slang sees it
+/// (T0161.3).
+///
+/// **This exists for the one fact only slang can report: the resource's
+/// shape.** Diligent's `ShaderResourceDesc` reflects name, type and array
+/// size out of the SPIR-V but not dimension, so a `Texture2D` declared where
+/// the engine binds its one-slice `Texture2DArray` views would sail through
+/// signature creation and surface as a raw Vulkan validation error in a
+/// cooked build. Dev-time reflection sees the shape here, and
+/// `buildModuleSignatureDesc` refuses the mismatch by name.
+///
+/// The list covers **every** resource-typed global in the program, engine
+/// resources included — this file cannot know which names are the module's,
+/// and the consumer already subtracts the engine's set for the signature walk.
+struct SlangReflectedResource {
+    /// The global's declared name.
+    std::string name;
+
+    /// Whether the declared type is a texture at all.
+    bool isTexture = false;
+
+    /// Whether it is specifically `Texture2DArray` — the one sampled shape
+    /// the engine's binder can feed. Meaningful only when `isTexture`.
+    bool isTexture2DArray = false;
+};
+
 /// What a compile may be asked to report about the module it compiled (T0160.2).
 ///
 /// **Filled from the compile that already happens, never from a second one.**
@@ -61,9 +87,19 @@ struct SlangMacro {
 /// compile is therefore not a compromise, it is the only place the module is a
 /// well-formed program.
 struct SlangReflectionRequest {
-    /// Receives the module's declared parameters and texture slots. Left empty
-    /// when the shader declares none, which is the standard material's case.
+    /// Receives the module's declared parameters. Left empty when the shader
+    /// declares none, which is the standard material's case.
+    ///
+    /// The layout's `textures` list is **not** filled here — it comes from
+    /// the same walk that builds the module signature
+    /// (`buildModuleSignatureDesc`), so the list a `.hpmat` binds against and
+    /// the signature the SRB binds into can never disagree, on the dev path
+    /// or the cooked one.
     ShaderParamLayout* layout = nullptr;
+
+    /// Receives every resource-typed global with its shape, or null when the
+    /// caller does not need the dimension check.
+    std::vector<SlangReflectedResource>* resources = nullptr;
 };
 
 /// Bump when the way slang is *driven* changes -- target, matrix layout, the

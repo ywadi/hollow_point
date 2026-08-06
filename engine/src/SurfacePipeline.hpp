@@ -30,10 +30,13 @@
 #include <hp/ShaderParams.hpp>
 
 #include <PBR_Renderer.hpp>
+#include <PipelineResourceSignature.h>
 #include <RefCntAutoPtr.hpp>
 
+#include <cstddef>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace hp {
 
@@ -202,11 +205,29 @@ private:
     ///
     /// **Per module, not per pipeline**, and that is the claim 160.1's
     /// unconditional-declaration rule makes true: a module's parameter block
-    /// and texture slots are outside every permutation `#if`, so every
-    /// permutation of the same module reflects the same layout. Keying it on
-    /// the permutation as well would be storing the same answer many times and
-    /// inviting the question of which one the inspector should show.
+    /// is outside every permutation `#if`, so every permutation of the same
+    /// module reflects the same parameters. The `textures` half is the *used*
+    /// set of the most recent build (T0161) — see `ShaderParamLayout` — which
+    /// is the honest answer available on the cooked path, where only bytecode
+    /// exists.
     std::unordered_map<std::string, ShaderParamLayout> paramLayouts_;
+
+    /// The per-module resource signatures (T0161.4), keyed by
+    /// `moduleSignatureKey` — the hash of the resource set itself.
+    ///
+    /// **Shared by construction**: two materials on one module, two modules
+    /// declaring the same resources, and two permutations that strip to the
+    /// same set all land on one signature, which is what keeps the SRB cache
+    /// in `SceneRenderer` (keyed on the signature pointer) small and correct.
+    std::unordered_map<std::size_t, Diligent::RefCntAutoPtr<Diligent::IPipelineResourceSignature>>
+        moduleSignatures_;
+
+    /// Every name the engine's own signatures carry — resources and immutable
+    /// samplers, the sampler palette included. Built once, after
+    /// `CreateSignature()`; the subtraction that decides which of a compiled
+    /// shader's resources are the *module's* (`buildModuleSignatureDesc`)
+    /// reads this.
+    std::unordered_set<std::string> engineResourceNames_;
 };
 
 } // namespace hp

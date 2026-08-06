@@ -435,6 +435,7 @@ struct ReflectionApi {
     SlangTypeKind (*typeGetKind)(SlangReflectionType*) = nullptr;
     SlangScalarType (*typeGetScalarType)(SlangReflectionType*) = nullptr;
     std::size_t (*typeGetElementCount)(SlangReflectionType*, SlangReflection*) = nullptr;
+    SlangResourceShape (*typeGetResourceShape)(SlangReflectionType*) = nullptr;
 };
 
 /// @returns the resolved reflection entry points, or nullptr when the loaded
@@ -477,6 +478,7 @@ const ReflectionApi* reflectionApi() {
         bind(api.typeGetKind, "spReflectionType_GetKind");
         bind(api.typeGetScalarType, "spReflectionType_GetScalarType");
         bind(api.typeGetElementCount, "spReflectionType_GetSpecializedElementCount");
+        bind(api.typeGetResourceShape, "spReflectionType_GetResourceShape");
         return ok;
     }();
     return ready ? &api : nullptr;
@@ -597,14 +599,18 @@ void readHints(const ReflectionApi& api, SlangReflectionVariable* variable, Shad
     }
 }
 
-/// Fills a layout from a successful compile's program reflection.
+/// Fills a layout and the resource-shape list from a successful compile's
+/// program reflection.
 ///
 /// @param request the compile request, after a successful `compile()`.
 /// @param filePath the shader's name, for the diagnostics below.
-/// @param out receives the layout; untouched fields stay empty.
+/// @param reflect where the results go; untouched fields stay empty.
 void reflectParams(slang::ICompileRequest* request, const char* filePath,
-                   ShaderParamLayout& out) {
+                   const SlangReflectionRequest& reflect) {
     HP_PROFILE_ZONE();
+
+    ShaderParamLayout localLayout;
+    ShaderParamLayout& out = reflect.layout != nullptr ? *reflect.layout : localLayout;
 
     const ReflectionApi* api = reflectionApi();
     if (api == nullptr || request == nullptr) {
@@ -630,12 +636,28 @@ void reflectParams(slang::ICompileRequest* request, const char* filePath,
         }
         const std::string name = rawName;
 
-        // A texture slot: matched by the reserved name, so a module that
-        // happens to declare an unrelated texture is not mistaken for one.
-        for (std::uint32_t slot = 0; slot < kShaderTextureSlots; ++slot) {
-            const char* slotName = shaderTextureSlotName(slot);
-            if (slotName != nullptr && name == slotName) {
-                out.textures.push_back(ShaderTextureSlot{name, slot});
+        // Resource shapes (T0161.3) -- for **every** resource-typed global,
+        // engine and module alike. This is the one fact only slang can see:
+        // Diligent's reflection has no dimension, so the Texture2D-vs-array
+        // check `buildModuleSignatureDesc` performs is fed from here. Which
+        // names are the module's is decided there, by subtraction against the
+        // engine's signatures; this walk cannot know and does not guess.
+        if (reflect.resources != nullptr) {
+            SlangReflectionTypeLayout* typeLayout = api->variableLayoutGetTypeLayout(parameter);
+            SlangReflectionType* type =
+                typeLayout != nullptr ? api->typeLayoutGetType(typeLayout) : nullptr;
+            if (type != nullptr && api->typeGetKind(type) == SLANG_TYPE_KIND_RESOURCE) {
+                const SlangResourceShape shape = api->typeGetResourceShape(type);
+                const SlangResourceShape base = static_cast<SlangResourceShape>(
+                    shape & SLANG_RESOURCE_BASE_SHAPE_MASK);
+                SlangReflectedResource resource;
+                resource.name = name;
+                resource.isTexture =
+                    base == SLANG_TEXTURE_1D || base == SLANG_TEXTURE_2D ||
+                    base == SLANG_TEXTURE_3D || base == SLANG_TEXTURE_CUBE;
+                resource.isTexture2DArray =
+                    shape == SLANG_TEXTURE_2D_ARRAY;
+                reflect.resources->push_back(std::move(resource));
             }
         }
 
@@ -730,6 +752,9 @@ bool compileSlangToSpirv(const char* filePath, ShaderStage stage, const SlangMac
     if (reflect != nullptr && reflect->layout != nullptr) {
         *reflect->layout = ShaderParamLayout{};
     }
+    if (reflect != nullptr && reflect->resources != nullptr) {
+        reflect->resources->clear();
+    }
     if (filePath == nullptr || sources == nullptr) {
         return false;
     }
@@ -738,7 +763,8 @@ bool compileSlangToSpirv(const char* filePath, ShaderStage stage, const SlangMac
     // the layout beside the bytecode adds a second artefact whose staleness the
     // content key cannot detect on its own (`kSlangDrivingSchema`'s whole
     // reason for existing). This path runs once per module per process.
-    const bool wantReflection = reflect != nullptr && reflect->layout != nullptr;
+    const bool wantReflection =
+        reflect != nullptr && (reflect->layout != nullptr || reflect->resources != nullptr);
 
     // **Resolved before the lock is taken, and that ordering is load-bearing.**
     // Deciding the policy may probe the slang runtime, and probing it takes
@@ -864,7 +890,7 @@ bool compileSlangToSpirv(const char* filePath, ShaderStage stage, const SlangMac
         // the function rather than being handed back: the `ProgramLayout` is
         // owned by the request and every string in it points into the
         // compiler's own memory.
-        reflectParams(request, filePath, *reflect->layout);
+        reflectParams(request, filePath, *reflect);
     }
     if (SLANG_SUCCEEDED(result)) {
         ISlangBlob* code = nullptr;

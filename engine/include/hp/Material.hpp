@@ -161,18 +161,20 @@ struct MaterialParam {
     ShaderValue value;
 };
 
-/// One texture this material binds to a module's texture slot (T0160.3).
+/// One texture this material binds to a texture the module declares
+/// (T0160.3, author-named since T0161).
 struct MaterialTexture {
-    /// The slot's name, `HpTexture0` … `HpTexture3` (`shaderTextureSlotName`).
-    ///
-    /// **The engine's name rather than the author's**, because the pipeline
-    /// resource signature has to carry it before any module exists — see
-    /// `hp/ShaderParams.hpp` for the trade and what the alternative would cost.
+    /// The texture's name, **as the module declared it** — `detailAlbedo`,
+    /// not an engine identifier. The per-module resource signature is built
+    /// from the module's own reflection (T0161, D35), so no name has to
+    /// exist before the module does. T0160's `HpTexture0` … `HpTexture3`
+    /// still work: they are ordinary declarations in the contract file now,
+    /// deprecated, and bind through the same walk.
     std::string name;
 
     /// The `TextureAsset` bound there. Default binds the renderer's white
-    /// default, exactly as an unset fixed slot does; a GUID that does not
-    /// resolve binds the checkerboard, exactly as a broken fixed slot does.
+    /// default; a GUID that does not resolve binds the checkerboard — the
+    /// same two answers every engine-named slot gives.
     Guid texture;
 };
 

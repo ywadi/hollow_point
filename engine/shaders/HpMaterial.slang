@@ -100,6 +100,80 @@
 // geometry that can least afford it. `ViewDir` is computed in the pixel shader
 // from the camera position and the world position rather than interpolated; more
 // fields will follow that pattern as they are added.
+//
+// ---
+//
+// ## A module's own parameters and resources (T0160, T0161, D35)
+//
+// **Your module declares its own textures under its own names, at whatever
+// count it wants**, as ordinary globals — no registration, no attributes, no
+// engine identifiers:
+//
+//     Texture2DArray detailAlbedo;
+//     Texture2DArray puddleMask;
+//
+//     cbuffer HpMaterialParams
+//     {
+//         [HpRange(0.0, 1.0)]
+//         [HpTooltip("How wet the surface reads.")]
+//         float wetness;
+//
+//         [HpColor]
+//         float3 tint;
+//     }
+//
+// The engine reflects the compiled module and binds what it finds; the
+// `.hpmat` beside it supplies values and textures **by your names**:
+//
+//     params:
+//       - name: wetness
+//         value: 0.75
+//     textures:
+//       - name: detailAlbedo
+//         texture: 1570000000000031
+//
+// The conventions, each of which the engine enforces loudly rather than
+// trusting:
+//
+// - **`HpMaterialParams` is the one reserved name.** The parameter *block* is
+//   called that so a `.hpmat`'s values have one place to go; every field name
+//   inside it is yours. A second constant buffer under another name is
+//   refused, by name, at pipeline build. The block is capped at **256 bytes**
+//   and carries `float`/`float2`/`float3`/`float4`/`int`/`bool`; anything
+//   else is reported by name and left at what the shader initialises it to.
+// - **Declare textures as `Texture2DArray`.** Every texture this engine binds
+//   is a one-slice 2D array; a plain `Texture2D` is refused by name at
+//   pipeline build, because past that point the mismatch would be a raw
+//   Vulkan validation error in a cooked game.
+// - **Sample through the engine's sampler palette** — `HpSamplerLinearWrap`,
+//   `HpSamplerLinearClamp`, `HpSamplerPointWrap`, `HpSamplerPointClamp`,
+//   `HpSamplerAnisoWrap`, `HpSamplerAnisoClamp`, declared below. Sampler
+//   *state* is the engine's vocabulary, and this is the one deliberate limit
+//   (D35): the choice of sampler travels inside your compiled code, so a
+//   cooked build carries no sampler metadata at all. Declaring your own
+//   `SamplerState` is refused by name, with the palette in the log line.
+// - **Declare unconditionally, at module top level.** A declaration inside a
+//   permutation `#if` makes "what does this module declare" a question with
+//   one answer per macro set, and neither a `.hpmat` nor an inspector row can
+//   be permutation-dependent. An unused declaration is stripped from the
+//   compiled code and costs nothing.
+// - **Values are data, not permutations.** Changing a `.hpmat` value rebuilds
+//   no pipeline and invalidates no cook.
+// - **Two namespaces, one line between them.** Resources you *declare* are
+//   yours, fed by the `.hpmat`. Resources the *engine* feeds — the frame,
+//   the lights, the height map, and later the screen and shadow resources
+//   (T0147, T0086) — are the engine's names, reached as documented above.
+//   A texture the `.hpmat` does not name samples **white**; a GUID that does
+//   not resolve samples the missing-asset checkerboard.
+// - **Buffers are declared the same way but no material stage can feed one
+//   yet** — a structured buffer in a surface module is refused by name until
+//   the stages whose point they are (T0147 screen resources, T0150 compute)
+//   land. The mechanism is already stage-neutral; the data paths are not
+//   built.
+//
+// `HpTexture0` … `HpTexture3`, T0160's engine-named slots, still compile and
+// still bind from a `.hpmat` that names them — see their declarations below —
+// but they are **deprecated**: name your textures yourself.
 
 #ifndef _HP_MATERIAL_SLANG_
 #define _HP_MATERIAL_SLANG_
@@ -133,82 +207,13 @@
 #endif
 
 // ---------------------------------------------------------------------------
-// ## A module's own parameters and textures (T0160)
+// ## A module's own parameters and resources (T0160, T0161)
 //
-// **This is the half of the material model that is not the engine's.** Every
-// other parameter a surface has is a field of `hp::Material` — named by the
-// engine, meaning the same thing everywhere — and that vocabulary cannot grow
-// to fit a technique the engine has never heard of. Before this existed, the
-// first material shader written in this repository hard-coded its one knob as a
-// compile-time literal and said so in its own comment, because there was
-// nowhere to put it.
-//
-// A module declares a **reserved constant buffer** and reads it like any other:
-//
-//     cbuffer HpMaterialParams
-//     {
-//         [HpRange(0.0, 1.0)]
-//         [HpTooltip("Where the height field sits relative to the polygon.")]
-//         float referencePlane;
-//
-//         [HpColor]
-//         float3 tint;
-//     }
-//
-// and the `.hpmat` beside it carries the values, by name:
-//
-//     params:
-//       - name: referencePlane
-//         value: 0.75
-//
-// **The buffer's name is the engine's and the field names are yours.** A
-// pipeline resource signature is built once, before any module exists, and
-// Diligent matches a shader's resources to it by name — so the *buffer* has to
-// be called something the engine already knows. Fields are not resources, so
-// they cost the signature nothing and a module names and orders them freely.
-//
-// ### Three rules, each of them a measurement
-//
-// **Declare the block unconditionally, at module top level.** A declaration
-// inside a permutation `#if` makes "what does this module declare" a question
-// with one answer per macro set, and neither a `.hpmat` nor an inspector row
-// can be permutation-dependent. `rock_pom.slang` is the worked example: its
-// whole body is inside `#if HP_USE_HEIGHT_MAP && USE_TEXCOORD0` and its
-// parameter block sits outside it.
-//
-// **Values are data, not permutations.** Changing one rebuilds no pipeline and
-// invalidates no cook. Module identity already keys the pipeline cache, so
-// parameters add no permutation axis at all — which is the reason to prefer a
-// parameter over a `#define` whenever the choice exists.
-//
-// **The engine writes only what it can carry**: `float`, `float2`, `float3`,
-// `float4`, `int` and `bool`. A matrix, an array or a nested struct in the
-// block is reported by name at compile time and left at whatever the shader
-// initialises it to — never silently mis-sized. The whole block is capped at
-// **256 bytes**, and a module that overruns it is refused by name rather than
-// truncated.
-//
-// ### Textures
-//
-// Four slots, named by the engine for the same reason the buffer is:
-// `HpTexture0` … `HpTexture3`, each with an immutable `HpTexture0_sampler` and
-// so on. They are declared below, so a module **uses them without declaring
-// anything**, and the `.hpmat` binds them by the same names:
-//
-//     textures:
-//       - name: HpTexture0
-//         texture: 1570000000000031
-//
-// An unused slot is stripped from the compiled shader, so a module pays only
-// for the slots it samples. An unbound slot samples **white**, matching what an
-// unset fixed texture slot does; a GUID that does not resolve samples the
-// missing-asset checkerboard, matching what a broken one does.
-//
-// **The slot names are the engine's and the author's own names are not
-// reachable today**, which is a real cost recorded rather than hidden: naming
-// them would need either a second descriptor set per module or a rename pass
-// that has to know the names *before* the compile that discovers them. The
-// capability matrix carries it as the named widening.
+// The authoring guide for this section is the file preamble above — declare
+// textures under your own names, put parameters in `cbuffer HpMaterialParams`,
+// sample through the palette declared below, and let the `.hpmat` bind
+// everything by name. What follows here is the vocabulary itself: the hint
+// attributes, the sampler palette, and the deprecated T0160 slots.
 // ---------------------------------------------------------------------------
 
 /// Bounds a numeric parameter, for the inspector.
@@ -245,25 +250,76 @@ struct HpTooltipAttribute
     String text;
 };
 
-// The four module texture slots, declared here so a module uses one without
-// declaring anything — which is the same rule the rest of this contract obeys.
+// --- The sampler palette (T0161.2, D35) ------------------------------------
 //
-// `Texture2DArray` because every texture this engine binds is a one-slice
-// array, and the samplers are **immutable in the signature**, so a module never
-// binds one and cannot get the filtering wrong.
+// Immutable in the engine's resource signature, so a module names one and the
+// state — filtering, wrap, anisotropy — is the engine's, fixed at signature
+// creation. That is the one deliberate limit of the resource model: sampler
+// state is the single thing SPIR-V cannot carry, and an engine-owned palette
+// means a cooked build never has to carry it either. Declaring your own
+// `SamplerState` is refused by name at pipeline build, with this palette in
+// the log line.
+
+/// Bilinear filtering with mip-mapping, coordinates wrapping — the default
+/// choice for anything that tiles across a surface.
+SamplerState HpSamplerLinearWrap;
+
+/// Bilinear filtering, coordinates clamped to the edge texel. What a LUT, a
+/// ramp or an atlased texture wants — wrapping one bleeds the far edge in.
+SamplerState HpSamplerLinearClamp;
+
+/// Nearest-texel sampling, wrapping. Pixel art, ID maps, and any texture
+/// whose texels are data rather than an image to be filtered.
+SamplerState HpSamplerPointWrap;
+
+/// Nearest-texel sampling, clamped. The data-texture counterpart of
+/// `HpSamplerLinearClamp`.
+SamplerState HpSamplerPointClamp;
+
+/// 8x anisotropic filtering, wrapping. For surface detail read at grazing
+/// angles — floors, terrain, anything large and walked across. The level is
+/// the engine's (D35); an author-chosen level is the recorded escape, waiting
+/// on a real request.
+SamplerState HpSamplerAnisoWrap;
+
+/// 8x anisotropic filtering, clamped. See `HpSamplerAnisoWrap`.
+SamplerState HpSamplerAnisoClamp;
+
+// --- T0160's engine-named slots, deprecated (T0161.6) -----------------------
 //
-// **Declared for every pipeline and named by almost none of them.** Slang
-// strips a resource nothing samples, so the standard material's bytecode is
-// unchanged by their presence — the same superset pattern `g_HeightMap` uses on
-// the signature side.
+// Kept compiling so a shipped v2 `.hpmat` and the module beside it keep
+// rendering identically: a module that samples `HpTexture0` still gets it,
+// bound by a `textures:` entry naming `HpTexture0` — through exactly the same
+// reflection walk as an author-named texture, because that is all these are
+// now: author-visible names that happen to be spelled the engine's way.
+
+/// Deprecated (T0161): declare your own `Texture2DArray yourName;` instead.
+/// Binds from a `.hpmat` `textures:` entry naming `HpTexture0`, as T0160
+/// shipped it.
 Texture2DArray HpTexture0;
-SamplerState   HpTexture0_sampler;
+
+/// Deprecated (T0161); see `HpTexture0`.
 Texture2DArray HpTexture1;
-SamplerState   HpTexture1_sampler;
+
+/// Deprecated (T0161); see `HpTexture0`.
 Texture2DArray HpTexture2;
-SamplerState   HpTexture2_sampler;
+
+/// Deprecated (T0161); see `HpTexture0`.
 Texture2DArray HpTexture3;
-SamplerState   HpTexture3_sampler;
+
+/// Deprecated (T0161): the slot samplers are the palette's `LinearWrap` now,
+/// which is bit-identical state to what the slots always had. Sample through
+/// the palette by name in new code.
+#define HpTexture0_sampler HpSamplerLinearWrap
+
+/// Deprecated (T0161); see `HpTexture0_sampler`.
+#define HpTexture1_sampler HpSamplerLinearWrap
+
+/// Deprecated (T0161); see `HpTexture0_sampler`.
+#define HpTexture2_sampler HpSamplerLinearWrap
+
+/// Deprecated (T0161); see `HpTexture0_sampler`.
+#define HpTexture3_sampler HpSamplerLinearWrap
 
 /// What the engine hands a surface function.
 ///

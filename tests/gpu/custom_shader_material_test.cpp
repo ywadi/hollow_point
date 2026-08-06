@@ -835,6 +835,286 @@ struct HpMaterial : IHpMaterial
     tearDown(device);
 }
 
+TEST_CASE("a module declares textures under its own names, at its own count (T0161)") {
+    // **The game resource model's headline, measured end to end.** Six
+    // author-named `Texture2DArray` declarations — two more than T0160's slot
+    // count ever allowed — plus the parameter block, in one module. The
+    // `.hpmat` binds two of them by the author's names; one sampled texture is
+    // deliberately left unbound; three declared ones are never sampled at all.
+    //
+    // Each output channel isolates one claim, so a failure names its cause:
+    //   * red   = 1 - detailAlbedo.g — 255 only if the *bound* texture arrived
+    //     (the checkerboard's magenta texel has g 0; the white fallback would
+    //     give 0);
+    //   * green = 1 - puddleMask.g — same claim for the second binding, so two
+    //     names resolve independently;
+    //   * blue  = the declared parameter — params and textures share the one
+    //     module signature, asserted together on purpose.
+    //
+    // Three different palette samplers do the sampling, which is 161.2's
+    // vocabulary working. The unsampled declarations cost nothing (slang
+    // strips them); the sampled-but-unbound one reads white and feeds no
+    // channel — its presence asserts that an unbound author-named texture is
+    // the documented white, not a validation error.
+    //
+    // Expected (255, 255, ~138): yellow-ish, which neither the flat-magenta
+    // fallback nor the all-white unbound state can produce — and the magenta
+    // guard runs on the frame as well, because that mistake has been made
+    // twice.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    CompileErrorCounter counter;
+    hp::logAddSink(&counter);
+
+    const char* kNamedModule = R"(
+Texture2DArray detailAlbedo;
+Texture2DArray puddleMask;
+Texture2DArray ringMask;
+Texture2DArray neverSampledA;
+Texture2DArray neverSampledB;
+Texture2DArray neverSampledC;
+
+cbuffer HpMaterialParams
+{
+    [HpRange(0.0, 1.0)]
+    float blend;
+}
+
+struct HpMaterial : IHpMaterial
+{
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        float4 a = detailAlbedo.SampleLevel(HpSamplerLinearWrap, float3(0.125, 0.125, 0.0), 0.0);
+        float4 b = puddleMask.SampleLevel(HpSamplerPointClamp, float3(0.125, 0.125, 0.0), 0.0);
+        float4 c = ringMask.SampleLevel(HpSamplerLinearClamp, float3(0.125, 0.125, 0.0), 0.0);
+        // c is unbound white: (1 - c.g) contributes zero, asserting the
+        // documented fallback without disturbing the channels above.
+        return float4(1.0 - a.g, 1.0 - b.g, blend + (1.0 - c.g), 1.0);
+    }
+    override bool unshaded()
+    {
+        return true;
+    }
+}
+)";
+
+    std::vector<std::uint8_t> pixels;
+    REQUIRE(renderCustom(device, kNamedModule, /*shaderInPool=*/true, /*unlit=*/false, pixels,
+                         /*frames=*/1, /*timeSeconds=*/0.0, /*withTangents=*/false,
+                         [](hp::Material& material, hp::Guid texture) {
+                             material.textures = {
+                                 hp::MaterialTexture{"detailAlbedo", texture},
+                                 hp::MaterialTexture{"puddleMask", texture},
+                             };
+                             material.params = {hp::MaterialParam{
+                                 "blend", hp::ShaderValue{{0.25F, 0.0F, 0.0F, 0.0F}, 1}}};
+                         }));
+    const Rgb centre = centreOf(pixels);
+    MESSAGE("author-named textures: (" << centre.r << ", " << centre.g << ", " << centre.b
+                                       << ")");
+    CHECK(centre.r == 255);
+    CHECK(centre.g == 255);
+    // The declared parameter, sRGB-encoded: linear 0.25 is ~138 at the target.
+    CHECK(centre.b > 132);
+    CHECK(centre.b < 145);
+
+    // The magenta guard: the exact channels above would already fail on the
+    // fallback, but the guard is the standing rule because a frame that is
+    // secretly the checkerboard has fooled a summary statistic here twice.
+    int magenta = 0;
+    int black = 0;
+    countChecks(pixels, magenta, black);
+    CHECK(magenta == 0);
+
+    hp::logRemoveSink(&counter);
+    CHECK(counter.compilerErrors() == 0);
+    CHECK(counter.substitutions() == 0);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
+namespace {
+
+/// Captures log lines containing a substring — for asserting a refusal
+/// happened *by name*, which is the loud half of every T0161 policy check.
+class MessageCatcher final : public hp::ILogSink {
+public:
+    explicit MessageCatcher(std::string needle) : needle_(std::move(needle)) {}
+    void write(const hp::LogRecord& record) override {
+        if (record.message.find(needle_) != std::string_view::npos) {
+            ++hits_;
+        }
+    }
+    [[nodiscard]] int hits() const { return hits_.load(); }
+
+private:
+    std::string needle_;
+    std::atomic<int> hits_{0};
+};
+
+} // namespace
+
+TEST_CASE("a Texture2D declaration is refused by name, not left for Vulkan (T0161.3)") {
+    // Diligent's `ShaderResourceDesc` cannot see resource dimension, so a
+    // module declaring `Texture2D` where the engine binds one-slice
+    // `Texture2DArray` views would sail into a cooked build and die as a raw
+    // Vulkan validation error naming nothing. Dev-time slang reflection sees
+    // the shape; the pipeline build must refuse it **naming the resource**,
+    // and the material must fall back to the loud checkerboard.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    MessageCatcher catcher("wrongShape");
+    hp::logAddSink(&catcher);
+
+    const char* kFlatTextureModule = R"(
+Texture2D wrongShape;
+
+struct HpMaterial : IHpMaterial
+{
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return wrongShape.SampleLevel(HpSamplerLinearWrap, float2(0.5, 0.5), 0.0);
+    }
+    override bool unshaded()
+    {
+        return true;
+    }
+}
+)";
+    std::vector<std::uint8_t> pixels;
+    REQUIRE(renderCustom(device, kFlatTextureModule, /*shaderInPool=*/true, /*unlit=*/false,
+                         pixels, /*frames=*/2));
+    hp::logRemoveSink(&catcher);
+
+    // Refused by name, once — the pipeline null is cached, so frame two must
+    // not repeat it.
+    CHECK(catcher.hits() == 1);
+
+    // The loud convention: the checkerboard fallback, flat magenta on this
+    // UV-less quad.
+    int magenta = 0;
+    int black = 0;
+    countChecks(pixels, magenta, black);
+    MESSAGE("Texture2D refusal: magenta " << magenta << ", named-log lines " << catcher.hits());
+    const int centrePixels = (kSize / 2) * (kSize / 2);
+    CHECK(magenta > (centrePixels * 3) / 4);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
+TEST_CASE("an author-declared SamplerState is refused by name, palette in the log (T0161.2)") {
+    // D35's one deliberate limit, enforced where the author can see it:
+    // sampler state is the engine's palette, and a module declaring its own
+    // `SamplerState` fails the pipeline with a line naming the sampler and
+    // listing the palette — never a mysteriously unbound descriptor.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    MessageCatcher named("myCustomSampler");
+    MessageCatcher palette("HpSamplerLinearWrap");
+    hp::logAddSink(&named);
+    hp::logAddSink(&palette);
+
+    const char* kOwnSamplerModule = R"(
+Texture2DArray someMap;
+SamplerState myCustomSampler;
+
+struct HpMaterial : IHpMaterial
+{
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return someMap.SampleLevel(myCustomSampler, float3(0.5, 0.5, 0.0), 0.0);
+    }
+    override bool unshaded()
+    {
+        return true;
+    }
+}
+)";
+    std::vector<std::uint8_t> pixels;
+    REQUIRE(renderCustom(device, kOwnSamplerModule, /*shaderInPool=*/true, /*unlit=*/false,
+                         pixels));
+    hp::logRemoveSink(&palette);
+    hp::logRemoveSink(&named);
+
+    CHECK(named.hits() == 1);
+    CHECK(palette.hits() >= 1);
+
+    int magenta = 0;
+    int black = 0;
+    countChecks(pixels, magenta, black);
+    MESSAGE("own-sampler refusal: magenta " << magenta << ", named " << named.hits()
+                                            << ", palette lines " << palette.hits());
+    const int centrePixels = (kSize / 2) * (kSize / 2);
+    CHECK(magenta > (centrePixels * 3) / 4);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
+TEST_CASE("the base signature's descriptor budget dropped, and it is pinned (T0161.7)") {
+    // T0160 counted 10 sampled images and 11 immutable samplers in the shared
+    // signature — four of each belonging to module slots every plain glTF
+    // material paid for without ever reading. The migration moved those into
+    // the per-module signature, so the base holds the engine's own vocabulary
+    // plus the sampler palette and nothing else:
+    //
+    //   6 sampled images   — 5 glTF maps + g_HeightMap (was 10)
+    //   13 immutable samplers — their 7 + the 6-entry palette (was 11)
+    //
+    // Pinned from the renderer's own creation-time count, so the budget the
+    // capability matrix quotes cannot drift from the code silently — the
+    // T0160 audit had to reconstruct these numbers out of the source once,
+    // which is exactly the job a log line and an assertion do better.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    MessageCatcher images("6 sampled images");
+    MessageCatcher samplers("13 immutable samplers");
+    MessageCatcher line("base signature:");
+    hp::logAddSink(&images);
+    hp::logAddSink(&samplers);
+    hp::logAddSink(&line);
+    hp::logSetGlobalLevel(hp::LogLevel::Debug);
+
+    {
+        hp::SceneView view;
+        REQUIRE(view.create(device.render->device(), device.render->context(), kSize, kSize));
+        view.release();
+    }
+
+    hp::logSetGlobalLevel(hp::LogLevel::Info);
+    hp::logRemoveSink(&line);
+    hp::logRemoveSink(&samplers);
+    hp::logRemoveSink(&images);
+
+    REQUIRE(line.hits() == 1);
+    CHECK(images.hits() == 1);
+    CHECK(samplers.hits() == 1);
+
+    tearDown(device);
+}
+
 TEST_CASE("a shader that fails to compile renders the checkerboard and logs once") {
     // **T0141.4, and the trap it names.** The pattern is 141.12's — one
     // visual convention, three causes, the console says which — and the log

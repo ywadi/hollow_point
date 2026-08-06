@@ -13,9 +13,11 @@
 #include <hp/Serialize.hpp>
 #include <hp/Yaml.hpp>
 
+#include <iterator>
 #include <memory>
-#include <vector>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace {
 
@@ -351,15 +353,40 @@ TEST_CASE("a parameter value round-trips through the document as it was written"
     CHECK(document.find("value: 0.25") != std::string::npos);
 }
 
-TEST_CASE("the reserved slot names are one table, and out of range is nothing") {
-    // The signature, the shader contract and the binder all spell these, so
-    // they come from one place and a bad index is a null rather than a
-    // fabricated name the signature does not carry.
-    CHECK(std::string{hp::shaderTextureSlotName(0)} == "HpTexture0");
-    CHECK(std::string{hp::shaderTextureSamplerName(0)} == "HpTexture0_sampler");
-    CHECK(std::string{hp::shaderTextureSlotName(hp::kShaderTextureSlots - 1)} == "HpTexture3");
-    CHECK(hp::shaderTextureSlotName(hp::kShaderTextureSlots) == nullptr);
-    CHECK(hp::shaderTextureSamplerName(hp::kShaderTextureSlots) == nullptr);
+TEST_CASE("a material texture's name is an opaque author string, not a reserved table") {
+    // The slot-name table this case used to pin (`shaderTextureSlotName`,
+    // `HpTexture0` … `HpTexture3`) is gone with the shared slots themselves
+    // (T0161): a module's textures are named by their author, the format
+    // carries the name opaquely, and the deprecated `HpTexture0` spelling is
+    // just one more author-visible name. What the format must keep doing is
+    // round-tripping *any* name untouched — including ones no engine version
+    // ever reserved.
+    hp::Material material;
+    material.textures = {
+        hp::MaterialTexture{"detailAlbedo", hp::Guid{0x1122334455667788ULL}},
+        hp::MaterialTexture{"HpTexture0", hp::Guid{0x99AABBCCDDEEFF00ULL}},
+    };
+    const std::string document = hp::writeMaterial(material);
+    const auto restored = hp::parseMaterial(document);
+    REQUIRE(restored);
+    REQUIRE(restored->textures.size() == 2);
+    CHECK(restored->textures[0].name == "detailAlbedo");
+    CHECK(restored->textures[0].texture == hp::Guid{0x1122334455667788ULL});
+    CHECK(restored->textures[1].name == "HpTexture0");
+    CHECK(restored->textures[1].texture == hp::Guid{0x99AABBCCDDEEFF00ULL});
+}
+
+TEST_CASE("the sampler palette's names are the documented six") {
+    // The palette is contract: an author names one in code, the signature
+    // declares it immutable, and the refusal message lists this table. A
+    // renamed entry breaks shipped shaders, so the spelling is pinned here.
+    REQUIRE(std::size(hp::kShaderSamplerPalette) == 6);
+    CHECK(std::string_view{hp::kShaderSamplerPalette[0]} == "HpSamplerLinearWrap");
+    CHECK(std::string_view{hp::kShaderSamplerPalette[1]} == "HpSamplerLinearClamp");
+    CHECK(std::string_view{hp::kShaderSamplerPalette[2]} == "HpSamplerPointWrap");
+    CHECK(std::string_view{hp::kShaderSamplerPalette[3]} == "HpSamplerPointClamp");
+    CHECK(std::string_view{hp::kShaderSamplerPalette[4]} == "HpSamplerAnisoWrap");
+    CHECK(std::string_view{hp::kShaderSamplerPalette[5]} == "HpSamplerAnisoClamp");
 }
 
 TEST_CASE("a declared parameter presents exactly as a reflected C++ field does") {

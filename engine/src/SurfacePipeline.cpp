@@ -1,5 +1,6 @@
 #include "SurfacePipeline.hpp"
 
+#include "ModuleResourceSignature.hpp"
 #include "SlangCompiler.hpp"
 
 #include <hp/Light.hpp>
@@ -16,6 +17,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -206,7 +208,8 @@ bool mapDiligentParamType(const Diligent::ShaderCodeVariableDesc& variable, Shad
     }
 }
 
-/// Reads the module's declarations back out of the compiled shader (T0160.2).
+/// Reads the module's declared *parameters* back out of the compiled shader
+/// (T0160.2).
 ///
 /// **The path a shipped game takes**, where the bytecode came from a cooked
 /// archive and no slang compile happened. Also the path taken when the compile
@@ -214,6 +217,10 @@ bool mapDiligentParamType(const Diligent::ShaderCodeVariableDesc& variable, Shad
 /// over a handful of resources and keeps this code exercised on every
 /// developer machine rather than only in a packaged build -- the failure mode
 /// a fallback nobody runs always has.
+///
+/// Parameters only, since T0161: the layout's `textures` come from the same
+/// walk that builds the module signature (`buildModuleSignatureDesc`), one
+/// mechanism on both paths, so the binder and the signature cannot disagree.
 void reflectFromShader(Diligent::IShader* shader, ShaderParamLayout& out) {
     if (shader == nullptr) {
         return;
@@ -226,11 +233,6 @@ void reflectFromShader(Diligent::IShader* shader, ShaderParamLayout& out) {
             continue;
         }
         const std::string_view name{resource.Name};
-        for (std::uint32_t slot = 0; slot < kShaderTextureSlots; ++slot) {
-            if (name == shaderTextureSlotName(slot)) {
-                out.textures.push_back(ShaderTextureSlot{std::string{name}, slot});
-            }
-        }
         if (name != kShaderParamsBlock ||
             resource.Type != Diligent::SHADER_RESOURCE_TYPE_CONSTANT_BUFFER) {
             continue;
@@ -287,6 +289,45 @@ SurfacePipeline::SurfacePipeline(Diligent::IRenderDevice* device,
     // is the pattern the flag exists for.
     : Diligent::PBR_Renderer(device, cache, context, info, /*InitSignature = */ false) {
     CreateSignature();
+
+    // Every name the engine's signatures own, for the subtraction that
+    // decides which of a module's resources are the *module's* (T0161). Read
+    // back from the created signatures rather than restated, so a resource
+    // added to `CreateCustomSignature` above -- or by DiligentFX upstream --
+    // can never be double-declared into a module signature, which is a loud
+    // PSO-creation failure.
+    std::uint32_t sampledImages = 0;
+    std::uint32_t immutableSamplers = 0;
+    std::uint32_t constantBuffers = 0;
+    for (const auto& signature : m_ResourceSignatures) {
+        if (!signature) {
+            continue;
+        }
+        const Diligent::PipelineResourceSignatureDesc& desc = signature->GetDesc();
+        for (Diligent::Uint32 i = 0; i < desc.NumResources; ++i) {
+            engineResourceNames_.emplace(desc.Resources[i].Name);
+            if (desc.Resources[i].ResourceType == Diligent::SHADER_RESOURCE_TYPE_TEXTURE_SRV) {
+                ++sampledImages;
+            } else if (desc.Resources[i].ResourceType ==
+                       Diligent::SHADER_RESOURCE_TYPE_CONSTANT_BUFFER) {
+                ++constantBuffers;
+            }
+        }
+        immutableSamplers += desc.NumImmutableSamplers;
+        for (Diligent::Uint32 i = 0; i < desc.NumImmutableSamplers; ++i) {
+            engineResourceNames_.emplace(desc.ImmutableSamplers[i].SamplerOrTextureName);
+        }
+    }
+    // The counted budget, logged where it is decided (T0161.7). Every plain
+    // material's SRB binds against exactly this; the four module slots and
+    // the params buffer that used to sit here now cost only the materials
+    // that declare them. The test suite pins these numbers so the budget
+    // cannot drift silently -- which is how the T0160 audit had to *count*
+    // them the first time, out of the source, after the fact.
+    HP_LOG_DEBUG(kLog,
+                 "base signature: {} sampled images, {} immutable samplers, {} constant "
+                 "buffers",
+                 sampledImages, immutableSamplers, constantBuffers);
 }
 
 void SurfacePipeline::CreateCustomSignature(Diligent::PipelineResourceSignatureDescX&& desc) {
@@ -307,31 +348,42 @@ void SurfacePipeline::CreateCustomSignature(Diligent::PipelineResourceSignatureD
     desc.AddImmutableSampler(Diligent::SHADER_TYPE_PIXEL, "g_HeightMap_sampler",
                              Diligent::Sam_LinearWrap);
 
-    // **A game's own parameters and textures** (T0160.4), in the *same*
-    // signature rather than a second one beside it -- which is the design the
-    // T0160 spike surfaced and the reason 160.4's only unproven item never had
-    // to be proven. A signature declares a constant buffer **by name, with no
-    // size**, so one slot named `HpMaterialParams` serves every module's
-    // differently-shaped block; the price is that the texture *slots* are
-    // named by the engine rather than by the author, because their names have
-    // to exist here, before any module does.
+    // **The sampler palette** (T0161.2, D35): the one piece of a game's
+    // resource vocabulary that must exist before any module does, because
+    // sampler *state* is the single thing SPIR-V cannot carry. An author
+    // picks filtering by naming one of these in code -- the declarations are
+    // in `HpMaterial.slang` -- so the choice travels inside the bytecode and
+    // a cooked build needs no sampler metadata at all.
     //
-    // Declared for every pipeline and named by almost none of them. Slang
-    // strips an unused resource from the SPIR-V, so a standard material's
-    // bytecode is byte-for-byte what it was before this existed -- the same
-    // superset pattern, and the same reason it costs nothing.
-    desc.AddResource(Diligent::SHADER_TYPE_PIXEL, kShaderParamsBlock,
-                     Diligent::SHADER_RESOURCE_TYPE_CONSTANT_BUFFER,
-                     Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE);
-    for (std::uint32_t slot = 0; slot < kShaderTextureSlots; ++slot) {
-        desc.AddResource(Diligent::SHADER_TYPE_PIXEL, shaderTextureSlotName(slot),
-                         Diligent::SHADER_RESOURCE_TYPE_TEXTURE_SRV,
-                         Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE);
-        // Wrap and linear, matching the height slot: a module's texture is a
-        // surface texture until something proves otherwise, and a per-slot
-        // sampler choice is a `.hpmat` field nobody has asked for yet.
-        desc.AddImmutableSampler(Diligent::SHADER_TYPE_PIXEL, shaderTextureSamplerName(slot),
-                                 Diligent::Sam_LinearWrap);
+    // Immutable samplers with no texture resource attached: Diligent gives
+    // each its own set-layout binding and matches a shader's separate
+    // `SamplerState` by name, the pattern the old per-slot samplers proved.
+    // `VS_PS` so T0146's vertex modules inherit the palette without a base
+    // signature change -- stage flags on a binding cost nothing.
+    //
+    // **What is deliberately no longer here** (T0161.6): `HpMaterialParams`
+    // and the four `HpTexture0..3` slots. A module's resources live in the
+    // *per-module* signature built from its own reflection
+    // (`buildModuleSignatureDesc`), under the author's names -- and their
+    // removal from this one is forced, not stylistic: the module signature
+    // discovers resources by subtraction against this signature's names, so
+    // a slot left here would shadow the module's copy for every legacy
+    // module and the two declarations would otherwise collide loudly at PSO
+    // creation. A plain glTF material's SRB carries four fewer images and
+    // four fewer samplers than it did under T0160.
+    // 8x anisotropy: the common desktop default. The palette is vocabulary,
+    // not tuning -- an author-set level is the additive escape D35 records.
+    // Indexed against the public name table so the signature and the refusal
+    // message (`kShaderSamplerPalette`) cannot drift apart.
+    const Diligent::SamplerDesc* paletteState[] = {
+        &Diligent::Sam_LinearWrap, &Diligent::Sam_LinearClamp, &Diligent::Sam_PointWrap,
+        &Diligent::Sam_PointClamp, &Diligent::Sam_Aniso8xWrap, &Diligent::Sam_Aniso8xClamp,
+    };
+    static_assert(std::size(paletteState) == std::size(kShaderSamplerPalette),
+                  "every palette name needs its sampler state, in the same order");
+    for (std::size_t i = 0; i < std::size(paletteState); ++i) {
+        desc.AddImmutableSampler(Diligent::SHADER_TYPE_VS_PS, kShaderSamplerPalette[i],
+                                 *paletteState[i]);
     }
 
     Diligent::PBR_Renderer::CreateCustomSignature(std::move(desc));
@@ -604,6 +656,11 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
     Diligent::RefCntAutoPtr<Diligent::IShader> vertexShader;
     Diligent::RefCntAutoPtr<Diligent::IShader> pixelShader;
 
+    // The module's own resource signature (T0161.4), or null for the standard
+    // material and for a module that declares nothing -- in which case the
+    // pipeline carries exactly the signatures it did before T0161 existed.
+    Diligent::RefCntAutoPtr<Diligent::IPipelineResourceSignature> moduleSignature;
+
     {
         // The permutation macros, forwarded exactly as `DefineMacros` produced
         // them (142.5). `ShaderMacroArray` keeps the helper's storage alive
@@ -619,10 +676,14 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
         // The module's declared parameters, reflected off the pixel-shader
         // compile below (T0160.2). Requested only for a custom module: the
         // standard material declares nothing, and asking would defeat the
-        // bytecode cache for every pipeline in the engine.
+        // bytecode cache for every pipeline in the engine. The resource-shape
+        // list rides the same request (T0161.3): it is the one fact only
+        // slang can see, and it feeds the dimension check below.
         ShaderParamLayout layout;
+        std::vector<SlangReflectedResource> slangResources;
         SlangReflectionRequest reflection;
         reflection.layout = &layout;
+        reflection.resources = &slangResources;
 
         const auto compileStage = [&](const char* file, ShaderStage stage, const char* name,
                                       Diligent::SHADER_TYPE type, bool reflectParams)
@@ -680,13 +741,65 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
             return pso;
         }
         if (custom) {
-            if (layout.params.empty() && layout.textures.empty()) {
-                // Either the module declares nothing -- the common case, and
+            if (layout.params.empty()) {
+                // Either the module declares no parameters -- common, and
                 // this costs one cheap walk -- or the bytecode came from a
                 // cooked archive and no compile happened. The two are
                 // indistinguishable from here and want the same answer.
                 reflectFromShader(pixelShader, layout);
             }
+
+            // **The module's resources become its signature** (T0161.4), by
+            // subtraction against the engine's own names -- see
+            // `ModuleResourceSignature.hpp` for why the used set and why the
+            // cache key is the resource set itself.
+            Diligent::PipelineResourceSignatureDescX moduleDesc;
+            std::vector<std::string> moduleTextures;
+            ModuleSignatureRequest request;
+            request.shader = pixelShader;
+            request.stage = Diligent::SHADER_TYPE_PIXEL;
+            request.engineResources = &engineResourceNames_;
+            // Empty exactly when no slang compile ran (the cooked path);
+            // reflection on the dev path always lists the engine's own
+            // resources at least. Null skips the dimension check there --
+            // the dev build that cooked the archive already ran it.
+            request.slangResources = slangResources.empty() ? nullptr : &slangResources;
+            request.moduleName = customModule;
+            request.bindingIndex = 1;
+            request.policy.requireTexture2DArray = true;
+            request.policy.allowBuffers = false;
+            request.policy.onlyConstantBuffer = kShaderParamsBlock;
+            if (!buildModuleSignatureDesc(request, moduleDesc, moduleTextures)) {
+                // Refused, by name, in the log above. The null is cached and
+                // the caller draws the checkerboard -- the same loud
+                // convention as a compile failure, because that is what this
+                // is: a module the engine cannot honestly bind.
+                return pso;
+            }
+            layout.textures.reserve(moduleTextures.size());
+            for (std::string& name : moduleTextures) {
+                layout.textures.push_back(ShaderTextureSlot{std::move(name)});
+            }
+
+            if (moduleDesc.NumResources > 0) {
+                const std::size_t key = moduleSignatureKey(moduleDesc);
+                auto found = moduleSignatures_.find(key);
+                if (found == moduleSignatures_.end()) {
+                    moduleDesc.SetName("hp module resources");
+                    Diligent::RefCntAutoPtr<Diligent::IPipelineResourceSignature> created;
+                    GetDevice()->CreatePipelineResourceSignature(moduleDesc, &created);
+                    if (!created) {
+                        HP_LOG_ERROR(kLog,
+                                     "the device refused the module resource signature for "
+                                     "'{}'",
+                                     customModule);
+                        return pso;
+                    }
+                    found = moduleSignatures_.emplace(key, std::move(created)).first;
+                }
+                moduleSignature = found->second;
+            }
+
             paramLayouts_[std::string{customModule}] = std::move(layout);
         }
     }
@@ -731,12 +844,19 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
     }
     psoInfo.AddShader(vertexShader);
     psoInfo.AddShader(pixelShader);
-    // **The base class's signature, not one of ours.** It already describes the
-    // frame, primitive and material buffers and every texture slot, and building
-    // a second one would mean `CreateResourceBinding` handing back bindings this
-    // pipeline could not accept.
+    // **The base class's signature first.** It already describes the frame,
+    // primitive and material buffers and every engine texture slot, and
+    // building a parallel one would mean `CreateResourceBinding` handing back
+    // bindings this pipeline could not accept.
     for (auto& signature : m_ResourceSignatures) {
         psoInfo.AddSignature(signature);
+    }
+    // The module's own, at binding 1, when it declared anything (T0161). This
+    // is where a resource duplicated across the two signatures would fail PSO
+    // creation by name -- which is the guard that keeps the HpTexture0..3
+    // migration honest: the slots *cannot* quietly exist in both.
+    if (moduleSignature) {
+        psoInfo.AddSignature(moduleSignature);
     }
 
     GetDevice()->CreateGraphicsPipelineState(psoInfo, &pso);
