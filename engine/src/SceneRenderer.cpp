@@ -277,6 +277,18 @@ struct SceneRenderer::Impl {
     /// Camera and frame-wide shader data. One buffer, rewritten per frame.
     Diligent::RefCntAutoPtr<Diligent::IBuffer> frameAttribs;
 
+    /// A game module's declared parameters (T0160.5). One buffer of
+    /// `kShaderParamsMaxBytes`, rewritten per draw exactly as the material
+    /// attribs beside it are.
+    ///
+    /// **One buffer for every module, and the signature is what makes that
+    /// legal**: a resource signature names a constant buffer without a size,
+    /// so a module declaring 8 bytes and one declaring 200 bind the same
+    /// object. The shader reads the prefix its own block describes and never
+    /// sees the rest — which is why the cap is checked at reflection time and
+    /// a module that overruns it is refused by name.
+    Diligent::RefCntAutoPtr<Diligent::IBuffer> shaderParams;
+
     /// Target formats, depth state and topology, **built with the engine's depth
     /// convention**. This is the whole reason `PBR_Renderer` is driven directly
     /// rather than `GLTF_PBR_Renderer`, which builds this itself and leaves the
@@ -319,6 +331,13 @@ struct SceneRenderer::Impl {
         /// unchanged material object is not detected here; that is T0058's
         /// invalidation problem and is recorded there rather than half-solved
         /// with a per-frame pool walk.
+        ///
+        /// Also what the parameter writer reads at draw time (T0160.5): the
+        /// authored values are looked up against the module's layout **per
+        /// draw** rather than resolved into offsets here, because the layout
+        /// does not exist until the module has been compiled -- and that
+        /// happens after this binding is built. Resolving eagerly would give a
+        /// binding that is only correct from the second frame on.
         std::shared_ptr<Material> source;
 
         /// Keeps the bound textures alive as long as the SRB names them.
@@ -375,6 +394,36 @@ struct SceneRenderer::Impl {
     /// @param model the model whose materials need binding.
     /// @returns the bindings, or nullptr if they could not be created.
     ModelBindings* ensureBindings(Guid guid, const Diligent::GLTF::Model& model);
+
+    /// Binds the game-module parameter buffer and texture slots (T0160.4/160.5).
+    ///
+    /// **Called for every SRB, including those of materials with no custom
+    /// shader.** The slots are in the signature for every pipeline (the
+    /// superset pattern `g_HeightMap` uses) and a mutable resource left unbound
+    /// is a validation failure at commit time, not a silently ignored one.
+    ///
+    /// @param srb the binding to fill.
+    /// @param material the authored material, or null to bind only the
+    ///        defaults -- which is what an imported glTF material gets.
+    /// @param pool where a slot's texture GUID resolves, or null.
+    /// @param barriers receives the state transitions the bound textures need,
+    ///        or null when there is no material.
+    /// @param out receives the texture assets to keep alive, or null.
+    /// @returns nothing.
+    void bindShaderParamSlots(Diligent::IShaderResourceBinding* srb, const Material* material,
+                              const AssetPool* pool,
+                              std::vector<Diligent::StateTransitionDesc>* barriers,
+                              MaterialBinding* out);
+
+    /// Writes a material's authored values into the module's parameter block.
+    ///
+    /// @param context the context to map the buffer through.
+    /// @param material the authored material, whose `params` are looked up by
+    ///        name against @p layout.
+    /// @param layout what the module declared.
+    /// @returns nothing.
+    void writeShaderParams(Diligent::IDeviceContext* context, const Material& material,
+                           const ShaderParamLayout& layout);
 
     /// Converts and binds one material asset, once per asset (T0141.12).
     ///
@@ -496,11 +545,144 @@ SceneRenderer::Impl::ensureBindings(Guid guid, const Diligent::GLTF::Model& mode
             height->Set(renderer->GetWhiteTexSRV());
         }
 
+        // A game module's slots (T0160.4). An imported glTF material has no
+        // custom shader, so nothing here will ever be read -- but **every
+        // mutable resource in the signature has to be bound before the SRB is
+        // committed**, whether the pipeline's bytecode names it or not, and an
+        // unbound one is a validation error rather than a wrong image.
+        bindShaderParamSlots(srb, /*material = */ nullptr, /*pool = */ nullptr,
+                             /*barriers = */ nullptr, /*out = */ nullptr);
+
         built.material[i] = std::move(srb);
     }
 
     bindings[guid] = std::move(built);
     return &bindings[guid];
+}
+
+void SceneRenderer::Impl::bindShaderParamSlots(Diligent::IShaderResourceBinding* srb,
+                                               const Material* material, const AssetPool* pool,
+                                               std::vector<Diligent::StateTransitionDesc>* barriers,
+                                               MaterialBinding* out) {
+    if (srb == nullptr) {
+        return;
+    }
+
+    if (Diligent::IShaderResourceVariable* block =
+            srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, kShaderParamsBlock)) {
+        block->Set(shaderParams);
+    }
+
+    for (std::uint32_t slot = 0; slot < kShaderTextureSlots; ++slot) {
+        const char* name = shaderTextureSlotName(slot);
+        Diligent::IShaderResourceVariable* variable =
+            srb->GetVariableByName(Diligent::SHADER_TYPE_PIXEL, name);
+        if (variable == nullptr) {
+            continue;
+        }
+
+        Guid wanted;
+        if (material != nullptr) {
+            for (const MaterialTexture& bound : material->textures) {
+                if (bound.name == name) {
+                    wanted = bound.texture;
+                    break;
+                }
+            }
+        }
+
+        Diligent::ITextureView* view = nullptr;
+        std::shared_ptr<TextureAsset> texture;
+        if (wanted.isValid() && pool != nullptr) {
+            texture = pool->get<TextureAsset>(wanted);
+        }
+        if (texture && texture->valid()) {
+            view = texture->shaderResource();
+            if (barriers != nullptr) {
+                barriers->emplace_back(texture->texture(), Diligent::RESOURCE_STATE_UNKNOWN,
+                                       Diligent::RESOURCE_STATE_SHADER_RESOURCE,
+                                       Diligent::STATE_TRANSITION_FLAG_UPDATE_STATE);
+            }
+            if (out != nullptr) {
+                out->textures.push_back(std::move(texture));
+            }
+        } else if (wanted.isValid() && placeholder && placeholder->valid()) {
+            // Named and not in the pool: the checkerboard, uniformly with
+            // every other texture-level miss (T0023.6).
+            view = placeholder->shaderResource();
+        }
+        if (view == nullptr) {
+            // White, the identity for a multiplied factor and the same
+            // no-texture answer the fixed slots give.
+            view = renderer->GetWhiteTexSRV();
+        }
+        variable->Set(view);
+    }
+}
+
+void SceneRenderer::Impl::writeShaderParams(Diligent::IDeviceContext* context,
+                                            const Material& material,
+                                            const ShaderParamLayout& layout) {
+    HP_PROFILE_ZONE();
+
+    if (context == nullptr || !shaderParams || layout.blockBytes == 0) {
+        return;
+    }
+
+    void* mapped = nullptr;
+    context->MapBuffer(shaderParams, Diligent::MAP_WRITE, Diligent::MAP_FLAG_DISCARD, mapped);
+    if (mapped == nullptr) {
+        return;
+    }
+    // **Zeroed first, and it is not a formality.** `MAP_FLAG_DISCARD` hands
+    // back whatever the driver has; a parameter the material does not set must
+    // read as zero rather than as the previous draw's value for a different
+    // material, which is a bug that only appears when two materials share a
+    // module and only in one draw order (the T0159.6 failure, in a new buffer).
+    auto* bytes = static_cast<std::uint8_t*>(mapped);
+    std::memset(bytes, 0, kShaderParamsMaxBytes);
+
+    for (const MaterialParam& authored : material.params) {
+        const ShaderParam* declared = layout.find(authored.name);
+        if (declared == nullptr) {
+            // The module does not declare it. **Not an error and not logged
+            // from here**: this runs per draw, and a material carrying a value
+            // for a parameter a later revision of the shader removed is the
+            // same leniency every other field of the format has.
+            continue;
+        }
+        if (declared->offset + declared->size > kShaderParamsMaxBytes) {
+            continue;
+        }
+        std::uint8_t* field = bytes + declared->offset;
+        const float* components = authored.value.components;
+        switch (declared->type) {
+        case ShaderParamType::Float:
+        case ShaderParamType::Float2:
+        case ShaderParamType::Float3:
+        case ShaderParamType::Float4: {
+            // **The declared type decides the width, not the document.** A
+            // `float3` given `value: 0.5` writes (0.5, 0, 0) rather than
+            // running one float into the next parameter's bytes.
+            const std::size_t count = declared->size / sizeof(float);
+            std::memcpy(field, components, count * sizeof(float));
+            break;
+        }
+        case ShaderParamType::Int: {
+            const auto value = static_cast<std::int32_t>(components[0]);
+            std::memcpy(field, &value, sizeof value);
+            break;
+        }
+        case ShaderParamType::Bool: {
+            // Four bytes, and non-zero means true -- HLSL and Slang both
+            // define a `bool` in a constant buffer as a 32-bit value.
+            const std::uint32_t value = components[0] != 0.0F ? 1U : 0U;
+            std::memcpy(field, &value, sizeof value);
+            break;
+        }
+        }
+    }
+    context->UnmapBuffer(shaderParams, Diligent::MAP_WRITE);
 }
 
 bool SceneRenderer::Impl::buildMaterialBinding(Diligent::IDeviceContext* context,
@@ -607,6 +789,10 @@ bool SceneRenderer::Impl::buildMaterialBinding(Diligent::IDeviceContext* context
             out.extraFlags |= SurfacePipeline::kPsoFlagHeightMap;
         }
     }
+
+    // A game module's parameter buffer and texture slots (T0160.4). Bound for
+    // every material, custom shader or not -- see `bindShaderParamSlots`.
+    bindShaderParamSlots(out.srb, &material, pool, &barriers, &out);
 
     if (material.triplanar) {
         out.extraFlags |= SurfacePipeline::kPsoFlagTriplanar;
@@ -778,6 +964,9 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
             // spends it). `Imported` keeps the model's own material -- the
             // common case and byte-identical to what drew before this existed.
             const char* customModule = nullptr;
+            // The authored material behind `customModule`, for the parameter
+            // writer below. Null whenever `customModule` is.
+            const Material* authored = nullptr;
             const ResolvedMaterial resolved =
                 resolveMaterialSlot(pool, item.materials, primitive.MaterialId);
             if (resolved.state == MaterialSlot::Assigned) {
@@ -800,6 +989,7 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                     extraFlags = binding->extraFlags;
                     if (!binding->shaderPath.empty()) {
                         customModule = binding->shaderPath.c_str();
+                        authored = binding->source.get();
                     }
                 }
                 // A failed binding falls back to the imported material rather
@@ -912,6 +1102,7 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                     srb = errorFallback->srb;
                     extraFlags = errorFallback->extraFlags;
                     customModule = nullptr;
+                    authored = nullptr;
                     flags = (vertexFlags | kMaterialFlags | kEnabledFeatures | extraFlags) &
                             kFeatureMask;
                     if ((flags & Diligent::PBR_Renderer::PSO_FLAG_USE_TEXCOORD0) == 0 &&
@@ -935,6 +1126,23 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
             context->SetPipelineState(pso);
             context->CommitShaderResources(srb,
                                            Diligent::RESOURCE_STATE_TRANSITION_MODE_VERIFY);
+
+            // **The module's declared parameters** (T0160.5), written here and
+            // nowhere else. The layout comes from the reflection of the very
+            // compile that produced the pipeline just bound, which is why this
+            // sits *after* `pipeline()` rather than in the binding: before
+            // that call the module may never have been compiled and its layout
+            // does not exist.
+            //
+            // Skipped entirely for the standard material and for a module that
+            // declares nothing -- no map, no memset, no writes -- which is what
+            // makes a material without parameters byte-identical to what drew
+            // before this existed.
+            if (customModule != nullptr && authored != nullptr) {
+                if (const ShaderParamLayout* layout = renderer->paramLayout(customModule)) {
+                    writeShaderParams(context, *authored, *layout);
+                }
+            }
 
             {
                 void* attribs = nullptr;
@@ -1057,6 +1265,18 @@ bool SceneRenderer::create(Diligent::IRenderDevice* device, Diligent::IDeviceCon
                                   "hp PBR frame attribs", &impl->frameAttribs);
     if (!impl->frameAttribs) {
         HP_LOG_ERROR(kLog, "could not create the frame attributes buffer");
+        return false;
+    }
+
+    // **A game module's declared parameters** (T0160.5). One buffer for every
+    // module, sized to the cap the reflection pass enforces; a module's block
+    // is a prefix of it, and the signature names it without a size so the two
+    // never have to agree on one. Dynamic and rewritten per draw, exactly like
+    // the material attribs it sits beside.
+    Diligent::CreateUniformBuffer(device, kShaderParamsMaxBytes, "hp material params",
+                                  &impl->shaderParams);
+    if (!impl->shaderParams) {
+        HP_LOG_ERROR(kLog, "could not create the material parameter buffer");
         return false;
     }
 

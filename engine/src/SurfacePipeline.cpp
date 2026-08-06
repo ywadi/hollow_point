@@ -14,6 +14,8 @@
 #include <RenderDevice.h>
 #include <ShaderSourceFactoryUtils.h>
 
+#include <algorithm>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -137,6 +139,143 @@ std::string addVkInputLocations(const std::string& vsInput) {
     return out;
 }
 
+/// Maps one reflected constant-buffer variable onto a material parameter type.
+///
+/// Diligent describes a variable by class (scalar / vector / matrix), basic
+/// type and a rows/columns pair. Only the shapes `hp::ShaderParamType` carries
+/// are accepted; everything else is refused so the caller can name it, exactly
+/// as the slang path does.
+bool mapDiligentParamType(const Diligent::ShaderCodeVariableDesc& variable, ShaderParamType& out) {
+    // **A vector's width is `max(NumRows, NumColumns)`, and reading only one of
+    // them was a real bug here.** Diligent's own header says "for shaders
+    // compiled from GLSL, NumRows and NumColumns are swapped", and its SPIR-V
+    // reader performs that swap only when it believes the source was HLSL --
+    // which it cannot know for bytecode handed in directly. So a `float3`
+    // arrives as 3x1 on this path and would arrive as 1x3 on another. A vector
+    // has a 1 in the other slot either way, which is what makes taking the
+    // larger correct rather than a guess.
+    unsigned width = 0;
+    switch (variable.Class) {
+    case Diligent::SHADER_CODE_VARIABLE_CLASS_SCALAR:
+        width = 1;
+        break;
+    case Diligent::SHADER_CODE_VARIABLE_CLASS_VECTOR:
+        if (variable.NumRows != 1 && variable.NumColumns != 1) {
+            return false;
+        }
+        width = std::max<unsigned>(variable.NumRows, variable.NumColumns);
+        break;
+    default:
+        return false;
+    }
+
+    switch (variable.BasicType) {
+    case Diligent::SHADER_CODE_BASIC_TYPE_FLOAT:
+        break;
+    case Diligent::SHADER_CODE_BASIC_TYPE_INT:
+    case Diligent::SHADER_CODE_BASIC_TYPE_UINT:
+        if (width != 1) {
+            return false;
+        }
+        out = ShaderParamType::Int;
+        return true;
+    case Diligent::SHADER_CODE_BASIC_TYPE_BOOL:
+        if (width != 1) {
+            return false;
+        }
+        out = ShaderParamType::Bool;
+        return true;
+    default:
+        return false;
+    }
+    switch (width) {
+    case 1:
+        out = ShaderParamType::Float;
+        return true;
+    case 2:
+        out = ShaderParamType::Float2;
+        return true;
+    case 3:
+        out = ShaderParamType::Float3;
+        return true;
+    case 4:
+        out = ShaderParamType::Float4;
+        return true;
+    default:
+        return false;
+    }
+}
+
+/// Reads the module's declarations back out of the compiled shader (T0160.2).
+///
+/// **The path a shipped game takes**, where the bytecode came from a cooked
+/// archive and no slang compile happened. Also the path taken when the compile
+/// *did* happen and the module simply declares nothing, which costs one walk
+/// over a handful of resources and keeps this code exercised on every
+/// developer machine rather than only in a packaged build -- the failure mode
+/// a fallback nobody runs always has.
+void reflectFromShader(Diligent::IShader* shader, ShaderParamLayout& out) {
+    if (shader == nullptr) {
+        return;
+    }
+    const Diligent::Uint32 resources = shader->GetResourceCount();
+    for (Diligent::Uint32 i = 0; i < resources; ++i) {
+        Diligent::ShaderResourceDesc resource;
+        shader->GetResourceDesc(i, resource);
+        if (resource.Name == nullptr) {
+            continue;
+        }
+        const std::string_view name{resource.Name};
+        for (std::uint32_t slot = 0; slot < kShaderTextureSlots; ++slot) {
+            if (name == shaderTextureSlotName(slot)) {
+                out.textures.push_back(ShaderTextureSlot{std::string{name}, slot});
+            }
+        }
+        if (name != kShaderParamsBlock ||
+            resource.Type != Diligent::SHADER_RESOURCE_TYPE_CONSTANT_BUFFER) {
+            continue;
+        }
+        const Diligent::ShaderCodeBufferDesc* buffer = shader->GetConstantBufferDesc(i);
+        if (buffer == nullptr) {
+            HP_LOG_WARN(kLog,
+                        "'{}' is present in the shader but carries no reflection; the material's "
+                        "declared parameters will not be written",
+                        kShaderParamsBlock);
+            continue;
+        }
+        out.blockBytes = buffer->Size;
+        for (Diligent::Uint32 v = 0; v < buffer->NumVariables; ++v) {
+            const Diligent::ShaderCodeVariableDesc& variable = buffer->pVariables[v];
+            if (variable.Name == nullptr) {
+                continue;
+            }
+            ShaderParam param;
+            param.name = variable.Name;
+            if (!mapDiligentParamType(variable, param.type)) {
+                HP_LOG_WARN(kLog,
+                            "'{}.{}' has a type this engine cannot carry in a material; it keeps "
+                            "whatever the shader initialises it to",
+                            kShaderParamsBlock, param.name);
+                continue;
+            }
+            param.offset = variable.Offset;
+            // Diligent reports no per-variable size, and every shape accepted
+            // above is exactly four bytes per component -- which is what the
+            // slang path measures independently and what the writer needs.
+            param.size = 4U * std::max<Diligent::Uint8>(variable.NumRows, variable.NumColumns);
+            out.params.push_back(std::move(param));
+        }
+    }
+    if (out.blockBytes > kShaderParamsMaxBytes) {
+        HP_LOG_ERROR(kLog,
+                     "a module declares a {}-byte '{}' block and the engine binds {} bytes; its "
+                     "parameters are not written",
+                     out.blockBytes, kShaderParamsBlock, kShaderParamsMaxBytes);
+        out.params.clear();
+        out.blockBytes = 0;
+    }
+}
+
 } // namespace
 
 SurfacePipeline::SurfacePipeline(Diligent::IRenderDevice* device,
@@ -167,7 +306,43 @@ void SurfacePipeline::CreateCustomSignature(Diligent::PipelineResourceSignatureD
                      Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE);
     desc.AddImmutableSampler(Diligent::SHADER_TYPE_PIXEL, "g_HeightMap_sampler",
                              Diligent::Sam_LinearWrap);
+
+    // **A game's own parameters and textures** (T0160.4), in the *same*
+    // signature rather than a second one beside it -- which is the design the
+    // T0160 spike surfaced and the reason 160.4's only unproven item never had
+    // to be proven. A signature declares a constant buffer **by name, with no
+    // size**, so one slot named `HpMaterialParams` serves every module's
+    // differently-shaped block; the price is that the texture *slots* are
+    // named by the engine rather than by the author, because their names have
+    // to exist here, before any module does.
+    //
+    // Declared for every pipeline and named by almost none of them. Slang
+    // strips an unused resource from the SPIR-V, so a standard material's
+    // bytecode is byte-for-byte what it was before this existed -- the same
+    // superset pattern, and the same reason it costs nothing.
+    desc.AddResource(Diligent::SHADER_TYPE_PIXEL, kShaderParamsBlock,
+                     Diligent::SHADER_RESOURCE_TYPE_CONSTANT_BUFFER,
+                     Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE);
+    for (std::uint32_t slot = 0; slot < kShaderTextureSlots; ++slot) {
+        desc.AddResource(Diligent::SHADER_TYPE_PIXEL, shaderTextureSlotName(slot),
+                         Diligent::SHADER_RESOURCE_TYPE_TEXTURE_SRV,
+                         Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE);
+        // Wrap and linear, matching the height slot: a module's texture is a
+        // surface texture until something proves otherwise, and a per-slot
+        // sampler choice is a `.hpmat` field nobody has asked for yet.
+        desc.AddImmutableSampler(Diligent::SHADER_TYPE_PIXEL, shaderTextureSamplerName(slot),
+                                 Diligent::Sam_LinearWrap);
+    }
+
     Diligent::PBR_Renderer::CreateCustomSignature(std::move(desc));
+}
+
+const ShaderParamLayout* SurfacePipeline::paramLayout(const char* customModule) const {
+    if (customModule == nullptr || customModule[0] == '\0') {
+        return nullptr;
+    }
+    const auto found = paramLayouts_.find(std::string{customModule});
+    return found != paramLayouts_.end() ? &found->second : nullptr;
 }
 
 Diligent::IPipelineState* SurfacePipeline::pipeline(const Diligent::GraphicsPipelineDesc& graphics,
@@ -441,14 +616,23 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
                 {macroArray.Elements[i].Name, macroArray.Elements[i].Definition});
         }
 
+        // The module's declared parameters, reflected off the pixel-shader
+        // compile below (T0160.2). Requested only for a custom module: the
+        // standard material declares nothing, and asking would defeat the
+        // bytecode cache for every pipeline in the engine.
+        ShaderParamLayout layout;
+        SlangReflectionRequest reflection;
+        reflection.layout = &layout;
+
         const auto compileStage = [&](const char* file, ShaderStage stage, const char* name,
-                                      Diligent::SHADER_TYPE type)
+                                      Diligent::SHADER_TYPE type, bool reflectParams)
             -> Diligent::RefCntAutoPtr<Diligent::IShader> {
             Diligent::RefCntAutoPtr<Diligent::IShader> shader;
             std::vector<std::uint8_t> spirv;
             std::string diagnostics;
             if (!compileSlangToSpirv(file, stage, slangMacros.data(), slangMacros.size(), factory,
-                                     spirv, diagnostics)) {
+                                     spirv, diagnostics,
+                                     reflectParams ? &reflection : nullptr)) {
                 // **Logged here, on the compile attempt.** One line per failed
                 // pipeline, never per draw (T0141); the null result is cached.
                 HP_LOG_ERROR(kLog, "slang failed to compile '{}': {}", file,
@@ -467,6 +651,19 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
             shaderInfo.ByteCode = spirv.data();
             shaderInfo.ByteCodeSize = spirv.size();
             shaderInfo.EntryPoint = "main";
+            // **The cooked-build half of reflection** (T0160.2). A shipped
+            // game links no slang (D28's boundary table) and its bytecode
+            // arrives from an archive, so `compileSlangToSpirv` above
+            // reflects nothing there. Diligent parses the constant-buffer
+            // layout straight out of the SPIR-V, which is the runtime-side
+            // mechanism D28 named when it argued for slang's reflection --
+            // same bytes, so the offsets cannot disagree. What it cannot see
+            // is the `[HpRange]`/`[HpTooltip]` hints, which exist only in the
+            // source and are wanted only by an editor, which has a compiler.
+            //
+            // Off for every other pipeline: Diligent's own comment says the
+            // reflection "introduces some overhead", and nothing reads it.
+            shaderInfo.LoadConstantBufferReflection = reflectParams;
             shaderInfo.Desc = {name, type, /*UseCombinedTextureSamplers = */ false};
             GetDevice()->CreateShader(shaderInfo, &shader);
             if (!shader) {
@@ -476,11 +673,21 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
         };
 
         vertexShader = compileStage(kVertexShader, ShaderStage::Vertex, "hp surface VS (slang)",
-                                    Diligent::SHADER_TYPE_VERTEX);
+                                    Diligent::SHADER_TYPE_VERTEX, /*reflectParams = */ false);
         pixelShader = compileStage(kPixelShader, ShaderStage::Pixel, "hp surface PS (slang)",
-                                   Diligent::SHADER_TYPE_PIXEL);
+                                   Diligent::SHADER_TYPE_PIXEL, /*reflectParams = */ custom);
         if (!vertexShader || !pixelShader) {
             return pso;
+        }
+        if (custom) {
+            if (layout.params.empty() && layout.textures.empty()) {
+                // Either the module declares nothing -- the common case, and
+                // this costs one cheap walk -- or the bytecode came from a
+                // cooked archive and no compile happened. The two are
+                // indistinguishable from here and want the same answer.
+                reflectFromShader(pixelShader, layout);
+            }
+            paramLayouts_[std::string{customModule}] = std::move(layout);
         }
     }
 

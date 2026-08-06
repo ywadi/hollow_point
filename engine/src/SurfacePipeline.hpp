@@ -27,9 +27,12 @@
 // what this exists to stop.
 #pragma once
 
+#include <hp/ShaderParams.hpp>
+
 #include <PBR_Renderer.hpp>
 #include <RefCntAutoPtr.hpp>
 
+#include <string>
 #include <unordered_map>
 
 namespace hp {
@@ -85,6 +88,21 @@ public:
 
     /// The height map's resource names in the signature and the shader.
     static constexpr const char* kHeightMapVariable = "g_HeightMap";
+
+    /// What the module compiled into this pipeline declared (T0160.2).
+    ///
+    /// Filled by `build()` from the reflection of the compile it makes — the
+    /// only place a module is a well-formed program, see `SlangCompiler.hpp` —
+    /// and cached under the module's virtual path, which is already the cache
+    /// key for the pipelines themselves.
+    ///
+    /// @param customModule the module's virtual path; null or empty for the
+    ///        standard material.
+    /// @returns the layout, or nullptr when no pipeline has been built for that
+    ///          module yet or its compile failed. **Not an error to be
+    ///          missing** — the caller writes no parameters, which is exactly
+    ///          what a module declaring none needs anyway.
+    [[nodiscard]] const ShaderParamLayout* paramLayout(const char* customModule) const;
 
     /// Fills in the engine's renderer settings.
     ///
@@ -179,6 +197,16 @@ private:
     /// formats. `PSOKey` has a hasher; the formats are folded in by hand because
     /// nothing in Diligent hashes a `GraphicsPipelineDesc`.
     std::unordered_map<std::size_t, Diligent::RefCntAutoPtr<Diligent::IPipelineState>> pipelines_;
+
+    /// One layout per module path (T0160.2).
+    ///
+    /// **Per module, not per pipeline**, and that is the claim 160.1's
+    /// unconditional-declaration rule makes true: a module's parameter block
+    /// and texture slots are outside every permutation `#if`, so every
+    /// permutation of the same module reflects the same layout. Keying it on
+    /// the permutation as well would be storing the same answer many times and
+    /// inviting the question of which one the inspector should show.
+    std::unordered_map<std::string, ShaderParamLayout> paramLayouts_;
 };
 
 } // namespace hp

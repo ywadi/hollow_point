@@ -39,6 +39,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -222,9 +223,14 @@ void countChecks(const std::vector<std::uint8_t>& rgba, int& magenta, int& black
 /// @param shaderInPool whether the shader asset is loaded into the pool — false
 ///        exercises the material-names-a-missing-shader path.
 /// @param unlit the material's unlit flag.
+/// @param customise runs on the material before it is stored, for the
+///        declared-parameter cases (T0160). Given the placeholder texture's
+///        GUID, already in the pool, so a case that wants a texture in a module
+///        slot has one to bind.
 bool renderCustom(Device& device, const std::string& moduleSource, bool shaderInPool, bool unlit,
                   std::vector<std::uint8_t>& pixels, int frames = 1, double timeSeconds = 0.0,
-                  bool withTangents = false) {
+                  bool withTangents = false,
+                  const std::function<void(hp::Material&, hp::Guid)>& customise = {}) {
     std::error_code ec;
     const std::filesystem::path scratch =
         std::filesystem::temp_directory_path() / "hp-custom-shader";
@@ -260,12 +266,23 @@ bool renderCustom(Device& device, const std::string& moduleSource, bool shaderIn
         pool.store<hp::ShaderAsset>(shaderGuid, shader);
     }
 
+    // A texture for a module slot to bind, in the pool whether a case uses it
+    // or not: the checkerboard is the one image every test here already knows,
+    // and its 4-pixel checks make a fixed sample coordinate a fixed colour.
+    const hp::Guid textureGuid = hp::Guid::generate();
+    if (auto placeholder = hp::makePlaceholderTexture(device.render->device())) {
+        pool.store<hp::TextureAsset>(textureGuid, std::move(placeholder));
+    }
+
     const hp::Guid materialGuid = hp::Guid::generate();
     {
         auto material = std::make_shared<hp::Material>();
         material->shader = shaderGuid;
         material->unlit = unlit;
         material->doubleSided = true;
+        if (customise) {
+            customise(*material, textureGuid);
+        }
         pool.store<hp::Material>(materialGuid, material);
     }
 
@@ -643,15 +660,17 @@ struct HpMaterial : IHpMaterial
     tearDown(device);
 }
 
-TEST_CASE("spike: a module-declared cbuffer absent from every signature — the failure mode") {
-    // **T0160.4's first open question, executed.** The capability matrix
-    // records it verbatim: "Whether Diligent rejects a module-declared
-    // `cbuffer` absent from the signature — decides whether T0160's failure
-    // mode is loud or silent. Not executed." This case executes it: a module
-    // declares its own constant buffer, slang compiles it happily (it is
-    // legal Slang), and the pipeline is built against signatures that have
-    // never heard of `HpMaterialParams`. Whatever renders — and whatever the
-    // log says — is the failure mode T0160's design must beat.
+TEST_CASE("a module declares its own parameters and a .hpmat gives them values") {
+    // **T0160's headline, measured end to end.** The same module — one file,
+    // one pipeline — renders three different colours because three materials
+    // give its declared `HpMaterialParams` block three different values. The
+    // spike this replaces asserted the opposite: before T0160 a module
+    // declaring that block failed PSO creation by name and rendered the
+    // missing-material checkerboard.
+    //
+    // Unshaded, so the assertions are exact rather than "roughly this colour":
+    // the value written into the block is the value at the target, and any
+    // channel being off by one means the offset or the width is wrong.
     Device device = bringUp();
     if (!device.ok()) {
         MESSAGE("no graphics device; skipping");
@@ -662,17 +681,26 @@ TEST_CASE("spike: a module-declared cbuffer absent from every signature — the 
     CompileErrorCounter counter;
     hp::logAddSink(&counter);
 
-    const char* kParamsModule = R"(
+    // Two parameters, a `float3` and a `float`, so the case covers the
+    // interesting half of the layout: slang packs a `float3` at 16-byte
+    // alignment and the scalar after it, and reading the offsets from
+    // reflection rather than computing them is what makes that free.
+    const char* kTintModule = R"(
 cbuffer HpMaterialParams
 {
-    float4 HpTint;
+    [HpColor]
+    [HpTooltip("The tint this material shows.")]
+    float3 tint;
+
+    [HpRange(0.0, 1.0)]
+    float level;
 }
 
 struct HpMaterial : IHpMaterial
 {
     override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
     {
-        return HpTint;
+        return float4(tint * level, 1.0);
     }
     override bool unshaded()
     {
@@ -680,23 +708,128 @@ struct HpMaterial : IHpMaterial
     }
 }
 )";
-    std::vector<std::uint8_t> pixels;
-    const bool rendered =
-        renderCustom(device, kParamsModule, /*shaderInPool=*/true, /*unlit=*/false, pixels);
-    hp::logRemoveSink(&counter);
-    REQUIRE(rendered);
 
-    int magenta = 0;
-    int black = 0;
-    countChecks(pixels, magenta, black);
-    const Rgb centre = centreOf(pixels);
-    MESSAGE("declared-cbuffer module: centre (" << centre.r << ", " << centre.g << ", "
-                                                << centre.b << "), magenta " << magenta
-                                                << ", compile errors " << counter.compilerErrors()
-                                                << ", substitutions " << counter.substitutions());
-    // The record, not a wish: this documents the observed failure mode so the
-    // matrix's open question closes with a measurement. See the MESSAGE above
-    // in the test log for the exact numbers behind the ticket's note.
+    const auto renderWith = [&](float r, float g, float b, float level, Rgb& out) -> bool {
+        std::vector<std::uint8_t> pixels;
+        const bool ok = renderCustom(
+            device, kTintModule, /*shaderInPool=*/true, /*unlit=*/false, pixels, /*frames=*/1,
+            /*timeSeconds=*/0.0, /*withTangents=*/false,
+            [&](hp::Material& material, hp::Guid) {
+                material.params = {
+                    hp::MaterialParam{"tint", hp::ShaderValue{{r, g, b, 0.0F}, 3}},
+                    hp::MaterialParam{"level", hp::ShaderValue{{level, 0.0F, 0.0F, 0.0F}, 1}},
+                };
+            });
+        if (ok) {
+            out = centreOf(pixels);
+        }
+        return ok;
+    };
+
+    Rgb green{};
+    Rgb blue{};
+    REQUIRE(renderWith(0.0F, 1.0F, 0.0F, 1.0F, green));
+    REQUIRE(renderWith(0.0F, 0.0F, 1.0F, 1.0F, blue));
+    MESSAGE("declared params: green (" << green.r << ", " << green.g << ", " << green.b
+                                       << "), blue (" << blue.r << ", " << blue.g << ", "
+                                       << blue.b << ")");
+    CHECK(green.r == 0);
+    CHECK(green.g == 255);
+    CHECK(green.b == 0);
+    CHECK(blue.r == 0);
+    CHECK(blue.g == 0);
+    CHECK(blue.b == 255);
+
+    // The scalar after the `float3`, which is the offset assertion: if `level`
+    // were written at the wrong offset it would land in `tint`'s bytes and the
+    // colour above would already be wrong — so this checks the *value* arrives
+    // as well as the address. Full-white at 1.0 above, mid-grey here.
+    Rgb dimmed{};
+    REQUIRE(renderWith(1.0F, 1.0F, 1.0F, 0.5F, dimmed));
+    MESSAGE("level 0.5 on white: (" << dimmed.r << ", " << dimmed.g << ", " << dimmed.b << ")");
+    // sRGB-encoded: linear 0.5 is 188, not 128. Bracketed rather than exact
+    // because the encode is the target's, not this test's.
+    CHECK(dimmed.r > 180);
+    CHECK(dimmed.r < 195);
+    CHECK(dimmed.r == dimmed.g);
+    CHECK(dimmed.g == dimmed.b);
+
+    // **A material that sets nothing reads zero, not the previous draw.** The
+    // buffer is mapped with DISCARD, so an unwritten block would hold whatever
+    // the driver handed back — and the three renders above have just filled it
+    // with white. Black here is the proof that it is cleared.
+    std::vector<std::uint8_t> unset;
+    REQUIRE(renderCustom(device, kTintModule, /*shaderInPool=*/true, /*unlit=*/false, unset));
+    const Rgb zero = centreOf(unset);
+    MESSAGE("no params set: (" << zero.r << ", " << zero.g << ", " << zero.b << ")");
+    CHECK(zero.r == 0);
+    CHECK(zero.g == 0);
+    CHECK(zero.b == 0);
+
+    hp::logRemoveSink(&counter);
+    // **Nothing failed to compile and nothing was substituted.** Without this,
+    // a module that stopped compiling would render the checkerboard and the
+    // colour checks would fail for a reason nobody could see from the numbers.
+    CHECK(counter.compilerErrors() == 0);
+    CHECK(counter.substitutions() == 0);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
+TEST_CASE("a module samples its own texture slot, and an unbound slot is white") {
+    // **The second half of T0160's declaration vocabulary.** The slot names are
+    // the engine's (`HpTexture0`, with an immutable `HpTexture0_sampler`), and
+    // a `.hpmat` binds an asset to one by that name.
+    //
+    // Sampled at a fixed coordinate rather than at `In.UV0`, because this quad
+    // has no texture coordinates at all — which also makes the expected colour
+    // one texel of the 16x16 checkerboard rather than an average.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    const char* kTextureModule = R"(
+struct HpMaterial : IHpMaterial
+{
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return HpTexture0.SampleLevel(HpTexture0_sampler, float3(0.125, 0.125, 0.0), 0.0);
+    }
+    override bool unshaded()
+    {
+        return true;
+    }
+}
+)";
+
+    // Unbound: the renderer's white default, exactly as an unset fixed texture
+    // slot behaves. White rather than **zero** is the load-bearing half — an
+    // unbound texture array samples zero, which is a black surface and looks
+    // like a lighting bug (the T0141.11 finding, in a new slot).
+    std::vector<std::uint8_t> unbound;
+    REQUIRE(renderCustom(device, kTextureModule, /*shaderInPool=*/true, /*unlit=*/false, unbound));
+    const Rgb empty = centreOf(unbound);
+    MESSAGE("unbound HpTexture0: (" << empty.r << ", " << empty.g << ", " << empty.b << ")");
+    CHECK(empty.r == 255);
+    CHECK(empty.g == 255);
+    CHECK(empty.b == 255);
+
+    // Bound: texel (2, 2) of the checkerboard, which is a magenta check.
+    std::vector<std::uint8_t> bound;
+    REQUIRE(renderCustom(device, kTextureModule, /*shaderInPool=*/true, /*unlit=*/false, bound,
+                         /*frames=*/1, /*timeSeconds=*/0.0, /*withTangents=*/false,
+                         [](hp::Material& material, hp::Guid texture) {
+                             material.textures = {hp::MaterialTexture{"HpTexture0", texture}};
+                         }));
+    const Rgb sampled = centreOf(bound);
+    MESSAGE("bound HpTexture0: (" << sampled.r << ", " << sampled.g << ", " << sampled.b << ")");
+    CHECK(sampled.r == 255);
+    CHECK(sampled.g == 0);
+    CHECK(sampled.b == 255);
 
     hp::Vfs::shutdown();
     tearDown(device);
