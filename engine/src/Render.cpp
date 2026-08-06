@@ -4,6 +4,8 @@
 // keeping it that way is what lets the link stay PRIVATE.
 #include <hp/Render.hpp>
 
+#include <hp/WindingConvention.hpp>
+
 #include <hp/Log.hpp>
 #include <hp/Profiling.hpp>
 #include <hp/Window.hpp>
@@ -345,6 +347,11 @@ RenderLayer::Impl::BlitPipeline* RenderLayer::Impl::ensureBlitPipeline(
     pso.GraphicsPipeline.DSVFormat = Diligent::TEX_FORMAT_UNKNOWN;
     pso.GraphicsPipeline.PrimitiveTopology = Diligent::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     pso.GraphicsPipeline.RasterizerDesc.CullMode = Diligent::CULL_MODE_NONE;
+    // Declared even though CULL_NONE never consults it (WindingConvention.hpp,
+    // D33): "no rasterizer state leaves the field defaulted" is the rule, and
+    // the exception that looks harmless is how the next convention drift ships.
+    pso.GraphicsPipeline.RasterizerDesc.FrontCounterClockwise =
+        kFrontFaceCounterClockwise;
     // **Depth off, both test and write.** The blit covers every pixel and owes
     // nothing to what is already in the depth buffer -- and under reverse-Z
     // (D-convention, `kReverseZ`) a depth-tested fullscreen quad at z=0 would be

@@ -136,7 +136,11 @@ void writeTexturedQuadGltf(const std::filesystem::path& directory, const std::st
          h,  h, z,  0.0F, 0.0F, -1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  1.0F, 0.0F,
         -h,  h, z,  0.0F, 0.0F, -1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  0.0F, 0.0F,
     };
-    const std::uint16_t indices[] = {0, 1, 2, 0, 2, 3};
+    // Wound consistently with the authored -Z normals (right-hand rule) --
+    // re-wound by T0152, whose trace found the old {0,1,2, 0,2,3} order
+    // pointing the winding-defined front face away from the camera while the
+    // NORMAL attributes pointed at it.
+    const std::uint16_t indices[] = {0, 2, 1, 0, 3, 2};
 
     std::vector<unsigned char> bin;
     const auto* vb = reinterpret_cast<const unsigned char*>(vertices);
@@ -360,7 +364,13 @@ bool renderTextured(Device& device, const std::string& prefix, std::vector<std::
     // under-lit look of a torch held at floor level. The probe below asserts the
     // sign so it cannot silently invert again.
     constexpr float kRake = 0.7F; // ~40 degrees
+    // The pi yaw is T0152's: with the asset re-wound the visible face is the
+    // camera-side one, so the raked light must arrive from the camera's side
+    // -- the half-turn flips its travel from -Z-ish to +Z-ish while the rake
+    // keeps it from above and to one side. The `direction.y < 0` assert below
+    // is unchanged and still guards the "from above" half.
     lightEntity.get<hp::Transform>().rotation =
+        hp::Quaternion::RotationFromAxisAngle(hp::float3{0.0F, 1.0F, 0.0F}, 3.14159265F) *
         hp::Quaternion::RotationFromAxisAngle(hp::float3{0.0F, 1.0F, 0.0F}, -kRake) *
         hp::Quaternion::RotationFromAxisAngle(hp::float3{1.0F, 0.0F, 0.0F}, -kRake);
     scene.propagateTransforms();

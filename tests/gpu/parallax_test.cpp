@@ -116,7 +116,10 @@ void writeQuadGltf(const std::filesystem::path& directory) {
          4.0F,  4.0F, 0.0F, 0.0F, 0.0F, -1.0F, 1.0F, 0.0F,
         -4.0F,  4.0F, 0.0F, 0.0F, 0.0F, -1.0F, 0.0F, 0.0F,
     };
-    const std::uint16_t indices[] = {0, 1, 2, 0, 2, 3};
+    // Wound consistently with the authored -Z normals (right-hand rule),
+    // per WindingConvention/T0152 -- the older suites' `{0,1,2, 0,2,3}` is
+    // backwards and is being corrected, not copied.
+    const std::uint16_t indices[] = {0, 2, 1, 0, 3, 2};
 
     std::vector<unsigned char> bin;
     const auto* vb = reinterpret_cast<const unsigned char*>(vertices);

@@ -67,10 +67,11 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/ShaderSources.hpp>`](ShaderSources.md) | 5 | 5 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Vfs.hpp>`](Vfs.md) | 23 | 23 |
+| [`<hp/WindingConvention.hpp>`](WindingConvention.md) | 2 | 2 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 47 | 47 |
 
-**719 public declarations across 39 headers, 602 documented.**
+**721 public declarations across 40 headers, 604 documented.**
 
 ## Every symbol
 
@@ -729,6 +730,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Vfs::remove` | [`Vfs.hpp`](Vfs.md) |
 | `Vfs::list` | [`Vfs.hpp`](Vfs.md) |
 | `Vfs::resolvedSource` | [`Vfs.hpp`](Vfs.md) |
+| `kFrontFaceCounterClockwise` | [`WindingConvention.hpp`](WindingConvention.md) |
+| `kImportMirrorsContent` | [`WindingConvention.hpp`](WindingConvention.md) |
 | `DisplayMode` | [`Window.hpp`](Window.md) |
 | `DisplayInfo` | [`Window.hpp`](Window.md) |
 | `WindowConfig` | [`Window.hpp`](Window.md) |

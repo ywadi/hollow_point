@@ -101,7 +101,11 @@ void writeQuadGltf(const std::filesystem::path& directory, float r, float g, flo
          4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
         -4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
     };
-    const std::uint16_t indices[] = {0, 1, 2, 0, 2, 3};
+    // Wound consistently with the authored -Z normals (right-hand rule) --
+    // re-wound by T0152, whose trace found the old {0,1,2, 0,2,3} order
+    // pointing the winding-defined front face away from the camera while the
+    // NORMAL attributes pointed at it.
+    const std::uint16_t indices[] = {0, 2, 1, 0, 3, 2};
 
     std::vector<unsigned char> bin;
     const auto* vb = reinterpret_cast<const unsigned char*>(vertices);
@@ -226,9 +230,13 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
     sun.colour = hp::float3{1.0F, 1.0F, 1.0F};
     sun.intensity = 3.0F;
     lightEntity.add<hp::Light>(sun);
-    // Identity transform: local +Z is world +Z, and a light points down its
-    // **negative** Z, so this shines from the far side back towards the camera --
-    // straight onto a quad whose normal is (0, 0, -1).
+    // Yawed pi about Y: a light travels down its local **negative** Z, so the
+    // half-turn makes it travel +Z -- from the camera's side onto the quad's
+    // -Z-facing front. Before T0152 re-wound the assets this was an identity
+    // transform and the quad was lit from behind, which only looked right
+    // because the backwards winding inverted the two-sided normal flip.
+    lightEntity.get<hp::Transform>().rotation =
+        hp::Quaternion::RotationFromAxisAngle(hp::float3{0.0F, 1.0F, 0.0F}, 3.14159265F);
     scene.propagateTransforms();
 
     hp::SceneView view;
@@ -254,15 +262,20 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
     CHECK(lit.r > lit.b + 40);            // and not the blue clear colour
     CHECK(lit.g == lit.b);                // white light, so the non-red channels match
 
-    // **Measured (211, 144, 144), not (255, 0, 0), and that is correct.** A
-    // white light on a rough dielectric produces a **specular** term that is
-    // achromatic -- the highlight is the colour of the light, not of the
-    // surface -- so it lifts green and blue equally while base colour keeps red
-    // ahead. An earlier version of this test asserted `g < r / 2` and failed
-    // here, which was the assertion being wrong about PBR rather than the
-    // renderer being wrong about lighting. Asserting the *ordering* and the
-    // g == b symmetry is what actually distinguishes "lit red surface" from
-    // every failure mode, without pinning a BRDF this ticket does not own.
+    // **Measured (242, 25, 25) since T0152 re-wound the asset, not
+    // (255, 0, 0), and that is correct**: a white light on a rough dielectric
+    // produces an achromatic specular term, so green and blue lift equally
+    // while base colour keeps red far ahead. **The pre-T0152 value here was
+    // (211, 144, 144), and the difference is the winding fix measured**: the
+    // backwards asset put the flipped shading normal *away* from the camera,
+    // `NdotV` sat at its 1e-4 clamp, and the Fresnel term blew the achromatic
+    // specular up to 144 -- the old baseline quietly encoded the inversion.
+    // T0152's "survives by symmetry" prediction was wrong for exactly that
+    // reason (symmetry holds for `N·L`, not for the view-dependent terms), and
+    // the ticket records it. Asserting the *ordering* and the g == b symmetry
+    // is what distinguishes "lit red surface" from every failure mode without
+    // pinning a BRDF this test does not own -- which is also why every one of
+    // these checks survived a change that moved the exact values this much.
 
     SUBCASE("removing the light returns the frame to black") {
         // The control, and the proof that the colour above came from the light
@@ -328,15 +341,14 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
             return centreOf(pixels);
         };
 
-        // The quad sits at z = 3. Nearer is brighter -- that is attenuation.
-        // **z > 3 puts the lamp on the far side of the quad, and that is where
-        // it has to be.** The directional case above lights this surface with
-        // `L = -direction = +Z`, so the shading normal faces +Z — the quad is
-        // lit from behind, not from the camera side. A point light placed
-        // between the camera and the quad faces *away* from the surface and
-        // renders black, which is correct and cost a measurement to see.
-        const Rgb near = renderAt(5.0F);
-        const Rgb far = renderAt(12.0F);
+        // The quad sits at z = 3 and faces the camera (T0152 re-wound the
+        // asset, so the winding, the normals and the visible side finally
+        // agree). Nearer is brighter -- that is attenuation -- and the lamp
+        // now sits on the camera's side, where a lamp lighting the visible
+        // face belongs. The same distances as before the re-wind, so the
+        // measured pair carries over by symmetry.
+        const Rgb near = renderAt(1.0F);
+        const Rgb far = renderAt(-6.0F);
         MESSAGE("point light 2 units away: " << near.text() << ", 9 units away: " << far.text());
         CHECK(near.r > 0);
         CHECK(near.r > far.r);
@@ -344,7 +356,7 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
         // Beyond `range` the attenuation term clamps to zero, so the surface is
         // unlit however bright the lamp is. A light that kept reaching past its
         // range would make range a decoration rather than a bound.
-        const Rgb beyond = renderAt(40.0F);
+        const Rgb beyond = renderAt(-34.0F);
         MESSAGE("point light past its range: " << beyond.text());
         CHECK(beyond.r < 8);
     }
@@ -357,11 +369,13 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
         lamp.intensity = 60.0F;
         lamp.range = 20.0F;
 
-        // Behind the quad, for the reason the point-light subcase explains,
-        // and with the identity orientation that points it back along -Z at the
-        // surface.
+        // On the camera's side of the quad, aimed at the visible face: the
+        // pi yaw turns the spot's travel direction from -Z to +Z, exactly as
+        // the directional light above (T0152).
         hp::Transform placement;
-        placement.position = hp::float3{0.0F, 0.0F, 5.0F};
+        placement.position = hp::float3{0.0F, 0.0F, 1.0F};
+        placement.rotation =
+            hp::Quaternion::RotationFromAxisAngle(hp::float3{0.0F, 1.0F, 0.0F}, 3.14159265F);
         scene.setLocalTransform(lightEntity, placement);
         scene.propagateTransforms();
 

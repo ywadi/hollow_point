@@ -822,26 +822,18 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
             static_assert(static_cast<int>(Diligent::PBR_Renderer::ALPHA_MODE_BLEND) ==
                               static_cast<int>(Diligent::GLTF::Material::ALPHA_MODE_BLEND),
                           "the two alpha enums must stay value-identical for this cast");
-            // **`CULL_MODE_FRONT`, and it is measured, not a typo** (T0141.12).
-            // Which cull enum keeps a mesh's *geometric* front faces depends on
-            // the whole chain -- glTF's CCW winding, the engine's left-handed
-            // view, Vulkan's viewport flip -- and in this engine a glTF front
-            // face reaches the rasteriser as a hardware **back** face.
-            // `CULL_MODE_BACK` here removed a single-sided quad that faced the
-            // camera dead-on, with the draw submitted and nothing logged; the
-            // probe that settled it was flipping this enum and watching the
-            // quad appear. `SV_IsFrontFace` agrees (false on those fragments),
-            // which is also why the two-sided normal flip behaves as it does.
-            // Nothing before this line ever drew a single-sided mesh, so no
-            // test could have caught it earlier. The deeper convention -- that
-            // hardware and geometric facing disagree engine-wide -- is
-            // recorded on T0141 and deliberately not re-decided here: flipping
-            // `FrontCounterClockwise` instead would invert `SV_IsFrontFace`
-            // for every existing surface and with it every measured baseline.
+            // `CULL_MODE_BACK`, per the winding convention (WindingConvention.hpp,
+            // D33): hardware facing equals glTF facing, so single-sided means what
+            // the glTF spec means -- back faces, winding-defined, are culled. The
+            // T0141.12 era culled FRONT here to compensate for test assets whose
+            // winding contradicted their normals; T0152 re-wound the assets and the
+            // compensation reverted with them. Note the determinant rule (T0152.5):
+            // a negative-determinant node transform flips effective winding by
+            // specification, and when that lands it flips this enum per draw.
             const Diligent::PBR_Renderer::PSOKey key{
                 Diligent::PBR_Renderer::RenderPassType::Main, flags,
                 static_cast<Diligent::PBR_Renderer::ALPHA_MODE>(material->Attribs.AlphaMode),
-                doubleSided ? Diligent::CULL_MODE_NONE : Diligent::CULL_MODE_FRONT};
+                doubleSided ? Diligent::CULL_MODE_NONE : Diligent::CULL_MODE_BACK};
 
             Diligent::IPipelineState* pso = renderer->pipeline(graphics, key);
             if (pso == nullptr) {

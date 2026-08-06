@@ -133,7 +133,11 @@ void writeQuadGltf(const std::filesystem::path& directory) {
          4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
         -4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
     };
-    const std::uint16_t indices[] = {0, 1, 2, 0, 2, 3};
+    // Wound consistently with the authored -Z normals (right-hand rule) --
+    // re-wound by T0152, whose trace found the old {0,1,2, 0,2,3} order
+    // pointing the winding-defined front face away from the camera while the
+    // NORMAL attributes pointed at it.
+    const std::uint16_t indices[] = {0, 2, 1, 0, 3, 2};
 
     std::vector<unsigned char> bin;
     const auto* vb = reinterpret_cast<const unsigned char*>(vertices);

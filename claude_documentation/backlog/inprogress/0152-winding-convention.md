@@ -2,14 +2,14 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
 | **Order** | 459 |
 | **Created** | 2026-08-06 |
 | **Blocks** | **T0086** — shadow bias and the shadow-pass cull mode must be chosen against a declared convention, or the tuned bias bakes the inversion in permanently; **T0087** — IBL baselines are view-dependent and multiply the re-baseline cost; **T0143** — every extended-material pixel test added before this lands is calibrated against inconsistent assets |
-| **Refs** | [../inprogress/0141-custom-shader-materials.md](../inprogress/0141-custom-shader-materials.md) — 141.12 found the symptom and recorded the (mis)diagnosis this ticket corrects; [0086-shadows.md](0086-shadows.md) — its Refs carry 141.12's warning, which this ticket re-states correctly; [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) **D33** (this ticket's decision), D26 (why the engine subclasses `PBR_Renderer` and therefore configures its own rasterizer state), D29 (Vulkan-only, which makes Diligent's internal viewport flip a constant rather than a variable); `engine/include/hp/DepthConvention.hpp` / T0130.3 — the precedent this ticket's header is modelled on |
+| **Refs** | [../inprogress/0141-custom-shader-materials.md](0141-custom-shader-materials.md) — 141.12 found the symptom and recorded the (mis)diagnosis this ticket corrects; [0086-shadows.md](../open/0086-shadows.md) — its Refs carry 141.12's warning, which this ticket re-states correctly; [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) **D33** (this ticket's decision), D26 (why the engine subclasses `PBR_Renderer` and therefore configures its own rasterizer state), D29 (Vulkan-only, which makes Diligent's internal viewport flip a constant rather than a variable); `engine/include/hp/DepthConvention.hpp` / T0130.3 — the precedent this ticket's header is modelled on |
 
 ## Why
 
@@ -164,22 +164,33 @@ cannot move separately.
 
 ## Done when
 
-- [ ] `WindingConvention.hpp` exists, `SurfacePipeline` declares
+- [x] `WindingConvention.hpp` exists, `SurfacePipeline` declares
       `FrontCounterClockwise` from it, and no rasterizer state in the engine
-      leaves the field defaulted
-- [ ] Single-sided materials cull `BACK`, with no apology needed — the
+      leaves the field defaulted *(2026-08-06 — the fullscreen blit in
+      `Render.cpp` declares it too, though `CULL_NONE` never consults it)*
+- [x] Single-sided materials cull `BACK`, with no apology needed — the
       `CULL_FRONT` workaround and its comment are gone from `SceneRenderer`
-- [ ] Every gpu test asset winds consistently with its authored normals, and
+      *(2026-08-06)*
+- [x] Every gpu test asset winds consistently with its authored normals, and
       the suite is green on both targets with the values recorded here
-- [ ] A camera-facing glTF front face measures `SV_IsFrontFace == true` — the
+      *(2026-08-06 — six files re-wound plus `parallax_test.cpp`, which was
+      created mid-correction with the old order; `triplanar_test.cpp` was
+      authored correct. **The "zero exact baselines move" prediction was
+      wrong** — see the measurement note below)*
+- [x] A camera-facing glTF front face measures `SV_IsFrontFace == true` — the
       inverse of T0141.12's probe, asserted so it cannot regress silently
+      *(2026-08-06 — the material-assignment test's assigned-green case is the
+      probe: a **single-sided** correctly-wound quad through `CULL_MODE_BACK`
+      must land its exact (0, 255, 0), which only a hardware front face can)*
 - [ ] Negative-determinant node transforms flip facing per the glTF spec, or
       the decision not to support mirrored-scale nodes is written down with a
       trigger
 - [ ] The display-handedness question is put to the owner with 152.6's probe
       rendered, and the answer recorded — **open, deliberately; it is not
       this ticket's to decide**
-- [ ] T0086's Refs stop pointing at the inverted diagnosis and point here
+- [~] T0086's Refs stop pointing at the inverted diagnosis and point here —
+      staged as an exact edit (INTEGRATION-WINDING.md §3) being applied by the
+      coordinating session; verify it landed before this ticket closes
 
 ## Subtasks
 
@@ -191,11 +202,17 @@ cannot move separately.
       (`VulkanTypeConversions.cpp:718`); the six backwards-wound test assets
       identified; `GLTFViewer`'s `FrontCounterClockwise = true` explained by
       its `InvYAxis` mirror and shown not to transfer
-- [ ] 152.2 **`WindingConvention.hpp`** — the header below, verbatim; plus
+- [x] 152.2 **`WindingConvention.hpp`** — the header below, verbatim; plus
       `SurfacePipeline::build` and `buildEngineSurfacePipeline` declaring the
       flag from it, replacing the "stays at Diligent's default" comment at
-      `SurfacePipeline.cpp:478–490` with a pointer to the header
-- [ ] 152.3 **Re-wind the six test assets and re-aim two lights.** Indices
+      `SurfacePipeline.cpp:478–490` with a pointer to the header.
+      *Done 2026-08-06. `buildEngineSurfacePipeline` flows through
+      `SurfacePipeline::build`, so one declaration covers both; the blit
+      pipeline in `Render.cpp` is the only other rasterizer state in the
+      engine and declares it too.*
+- [x] 152.3 *(done 2026-08-06 — plus `parallax_test.cpp`, created with the
+      old order mid-correction; measured values in the notes, one prediction
+      corrected there)* **Re-wind the six test assets and re-aim two lights.** Indices
       `{0,1,2, 0,2,3}` → `{0,2,1, 0,3,2}` in the six files named above; yaw
       the lit-surface directional light π so it travels +Z onto the
       camera-facing side (`N·L` returns to 1 and **(211, 144, 144) survives
@@ -205,10 +222,11 @@ cannot move separately.
       mirror the textured test's rake (its `direction.y < 0` assert and all
       variation thresholds are orientation-independent and expected to
       survive — verify, do not assume)
-- [ ] 152.4 **`CULL_MODE_FRONT` → `CULL_MODE_BACK`** in
+- [x] 152.4 **`CULL_MODE_FRONT` → `CULL_MODE_BACK`** in
       `SceneRenderer.cpp:779`, in the **same commit** as 152.3 — either
       change alone makes every single-sided draw invisible, which is the
-      original symptom from the other side
+      original symptom from the other side. *Done 2026-08-06, one commit with
+      152.2 and 152.3.*
 - [ ] 152.5 **The glTF determinant rule.** A negative-determinant node
       transform flips effective winding by specification; nothing in the
       chain honours it — not the loader, not DiligentFX (`grep determinant`
@@ -227,6 +245,49 @@ cannot move separately.
       T0086's Refs updated (it currently instructs settling "the inverted
       convention" that does not exist); `08-frame-anatomy.md` if the facing
       decision's location merits a line
+
+## Measured 2026-08-06 — the fix on hardware, and the prediction that did not survive
+
+Applied atomically (152.2 + 152.3 + 152.4) and run on an RTX 4070 Laptop GPU,
+Vulkan, both targets, wine for the Windows suite: **19 gpu cases, 515
+assertions, zero failures, zero skips**; 302 fast + 89 integration beside
+them; docs regenerated (the new public header gets a page).
+
+**Every inequality assertion held. Several recorded values moved, and the
+cost table's "zero exact baselines expected to move" was wrong** — for a
+reason worth keeping: the symmetry argument covers `N·L`, but not the
+**view-dependent** terms. The backwards asset put the flipped shading normal
+*away* from the camera, so `NdotV` sat at its `1e-4` clamp and the Fresnel
+term inflated the achromatic specular. The old baselines quietly encoded the
+inversion; the new values are what a red dielectric under a white light
+should look like at normal incidence. Before → after:
+
+| measurement | pre-T0152 | post-T0152 |
+|---|---|---|
+| lit red quad | (211, 144, 144) | **(242, 25, 25)** |
+| …at intensity 0.5 | (92, 61, 61) | (107, 5, 5) |
+| point light near / far | (255, 145, 145) / (80, 46, 46) | (255, 39, 39) / (90, 4, 4) |
+| point past range | (0, 0, 0) | (0, 0, 0) |
+| spot wide / narrow | (255, 251, 251) / (0, 0, 0) | (255, 58, 58) / (0, 0, 0) |
+| rock shaded | (85, 80, 57) var 14.52 | (86, 81, 57) var 18.50 |
+| metal shaded | (12, 12, 11) var 6.89 | (8, 8, 7) var 8.15 |
+| base colour channel | (116, 108, 69) var 16.38 | (117, 109, 70) var 16.35 |
+| shading-normal channel var | 12.17 | 12.90 |
+| occlusion channel var | 6.37 | 6.33 |
+| metallic rock / metal | 0 / 249 | 0 / 250 |
+| parallax displacement diff | 15.69 | 15.69 |
+
+The lit-surface subcase placements moved to the camera side per the recipe
+(z = 1, −6, −34; spot z = 1 with the π yaw), the textured rake gained its π
+yaw with `direction.y < 0` intact, and the "lit from behind" comments died
+with the fix. The material-assignment exact values — (0, 255, 0), (0, 0, 0),
+the checkerboard counts — survived unchanged, as predicted; the assigned
+single-sided green quad through `CULL_MODE_BACK` now doubles as the
+`SV_IsFrontFace == true` probe.
+
+**Still open here**: 152.5 (the determinant rule), 152.6 (the chirality
+probe and the owner's mirror decision), 152.7 (docs), and verifying the
+T0086-refs edit landed from the coordinating session.
 
 ## The header, exactly as intended (152.2)
 

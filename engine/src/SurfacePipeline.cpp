@@ -6,6 +6,7 @@
 #include <hp/Log.hpp>
 #include <hp/Profiling.hpp>
 #include <hp/ShaderSources.hpp>
+#include <hp/WindingConvention.hpp>
 
 #include <CommonlyUsedStates.h>
 #include <GLTFLoader.hpp>
@@ -476,18 +477,11 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
     // exactly like a transform bug and is not one.
     psoInfo.GraphicsPipeline.RasterizerDesc.CullMode = key.GetCullMode();
 
-    // `FrontCounterClockwise` stays at Diligent's default (false), and the
-    // consequence is measured rather than assumed: with the engine's
-    // left-handed view on Vulkan, a glTF front face reaches the rasteriser
-    // wound counter-clockwise -- a hardware **back** face under this setting.
-    // Setting the flag true would align hardware facing with geometric facing,
-    // and was tried: it inverts `SV_IsFrontFace` for every existing surface,
-    // the two-sided normal flip inverts with it, and the whole lit suite went
-    // black because its test lights sit behind the quads and were calibrated
-    // against the flip. Changing this is a real decision about the engine's
-    // winding convention (recorded on T0141), not a one-line fix; until it is
-    // taken, single-sided culling compensates in `SceneRenderer` by culling
-    // `FRONT`, and T0086's shadow bias must revisit this before shipping.
+    // Declared from WindingConvention.hpp -- see D33 and T0152.
+    // Defaulting it happened to be correct and was still the bug: the next
+    // pipeline (the shadow pass) would have defaulted it too, unexamined.
+    psoInfo.GraphicsPipeline.RasterizerDesc.FrontCounterClockwise =
+        hp::kFrontFaceCounterClockwise;
 
     // Blend state follows the alpha mode, the same way. Opaque and mask do not
     // blend; `Blend` is premultiplied alpha, matching what T0106.4 will want for

@@ -109,7 +109,11 @@ void writeQuadGltf(const std::filesystem::path& directory) {
          4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F, 1.0F, 0.0F,
         -4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F, 0.0F, 0.0F,
     };
-    const std::uint16_t indices[] = {0, 1, 2, 0, 2, 3};
+    // Wound consistently with the authored -Z normals (right-hand rule) --
+    // re-wound by T0152, whose trace found the old {0,1,2, 0,2,3} order
+    // pointing the winding-defined front face away from the camera while the
+    // NORMAL attributes pointed at it.
+    const std::uint16_t indices[] = {0, 2, 1, 0, 3, 2};
 
     std::vector<unsigned char> bin;
     const auto* vb = reinterpret_cast<const unsigned char*>(vertices);
@@ -336,6 +340,12 @@ TEST_CASE("an assigned material replaces the imported one, exactly") {
     {
         auto material = std::make_shared<hp::Material>();
         material->baseColour = hp::float4{0.0F, 1.0F, 0.0F, 1.0F};
+        // **Single-sided on purpose, and it is T0152's inverse probe**: the
+        // material's default `doubleSided = false` puts this draw through
+        // `CULL_MODE_BACK`, so the exact green below arrives only if the
+        // camera-facing, correctly-wound face is a hardware *front* face --
+        // the winding convention's Done-when, asserted where it cannot
+        // regress silently.
         // Unlit, so the expected pixels are exact: base colour straight to the
         // target, no BRDF in the way. This is also what proves
         // `Material::unlit` reaches the pipeline as the unshaded permutation.
