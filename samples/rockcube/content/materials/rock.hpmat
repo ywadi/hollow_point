@@ -58,9 +58,11 @@ material:
   # Less depth, less window. Real protrusion needs geometry, which is T0146.7's
   # tessellation and explicitly not this.
   heightScale: 0.04
-  # **The sample's own shader module** (T0158.1) — game content, compiled into
-  # the surface pipeline and overriding one method. It marches the same height
-  # map with a reference plane at 0.5, so half the range reads as raised instead
-  # of the whole field hanging beneath the face. The engine is unchanged; this
-  # is what D26 and D28 exist to make expressible.
+  # **The sample's own shader module** (T0158.1, T0159) — game content,
+  # compiled into the surface pipeline and overriding two hooks with state
+  # kept between them. It marches the same height map with a reference plane
+  # at 0.5, so half the range reads as raised instead of the whole field
+  # hanging beneath the face, and marches a second, shorter ray toward the
+  # dominant light for self-shadowing. The engine is unchanged; this is what
+  # D26, D28 and T0159's opened contract exist to make expressible.
   shader: 1570000000000020
