@@ -59,24 +59,37 @@ RTX 2080 — their arithmetic, to the byte.
       host. "Build-time only" is honoured one step further than asked: the
       engine does not even link slang — it loads it at run time, dev paths
       only (see notes).*
-- [ ] 142.2 **Define `IHpMaterial`** — the interface whose default
+- [x] 142.2 **Define `IHpMaterial`** — the interface whose default
       implementations *are* the standard material. This is **D27's contract
       restated in a language that can express it**, and the same promise applies:
       adding is free, removing breaks every shipped game. `HpMaterial.fxh`'s
       field table and its "nothing is exposed before the system behind it exists"
       rule carry over unchanged.
-- [~] 142.3 **Port `HpSurface.psh` to Slang** as the reference implementation of
+      *Done 2026-08-06, the same night T0144 unblocked it. `IHpMaterial` lives
+      in `HpSurface.slang`: six methods — `baseColor`, `metallicRoughness`,
+      `occlusion`, `emissive`, `shadingNormal`, `surface` — every one with a
+      default that is the standard material's former inline body, calling
+      DiligentFX's getters unchanged. `surface()`'s default calls D27's
+      `HpSurface` function, so the function-style contract stays alive through
+      the interface. `main` is one line instantiating `HpStandardMaterial`
+      (an empty conformance — the emptiness is the claim) through a generic
+      `evaluateSurface<T : IHpMaterial>`, statically specialised. **The scope
+      boundary, stated plainly: no game can *deliver* a conforming material
+      yet** — the `.slang`-asset path is 141.1/142.7/142.8 — so the interface
+      is proven by the engine's own material, not by an external module.*
+- [x] 142.3 **Port `HpSurface.psh` to Slang** as the reference implementation of
       142.2, still calling DiligentFX's getters and lighting. **The pixel output
       must not change** — the existing byte-identical comparison against
       `RenderPBR.psh` is the acceptance test, and it already exists.
       *2026-08-06: the shader is `HpSurface.slang`, compiled by slang to
       SPIR-V on Vulkan with the real macros and generated structs, and **every
       measured pixel value matched the pre-Slang baseline to the last printed
-      digit on both targets** (evidence in notes). The `[~]`: the file must
-      stay inside the HLSL-compatible subset because the GL backend still
-      compiles the same bytes through Diligent's path — so it is not yet the
-      *reference implementation of 142.2's interface*, which is the other half
-      of this subtask and waits on 142.2 itself.*
+      digit on both targets** (evidence in notes). The `[~]` it carried — the
+      HLSL-subset constraint that kept it from being 142.2's reference
+      implementation — was lifted by T0144 the same night, and the second half
+      landed with 142.2: `HpStandardMaterial` conforming to `IHpMaterial` **is**
+      the reference implementation now, and the dumped test frames are
+      byte-identical to the pre-interface build's.*
 - [x] 142.4 **Feed the generated interface structs to Slang.** `PBR_Renderer`
       emits `VSOutputStruct.generated` and friends into *Diligent's* source
       factory; Slang compiles first, so they must reach `ISlangFileSystem`
@@ -246,13 +259,34 @@ assertions, both targets, RTX 2080, wine running the Windows suite against
 `slang-compiler.dll`; `zig build docs` green; a bounded `hp_editor` run loads
 the staged library from beside the executable and renders without errors.
 
-**Next, in rough order of readiness:** 142.2 needs one decision first — see
-"The single-source constraint" below; it is close to the owner's territory
-because it decides whether custom materials can be Vulkan-only for a while.
-142.7 (cooking) and T0141.3 (`RenderStateCache`) are now the measured answer
-to the 2–4x cold-compile cost. 142.8–142.10 want editor scaffolding that does
+**Next, in rough order of readiness** *(updated 2026-08-06 after T0144 and
+142.2 both landed)*: the decision 142.2 was waiting on was made for it — D29
+removed the backend that posed it, and `IHpMaterial` is in (see the later
+session note below). 142.7 (cooking) and T0141.3 (`RenderStateCache`) are now
+the measured answer to the 2–4x cold-compile cost, and cooking is also what a
+game-delivered material needs. 142.8–142.10 want editor scaffolding that does
 not exist yet (T0032+). 142.11's remainder is one native-Windows-host run
 plus closing the D3D12 half against D25.
+
+### 2026-08-06, later the same night — `IHpMaterial` landed, output pinned byte-identical
+
+T0144 removed the GL backend earlier in the evening, and 142.2 followed it.
+The mechanism is exactly D28's: `interface IHpMaterial` in `HpSurface.slang`
+with six defaulted methods that are the standard material's former inline
+bodies; an empty `struct HpStandardMaterial : IHpMaterial` conformance; a
+generic `evaluateSurface<TMaterial : IHpMaterial>` that `main` instantiates.
+No struct inheritance anywhere (deprecated in slang — see the earlier
+finding); `override` remains mandatory for any material that replaces a
+default (D28's table measured that).
+
+**The acceptance evidence is byte-level, not statistical**: the ten frame
+dumps the textured-surface tests write (`test-frames/*.ppm`) are
+**byte-identical** between the last pre-interface build and this one, and
+every printed guard value is digit-identical on both targets — base colour
+(116, 108, 69) var 16.382, shading normal 12.165, occlusion 6.3734, rock
+(85, 80, 57) 14.5219, metal (12, 12, 11) 6.8905, lit quad (211, 144, 144).
+The expression changed; the output provably did not. Full suites: fast
+302/214,660, integration 89/515, gpu 15/492, both targets, docs clean.
 
 ### Smaller things worth knowing
 

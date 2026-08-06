@@ -46,7 +46,7 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Ticket | Kind | Why it sits here |
 |---|---|---|---|
-| 1 | [T0142](inprogress/0142-slang-shader-language.md) | code | **Slang is the engine's shader language** (D28). The plumbing landed and the pixels are byte-identical, and **T0144 removed the GL backend that pinned the shader to the HLSL subset** — so 142.2 (`IHpMaterial`), the point of the ticket, is now unblocked and next |
+| 1 | [T0142](inprogress/0142-slang-shader-language.md) | code | **Slang is the engine's shader language** (D28). The plumbing landed, T0144 removed the GL constraint, and **142.2 (`IHpMaterial`) is in** — the standard material is the interface's defaults, frames byte-identical. What remains here in-sequence: 142.7 (cooked shaders, the answer to the measured 2–4x cold compile and the road to game-delivered materials) |
 | 2 | [T0141](inprogress/0141-custom-shader-materials.md) | code | The surface stage's **rendering** remainder, once there is a language to write it in: the missing-material fallback (141.12), parallax and height (141.7), triplanar (141.8). Its authoring half moved to T0142 |
 | 3 | [T0143](open/0143-extended-material-features.md) | code | **Everything DiligentFX's PBR has, plus the ability to override it** — clearcoat, sheen, anisotropy, iridescence, transmission, volume. Amends D24. Wiring rather than new maths, because their getters are already included and callable |
 | 4 | [T0045](open/0045-culling-and-render-queues.md) | code | Culling, sorting and render queues. **Shader-independent**, so it may slot anywhere — see below. It is also the hedge if T0142 stalls |

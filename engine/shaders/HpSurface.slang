@@ -6,16 +6,16 @@
 // submodule, the engine owns this half and calls DiligentFX's *public* shading
 // library for the lighting -- surface properties in, radiance out.
 //
-// ## One source, two compilers -- and the subset that implies
+// ## One source, one compiler
 //
-// On Vulkan this file is compiled by **slang** to SPIR-V (D28); on OpenGL the
-// *same bytes* go through **Diligent's HLSL path**, because slang's HLSL and
-// GLSL outputs rename every resource (`cbFrameAttribs` -> `cbFrameAttribs_0`)
-// and GL binds by name -- measured, and recorded in T0142 rather than worked
-// around badly. Until the GL backend can consume slang output, everything in
-// this file must stay inside the subset both compilers accept: no `interface`,
-// no generics, no `override` here yet. The game-facing interface model
-// (T0142.2) rides the slang-only path and does not carry this constraint.
+// This file is compiled by **slang** to SPIR-V (D28), and by nothing else.
+// It used to be constrained to the HLSL-compatible subset because the OpenGL
+// backend compiled the same bytes through Diligent's HLSL path -- slang's
+// HLSL and GLSL outputs rename every resource and GL binds by name -- so no
+// `interface`, no generics and no `override` could appear here. D29 removed
+// that backend (T0144), and `IHpMaterial` below (T0142.2) is what the
+// constraint was blocking: the contract as a Slang interface whose default
+// implementations *are* the standard material.
 //
 // The split, and it is the same one Godot and Unreal draw:
 //
@@ -117,19 +117,141 @@ cbuffer cbMaterialAttribs
 /// **The engine's own material is written against the same contract a game's is**
 /// (D27), which is the check that keeps the contract honest: if `HpSurfaceInput`
 /// is missing something, the standard material notices first.
+///
+/// This is D27's *function-style* hook, and `IHpMaterial.surface`'s default
+/// calls it -- so both shapes of the contract stay alive through one body: a
+/// shader that only defines `HpSurface` still runs, and a material that
+/// overrides `surface()` replaces it wholesale.
 void HpSurface(in HpSurfaceInput In, inout HpSurfaceOutput Out)
 {
     // Nothing yet -- everything is pre-filled from the material, so leaving it
     // alone is exactly "the standard PBR material" (141.10).
 }
 
-/// Writes the missing-material colour (T0060.10): magenta, unlit.
+// ---------------------------------------------------------------------------
+// `IHpMaterial` (T0142.2, D28) -- the contract, in a language that can
+// express it.
+//
+// **The default implementations ARE the standard material.** That is the
+// entire design: a material conforms to this interface and overrides only
+// what it wants, `override` is mandatory on anything that replaces a default
+// (omitting it is a compile error, so engine behaviour is never shadowed by
+// accident), and generics specialise statically so none of this costs a
+// dynamic dispatch. D27's promise carries over unchanged: **adding a method
+// with a default is free; removing one breaks every shipped game.** So does
+// `HpMaterial.fxh`'s rule that nothing is exposed before the system behind it
+// exists.
+//
+// The methods take the raw `VSOutput` alongside `HpSurfaceInput` because
+// DiligentFX's getters consume it -- and because that is the parallax and
+// triplanar hook (141.7/141.8): an override builds a UV-displaced copy and
+// hands it to the same getters. `HpSurfaceInput` remains the stable,
+// documented vocabulary; `VSOutput` is the per-permutation wire format, and a
+// material that touches it accepts that its fields come and go with the mesh.
+//
+// What this is **not yet**: a game-deliverable authoring surface. A `.slang`
+// material arriving through the VFS as an asset is T0141.1/T0142.7-8
+// territory; until that lands, the only conformance in the build is the
+// engine's own `HpStandardMaterial` below, and it doubles as the reference
+// implementation (142.3).
+// ---------------------------------------------------------------------------
+interface IHpMaterial
+{
+    /// Base colour, linear RGB + alpha, after every texture and factor.
+    /// Default: DiligentFX's getter -- sRGB decode, UV selection and the
+    /// vertex-colour multiply included; returns the factor for an empty slot.
+    float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return GetBaseColor(VSOut, g_Material, g_Frame.Renderer.MipBias,
+                            g_Material.Basic.BaseColorFactor);
+    }
+
+    /// Metallic in `x`, roughness in `y`. Default: glTF's packing -- roughness
+    /// in green and metallic in blue -- times the material factors.
+    /// `GetPhysicalDesc` returns all ones for an empty slot, so the factors
+    /// survive untextured materials unchanged.
+    float2 metallicRoughness(VSOutput VSOut, HpSurfaceInput In)
+    {
+        float4 physicalDesc = GetPhysicalDesc(VSOut, g_Material, g_Frame.Renderer.MipBias);
+        return float2(physicalDesc.b * g_Material.Basic.MetallicFactor,
+                      physicalDesc.g * g_Material.Basic.RoughnessFactor);
+    }
+
+    /// How much ambient light reaches the fragment, 0 to 1.
+    float occlusion(VSOutput VSOut, HpSurfaceInput In)
+    {
+#if USE_AO_MAP
+        return GetOcclusion(VSOut, g_Material, g_Frame.Renderer.MipBias);
+#else
+        return g_Material.Basic.OcclusionFactor;
+#endif
+    }
+
+    /// Emissive radiance, linear RGB, deliberately not clamped to 1 (T0096).
+    float3 emissive(VSOutput VSOut, HpSurfaceInput In)
+    {
+#if USE_EMISSIVE_MAP
+        return GetEmissive(VSOut, g_Material, g_Frame.Renderer.MipBias);
+#else
+        return float3(g_Material.Basic.EmissiveFactorR, g_Material.Basic.EmissiveFactorG,
+                      g_Material.Basic.EmissiveFactorB);
+#endif
+    }
+
+    /// The world-space normal lighting will use. Default: the material's
+    /// normal map through DiligentFX's tangent-frame reconstruction.
+    ///
+    /// `geometricNormal` arrives **unflipped**: `GetPerturbNormalInfo` applies
+    /// the two-sided flip itself from `isFrontFace`, and handing it the
+    /// already-flipped normal flips twice -- a double-sided surface lit
+    /// correctly from the front and inverted from behind, which looks like a
+    /// handedness bug and is not one.
+    float3 shadingNormal(VSOutput VSOut, HpSurfaceInput In, float3 geometricNormal,
+                         bool isFrontFace)
+    {
+        PerturbNormalInfo normalInfo = GetPerturbNormalInfo(
+            In.WorldPos, geometricNormal, isFrontFace, g_Frame.Camera.fHandness);
+
+#if USE_TEXCOORD0 || USE_TEXCOORD1
+        float2 normalUv = SelectUV(
+            VSOut, UnpackPBRMaterialTextureUVSelector(
+                       g_Material.Textures[NormalTextureAttribId].PackedProps));
+        float3 microNormal = GetMicroNormal(g_Material, normalUv, normalUv, ddx(normalUv),
+                                            ddy(normalUv), g_Frame.Renderer.MipBias);
+        return PerturbNormal(normalInfo, ddx(normalUv), ddy(normalUv), microNormal,
+                             /*HasUV = */ true);
+#else
+        return normalInfo.Normal;
+#endif
+    }
+
+    /// The whole-output hook, run after every channel above has been
+    /// assembled. Default: D27's function-style hook, so a shader that only
+    /// defines `HpSurface` participates without knowing this interface exists.
+    void surface(HpSurfaceInput In, inout HpSurfaceOutput Out)
+    {
+        HpSurface(In, Out);
+    }
+}
+
+/// The engine's standard PBR material: every default, nothing overridden.
 ///
-/// Deliberately the *fallback* colour rather than an arbitrary one, so the first
-/// thing this shader ever draws is a value the engine already gives a meaning
-/// to, and a test asserting it is asserting something real.
-PSOutput main(in VSOutput VSOut,
-              in bool IsFrontFace : SV_IsFrontFace)
+/// **The emptiness is the claim 142.2 makes** -- the standard material is not
+/// special-cased anywhere, it is merely the interface with all its defaults,
+/// so a game material that overrides one method differs from it by exactly
+/// that method.
+struct HpStandardMaterial : IHpMaterial
+{
+};
+
+/// Evaluates one fragment through a material (T0142.2).
+///
+/// Generic over the material and **statically specialised** -- `main` below
+/// instantiates it with `HpStandardMaterial` and slang emits direct calls, no
+/// dispatch. This is the body `main` used to be; it moved behind a type
+/// parameter so the same code renders any conforming material.
+PSOutput evaluateSurface<TMaterial : IHpMaterial>(TMaterial material, VSOutput VSOut,
+                                                  bool IsFrontFace)
 {
     // **Every optional field is guarded, and the guards are the same macros
     // `GetVSOutputStruct` generates the struct from.** A mesh with no texture
@@ -204,84 +326,35 @@ PSOutput main(in VSOutput VSOut,
 #endif
     surfaceIn.ScreenPos = VSOut.ClipPos;
 
-    // **Pre-filled from the material**, so a surface function that writes
-    // nothing produces the standard material and one that writes a single field
-    // changes exactly that field. That is what makes a three-line game shader
-    // useful, and it is why `HpSurfaceOutput` is `inout`.
-    PBRMaterialBasicAttribs basic = g_Material.Basic;
+    // -----------------------------------------------------------------------
+    // Every channel through the material's methods (142.2). For
+    // `HpStandardMaterial` these are the interface defaults -- DiligentFX's
+    // getters, unchanged from when this sequence was written inline -- so a
+    // material that overrides nothing produces the standard material, and one
+    // that overrides a single method changes exactly that channel.
+    //
+    // **`VSOut` is passed by value, and that is the hook.** 141.7's parallax
+    // and 141.8's triplanar override these methods, build a UV-displaced copy
+    // of it, and hand *that* to the same getters. Owning `main` is what makes
+    // the surface stage; owning the sampling never was.
+    // -----------------------------------------------------------------------
 
     HpSurfaceOutput surfaceOut;
-    surfaceOut.BaseColor = basic.BaseColorFactor * surfaceIn.VertexColor;
-    surfaceOut.Normal = surfaceIn.Normal;
-    surfaceOut.Metallic = basic.MetallicFactor;
-    surfaceOut.Roughness = basic.RoughnessFactor;
-    surfaceOut.Emissive =
-        float3(basic.EmissiveFactorR, basic.EmissiveFactorG, basic.EmissiveFactorB);
-    surfaceOut.Occlusion = basic.OcclusionFactor;
-
-    // -----------------------------------------------------------------------
-    // The material's textures, read through DiligentFX's own getters.
-    //
-    // **`VSOut` is passed by value, and that is the hook.** 141.7's parallax and
-    // 141.8's triplanar will build a displaced copy of it here -- overwriting
-    // `UV0`/`UV1` with the offset coordinates -- and hand *that* to the getters
-    // below. Owning `main` is what makes the surface stage; owning the sampling
-    // never was.
-    // -----------------------------------------------------------------------
-
-    const float mipBias = g_Frame.Renderer.MipBias;
-
-    // Base colour, with the sRGB decode and the vertex-colour multiply already
-    // applied inside. The factor is the default it returns for an unfilled slot,
-    // so an untextured material comes back with exactly the factor.
-    surfaceOut.BaseColor = GetBaseColor(VSOut, g_Material, mipBias, basic.BaseColorFactor);
-
-    // Roughness in green and metallic in blue, glTF's packing. `GetPhysicalDesc`
-    // returns all ones when the slot is empty, so multiplying by the factors is
-    // correct either way.
+    surfaceOut.BaseColor = material.baseColor(VSOut, surfaceIn);
     {
-        float4 physicalDesc = GetPhysicalDesc(VSOut, g_Material, mipBias);
-        surfaceOut.Metallic = physicalDesc.b * basic.MetallicFactor;
-        surfaceOut.Roughness = physicalDesc.g * basic.RoughnessFactor;
+        float2 metallicRoughness = material.metallicRoughness(VSOut, surfaceIn);
+        surfaceOut.Metallic = metallicRoughness.x;
+        surfaceOut.Roughness = metallicRoughness.y;
     }
+    surfaceOut.Occlusion = material.occlusion(VSOut, surfaceIn);
+    surfaceOut.Emissive = material.emissive(VSOut, surfaceIn);
+    surfaceOut.Normal = material.shadingNormal(VSOut, surfaceIn, geometricNormal, IsFrontFace);
 
-#if USE_AO_MAP
-    surfaceOut.Occlusion = GetOcclusion(VSOut, g_Material, mipBias);
-#endif
-
-#if USE_EMISSIVE_MAP
-    surfaceOut.Emissive = GetEmissive(VSOut, g_Material, mipBias);
-#endif
-
-    // The normal map, through their tangent-frame reconstruction. Both are
-    // public in `PBR_Shading.fxh`; `GetMicroNormal` decodes and scales the map
-    // and is the one piece that comes from `PBR_Textures.fxh`.
-    //
-    // `GetPerturbNormalInfo` takes the **unflipped** normal and applies the
-    // two-sided flip itself from `IsFrontFace` -- handing it `surfaceIn.Normal`
-    // would flip twice and invert the lighting on back faces only.
-    {
-        PerturbNormalInfo normalInfo = GetPerturbNormalInfo(
-            surfaceIn.WorldPos, geometricNormal, IsFrontFace, g_Frame.Camera.fHandness);
-
-#if USE_TEXCOORD0 || USE_TEXCOORD1
-        float2 normalUv = SelectUV(
-            VSOut, UnpackPBRMaterialTextureUVSelector(
-                       g_Material.Textures[NormalTextureAttribId].PackedProps));
-        float3 microNormal = GetMicroNormal(g_Material, normalUv, normalUv, ddx(normalUv),
-                                            ddy(normalUv), mipBias);
-        surfaceOut.Normal =
-            PerturbNormal(normalInfo, ddx(normalUv), ddy(normalUv), microNormal,
-                          /*HasUV = */ true);
-#else
-        surfaceOut.Normal = normalInfo.Normal;
-#endif
-    }
-
-    // **The surface stage.** Everything above is the engine's default; a game's
-    // shader replaces whatever it likes here, and this is the point parallax,
-    // triplanar and layer blending will act (141.7, 141.8).
-    HpSurface(surfaceIn, surfaceOut);
+    // **The surface stage's whole-output hook.** Everything above is the
+    // material's per-channel answers; this is the point parallax, triplanar
+    // and layer blending act on the assembled result (141.7, 141.8), and its
+    // default routes through D27's `HpSurface` function.
+    material.surface(surfaceIn, surfaceOut);
 
     PSOutput Out;
 
@@ -394,4 +467,17 @@ PSOutput main(in VSOutput VSOut,
 #endif
 
     return Out;
+}
+
+/// The entry point: the standard material through the generic evaluator.
+///
+/// One line of intent -- everything above is reusable machinery, and this is
+/// the only place a concrete material is chosen. Slang specialises
+/// `evaluateSurface` for `HpStandardMaterial` statically, so the emitted code
+/// is the same direct calls the pre-interface shader made.
+PSOutput main(in VSOutput VSOut,
+              in bool IsFrontFace : SV_IsFrontFace)
+{
+    HpStandardMaterial material;
+    return evaluateSurface(material, VSOut, IsFrontFace);
 }

@@ -19,6 +19,13 @@
 //       Out.Roughness = 0.3;
 //   }
 //
+// **Since T0142.2 this contract also exists as a Slang `interface`** —
+// `IHpMaterial` in `HpSurface.slang`, whose default implementations are the
+// standard material and whose `surface()` default calls the `HpSurface`
+// function declared below. The structs in this file are the shared vocabulary
+// of both shapes; their field rules apply to the interface's methods
+// unchanged.
+//
 // ---
 //
 // ## `HpSurfaceInput` is a promise
