@@ -31,14 +31,31 @@ inline constexpr std :: uint32_t kShaderTextureSlots = 4
 
  How many texture slots a module may use.
 
- **Four, and the number is the signature's rather than a shader limit.** Each
- slot is a resource declared in the one shared signature for every pipeline;
- author-chosen texture *names* would need a per-module signature, or a
- rename pass that must know the names before the compile that discovers them.
- Both were weighed on T0160 and neither buys enough to pay for a second
- descriptor set on every draw. Four covers the techniques the capability
- audit found — a detail map, a mask, a flowmap, a ramp — and raising it is
- one constant plus one line in the signature.
+ **Four is a judgement against the capability audit, not a measured limit.**
+
+ Each slot is a resource in the *one shared* signature, declared for every
+ pipeline — so every material SRB in the engine binds it, including a plain
+ glTF material that will never read it. That superset pattern is what makes
+ one signature enough (see `kShaderParamsBlock`), and it is also why this is
+ not sixteen: a slot costs a descriptor and an immutable sampler on **every**
+ material in the scene, not only on the ones that use it.
+
+ Four covers the declared-texture techniques the 2026-08-06 audit found — a
+ detail albedo, a blend mask, a flowmap, a lighting ramp — none of which
+ wants more than two at once.
+
+ **The budget, counted rather than assumed** (T0160). The shared pixel-stage
+ signature holds **10 sampled images and 11 immutable samplers** today, four
+ of each from here. T0087's IBL adds 3 images, T0086's shadow map 1, and
+ T0143's extended materials about 12 more — which is where the budget
+ actually gets interesting, and the answer there is Diligent's
+ `ShaderTexturesArrayMode` collapsing the seventeen material slots into one
+ array, not trimming module slots.
+
+ Raising it is two places: this constant with the loop in
+ `SurfacePipeline::CreateCustomSignature`, and the declarations in
+ `HpMaterial.slang`, which are written out by hand so a module can use one
+ without declaring anything.
 
 ## `shaderTextureSlotName`
 

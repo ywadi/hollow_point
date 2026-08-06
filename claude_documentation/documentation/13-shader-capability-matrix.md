@@ -135,6 +135,32 @@ exist either, and the reason is the next entry.
 **Parameter *fields* are the author's** for the mirror-image reason — a field is
 not a resource, so it costs the signature nothing.
 
+### Why four slots, and what the texture budget actually looks like
+
+Four is a judgement against this audit, not a measured limit. A slot is declared
+in the **one shared** signature, so every material SRB in the engine binds it —
+including a plain glTF material that will never read it. It costs a descriptor
+and an immutable sampler on *every* material in the scene, which is why it is
+not sixteen. The declared-texture techniques above want a detail albedo, a blend
+mask, a flowmap or a lighting ramp, and none wants more than two at once.
+
+Counted from the signature rather than assumed, on 2026-08-06:
+
+| | sampled images | immutable samplers |
+|---|---|---|
+| **today** (5 glTF + `g_HeightMap` + 4 module slots) | **10** | **11** |
+| + T0087's IBL | 13 | 11 — all reuse `g_LinearClampSampler` |
+| + T0086's shadow map | 14 | 12 |
+| + **T0143**'s extended materials (clearcoat ×3, sheen ×2 and two LUTs, anisotropy, iridescence ×2, transmission, thickness) | **~26** | **~18** |
+
+Vulkan's *guaranteed* per-stage floor is 16 for both — **quoted from the spec and
+not queried on any device here**, and desktop hardware is far above it, so
+nothing breaks today. The row worth noticing is the last one: **T0143 crosses
+that floor on its own**, with the four module slots contributing 4 of 26. If the
+budget ever becomes real the answer is Diligent's `ShaderTexturesArrayMode`,
+which collapses the seventeen material slots into a single array, rather than
+trimming what a game is allowed to declare.
+
 ---
 
 ## What a game shader may reach — since 2026-08-06
