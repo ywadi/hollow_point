@@ -599,10 +599,11 @@ bool SceneRenderer::Impl::buildMaterialBinding(Diligent::IDeviceContext* context
                 Diligent::SHADER_TYPE_PIXEL, SurfacePipeline::kHeightMapVariable)) {
             variable->Set(view);
         }
-        if (material.heightTexture.isValid() && !material.triplanar) {
-            // Triplanar wins when both are set: there are no UVs for the
-            // parallax march to displace, and compiling it in would pay for a
-            // loop whose result is discarded.
+        if (material.heightTexture.isValid()) {
+            // A height map is a real input either way (T0156): without
+            // triplanar the march displaces UV0 (T0141.7); with it, each
+            // projection marches in its own world-axis frame inside the
+            // triplanar basis, which needs no UVs at all.
             out.extraFlags |= SurfacePipeline::kPsoFlagHeightMap;
         }
     }
@@ -850,9 +851,12 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                     Diligent::PBR_Renderer::PSO_FLAG_USE_EMISSIVE_MAP);
             Diligent::PBR_Renderer::PSO_FLAGS flags =
                 (vertexFlags | kMaterialFlags | kEnabledFeatures | extraFlags) & kFeatureMask;
-            if ((flags & Diligent::PBR_Renderer::PSO_FLAG_USE_TEXCOORD0) == 0) {
-                // Parallax displaces texture coordinates; a mesh without any
-                // renders flat rather than compiling a march it cannot feed.
+            if ((flags & Diligent::PBR_Renderer::PSO_FLAG_USE_TEXCOORD0) == 0 &&
+                (flags & SurfacePipeline::kPsoFlagTriplanar) == 0) {
+                // UV-mapped parallax displaces texture coordinates, so a mesh
+                // without any renders flat rather than compiling a march it
+                // cannot feed. Triplanar parallax feeds its marches from world
+                // position (T0156) and keeps the bit.
                 flags &= ~SurfacePipeline::kPsoFlagHeightMap;
             }
 
@@ -910,7 +914,8 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                     customModule = nullptr;
                     flags = (vertexFlags | kMaterialFlags | kEnabledFeatures | extraFlags) &
                             kFeatureMask;
-                    if ((flags & Diligent::PBR_Renderer::PSO_FLAG_USE_TEXCOORD0) == 0) {
+                    if ((flags & Diligent::PBR_Renderer::PSO_FLAG_USE_TEXCOORD0) == 0 &&
+                        (flags & SurfacePipeline::kPsoFlagTriplanar) == 0) {
                         flags &= ~SurfacePipeline::kPsoFlagHeightMap;
                     }
                     // Same cull decision as the failed draw -- the surface's

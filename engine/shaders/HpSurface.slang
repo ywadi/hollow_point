@@ -114,7 +114,7 @@ cbuffer cbMaterialAttribs
 // never been evaluated.
 #include "PBR_Textures.fxh"
 
-#if HP_USE_HEIGHT_MAP && USE_TEXCOORD0
+#if HP_USE_HEIGHT_MAP
 // The engine's own height slot (T0141.7), added to the signature by
 // `SurfacePipeline::CreateCustomSignature` -- not one of DiligentFX's
 // seventeen, so their getters never see it and T0143 can enable every one of
@@ -124,43 +124,17 @@ cbuffer cbMaterialAttribs
 Texture2DArray g_HeightMap;
 SamplerState   g_HeightMap_sampler;
 
-/// Parallax occlusion (T0141.7): the owner's "screen displacement", and the
-/// technique D26 exists to make expressible. Marches the view ray through the
-/// height field and returns the UV where it lands; every texture then samples
-/// the surface the eye actually hits, so relief looks carved rather than
-/// painted. Silhouettes stay flat -- that is POM's honest limitation, recorded
-/// on the ticket, and changing an outline is tessellation (141.9).
-float2 HpParallaxUv(float2 uv, HpSurfaceInput In)
+/// 141.7's steep march with occlusion interpolation, frame-agnostic (T0156).
+///
+/// Takes the view vector already rotated into the projection's tangent frame
+/// -- `xy` along the UV axes, `z` along the surface normal, all toward the
+/// viewer -- plus the **pre-march** UV gradients for `SampleGrad`. The frame
+/// construction stays with the callers because it is the only part that
+/// differs: UV-mapped parallax builds one from screen derivatives
+/// (`HpParallaxUv`), while triplanar's three frames are world axes, so its
+/// swizzles mirror the projection swizzles and cost nothing.
+float2 HpParallaxMarch(float2 uv, float3 viewTS, float2 duv1, float2 duv2)
 {
-    // The tangent frame from screen-space derivatives -- the same trick
-    // DiligentFX's `PerturbNormal` uses for normal mapping, and for the same
-    // reason: it needs no vertex tangents, so parallax works on any mesh that
-    // has texture coordinates at all.
-    float3 dp1 = ddx(In.WorldPos);
-    float3 dp2 = ddy(In.WorldPos);
-    float2 duv1 = ddx(uv);
-    float2 duv2 = ddy(uv);
-
-    // **Oriented toward the viewer explicitly, not by `SV_IsFrontFace`.**
-    // In this engine hardware facing and geometric facing disagree (the
-    // winding finding on T0141), and the flipped contract normal can point
-    // away from the camera on perfectly front-facing surfaces. Parallax only
-    // makes sense on the side being looked at, so the normal is forced there.
-    float3 N = normalize(In.Normal);
-    if (dot(N, In.ViewDir) < 0.0)
-    {
-        N = -N;
-    }
-
-    float3 dp2perp = cross(dp2, N);
-    float3 dp1perp = cross(N, dp1);
-    float3 T = dp2perp * duv1.x + dp1perp * duv2.x;
-    float3 B = dp2perp * duv1.y + dp1perp * duv2.y;
-    float invMax = rsqrt(max(max(dot(T, T), dot(B, B)), 1e-12));
-    T *= invMax;
-    B *= invMax;
-
-    float3 viewTS = float3(dot(T, In.ViewDir), dot(B, In.ViewDir), dot(N, In.ViewDir));
     if (viewTS.z <= 1e-4)
     {
         // Grazing or degenerate: the offset diverges as 1/z, and past the
@@ -209,6 +183,48 @@ float2 HpParallaxUv(float2 uv, HpSurfaceInput In)
     float weight = saturate(depthAfter / max(depthAfter - depthBefore, 1e-6));
     return lerp(currentUv, previousUv, weight);
 }
+
+#if USE_TEXCOORD0
+/// Parallax occlusion (T0141.7): the owner's "screen displacement", and the
+/// technique D26 exists to make expressible. Marches the view ray through the
+/// height field and returns the UV where it lands; every texture then samples
+/// the surface the eye actually hits, so relief looks carved rather than
+/// painted. Silhouettes stay flat -- that is POM's honest limitation, recorded
+/// on the ticket, and changing an outline is tessellation (T0146.7).
+float2 HpParallaxUv(float2 uv, HpSurfaceInput In)
+{
+    // The tangent frame from screen-space derivatives -- the same trick
+    // DiligentFX's `PerturbNormal` uses for normal mapping, and for the same
+    // reason: it needs no vertex tangents, so parallax works on any mesh that
+    // has texture coordinates at all.
+    float3 dp1 = ddx(In.WorldPos);
+    float3 dp2 = ddy(In.WorldPos);
+    float2 duv1 = ddx(uv);
+    float2 duv2 = ddy(uv);
+
+    // **Oriented toward the viewer explicitly, not by `SV_IsFrontFace`.**
+    // In this engine hardware facing and geometric facing disagree (the
+    // winding finding on T0141), and the flipped contract normal can point
+    // away from the camera on perfectly front-facing surfaces. Parallax only
+    // makes sense on the side being looked at, so the normal is forced there.
+    float3 N = normalize(In.Normal);
+    if (dot(N, In.ViewDir) < 0.0)
+    {
+        N = -N;
+    }
+
+    float3 dp2perp = cross(dp2, N);
+    float3 dp1perp = cross(N, dp1);
+    float3 T = dp2perp * duv1.x + dp1perp * duv2.x;
+    float3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+    float invMax = rsqrt(max(max(dot(T, T), dot(B, B)), 1e-12));
+    T *= invMax;
+    B *= invMax;
+
+    float3 viewTS = float3(dot(T, In.ViewDir), dot(B, In.ViewDir), dot(N, In.ViewDir));
+    return HpParallaxMarch(uv, viewTS, duv1, duv2);
+}
+#endif
 #endif
 
 #if HP_TRIPLANAR
@@ -232,9 +248,27 @@ struct HpTriplanar
     float2 uvY;
     float2 uvZ;
     float3 weights;
+    // The **pre-march** UV gradients per projection (T0156). Sampling uses
+    // these explicitly rather than the implicit derivative, for two reasons
+    // that are really one: the marched coordinates under parallax break the
+    // implicit derivative -- the same reason the march itself uses
+    // `SampleGrad` (141.7), applied per axis -- and skipping a zero-weight
+    // projection's tap is only legal when no implicit derivative is taken
+    // inside the branch. The no-parallax path uses the same gradients so
+    // the two permutations sample identically, which is what makes
+    // "zero height scale equals no height map" hold to the bit.
+    float2 duvXdx;
+    float2 duvXdy;
+    float2 duvYdx;
+    float2 duvYdy;
+    float2 duvZdx;
+    float2 duvZdy;
 };
 
-HpTriplanar HpTriplanarBasis(HpSurfaceInput In)
+/// Builds the basis. Callers go through `HpTriplanarBasis`, which memoises
+/// this under parallax -- the marches below are the expensive part and every
+/// channel getter asks for the same answer.
+HpTriplanar HpTriplanarComputeBasis(HpSurfaceInput In)
 {
     HpTriplanar t;
     // Sharpened blend: linear weights leave wide smeared bands at 45 degrees.
@@ -242,12 +276,100 @@ HpTriplanar HpTriplanarBasis(HpSurfaceInput In)
     float3 n = normalize(In.Normal);
     float3 w = pow(abs(n), float3(4.0, 4.0, 4.0));
     t.weights = w / max(w.x + w.y + w.z, 1e-5);
+
+    // **Weights below 1% are dropped and the rest renormalised** (156.2).
+    // `pow(abs(n), 4)` drives the off-axis weights to ~0 on most pixels --
+    // flat ground is one live axis, a slope is two -- and both the parallax
+    // march and the texture taps skip a dead axis outright, so the floor is
+    // where the cost saving comes from. The visible step when an axis
+    // crosses it is bounded by the floor itself, one part in a hundred of
+    // the blend; the 156.4 characterisation looked for the resulting
+    // contour on a terrain whose slope sweeps through the threshold and
+    // found none visible.
+    const float kMinWeight = 0.01;
+    t.weights.x = t.weights.x < kMinWeight ? 0.0 : t.weights.x;
+    t.weights.y = t.weights.y < kMinWeight ? 0.0 : t.weights.y;
+    t.weights.z = t.weights.z < kMinWeight ? 0.0 : t.weights.z;
+    t.weights /= max(t.weights.x + t.weights.y + t.weights.z, 1e-5);
+
     // Tiles per metre (`Material::triplanarScale`, in `CustomData.y`).
     float scale = g_Material.Basic.CustomData.y;
     t.uvX = In.WorldPos.zy * scale;
     t.uvY = In.WorldPos.xz * scale;
     t.uvZ = In.WorldPos.xy * scale;
+
+    // Gradients: the projections are linear in world position, so each is
+    // exactly the world-position derivative, swizzled and scaled the same
+    // way the UVs are.
+    float3 dpx = ddx(In.WorldPos) * scale;
+    float3 dpy = ddy(In.WorldPos) * scale;
+    t.duvXdx = dpx.zy;
+    t.duvXdy = dpy.zy;
+    t.duvYdx = dpx.xz;
+    t.duvYdy = dpy.xz;
+    t.duvZdx = dpx.xy;
+    t.duvZdy = dpy.xy;
+
+#if HP_USE_HEIGHT_MAP
+    // -----------------------------------------------------------------------
+    // Parallax under triplanar (T0156): 141.7's march, run per projection.
+    //
+    // **The expensive half of 141.7 does not apply here.** The projections
+    // are world-axis-aligned, so each tangent frame is a *constant* -- for
+    // the Z projection, tangent = world X, bitangent = world Y, normal =
+    // world Z -- and rotating the view vector into it is the same swizzle
+    // the UVs use above. No derivative frame, no orthogonalisation.
+    //
+    // `abs()` on the normal component, matching the `abs(n)` the weights
+    // use: a projection serves both facings of its plane with the same UVs,
+    // so the march's "toward the viewer" normal is the axis signed toward
+    // the camera, and that sign only reaches `viewTS.z`.
+    //
+    // Each live projection marches independently, in its own frame. Where
+    // two axes blend, their displaced answers disagree -- characterised on
+    // T0156.4 before this was accepted: the band is narrow under the
+    // 4th-power weights and the disagreement reads as softened relief, not
+    // a seam.
+    // -----------------------------------------------------------------------
+    float3 V = In.ViewDir;
+    if (t.weights.x > 0.0)
+    {
+        t.uvX = HpParallaxMarch(t.uvX, float3(V.zy, abs(V.x)), t.duvXdx, t.duvXdy);
+    }
+    if (t.weights.y > 0.0)
+    {
+        t.uvY = HpParallaxMarch(t.uvY, float3(V.xz, abs(V.y)), t.duvYdx, t.duvYdy);
+    }
+    if (t.weights.z > 0.0)
+    {
+        t.uvZ = HpParallaxMarch(t.uvZ, float3(V.xy, abs(V.z)), t.duvZdx, t.duvZdy);
+    }
+#endif
     return t;
+}
+
+#if HP_USE_HEIGHT_MAP
+// Per-invocation memo (T0156): `static` at global scope is thread-local in
+// Slang as in HLSL, initialised per fragment. Five channel getters ask for
+// the basis and the marches make it expensive, so the first caller computes
+// and the rest read. Without a height map the basis is a handful of ALU and
+// the memo would cost more than it saves.
+static bool HpTriplanarBasisReady = false;
+static HpTriplanar HpTriplanarBasisMemo;
+#endif
+
+HpTriplanar HpTriplanarBasis(HpSurfaceInput In)
+{
+#if HP_USE_HEIGHT_MAP
+    if (!HpTriplanarBasisReady)
+    {
+        HpTriplanarBasisMemo = HpTriplanarComputeBasis(In);
+        HpTriplanarBasisReady = true;
+    }
+    return HpTriplanarBasisMemo;
+#else
+    return HpTriplanarComputeBasis(In);
+#endif
 }
 
 float4 HpTriplanarSample(Texture2DArray tex, SamplerState smp, HpTriplanar t, float mipBias)
@@ -255,10 +377,43 @@ float4 HpTriplanarSample(Texture2DArray tex, SamplerState smp, HpTriplanar t, fl
     // Slice 0: every texture this engine binds is a one-slice array, and the
     // per-slot `TextureSlice` attrib exists for atlases the triplanar path
     // does not serve.
-    float4 x = tex.SampleBias(smp, float3(t.uvX, 0.0), mipBias);
-    float4 y = tex.SampleBias(smp, float3(t.uvY, 0.0), mipBias);
-    float4 z = tex.SampleBias(smp, float3(t.uvZ, 0.0), mipBias);
-    return x * t.weights.x + y * t.weights.y + z * t.weights.z;
+    //
+    // `SampleGrad` with the basis's explicit gradients, in every
+    // permutation -- see the struct comment. It has no bias argument;
+    // scaling both gradients by `exp2(mipBias)` shifts the computed LOD by
+    // exactly the bias, so the frame-wide mip bias still applies. This was
+    // `SampleBias` until T0156, and the change was measured before being
+    // made: swapping the instruction alone moved the frame by under 0.1
+    // mean-absolute per channel (mip rounding at tile boundaries) -- and it
+    // is what lets zero-height-scale frames match no-height-map frames to
+    // the bit, because both permutations then issue identical instructions
+    // on identical inputs.
+    //
+    // A zero-weight projection's tap is skipped outright -- legal precisely
+    // because the derivatives are explicit -- which is where 156.2's
+    // early-out saves its cost: one live axis pays one march and one tap
+    // per texture, not three.
+    float gradScale = exp2(mipBias);
+    float4 result = float4(0.0, 0.0, 0.0, 0.0);
+    if (t.weights.x > 0.0)
+    {
+        result += tex.SampleGrad(smp, float3(t.uvX, 0.0), t.duvXdx * gradScale,
+                                 t.duvXdy * gradScale) *
+                  t.weights.x;
+    }
+    if (t.weights.y > 0.0)
+    {
+        result += tex.SampleGrad(smp, float3(t.uvY, 0.0), t.duvYdx * gradScale,
+                                 t.duvYdy * gradScale) *
+                  t.weights.y;
+    }
+    if (t.weights.z > 0.0)
+    {
+        result += tex.SampleGrad(smp, float3(t.uvZ, 0.0), t.duvZdx * gradScale,
+                                 t.duvZdy * gradScale) *
+                  t.weights.z;
+    }
+    return result;
 }
 #endif
 
@@ -326,9 +481,17 @@ interface IHpMaterial
     /// Default: parallax occlusion over the material's height map when it
     /// carries one, untouched otherwise. Runs before any texture is read --
     /// this *is* the "hook before sampling" D26 was decided to create.
+    ///
+    /// Under triplanar this hook is a no-op, deliberately: the coordinates a
+    /// triplanar material samples are the three world-space projections,
+    /// which do not live in `VSOutput`, so parallax runs inside the
+    /// triplanar basis instead -- per projection, in that projection's
+    /// axis-aligned frame (T0156). A method that transforms `VSOutput`
+    /// cannot express a multi-projection technique; the seam that will is
+    /// T0153.1's per-tap sampling override, decided there.
     VSOutput surfaceCoordinates(VSOutput VSOut, HpSurfaceInput In)
     {
-#if HP_USE_HEIGHT_MAP && USE_TEXCOORD0
+#if HP_USE_HEIGHT_MAP && USE_TEXCOORD0 && !HP_TRIPLANAR
         VSOut.UV0 = HpParallaxUv(VSOut.UV0, In);
 #endif
         return VSOut;

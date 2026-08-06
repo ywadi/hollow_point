@@ -65,18 +65,20 @@ public:
     ///
     /// A permutation bit rather than a runtime branch for the same reason
     /// `HP_UNSHADED` is one: the march is a texture-sampling loop, and every
-    /// material without a height map must not carry it in registers. Only
-    /// meaningful together with `PSO_FLAG_USE_TEXCOORD0` — parallax displaces
-    /// texture coordinates, so a mesh without any renders flat and the caller
-    /// strips the bit.
+    /// material without a height map must not carry it in registers. Needs a
+    /// coordinate source: `PSO_FLAG_USE_TEXCOORD0` for the UV-mapped march,
+    /// or `kPsoFlagTriplanar` for the per-projection one (T0156), whose
+    /// coordinates come from world position. With neither, the caller strips
+    /// the bit and the mesh renders flat.
     static constexpr Diligent::PBR_Renderer::PSO_FLAGS kPsoFlagHeightMap =
         static_cast<Diligent::PBR_Renderer::PSO_FLAGS>(
             Diligent::PBR_Renderer::PSO_FLAG_FIRST_USER_DEFINED << 1ULL);
 
     /// The material projects its textures from world space (T0141.8).
     /// Becomes the `HP_TRIPLANAR` macro; needs no texture coordinates, which
-    /// is the whole point. Takes precedence over `kPsoFlagHeightMap` — there
-    /// are no UVs for a parallax march to displace.
+    /// is the whole point. Composes with `kPsoFlagHeightMap` since T0156:
+    /// each projection marches the height field in its own world-axis frame,
+    /// so parallax under triplanar displaces the projections rather than UV0.
     static constexpr Diligent::PBR_Renderer::PSO_FLAGS kPsoFlagTriplanar =
         static_cast<Diligent::PBR_Renderer::PSO_FLAGS>(
             Diligent::PBR_Renderer::PSO_FLAG_FIRST_USER_DEFINED << 2ULL);

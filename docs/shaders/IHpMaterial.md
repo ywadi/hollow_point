@@ -61,6 +61,14 @@ Default: parallax occlusion over the material's height map when it
 carries one, untouched otherwise. Runs before any texture is read --
 this *is* the "hook before sampling" D26 was decided to create.
 
+Under triplanar this hook is a no-op, deliberately: the coordinates a
+triplanar material samples are the three world-space projections,
+which do not live in `VSOutput`, so parallax runs inside the
+triplanar basis instead -- per projection, in that projection's
+axis-aligned frame (T0156). A method that transforms `VSOutput`
+cannot express a multi-projection technique; the seam that will is
+T0153.1's per-tap sampling override, decided there.
+
 ### `IHpMaterial::baseColor`
 
 ```hlsl

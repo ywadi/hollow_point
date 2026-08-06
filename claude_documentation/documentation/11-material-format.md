@@ -118,8 +118,8 @@ per-field code in `Material.cpp` at all.
 | `alphaCutoff` | `0.5` | The threshold `Mask` compares against; ignored otherwise |
 | `doubleSided` | `false` | Whether back faces are drawn |
 | `unlit` | `false` | Whether lighting is skipped and `baseColour` shown directly |
-| `heightScale` | `0.04` | How deep `heightTexture`'s parallax reads, in UV0 units (T0141.7) |
-| `triplanar` | `false` | Project textures from world space; needs no UVs. Normal map ignored while set (T0141.8) |
+| `heightScale` | `0.04` | How deep `heightTexture`'s parallax reads, in texture-space units — UV0 units normally, projection units under `triplanar` (T0141.7, T0156) |
+| `triplanar` | `false` | Project textures from world space; needs no UVs. Composes with `heightTexture`'s parallax, marched per projection (T0156). Normal map ignored while set (T0141.8) |
 | `triplanarScale` | `1` | Texture tiles per metre when `triplanar` is set |
 | `*Texture` | unset | A `TextureAsset`'s GUID, or absent for none |
 | `uv0`, `uv1` | identity | Per-channel scale, offset, rotation and wrap |

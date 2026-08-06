@@ -225,10 +225,15 @@ struct Material {
     /// UV0's space, and applying one channel's offset to another channel's
     /// unwrap would be wrong for exactly the lightmap-style case UV1 exists
     /// for. A mesh without texture coordinates renders flat — parallax has
-    /// nothing to displace.
+    /// nothing to displace — **unless the material is `triplanar`** (T0156),
+    /// where the height field is projected and marched along each world axis
+    /// exactly as the colour-like maps are sampled, and no UVs are needed.
     Guid heightTexture;
 
-    /// How deep the parallax reads, in UV0 units at full height range.
+    /// How deep the parallax reads, in texture-space units at full height
+    /// range — UV0 units normally, projection units (`1 / triplanarScale`
+    /// metres) under `triplanar`, so the relief's apparent depth tracks the
+    /// texture's tiling in both cases.
     ///
     /// 0.04 is a strong effect on tiling surfaces; 0 disables the march's
     /// effect without changing the pipeline. Ignored without `heightTexture`.
@@ -240,12 +245,12 @@ struct Material {
     /// **This is what textures a mesh that has no usable unwrap** — terrain,
     /// CSG blockouts, kitbashed geometry — and it needs no texture coordinates
     /// at all. Applies to the colour-like maps (base colour,
-    /// metallic-roughness, occlusion, emissive); the **normal map is ignored**
-    /// while this is set — reorienting a tangent-space map per projection
-    /// plane is real work that arrives when something needs it — and
-    /// `heightTexture`'s parallax is inert, since there are no UVs to
-    /// displace. The per-slot UV selectors and channel transforms are all
-    /// bypassed.
+    /// metallic-roughness, occlusion, emissive) and to `heightTexture`'s
+    /// parallax, which marches each projection in its own world-axis frame
+    /// (T0156). The **normal map is ignored** while this is set — reorienting
+    /// a tangent-space map per projection plane is real work that arrives
+    /// when something needs it. The per-slot UV selectors and channel
+    /// transforms are all bypassed.
     bool triplanar = false;
 
     /// Texture tiles per metre when `triplanar` is set.
