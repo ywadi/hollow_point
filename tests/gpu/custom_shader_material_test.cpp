@@ -29,12 +29,14 @@
 #include <hp/Camera.hpp>
 #include <hp/Log.hpp>
 #include <hp/Material.hpp>
+#include <hp/Math.hpp>
 #include <hp/Render.hpp>
 #include <hp/Scene.hpp>
 #include <hp/SceneView.hpp>
 #include <hp/Vfs.hpp>
 #include <hp/Window.hpp>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <filesystem>
@@ -227,10 +229,15 @@ void countChecks(const std::vector<std::uint8_t>& rgba, int& magenta, int& black
 ///        declared-parameter cases (T0160). Given the placeholder texture's
 ///        GUID, already in the pool, so a case that wants a texture in a module
 ///        slot has one to bind.
+/// @param worldOffset a local translation put on the quad entity, so
+///        `ObjectToWorld` is something other than the identity for the vertex
+///        contract's cases (T0146) — an identity matrix would let a wrong
+///        matrix pass.
 bool renderCustom(Device& device, const std::string& moduleSource, bool shaderInPool, bool unlit,
                   std::vector<std::uint8_t>& pixels, int frames = 1, double timeSeconds = 0.0,
                   bool withTangents = false,
-                  const std::function<void(hp::Material&, hp::Guid)>& customise = {}) {
+                  const std::function<void(hp::Material&, hp::Guid)>& customise = {},
+                  hp::float3 worldOffset = hp::float3{0.0F, 0.0F, 0.0F}) {
     std::error_code ec;
     const std::filesystem::path scratch =
         std::filesystem::temp_directory_path() / "hp-custom-shader";
@@ -295,6 +302,11 @@ bool renderCustom(Device& device, const std::string& moduleSource, bool shaderIn
     renderer.mesh = meshGuid;
     renderer.materials = {materialGuid};
     quad.add<hp::MeshRenderer>(renderer);
+    if (worldOffset.x != 0.0F || worldOffset.y != 0.0F || worldOffset.z != 0.0F) {
+        hp::Transform placed;
+        placed.position = worldOffset;
+        scene.setLocalTransform(quad, placed);
+    }
     scene.propagateTransforms();
 
     hp::SceneView view;
@@ -322,7 +334,10 @@ class SpirvSizeCapture final : public hp::ILogSink {
 public:
     void write(const hp::LogRecord& record) override {
         const std::string_view message = record.message;
-        if (message.find("compiled 'HpSurface.slang' to ") == std::string_view::npos) {
+        // The pixel entry point specifically (T0146.5): one file now compiles
+        // to two stages and logs a line for each, so the old substring
+        // (`compiled 'HpSurface.slang' to `) would capture whichever came last.
+        if (message.find("compiled 'HpSurface.slang' (psMain) to ") == std::string_view::npos) {
             return;
         }
         const std::size_t start = message.find(" to ") + 4;
@@ -941,6 +956,401 @@ struct HpMaterial : IHpMaterial
 
 namespace {
 
+/// Counts pixels the unlit red quad covers — anything strongly red. The clear
+/// colour is pure blue, so the two never overlap.
+int redPixels(const std::vector<std::uint8_t>& rgba) {
+    int red = 0;
+    for (std::size_t i = 0; i + 3 < rgba.size(); i += 4) {
+        if (rgba[i] > 200 && rgba[i + 1] < 60 && rgba[i + 2] < 60) {
+            ++red;
+        }
+    }
+    return red;
+}
+
+/// Pixels red in @p after that were **not** red in @p before, and vice versa —
+/// the two halves of "the silhouette moved" (T0146.3).
+void silhouetteDelta(const std::vector<std::uint8_t>& before,
+                     const std::vector<std::uint8_t>& after, int& gained, int& lost) {
+    gained = 0;
+    lost = 0;
+    const std::size_t n = std::min(before.size(), after.size());
+    for (std::size_t i = 0; i + 3 < n; i += 4) {
+        const bool wasRed = before[i] > 200 && before[i + 1] < 60 && before[i + 2] < 60;
+        const bool isRed = after[i] > 200 && after[i + 1] < 60 && after[i + 2] < 60;
+        if (isRed && !wasRed) {
+            ++gained;
+        } else if (wasRed && !isRed) {
+            ++lost;
+        }
+    }
+}
+
+/// The unlit red material, with whatever vertex hook the case wants spliced in.
+std::string redWith(const std::string& vertexHook) {
+    return R"(
+struct HpMaterial : IHpMaterial
+{
+)" + vertexHook + R"(
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return float4(1.0, 0.0, 0.0, 1.0);
+    }
+    override bool unshaded()
+    {
+        return true;
+    }
+}
+)";
+}
+
+} // namespace
+
+TEST_CASE("a vertex hook moves the geometry, and doing nothing moves nothing (T0146)") {
+    // **The headline, and the thing 141.7's parallax explicitly cannot do.**
+    // Parallax moves where a texel is sampled from; the outline never shifts by
+    // a pixel. This shifts the outline, and the assertion is exactly that —
+    // pixels that were covered and are not, and pixels that were not and are.
+    //
+    // Three renders of one 8 m quad at z = 3, which more than fills the frame
+    // at rest:
+    //   * no `vertex()` override at all — the baseline silhouette, and the
+    //     proof that a module which says nothing gets today's geometry;
+    //   * scaled to a quarter in x and y — a silhouette strictly inside the
+    //     first, so `lost` is large and `gained` is zero;
+    //   * the same quarter-size quad translated in x — so `gained` is large
+    //     too, which no amount of "the shader renders something" can fake.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    CompileErrorCounter counter;
+    hp::logAddSink(&counter);
+
+    std::vector<std::uint8_t> rest;
+    REQUIRE(renderCustom(device, redWith(""), /*shaderInPool=*/true, /*unlit=*/false, rest));
+    const int restCovered = redPixels(rest);
+
+    // z is left alone deliberately: scaling it would move the quad toward the
+    // camera and make it *larger* on screen, which would confuse the very
+    // thing being measured.
+    std::vector<std::uint8_t> shrunk;
+    REQUIRE(renderCustom(device, redWith(R"(
+    [mutating] override void vertex(HpVertexInput In, inout HpVertexOutput Out)
+    {
+        Out.Position.xy = In.Position.xy * 0.25;
+    }
+)"),
+                         /*shaderInPool=*/true, /*unlit=*/false, shrunk));
+    const int shrunkCovered = redPixels(shrunk);
+
+    std::vector<std::uint8_t> shifted;
+    REQUIRE(renderCustom(device, redWith(R"(
+    [mutating] override void vertex(HpVertexInput In, inout HpVertexOutput Out)
+    {
+        Out.Position.xy = In.Position.xy * 0.25;
+        Out.Position.x += 1.2;
+    }
+)"),
+                         /*shaderInPool=*/true, /*unlit=*/false, shifted));
+
+    int gainedByShrink = 0;
+    int lostByShrink = 0;
+    silhouetteDelta(rest, shrunk, gainedByShrink, lostByShrink);
+    int gainedByShift = 0;
+    int lostByShift = 0;
+    silhouetteDelta(shrunk, shifted, gainedByShift, lostByShift);
+
+    MESSAGE("silhouette: rest " << restCovered << " px, quarter " << shrunkCovered
+                                << " px (lost " << lostByShrink << ", gained " << gainedByShrink
+                                << "); shifted vs quarter: gained " << gainedByShift << ", lost "
+                                << lostByShift);
+
+    // The rest quad fills the frame, so the baseline is every pixel.
+    CHECK(restCovered == kSize * kSize);
+    // A quarter-size quad is strictly inside it: a large loss and no gain.
+    CHECK(shrunkCovered > 0);
+    CHECK(shrunkCovered < restCovered / 2);
+    CHECK(lostByShrink > restCovered / 2);
+    CHECK(gainedByShrink == 0);
+    // The translation is the "a pixel far from the rest position" half: the
+    // shifted quad covers pixels the resting one never touched.
+    CHECK(gainedByShift > 100);
+    CHECK(lostByShift > 100);
+
+    // The magenta guard, on every asserted frame. A failed shader renders the
+    // checkerboard, which is not red, so `redPixels` would read zero and the
+    // *shape* of the failure would be indistinguishable from a hook that ran
+    // and did nothing. This names it.
+    for (const std::vector<std::uint8_t>* frame : {&rest, &shrunk, &shifted}) {
+        int magenta = 0;
+        int black = 0;
+        countChecks(*frame, magenta, black);
+        CHECK(magenta == 0);
+    }
+
+    hp::logRemoveSink(&counter);
+    CHECK(counter.compilerErrors() == 0);
+    CHECK(counter.substitutions() == 0);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
+TEST_CASE("the vertex hook's inputs are what the contract promises (T0146.2, D36)") {
+    // **D36's decision, measured rather than documented alone.** Each channel
+    // isolates one promise, so a failure names its cause:
+    //
+    //   * red   — `In.WorldPos` really is `mul(float4(Position, 1),
+    //     ObjectToWorld)`. The quad is *translated* for this case, so an
+    //     identity matrix or a world-space `Position` both fail it.
+    //   * green — `In.Position` is **object** space: the quad's own corners are
+    //     at |x| = 4, and the entity sits 2 m away in x, so object and world
+    //     disagree and only one of them passes.
+    //   * blue  — `In.Time` arrived, and `In.CameraPos` is the camera's.
+    //
+    // Carried to the pixel stage through `Custom0`, which is also the first
+    // half of T0146.4 working.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    CompileErrorCounter counter;
+    hp::logAddSink(&counter);
+
+    const std::string kProbe = R"(
+struct HpMaterial : IHpMaterial
+{
+    [mutating] override void vertex(HpVertexInput In, inout HpVertexOutput Out)
+    {
+        float3 fromMatrix = mul(float4(In.Position, 1.0), In.ObjectToWorld).xyz;
+        float worldOk = distance(fromMatrix, In.WorldPos) < 1e-3 ? 1.0 : 0.0;
+        // The quad's own corners: |x| = 4 in object space, |x - 2| in world.
+        float objectOk = abs(abs(In.Position.x) - 4.0) < 1e-3 ? 1.0 : 0.0;
+        float frameOk = (In.Time > 0.4 && In.Time < 0.6 &&
+                         length(In.CameraPos) < 1e-3) ? 1.0 : 0.0;
+        Out.Custom0 = float4(worldOk, objectOk, frameOk, 1.0);
+    }
+
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return float4(In.Custom0.rgb, 1.0);
+    }
+    override bool unshaded()
+    {
+        return true;
+    }
+}
+)";
+
+    std::vector<std::uint8_t> pixels;
+    REQUIRE(renderCustom(device, kProbe, /*shaderInPool=*/true, /*unlit=*/false, pixels,
+                         /*frames=*/1, /*timeSeconds=*/0.5, /*withTangents=*/false, {},
+                         hp::float3{2.0F, 0.0F, 0.0F}));
+    const Rgb centre = centreOf(pixels);
+    MESSAGE("vertex contract: (" << centre.r << ", " << centre.g << ", " << centre.b << ")");
+    CHECK(centre.r == 255);
+    CHECK(centre.g == 255);
+    CHECK(centre.b == 255);
+
+    int magenta = 0;
+    int black = 0;
+    countChecks(pixels, magenta, black);
+    CHECK(magenta == 0);
+
+    hp::logRemoveSink(&counter);
+    CHECK(counter.compilerErrors() == 0);
+    CHECK(counter.substitutions() == 0);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
+TEST_CASE("custom interpolators carry a value from vertex to pixel (T0146.4)") {
+    // **The channel between the stages, and the three things about it worth
+    // pinning.** `VSOutput` is generated per permutation by `PBR_Renderer`, so
+    // a module cannot declare a varying; the engine appends four fixed `float4`
+    // slots to the generated struct for custom-material permutations, and this
+    // is what that buys:
+    //
+    //   * red   — a *varying* value: written per vertex from the object-space
+    //     x, so the frame is a left-to-right ramp rather than a flat colour.
+    //     Sampled at two columns and required to differ, which a constant
+    //     cannot fake.
+    //   * green — a constant, carried intact.
+    //   * blue  — `Custom1`, never written by the hook, arriving as the
+    //     documented **zero** rather than as whatever was in the register.
+    //
+    // The quad has no texture coordinates and no interpolated attribute the
+    // pixel stage reads, so before T0146.4 there was no way to move a
+    // per-vertex value across at all.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    CompileErrorCounter counter;
+    hp::logAddSink(&counter);
+
+    const std::string kVarying = R"(
+struct HpMaterial : IHpMaterial
+{
+    [mutating] override void vertex(HpVertexInput In, inout HpVertexOutput Out)
+    {
+        // -4..4 in x maps to 0..1, so the frame is a ramp.
+        Out.Custom0 = float4(saturate(In.Position.x * 0.125 + 0.5), 1.0, 0.0, 1.0);
+        // Custom1 deliberately untouched.
+    }
+
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return float4(In.Custom0.r, In.Custom0.g, In.Custom1.x, 1.0);
+    }
+    override bool unshaded()
+    {
+        return true;
+    }
+}
+)";
+
+    std::vector<std::uint8_t> pixels;
+    REQUIRE(renderCustom(device, kVarying, /*shaderInPool=*/true, /*unlit=*/false, pixels));
+
+    const auto at = [&](int x, int y) {
+        const std::size_t i = (static_cast<std::size_t>(y) * kSize + x) * 4;
+        return Rgb{pixels[i], pixels[i + 1], pixels[i + 2]};
+    };
+    const Rgb left = at(kSize / 8, kSize / 2);
+    const Rgb right = at(kSize * 7 / 8, kSize / 2);
+    MESSAGE("interpolators: left (" << left.r << ", " << left.g << ", " << left.b << "), right ("
+                                    << right.r << ", " << right.g << ", " << right.b << ")");
+
+    // Interpolated, not constant: the ramp really varies across the quad.
+    CHECK(right.r > left.r + 40);
+    // The constant channel survives both ends untouched.
+    CHECK(left.g == 255);
+    CHECK(right.g == 255);
+    // The unwritten slot is zero at both ends, not noise.
+    CHECK(left.b == 0);
+    CHECK(right.b == 0);
+
+    int magenta = 0;
+    int black = 0;
+    countChecks(pixels, magenta, black);
+    CHECK(magenta == 0);
+
+    hp::logRemoveSink(&counter);
+    CHECK(counter.compilerErrors() == 0);
+    CHECK(counter.substitutions() == 0);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
+TEST_CASE("a module's texture and parameters reach its vertex hook (T0146, T0161)") {
+    // **The game resource model, one stage up.** A module declares one
+    // texture and one parameter and reads **both from the vertex stage only** —
+    // so the per-module signature has to carry them for `SHADER_TYPE_VERTEX`,
+    // which the T0161 walk could not express until this ticket made the
+    // request's stage list plural.
+    //
+    // If the signature were still built from the pixel shader alone, the
+    // vertex stage's use of `windMap` would fail PSO creation by name and the
+    // frame would be the checkerboard — which the magenta guard below would
+    // catch, and which is why this case exists rather than being assumed from
+    // the pixel-stage one.
+    //
+    // Sampled with `SampleLevel`: the vertex stage has no implicit
+    // derivatives, so an explicit level is not a nicety there.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    CompileErrorCounter counter;
+    hp::logAddSink(&counter);
+
+    const std::string kVertexResources = R"(
+Texture2DArray windMap;
+
+cbuffer HpMaterialParams
+{
+    [HpRange(0.0, 4.0)]
+    float gain;
+}
+
+struct HpMaterial : IHpMaterial
+{
+    [mutating] override void vertex(HpVertexInput In, inout HpVertexOutput Out)
+    {
+        // Texel (2, 2) of the 16x16 checkerboard is magenta: (1, 0, 1).
+        float4 wind = windMap.SampleLevel(HpSamplerPointClamp, float3(0.125, 0.125, 0.0), 0.0);
+        Out.Custom0 = float4(wind.r * gain, wind.g, wind.b * gain, 1.0);
+    }
+
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return float4(In.Custom0.rgb, 1.0);
+    }
+    override bool unshaded()
+    {
+        return true;
+    }
+}
+)";
+
+    std::vector<std::uint8_t> pixels;
+    REQUIRE(renderCustom(device, kVertexResources, /*shaderInPool=*/true, /*unlit=*/false, pixels,
+                         /*frames=*/1, /*timeSeconds=*/0.0, /*withTangents=*/false,
+                         [](hp::Material& material, hp::Guid texture) {
+                             material.textures = {hp::MaterialTexture{"windMap", texture}};
+                             material.params = {hp::MaterialParam{
+                                 "gain", hp::ShaderValue{{1.0F, 0.0F, 0.0F, 0.0F}, 1}}};
+                         }));
+    const Rgb centre = centreOf(pixels);
+    MESSAGE("vertex-stage resources: (" << centre.r << ", " << centre.g << ", " << centre.b
+                                        << ")");
+    // The magenta texel times a gain of 1: (255, 0, 255) at the target. That
+    // is also the checkerboard's colour, so the guard below cannot be the one
+    // that distinguishes them — the *unbound* case does, and it is what makes
+    // this assertion mean the texture arrived.
+    CHECK(centre.r == 255);
+    CHECK(centre.g == 0);
+    CHECK(centre.b == 255);
+
+    // Unbound and unvalued: the texture reads white and the parameter reads
+    // zero, so the frame is green — a colour neither the checkerboard nor the
+    // bound case can produce.
+    std::vector<std::uint8_t> unbound;
+    REQUIRE(renderCustom(device, kVertexResources, /*shaderInPool=*/true, /*unlit=*/false,
+                         unbound));
+    const Rgb empty = centreOf(unbound);
+    MESSAGE("vertex-stage resources unbound: (" << empty.r << ", " << empty.g << ", " << empty.b
+                                                << ")");
+    CHECK(empty.r == 0);
+    CHECK(empty.g == 255);
+    CHECK(empty.b == 0);
+
+    hp::logRemoveSink(&counter);
+    CHECK(counter.compilerErrors() == 0);
+    CHECK(counter.substitutions() == 0);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
+namespace {
+
 /// Captures log lines containing a substring — for asserting a refusal
 /// happened *by name*, which is the loud half of every T0161 policy check.
 class MessageCatcher final : public hp::ILogSink {
@@ -959,6 +1369,52 @@ private:
 };
 
 } // namespace
+
+TEST_CASE("both stages come from one file, and the compiler says so (T0146.5)") {
+    // **The single-module claim, instrumented.** The engine used to issue two
+    // compile requests per pipeline — one for DiligentFX's `RenderPBR.vsh`,
+    // one for `HpSurface.slang`. It now issues one with two entry points, and
+    // the compiler's own per-entry-point debug line is the evidence: two lines
+    // for the same file, one naming `vsMain` and one naming `psMain`, and
+    // **no** line naming `RenderPBR.vsh`.
+    //
+    // The module carries a per-run GUID so neither entry point can be served
+    // from the content-keyed cache, which would leave nothing to count.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    MessageCatcher vertex("compiled 'HpSurface.slang' (vsMain)");
+    MessageCatcher pixel("compiled 'HpSurface.slang' (psMain)");
+    MessageCatcher theirs("RenderPBR.vsh");
+    hp::logAddSink(&vertex);
+    hp::logAddSink(&pixel);
+    hp::logAddSink(&theirs);
+    hp::logSetGlobalLevel(hp::LogLevel::Debug);
+
+    const std::string probe = "// probe " + hp::Guid::generate().toString() + "\n";
+    std::vector<std::uint8_t> pixels;
+    REQUIRE(renderCustom(device, redWith("") + probe, /*shaderInPool=*/true, /*unlit=*/false,
+                         pixels));
+
+    hp::logSetGlobalLevel(hp::LogLevel::Info);
+    hp::logRemoveSink(&theirs);
+    hp::logRemoveSink(&pixel);
+    hp::logRemoveSink(&vertex);
+
+    MESSAGE("one module, two entry points: vsMain " << vertex.hits() << ", psMain "
+                                                    << pixel.hits() << ", RenderPBR.vsh "
+                                                    << theirs.hits());
+    CHECK(vertex.hits() == 1);
+    CHECK(pixel.hits() == 1);
+    CHECK(theirs.hits() == 0);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
 
 TEST_CASE("a Texture2D declaration is refused by name, not left for Vulkan (T0161.3)") {
     // Diligent's `ShaderResourceDesc` cannot see resource dimension, so a

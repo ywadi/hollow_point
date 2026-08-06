@@ -38,6 +38,17 @@ struct ShaderVariantKey {
     /// Which stage it is compiled for.
     ShaderStage stage = ShaderStage::Pixel;
 
+    /// The entry point's name in the source (T0146.5).
+    ///
+    /// **Part of the key since the engine owns both stages.** `HpSurface.slang`
+    /// carries `vsMain` and `psMain` in one file, so the file name no longer
+    /// identifies a variant on its own — and while `stage` already separates
+    /// those two, a key that named only the file and the stage would collide
+    /// the moment anything compiled two entry points of the *same* stage from
+    /// one source. Cheap to carry, and the alternative is a cache that serves
+    /// the wrong function with no symptom but a wrong image.
+    const char* entryPoint = "main";
+
     /// The permutation's preprocessor definitions.
     const SlangMacro* macros = nullptr;
 

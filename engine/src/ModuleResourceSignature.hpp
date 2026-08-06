@@ -6,10 +6,27 @@
 // globals under its own names; the engine reflects them off the compiled
 // shader it already holds and builds a second `PipelineResourceSignature`
 // bound beside the stage's base one. Surface materials consume this today;
-// the vertex hook (T0146), compute pipelines (T0150) and the post-process
-// stack (T0148) each add exactly two inputs — *their* base signature's names
-// at binding 0 and *their* policy — and nothing else. If one of them needs a
-// third input, that is a D35 conversation, not a copy of this file.
+// compute pipelines (T0150) and the post-process stack (T0148) each add
+// exactly two inputs — *their* base signature's names at binding 0 and *their*
+// policy — and nothing else. If one of them needs a third input, that is a D35
+// conversation, not a copy of this file.
+//
+// ## What T0146 found, and the one generalisation it needed
+//
+// This header predicted that the vertex hook would "add exactly two inputs".
+// It did not, and the reason is worth keeping: **a surface module is one
+// module compiled to two stages**, not a second module at a second stage. The
+// same `HpMaterial` struct implements `vertex()` and `baseColor()`, so a
+// texture it declares may be sampled in the vertex stage, in the pixel stage,
+// or in both — and there is exactly one signature, because there is exactly
+// one module.
+//
+// So the request takes a **list** of compiled stages rather than one, and a
+// resource's `ShaderStages` is the union of the stages whose bytecode names
+// it. That is still one mechanism and still stage-neutral; what changed is
+// that "the stage" was the wrong cardinality — which is the kind of thing
+// D35's rule about designing stage-agnostically is meant to surface early, and
+// did, one ticket later rather than one engine later.
 //
 // ## How a resource is decided to be the module's
 //
@@ -77,13 +94,26 @@ struct ModuleSignaturePolicy {
     const char* onlyConstantBuffer = nullptr;
 };
 
-/// Everything needed to derive a module's signature from a compiled shader.
-struct ModuleSignatureRequest {
-    /// The compiled stage whose reflection is read. Never null.
+/// One compiled stage of the module, and the pipeline stage it binds to.
+struct ModuleSignatureStage {
+    /// The compiled shader whose reflection is read. Never null.
     Diligent::IShader* shader = nullptr;
 
-    /// The stage(s) the module's resources bind to.
+    /// The stage its resources bind to. Exactly one bit — a resource named by
+    /// two stages gets both bits in the built description, by union.
     Diligent::SHADER_TYPE stage = Diligent::SHADER_TYPE_PIXEL;
+};
+
+/// Everything needed to derive a module's signature from its compiled stages.
+struct ModuleSignatureRequest {
+    /// The compiled stages, in the order their resources should be walked.
+    /// Never null and never empty.
+    ///
+    /// **Plural since T0146**: one surface module compiles to a vertex and a
+    /// pixel entry point, and a texture it declares may be sampled in either.
+    /// The header explains why that is a generalisation rather than a second
+    /// mechanism.
+    const std::vector<ModuleSignatureStage>* stages = nullptr;
 
     /// Names the engine's own signatures already carry — resources *and*
     /// immutable samplers, so the palette counts. Anything here is skipped;
@@ -95,6 +125,9 @@ struct ModuleSignatureRequest {
     /// **shape**, for the `requireTexture2DArray` check. Null skips the check
     /// rather than failing it — a cooked build's bytecode was validated by
     /// the dev build that cooked it.
+    ///
+    /// One list for the whole program, not one per stage: reflection is of the
+    /// *program*, and a declaration has one shape whichever stage samples it.
     const std::vector<SlangReflectedResource>* slangResources = nullptr;
 
     /// The module's name for log lines. Never null.
@@ -108,9 +141,9 @@ struct ModuleSignatureRequest {
     ModuleSignaturePolicy policy;
 };
 
-/// Builds the per-module signature description from a compiled shader.
+/// Builds the per-module signature description from the compiled stages.
 ///
-/// @param request the shader, the engine's names and the stage policy.
+/// @param request the stages, the engine's names and the stage policy.
 /// @param desc receives the signature description. Untouched on refusal.
 ///        The caller creates the object (and caches it — see
 ///        `moduleSignatureKey`). `PipelineResourceSignatureDescX` copies every

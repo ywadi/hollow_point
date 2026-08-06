@@ -62,7 +62,7 @@ Diligent::ShaderCreateInfo describeVariant(const ShaderVariantKey& key,
     Diligent::ShaderCreateInfo info;
     info.FilePath = key.filePath;
     info.pShaderSourceStreamFactory = key.sources;
-    info.EntryPoint = "main";
+    info.EntryPoint = key.entryPoint != nullptr ? key.entryPoint : "main";
     info.Desc.Name = key.filePath;
     info.Desc.ShaderType = key.stage == ShaderStage::Vertex ? Diligent::SHADER_TYPE_VERTEX
                                                             : Diligent::SHADER_TYPE_PIXEL;

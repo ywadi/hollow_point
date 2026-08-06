@@ -4,7 +4,7 @@
 
 **Exported from an implementation file.** `engine/shaders/HpSurface.slang` is the engine's own shader and is *not* contract — nothing else in it may be relied on. `IHpMaterial` is marked `hp-shader-doc: export` because it is what a game implements, and it lives there because its default implementations *are* the standard material.
 
-1 declaration(s), 8 member(s), all documented.
+1 declaration(s), 9 member(s), all documented.
 
 ## `IHpMaterial`
 
@@ -63,6 +63,33 @@ stopped being true when 142.15 landed and 142.13 rewrote the contract file
 around it. It is corrected here rather than only in the ticket because
 this text is the generated shader reference's prose: `docs/shaders/` would
 have published it to every agent writing a material.)*
+
+### `IHpMaterial::vertex`
+
+```hlsl
+[mutating] void vertex(HpVertexInput In, inout HpVertexOutput Out) { ... }
+```
+
+*Has a default implementation — a material that does not override it gets the standard material's behaviour.*
+
+**The vertex hook** (T0146, D36) — Godot's `vertex()`, and the one
+method here that runs in a different shader stage from the rest.
+
+Object space in, object space out; `Out` arrives pre-filled from the
+mesh, so writing nothing is exactly today's geometry and writing
+`Out.Position` is a displacement. `HpMaterial.slang` documents the
+space decision, what the hook must not do to a triangle's winding
+(D33), and the four `Custom` interpolators that carry a value from here
+to the pixel stage.
+
+**Members do not survive the stage boundary.** The vertex and pixel
+stages construct separate `HpMaterial` values because they are separate
+invocations — this is the one place T0159's cross-hook state does *not*
+apply, and `Out.Custom0` … `Custom3` are the channel that does.
+
+`[mutating]` for symmetry with every other hook: a vertex hook may keep
+state across nothing today, and requiring the attribute now means the
+method never has to change signature to gain it.
 
 ### `IHpMaterial::surfaceCoordinates`
 

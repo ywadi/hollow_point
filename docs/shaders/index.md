@@ -40,7 +40,7 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 
 | Page | Source | Declarations |
 |---|---|---|
-| [`HpMaterial`](HpMaterial.md) | `engine/shaders/HpMaterial.slang` | 20 |
+| [`HpMaterial`](HpMaterial.md) | `engine/shaders/HpMaterial.slang` | 22 |
 | [`IHpMaterial`](IHpMaterial.md) | `engine/shaders/HpSurface.slang` | 1 |
 
 ## Every symbol
@@ -68,6 +68,28 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | `HpTexture1_sampler` | macro | [`HpMaterial`](HpMaterial.md) |
 | `HpTexture2_sampler` | macro | [`HpMaterial`](HpMaterial.md) |
 | `HpTexture3_sampler` | macro | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexInput` | struct | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexInput::Position` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexInput::Normal` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexInput::Tangent` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexInput::UV0` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexInput::UV1` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexInput::VertexColor` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexInput::WorldPos` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexInput::ObjectToWorld` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexInput::CameraPos` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexInput::Time` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexOutput` | struct | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexOutput::Position` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexOutput::Normal` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexOutput::Tangent` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexOutput::UV0` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexOutput::UV1` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexOutput::VertexColor` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexOutput::Custom0` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexOutput::Custom1` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexOutput::Custom2` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpVertexOutput::Custom3` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput` | struct | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::UV0` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::UV1` | field | [`HpMaterial`](HpMaterial.md) |
@@ -80,6 +102,10 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | `HpSurfaceInput::ScreenPos` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::CameraPos` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::Time` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceInput::Custom0` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceInput::Custom1` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceInput::Custom2` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceInput::Custom3` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceOutput` | struct | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceOutput::BaseColor` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceOutput::Normal` | field | [`HpMaterial`](HpMaterial.md) |
@@ -88,6 +114,7 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | `HpSurfaceOutput::Emissive` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceOutput::Occlusion` | field | [`HpMaterial`](HpMaterial.md) |
 | `IHpMaterial` | interface | [`IHpMaterial`](IHpMaterial.md) |
+| `IHpMaterial::vertex` | method | [`IHpMaterial`](IHpMaterial.md) |
 | `IHpMaterial::surfaceCoordinates` | method | [`IHpMaterial`](IHpMaterial.md) |
 | `IHpMaterial::baseColor` | method | [`IHpMaterial`](IHpMaterial.md) |
 | `IHpMaterial::metallicRoughness` | method | [`IHpMaterial`](IHpMaterial.md) |

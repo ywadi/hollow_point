@@ -27,28 +27,38 @@ namespace {
 
 const LogCategory kLog("render.pipeline");
 
-/// The engine's vertex shader.
+/// The engine's surface shader — **both stages of it** (T0146, D26).
 ///
-/// **DiligentFX's, for now, and that is a deliberate half-step.** The surface
-/// stage is a pixel-shader concept: parallax, triplanar and texture blending all
-/// happen per fragment, so owning the pixel shader is what D26 actually needed.
-/// `RenderPBR.vsh` already produces exactly the `VSOutput` our pixel shader
-/// consumes, and reimplementing it now would be work with no capability behind
-/// it.
-///
-/// On the Slang path it is compiled by slang like our own shader is -- both
-/// stages through one compiler, so the varying interface between them is
-/// assigned by one set of rules rather than two compilers happening to agree.
-///
-/// **141.7's vertex displacement is what changes this**, and it is the only
-/// thing that should: at that point the engine writes its own and this constant
-/// moves to `HpSurface.slang`'s vertex half. Naming it here rather than
-/// inlining the string is what makes that a one-line change.
-constexpr const char* kVertexShader = "RenderPBR.vsh";
+/// One `.slang` file (D28) carrying `vsMain` and `psMain`, compiled by slang to
+/// SPIR-V at pipeline-build time. Until T0146 the vertex half was
+/// `RenderPBR.vsh`, DiligentFX's, compiled by a second request; the constant
+/// that named it lived here so that replacing it would be a one-line change,
+/// and this is that change.
+constexpr const char* kSurfaceShader = "HpSurface.slang";
 
-/// The engine's pixel shader — ours, and the whole point of D26. A `.slang`
-/// file (D28), compiled by slang to SPIR-V at pipeline-build time.
-constexpr const char* kPixelShader = "HpSurface.slang";
+/// The vertex entry point in `kSurfaceShader`.
+constexpr const char* kVertexEntryPoint = "vsMain";
+
+/// The pixel entry point in `kSurfaceShader`.
+constexpr const char* kPixelEntryPoint = "psMain";
+
+/// The custom interpolators a module's vertex hook writes (T0146.4).
+///
+/// **Appended to `PBR_Renderer`'s generated `VSOutput` for custom-material
+/// permutations only**, which is what makes them free for the standard
+/// material. Four `float4`s: `HpVertexOutput` documents why the count is fixed
+/// (reflection rides the compile, so what a module wants is known only after
+/// the compile that would have to be told), and 16 floats was sized against
+/// the 2026-08-06 capability audit.
+///
+/// The semantic names are the engine's and never collide with theirs — their
+/// generator emits `SV_Position`, `WORLD_POS`, `COLOR`, `NORMAL`, `UV0`, `UV1`,
+/// `TANGENT`, `PREV_CLIP_POS`, `PSIZE` and `PRIM_ID`.
+constexpr const char* kCustomInterpolators = R"(    float4 HpCustom0 : HP_CUSTOM0;
+    float4 HpCustom1 : HP_CUSTOM1;
+    float4 HpCustom2 : HP_CUSTOM2;
+    float4 HpCustom3 : HP_CUSTOM3;
+)";
 
 /// Folds the render-target formats into the PSO key's hash.
 ///
@@ -93,6 +103,34 @@ std::size_t cacheKey(const Diligent::GraphicsPipelineDesc& graphics,
 /// The attribute is DXC/Slang syntax that Diligent's own compilers do not
 /// accept, which is why the injection happens on a Slang-path copy rather than
 /// in the shared generated string.
+/// Appends the custom interpolator fields to the generated `VSOutput` struct
+/// (T0146.4).
+///
+/// **Textual, and that is the only place it can be**: `GetVSOutputStruct`
+/// returns a string built from the PSO flags, and there is no hook in it. The
+/// insertion point is the closing brace, which is the last `}` in a string
+/// whose entire content is one struct — so a change to their generator that
+/// broke this assumption would produce a shader that does not compile, named
+/// here, rather than fields silently in the wrong place.
+///
+/// @param vsOutput the generated struct.
+/// @returns the struct with four `float4` slots before its closing brace, or
+///          @p vsOutput unchanged when the brace cannot be found (logged).
+std::string addCustomInterpolators(const std::string& vsOutput) {
+    const std::size_t brace = vsOutput.rfind('}');
+    if (brace == std::string::npos) {
+        HP_LOG_ERROR(kLog, "the generated VSOutput struct has no closing brace; a module's "
+                           "custom interpolators were not added");
+        return vsOutput;
+    }
+    std::string out;
+    out.reserve(vsOutput.size() + 160);
+    out.append(vsOutput, 0, brace);
+    out += kCustomInterpolators;
+    out.append(vsOutput, brace, std::string::npos);
+    return out;
+}
+
 std::string addVkInputLocations(const std::string& vsInput) {
     std::string out;
     out.reserve(vsInput.size() + 128);
@@ -564,19 +602,27 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
     macros.Add("HP_UNSHADED", (key.GetFlags() & kPsoFlagUnshaded) != 0 ? 1 : 0);
     macros.Add("HP_USE_HEIGHT_MAP", (key.GetFlags() & kPsoFlagHeightMap) != 0 ? 1 : 0);
     macros.Add("HP_TRIPLANAR", (key.GetFlags() & kPsoFlagTriplanar) != 0 ? 1 : 0);
-    const bool custom = customModule != nullptr && customModule[0] != '\0';
-    macros.Add("HP_CUSTOM_MATERIAL", custom ? 1 : 0);
+    macros.Add("HP_CUSTOM_MATERIAL",
+               (customModule != nullptr && customModule[0] != '\0') ? 1 : 0);
 
-    // The generated interface structs, which the shaders include by name --
+    // The generated interface structs, which both stages include by name --
     // exactly as `RenderPBR.psh` does. Reusing the base class's generators is
-    // what keeps our pixel shader and their vertex shader agreeing about
-    // `VSOutput` without either of us restating it.
+    // what keeps the two halves of `HpSurface.slang` agreeing about `VSOutput`
+    // without either restating it, and what keeps the input layout and the
+    // vertex struct describing the same thing.
     Diligent::InputLayoutDescX inputLayout;
     std::string vsInputStruct;
     GetVSInputStructAndLayout(key.GetFlags(), vsInputStruct, inputLayout);
-    const std::string vsOutputStruct =
-        GetVSOutputStruct(key.GetFlags(), /*UseVkPointSize = */ false,
-                          /*UsePrimitiveId = */ false);
+    std::string vsOutputStruct = GetVSOutputStruct(key.GetFlags(), /*UseVkPointSize = */ false,
+                                                   /*UsePrimitiveId = */ false);
+    const bool custom = customModule != nullptr && customModule[0] != '\0';
+    if (custom) {
+        // The four `HpCustom` slots (T0146.4), for custom-material
+        // permutations only -- a standard material's interpolator count is
+        // exactly what it was before the vertex stage existed, which is half
+        // of what makes its output byte-identical.
+        vsOutputStruct = addCustomInterpolators(vsOutputStruct);
+    }
     const std::string psOutputStruct = GetPSOutputStruct(key.GetFlags());
 
     // **Slang compiles both stages to SPIR-V, and Diligent receives bytecode**
@@ -596,14 +642,6 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
     // against a layout expecting 7.
     const std::string vsInputStructSlang = addVkInputLocations(vsInputStruct);
 
-    // Empty PSMainFooter, and it has to exist: `RenderPBR.vsh` includes it
-    // unconditionally, and a missing include is a compile error rather than
-    // an empty expansion.
-    constexpr const char* kPsMainFooter = R"(
-    PSOutput PSOut;
-    PSOut.Color = OutColor;
-    return PSOut;
-)";
     // The material's shader module, routed through a generated one-line
     // include (T0142.15). **Always emitted, even when empty**, and both
     // consumers require that: the content hasher walks `#include` lines
@@ -615,11 +653,15 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
     const std::string materialModule =
         custom ? std::string("#include \"") + customModule + "\"\n"
                : std::string("// no custom material module for this pipeline\n");
+    // **`PSMainFooter.generated` is deliberately gone** (T0146.5). It existed
+    // because `RenderPBR.psh` includes it unconditionally, and it was carried
+    // here as long as any DiligentFX shader was compiled by this path. Neither
+    // half of `HpSurface.slang` includes it, and nothing else is compiled here
+    // any more, so a source nobody resolves would only rot.
     const Diligent::MemoryShaderSourceFileInfo generatedSources[] = {
         {"VSInputStruct.generated", vsInputStructSlang},
         {"VSOutputStruct.generated", vsOutputStruct},
         {"PSOutputStruct.generated", psOutputStruct},
-        {"PSMainFooter.generated", kPsMainFooter},
         {"HpMaterialModule.generated", materialModule},
     };
     Diligent::RefCntAutoPtr<Diligent::IShaderSourceInputStreamFactory> generated;
@@ -673,54 +715,76 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
                 {macroArray.Elements[i].Name, macroArray.Elements[i].Definition});
         }
 
-        // The module's declared parameters, reflected off the pixel-shader
-        // compile below (T0160.2). Requested only for a custom module: the
-        // standard material declares nothing, and asking would defeat the
-        // bytecode cache for every pipeline in the engine. The resource-shape
-        // list rides the same request (T0161.3): it is the one fact only
-        // slang can see, and it feeds the dimension check below.
+        // The module's declared parameters, reflected off the compile below
+        // (T0160.2). Requested only for a custom module: the standard material
+        // declares nothing, and asking would defeat the bytecode cache for
+        // every pipeline in the engine. The resource-shape list rides the same
+        // request (T0161.3): it is the one fact only slang can see, and it
+        // feeds the dimension check below.
+        //
+        // **Reflection is of the program, not of a stage** -- one
+        // `ProgramLayout` covers both entry points, so a texture declared for
+        // the vertex hook is shaped-checked by the same walk as a pixel one.
         ShaderParamLayout layout;
         std::vector<SlangReflectedResource> slangResources;
         SlangReflectionRequest reflection;
         reflection.layout = &layout;
         reflection.resources = &slangResources;
 
-        const auto compileStage = [&](const char* file, ShaderStage stage, const char* name,
-                                      Diligent::SHADER_TYPE type, bool reflectParams)
+        // **One compile, two entry points** (T0146.5). This was two compile
+        // requests -- one for `RenderPBR.vsh`, one for `HpSurface.slang` --
+        // until the engine owned the vertex main; now the file is parsed,
+        // preprocessed and include-walked once for the pair.
+        std::vector<std::uint8_t> vertexSpirv;
+        std::vector<std::uint8_t> pixelSpirv;
+        const SlangProgramStage programStages[] = {
+            {kVertexEntryPoint, ShaderStage::Vertex, &vertexSpirv},
+            {kPixelEntryPoint, ShaderStage::Pixel, &pixelSpirv},
+        };
+        std::string diagnostics;
+        if (!compileSlangProgram(kSurfaceShader, programStages, std::size(programStages),
+                                 slangMacros.data(), slangMacros.size(), factory, diagnostics,
+                                 custom ? &reflection : nullptr)) {
+            // **Logged here, on the compile attempt.** One line per failed
+            // pipeline, never per draw (T0141); the null result is cached.
+            HP_LOG_ERROR(kLog, "slang failed to compile '{}': {}", kSurfaceShader,
+                         diagnostics.empty() ? "(no diagnostics)" : diagnostics);
+            return pso;
+        }
+        if (!diagnostics.empty()) {
+            // Warnings from a successful compile -- worth seeing, once,
+            // because a shader has no other channel.
+            HP_LOG_WARN(kLog, "slang compiled '{}' with diagnostics: {}", kSurfaceShader,
+                        diagnostics);
+        }
+
+        const auto makeShader = [&](const std::vector<std::uint8_t>& spirv, const char* name,
+                                    Diligent::SHADER_TYPE type, bool reflectParams)
             -> Diligent::RefCntAutoPtr<Diligent::IShader> {
             Diligent::RefCntAutoPtr<Diligent::IShader> shader;
-            std::vector<std::uint8_t> spirv;
-            std::string diagnostics;
-            if (!compileSlangToSpirv(file, stage, slangMacros.data(), slangMacros.size(), factory,
-                                     spirv, diagnostics,
-                                     reflectParams ? &reflection : nullptr)) {
-                // **Logged here, on the compile attempt.** One line per failed
-                // pipeline, never per draw (T0141); the null result is cached.
-                HP_LOG_ERROR(kLog, "slang failed to compile '{}': {}", file,
-                             diagnostics.empty() ? "(no diagnostics)" : diagnostics);
-                return shader;
-            }
-            if (!diagnostics.empty()) {
-                // Warnings from a successful compile -- worth seeing, once,
-                // because a shader has no other channel.
-                HP_LOG_WARN(kLog, "slang compiled '{}' with diagnostics: {}", file, diagnostics);
-            }
             Diligent::ShaderCreateInfo shaderInfo;
             // **`ByteCode`, not `Source`** -- the two are mutually exclusive
             // and their size fields are a union, so setting the wrong one
             // sends SPIR-V down the text path.
             shaderInfo.ByteCode = spirv.data();
             shaderInfo.ByteCodeSize = spirv.size();
+            // **`"main"`, although the slang entry points are `vsMain` and
+            // `psMain`.** Slang renames an entry point to `main` when it emits
+            // a per-entry-point SPIR-V module -- measured on the pinned
+            // `slangc 2026.14.1` with `-target spirv-asm`, where the module
+            // reads `OpEntryPoint Vertex %vsMain "main"`. The source name is
+            // what the compile request is told; `main` is what the bytecode
+            // carries.
             shaderInfo.EntryPoint = "main";
             // **The cooked-build half of reflection** (T0160.2). A shipped
             // game links no slang (D28's boundary table) and its bytecode
-            // arrives from an archive, so `compileSlangToSpirv` above
-            // reflects nothing there. Diligent parses the constant-buffer
-            // layout straight out of the SPIR-V, which is the runtime-side
-            // mechanism D28 named when it argued for slang's reflection --
-            // same bytes, so the offsets cannot disagree. What it cannot see
-            // is the `[HpRange]`/`[HpTooltip]` hints, which exist only in the
-            // source and are wanted only by an editor, which has a compiler.
+            // arrives from an archive, so the compile above reflects nothing
+            // there. Diligent parses the constant-buffer layout straight out
+            // of the SPIR-V, which is the runtime-side mechanism D28 named
+            // when it argued for slang's reflection -- same bytes, so the
+            // offsets cannot disagree. What it cannot see is the
+            // `[HpRange]`/`[HpTooltip]` hints, which exist only in the source
+            // and are wanted only by an editor, which has a compiler.
             //
             // Off for every other pipeline: Diligent's own comment says the
             // reflection "introduces some overhead", and nothing reads it.
@@ -728,15 +792,20 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
             shaderInfo.Desc = {name, type, /*UseCombinedTextureSamplers = */ false};
             GetDevice()->CreateShader(shaderInfo, &shader);
             if (!shader) {
-                HP_LOG_ERROR(kLog, "the device refused slang-compiled SPIR-V for '{}'", file);
+                HP_LOG_ERROR(kLog, "the device refused slang-compiled SPIR-V for '{}' ({})",
+                             kSurfaceShader, name);
             }
             return shader;
         };
 
-        vertexShader = compileStage(kVertexShader, ShaderStage::Vertex, "hp surface VS (slang)",
-                                    Diligent::SHADER_TYPE_VERTEX, /*reflectParams = */ false);
-        pixelShader = compileStage(kPixelShader, ShaderStage::Pixel, "hp surface PS (slang)",
-                                   Diligent::SHADER_TYPE_PIXEL, /*reflectParams = */ custom);
+        // `reflectParams` on both stages for a custom module, because either
+        // may be the one that carries the parameter block: slang strips it
+        // from the stage that does not read it, and the cooked path has only
+        // Diligent's reflection to read it back with.
+        vertexShader = makeShader(vertexSpirv, "hp surface VS (slang)",
+                                  Diligent::SHADER_TYPE_VERTEX, /*reflectParams = */ custom);
+        pixelShader = makeShader(pixelSpirv, "hp surface PS (slang)",
+                                 Diligent::SHADER_TYPE_PIXEL, /*reflectParams = */ custom);
         if (!vertexShader || !pixelShader) {
             return pso;
         }
@@ -746,18 +815,38 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
                 // this costs one cheap walk -- or the bytecode came from a
                 // cooked archive and no compile happened. The two are
                 // indistinguishable from here and want the same answer.
+                //
+                // **The vertex stage is asked second, and only if the pixel
+                // stage had nothing** (T0146): slang strips the block from the
+                // stage that does not read it, so a module whose parameters
+                // only drive its vertex hook has an empty `HpMaterialParams`
+                // in the pixel bytecode and a full one in the vertex bytecode.
+                // Reading only the pixel stage there would silently write no
+                // parameters at all on the cooked path.
                 reflectFromShader(pixelShader, layout);
+                if (layout.params.empty()) {
+                    reflectFromShader(vertexShader, layout);
+                }
             }
 
             // **The module's resources become its signature** (T0161.4), by
             // subtraction against the engine's own names -- see
             // `ModuleResourceSignature.hpp` for why the used set and why the
             // cache key is the resource set itself.
+            //
+            // **Both stages, because there is one module** (T0146): the same
+            // `HpMaterial` implements `vertex()` and `baseColor()`, so a
+            // texture it declares may be sampled in either, and a signature
+            // built from the pixel stage alone would fail PSO creation by name
+            // on the vertex stage's use of it.
             Diligent::PipelineResourceSignatureDescX moduleDesc;
             std::vector<std::string> moduleTextures;
+            const std::vector<ModuleSignatureStage> signatureStages = {
+                {pixelShader, Diligent::SHADER_TYPE_PIXEL},
+                {vertexShader, Diligent::SHADER_TYPE_VERTEX},
+            };
             ModuleSignatureRequest request;
-            request.shader = pixelShader;
-            request.stage = Diligent::SHADER_TYPE_PIXEL;
+            request.stages = &signatureStages;
             request.engineResources = &engineResourceNames_;
             // Empty exactly when no slang compile ran (the cooked path);
             // reflection on the dev path always lists the engine's own

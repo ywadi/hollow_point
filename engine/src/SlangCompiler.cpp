@@ -745,9 +745,18 @@ bool compileSlangToSpirv(const char* filePath, ShaderStage stage, const SlangMac
                          Diligent::IShaderSourceInputStreamFactory* sources,
                          std::vector<std::uint8_t>& outSpirv, std::string& outDiagnostics,
                          const SlangReflectionRequest* reflect) {
+    const SlangProgramStage one{"main", stage, &outSpirv};
+    return compileSlangProgram(filePath, &one, 1, macros, macroCount, sources, outDiagnostics,
+                               reflect);
+}
+
+bool compileSlangProgram(const char* filePath, const SlangProgramStage* stages,
+                         std::size_t stageCount, const SlangMacro* macros,
+                         std::size_t macroCount,
+                         Diligent::IShaderSourceInputStreamFactory* sources,
+                         std::string& outDiagnostics, const SlangReflectionRequest* reflect) {
     HP_PROFILE_ZONE();
 
-    outSpirv.clear();
     outDiagnostics.clear();
     if (reflect != nullptr && reflect->layout != nullptr) {
         *reflect->layout = ShaderParamLayout{};
@@ -755,8 +764,14 @@ bool compileSlangToSpirv(const char* filePath, ShaderStage stage, const SlangMac
     if (reflect != nullptr && reflect->resources != nullptr) {
         reflect->resources->clear();
     }
-    if (filePath == nullptr || sources == nullptr) {
+    if (filePath == nullptr || sources == nullptr || stages == nullptr || stageCount == 0) {
         return false;
+    }
+    for (std::size_t i = 0; i < stageCount; ++i) {
+        if (stages[i].spirv == nullptr || stages[i].entryPoint == nullptr) {
+            return false;
+        }
+        stages[i].spirv->clear();
     }
     // **A cache hit has no reflection behind it**, so a caller that asked for a
     // layout has to compile. Deliberate, and the alternative was worse: caching
@@ -802,10 +817,16 @@ bool compileSlangToSpirv(const char* filePath, ShaderStage stage, const SlangMac
                           "compiling '{}' without Diligent's prelude", filePath);
     }
 
-    // The variant this call is about: everything the store needs to hash, and
-    // nothing it has to guess. The prelude travels as text because it was
-    // *prepended* rather than included, so no include walk can see it.
-    const ShaderVariantKey variant{filePath, stage, macros, macroCount, prelude, sources};
+    // The variants this call is about -- one per entry point: everything the
+    // store needs to hash, and nothing it has to guess. The prelude travels as
+    // text because it was *prepended* rather than included, so no include walk
+    // can see it.
+    std::vector<ShaderVariantKey> variants;
+    variants.reserve(stageCount);
+    for (std::size_t i = 0; i < stageCount; ++i) {
+        variants.push_back(ShaderVariantKey{filePath, stages[i].stage, stages[i].entryPoint,
+                                            macros, macroCount, prelude, sources});
+    }
 
     const bool lookUp = shaderStoreActive(cookedOnly);
     // **`cookedOnly` wins over the reflection request, and getting that
@@ -817,8 +838,22 @@ bool compileSlangToSpirv(const char* filePath, ShaderStage stage, const SlangMac
     // (`SurfacePipeline::reflectFromShader`), which is the whole reason that
     // second reader exists.
     const bool skipCacheForReflection = wantReflection && !cookedOnly;
-    if (lookUp && !skipCacheForReflection && shaderStoreLookup(variant, cookedOnly, outSpirv)) {
-        return true;
+    if (lookUp && !skipCacheForReflection) {
+        // **Every stage or none** (T0146.5). The stages of one pipeline are
+        // compiled together, so a partial hit still has to run the compile --
+        // and running it after taking one stage's bytes from the store would
+        // mix an archived module with a freshly compiled one, which is exactly
+        // the divergence the content key exists to prevent.
+        bool allHit = true;
+        for (std::size_t i = 0; i < stageCount && allHit; ++i) {
+            allHit = shaderStoreLookup(variants[i], cookedOnly, *stages[i].spirv);
+        }
+        if (allHit) {
+            return true;
+        }
+        for (std::size_t i = 0; i < stageCount; ++i) {
+            stages[i].spirv->clear();
+        }
     }
 
     if (cookedOnly) {
@@ -876,8 +911,20 @@ bool compileSlangToSpirv(const char* filePath, ShaderStage stage, const SlangMac
 
     const int unit = request->addTranslationUnit(SLANG_SOURCE_LANGUAGE_SLANG, filePath);
     request->addTranslationUnitSourceString(unit, filePath, source.c_str());
-    const int entryPoint = request->addEntryPoint(
-        unit, "main", stage == ShaderStage::Vertex ? SLANG_STAGE_VERTEX : SLANG_STAGE_FRAGMENT);
+    // **Every entry point on the one request** (T0146.5): one parse, one
+    // preprocess, one include walk, and `getEntryPointCodeBlob` below still
+    // yields a *per-entry* SPIR-V module carrying only what that stage
+    // reaches -- so the vertex module does not inherit the pixel stage's
+    // texture globals and the resource reflection each stage feeds stays as
+    // narrow as the stage itself.
+    std::vector<int> entryPoints;
+    entryPoints.reserve(stageCount);
+    for (std::size_t i = 0; i < stageCount; ++i) {
+        entryPoints.push_back(request->addEntryPoint(unit, stages[i].entryPoint,
+                                                     stages[i].stage == ShaderStage::Vertex
+                                                         ? SLANG_STAGE_VERTEX
+                                                         : SLANG_STAGE_FRAGMENT));
+    }
 
     const SlangResult result = request->compile();
     if (const char* diagnostics = request->getDiagnosticOutput()) {
@@ -893,35 +940,54 @@ bool compileSlangToSpirv(const char* filePath, ShaderStage stage, const SlangMac
         reflectParams(request, filePath, *reflect);
     }
     if (SLANG_SUCCEEDED(result)) {
-        ISlangBlob* code = nullptr;
-        if (SLANG_SUCCEEDED(request->getEntryPointCodeBlob(entryPoint, 0, &code)) &&
-            code != nullptr) {
-            const auto* bytes = static_cast<const std::uint8_t*>(code->getBufferPointer());
-            outSpirv.assign(bytes, bytes + code->getBufferSize());
-            code->release();
-            ok = !outSpirv.empty();
-        } else {
-            outDiagnostics += "\nslang reported success but produced no code";
+        ok = true;
+        for (std::size_t i = 0; i < stageCount && ok; ++i) {
+            ISlangBlob* code = nullptr;
+            if (SLANG_SUCCEEDED(request->getEntryPointCodeBlob(entryPoints[i], 0, &code)) &&
+                code != nullptr) {
+                const auto* bytes = static_cast<const std::uint8_t*>(code->getBufferPointer());
+                stages[i].spirv->assign(bytes, bytes + code->getBufferSize());
+                code->release();
+                ok = !stages[i].spirv->empty();
+            } else {
+                ok = false;
+            }
+            if (!ok) {
+                outDiagnostics += std::string("\nslang reported success but produced no code for '") +
+                                  stages[i].entryPoint + "'";
+            }
         }
     }
 
     request->release();
     fileSystem->release();
 
-    if (ok) {
+    if (!ok) {
+        // **All or nothing**: a pipeline with one valid stage is not a
+        // pipeline, and leaving one stage's bytes behind would make the
+        // caller's `if (!vs || !ps)` guard the only thing standing between a
+        // half-compiled program and the device.
+        for (std::size_t i = 0; i < stageCount; ++i) {
+            stages[i].spirv->clear();
+        }
+        return false;
+    }
+
+    for (std::size_t i = 0; i < stageCount; ++i) {
         // Debug rather than info: per-compile noise the console does not need,
         // but the byte count is the cheapest instrument for "did the dead
         // code actually fold" questions -- T0142.16's unshaded test raises
         // the level and asserts on exactly this line.
-        HP_LOG_DEBUG(kLog, "compiled '{}' to {} bytes of SPIR-V", filePath, outSpirv.size());
+        HP_LOG_DEBUG(kLog, "compiled '{}' ({}) to {} bytes of SPIR-V", filePath,
+                     stages[i].entryPoint, stages[i].spirv->size());
+        if (lookUp) {
+            // **Successes only.** A failed compile is cached as a null pipeline
+            // one level up, per launch -- persisting the failure would make a
+            // fixed shader stay broken until someone found the cache file.
+            shaderStoreInsert(variants[i], *stages[i].spirv);
+        }
     }
-    if (ok && lookUp) {
-        // **Successes only.** A failed compile is cached as a null pipeline one
-        // level up, per launch -- persisting the failure would make a fixed
-        // shader stay broken until someone found the cache file.
-        shaderStoreInsert(variant, outSpirv);
-    }
-    return ok;
+    return true;
 }
 
 } // namespace hp

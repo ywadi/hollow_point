@@ -24,6 +24,18 @@
 // (`13-shader-capability-matrix.md`) is where that gap should be recorded so
 // it becomes a widening rather than a workaround every game repeats.
 //
+// ## Two stages, one module (T0146)
+//
+// A module implements `IHpMaterial`, and since T0146 that interface spans the
+// **vertex** stage as well as the pixel one: `vertex()` displaces geometry,
+// everything else shades it. Both entry points of the engine's shader compile
+// the same module in the same compile, so one file is the whole material.
+//
+// The vertex hook's own section is further down, beside `HpVertexInput`; the
+// two facts to carry into it are that it works in **object space** (D36) and
+// that its members do **not** reach the pixel stage — `HpVertexOutput::Custom0`
+// … `Custom3` are the channel that does.
+//
 // ## The authoring shape, stated once and correctly
 //
 // A game writes a **module that implements `IHpMaterial`** and overrides only
@@ -321,6 +333,177 @@ Texture2DArray HpTexture3;
 /// Deprecated (T0161); see `HpTexture0_sampler`.
 #define HpTexture3_sampler HpSamplerLinearWrap
 
+// ---------------------------------------------------------------------------
+// ## The vertex stage (T0146, D36)
+//
+// **The engine owns the vertex `main` as well as the pixel one**, and
+// `IHpMaterial.vertex()` is the hook. It is Godot's `vertex()`: wind sway,
+// foliage bend, billboarding, breathing, jelly, flag flap, morph offsets — the
+// workhorse of stylised motion, and until T0146 there was no equivalent here at
+// all.
+//
+// ### The space, decided once (D36)
+//
+// **Object space in, object space out.** The hook receives the mesh's own
+// position, normal and tangent exactly as the vertex buffer holds them, and
+// returns positions in that same space; the engine then applies the node
+// transform (skinned when the mesh is skinned), the view-projection, and
+// everything downstream. There is **no mode switch** — Godot's
+// `world_vertex_coords` and `skip_vertex_transform` were both considered and
+// rejected, and D36 records why in full. The short form:
+//
+//   * a world-space *input* is what `world_vertex_coords` is actually wanted
+//     for, so `HpVertexInput::WorldPos` and `ObjectToWorld` are handed over
+//     read-only and no mode is needed to reach them;
+//   * handing the projection to the shader (`skip_vertex_transform`) breaks
+//     everything downstream that has to reason about the transform the engine
+//     applied — the winding convention (D33), motion vectors (T0111), culling
+//     and the shadow pass — for a case nothing here has asked for.
+//
+// ### What the hook must not do
+//
+// **Do not invert a triangle.** D33 is binding: `cross(v1-v0, v2-v0)` points
+// outward and `FrontCounterClockwise = false`. Displacement composes with that
+// as long as it does not turn a face inside out; pushing a vertex past its
+// neighbours does, and the symptom is a surface that culls away rather than a
+// shading error.
+//
+// ### State does **not** cross the stage boundary
+//
+// The vertex and pixel stages each construct their own `HpMaterial`, because
+// they are separate shader invocations — a member written in `vertex()` is
+// **not** visible in `surfaceCoordinates()` or `surface()`, however much the
+// cross-hook state of T0159 makes it look like it should be. The channel
+// between the stages is `HpVertexOutput::Custom0` … `Custom3`, which are real
+// interpolators and arrive as `HpSurfaceInput::Custom0` … `Custom3`.
+// ---------------------------------------------------------------------------
+
+/// What the engine hands the vertex hook (T0146, D36).
+///
+/// Read-only. **Everything here is in object space unless the field says
+/// otherwise** — the opposite default from `HpSurfaceInput`, and it says so on
+/// every field because that is exactly the confusion D36 exists to settle.
+struct HpVertexInput
+{
+    /// The vertex's position, in **object space**, as the mesh holds it.
+    float3 Position;
+
+    /// The vertex's normal, in **object space**. `(0, 0, 1)` when the mesh
+    /// carries no normals — the same stand-in the engine's own transform uses,
+    /// never undefined.
+    float3 Normal;
+
+    /// The vertex's tangent, in **object space**. Zero when the mesh carries
+    /// none.
+    ///
+    /// `float3` rather than `float4`, and that is the wire format rather than a
+    /// choice: Diligent's vertex path carries three components, so glTF's
+    /// handedness `w` never reaches this engine (T0159.4 records the same fact
+    /// on the pixel side, where the field is a `float4` whose `w` is always +1).
+    float3 Tangent;
+
+    /// The first texture coordinate set, as the mesh holds it. Zero when the
+    /// mesh carries none.
+    float2 UV0;
+
+    /// The second texture coordinate set. Zero when the mesh carries none.
+    float2 UV1;
+
+    /// Per-vertex colour. White when the mesh carries none, so a hook may
+    /// multiply by it unconditionally — the same promise the pixel side makes.
+    float4 VertexColor;
+
+    /// **World space**: where this vertex sits *before* the hook displaces it.
+    ///
+    /// This is what Godot's `world_vertex_coords` is really wanted for — a
+    /// wind field, a distance fade or a per-instance phase offset all vary with
+    /// where the surface *is*, not with how the mesh was authored. Supplied as
+    /// an input rather than as a mode (D36), and it is exactly
+    /// `mul(float4(Position, 1), ObjectToWorld)` — so a hook that ignores it
+    /// pays nothing, because the engine computes that product anyway.
+    float3 WorldPos;
+
+    /// The object-to-world transform this draw is using, row-major
+    /// (`hp/Math.hpp`, and `PackMatrixRowMajor` is set for exactly this).
+    /// **Already skinned** when the mesh is skinned, so a hook composes with
+    /// skinning rather than fighting it.
+    float4x4 ObjectToWorld;
+
+    /// World-space camera position — for billboarding, which is the one vertex
+    /// technique that is *about* the camera.
+    float3 CameraPos;
+
+    /// Seconds since the application's clock started, scaled by its time scale
+    /// (T0159.5). The same value `HpSurfaceInput::Time` carries, from the same
+    /// buffer. **Zero in a caller that passes no time**, never undefined.
+    float Time;
+};
+
+/// What the vertex hook fills in (T0146).
+///
+/// **Every field is pre-filled from the mesh before the hook runs**, so writing
+/// nothing produces exactly today's geometry and writing one field changes
+/// exactly that field — the same `inout` shape as `HpSurfaceOutput`, for the
+/// same reason.
+struct HpVertexOutput
+{
+    /// The displaced position, in **object space**. The engine transforms this.
+    float3 Position;
+
+    /// The displaced normal, in **object space**. The engine applies the node
+    /// transform's inverse-transpose to it, exactly as it does to the mesh's
+    /// own — so a hook that bends a normal writes the bent object-space normal
+    /// and nothing else.
+    ///
+    /// **Not renormalised by the engine before the transform**, matching what
+    /// the untouched path does; the transform normalises after.
+    float3 Normal;
+
+    /// The displaced tangent, in **object space**. Ignored by permutations
+    /// whose mesh carries no tangents.
+    float3 Tangent;
+
+    /// The first texture coordinate set the pixel stage will see. Writing it is
+    /// per-vertex UV animation — cheaper than the per-fragment equivalent and
+    /// the right tool when the motion is affine.
+    float2 UV0;
+
+    /// The second texture coordinate set; see `UV0`.
+    float2 UV1;
+
+    /// Per-vertex colour the pixel stage will see. A vertex-stage mask (wind
+    /// strength, a wetness gradient) that the pixel stage reads back through
+    /// `HpSurfaceInput::VertexColor` costs no extra interpolator, because this
+    /// one already exists — worth preferring over `Custom0` when it fits.
+    float4 VertexColor;
+
+    /// Four `float4` interpolators the vertex stage writes and the pixel stage
+    /// reads back as `HpSurfaceInput::Custom0` … `Custom3` (T0146.4).
+    ///
+    /// **Godot's `varying`, as a fixed count rather than a declaration**, and
+    /// the count is fixed for a reason worth knowing: `VSOutput` is generated
+    /// per permutation by `PBR_Renderer`, and what a module declares is known
+    /// only *after* the compile that would have to be told about it — the same
+    /// circularity D35 records against a rename pass. Four slots is the
+    /// number, sized against the 2026-08-06 capability audit.
+    ///
+    /// **They exist only in a custom-material permutation**, so a standard
+    /// material pays nothing at all; a module pays for all four whether it
+    /// writes them or not. Unwritten slots arrive as zero, not as noise.
+    /// Widening or making the count dynamic is additive and belongs with
+    /// T0151's variant work.
+    float4 Custom0;
+
+    /// See `Custom0`.
+    float4 Custom1;
+
+    /// See `Custom0`.
+    float4 Custom2;
+
+    /// See `Custom0`.
+    float4 Custom3;
+};
+
 /// What the engine hands a surface function.
 ///
 /// Read-only. Everything here is in **world space** unless the field says
@@ -396,6 +579,24 @@ struct HpSurfaceInput
     /// flowmaps and pulsing emissive animate on. **Zero in a caller that
     /// passes no time** (a bare `render()` call), never undefined.
     float Time;
+
+    /// The interpolated `HpVertexOutput::Custom0` (T0146.4) — the channel
+    /// from the vertex hook to this one.
+    ///
+    /// **Zero for a material with no vertex module**, and zero for a slot the
+    /// vertex hook did not write, so a shader may read it unconditionally.
+    /// Interpolated with perspective correction like every other varying; a
+    /// value that must not be interpolated belongs in a constant buffer.
+    float4 Custom0;
+
+    /// See `Custom0`.
+    float4 Custom1;
+
+    /// See `Custom0`.
+    float4 Custom2;
+
+    /// See `Custom0`.
+    float4 Custom3;
 };
 
 /// What a surface function fills in.

@@ -111,7 +111,32 @@ struct SlangReflectionRequest {
 /// archive or a developer cache serves bytecode from a compile that would no
 /// longer be made the same way, which is the one staleness this key cannot
 /// detect on its own.
-inline constexpr int kSlangDrivingSchema = 1;
+///
+/// **2 (T0146.5):** both stages of a surface pipeline are now added to one
+/// compile request as two entry points, so the driving changed in a way the
+/// source hash cannot see.
+inline constexpr int kSlangDrivingSchema = 2;
+
+/// One entry point of a program compile (T0146.5).
+///
+/// **The engine compiles a surface pipeline's two stages from one file in one
+/// request**, which is what makes owning the vertex main cheap: `DefineMacros`
+/// runs once, the include walk happens once, and slang parses the translation
+/// unit once instead of twice. Each entry point still yields its *own* SPIR-V
+/// module -- verified on the pinned `slangc 2026.14.1`, where a vertex entry
+/// point's module carried none of the pixel stage's globals -- so a stage's
+/// resource reflection stays exactly as narrow as the stage.
+struct SlangProgramStage {
+    /// The entry point's name in the source. `"main"` for a single-stage file;
+    /// `"vsMain"` / `"psMain"` for `HpSurface.slang`.
+    const char* entryPoint = "main";
+
+    /// Which pipeline stage it is compiled for.
+    ShaderStage stage = ShaderStage::Pixel;
+
+    /// Receives this entry point's bytecode. Never null.
+    std::vector<std::uint8_t>* spirv = nullptr;
+};
 
 /// @returns whether the slang runtime library could be loaded on this machine.
 ///
@@ -149,6 +174,36 @@ inline constexpr int kSlangDrivingSchema = 1;
                                        const SlangMacro* macros, std::size_t macroCount,
                                        Diligent::IShaderSourceInputStreamFactory* sources,
                                        std::vector<std::uint8_t>& outSpirv,
+                                       std::string& outDiagnostics,
+                                       const SlangReflectionRequest* reflect = nullptr);
+
+/// Compiles several entry points of one slang file in **one** compile request
+/// (T0146.5).
+///
+/// This is what `compileSlangToSpirv` is a one-stage wrapper around. The store
+/// is consulted per stage before anything is compiled, so a run whose vertex
+/// half is cached and whose pixel half is not still compiles once rather than
+/// not at all -- and a run where both hit compiles nothing.
+///
+/// **All or nothing on failure**: a compile error names the file once and no
+/// stage's bytecode is written, because a pipeline with one valid stage is not
+/// a pipeline.
+///
+/// @param filePath the shader's file name as the source factory knows it.
+/// @param stages the entry points to compile, each with its own output.
+/// @param stageCount how many.
+/// @param macros the permutation's preprocessor definitions.
+/// @param macroCount how many.
+/// @param sources resolves the file and its includes (142.4).
+/// @param outDiagnostics receives the compiler's message text.
+/// @param reflect what to report about the module, or null for nothing.
+///        Reflection is of the **program**, not of one entry point, so asking
+///        for it defeats the bytecode cache for every stage in this call.
+/// @returns whether every stage produced bytecode.
+[[nodiscard]] bool compileSlangProgram(const char* filePath, const SlangProgramStage* stages,
+                                       std::size_t stageCount, const SlangMacro* macros,
+                                       std::size_t macroCount,
+                                       Diligent::IShaderSourceInputStreamFactory* sources,
                                        std::string& outDiagnostics,
                                        const SlangReflectionRequest* reflect = nullptr);
 

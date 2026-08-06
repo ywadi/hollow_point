@@ -614,8 +614,17 @@ SceneRenderer::Impl::ensureModuleSrb(Diligent::IDeviceContext* context,
     const Diligent::PipelineResourceSignatureDesc& desc = signature->GetDesc();
     for (Diligent::Uint32 i = 0; i < desc.NumResources; ++i) {
         const Diligent::PipelineResourceDesc& resource = desc.Resources[i];
+        // **One stage bit, not the set** (T0146). A module's resource may be
+        // declared for the vertex *and* pixel stages since the vertex hook
+        // landed, and `GetVariableByName` indexes a per-stage variable manager
+        // -- handing it two bits finds nothing and logs a warning about an
+        // inconsistent shader type. Diligent stores one cache slot per
+        // resource whatever its stage mask, so setting through any one of its
+        // stages sets it for all of them; the lowest bit is as good as any.
+        const auto singleStage = static_cast<Diligent::SHADER_TYPE>(
+            resource.ShaderStages & (~resource.ShaderStages + 1U));
         Diligent::IShaderResourceVariable* variable =
-            srb->GetVariableByName(resource.ShaderStages, resource.Name);
+            srb->GetVariableByName(singleStage, resource.Name);
         if (variable == nullptr) {
             continue;
         }
