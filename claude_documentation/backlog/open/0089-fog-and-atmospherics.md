@@ -38,6 +38,11 @@ Nothing currently covers it.
 
 ## Notes / findings
 
+**From D32 (2026-08-06):** when the fog shader is built, it is authored
+against an interface a game can implement — the same default-methods shape as
+`IHpMaterial` — not as a sealed engine file. One design constraint now; the
+retrofit D27 exists to prevent, later.
+
 **Transparency plus fog is where this goes wrong.** Fog applied per-pixel on
 opaque geometry is straightforward; transparent surfaces need it applied
 consistently or they visibly float out of the fog. Decide the approach when the

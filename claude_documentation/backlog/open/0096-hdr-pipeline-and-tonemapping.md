@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 460 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0027, T0046, T0060, T0087, T0089, T0111, [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), [0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) — **DiligentFX ships its own `ToneMapping` component; this ticket's policy must say whether it is used** |
+| **Refs** | T0027, T0046, T0060, T0087, T0089, T0111, [../completed/0130-camera-lens-model.md](../completed/0130-camera-lens-model.md), [0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) — **DiligentFX ships its own `ToneMapping` component; this ticket's policy must say whether it is used**; [0148-post-process-stack.md](0148-post-process-stack.md) — the chain that hangs off 96.7's hook; the fold-vs-separate decision is recorded there (separate: this ticket's policy finishes first, the chain follows it) |
 
 ## Why
 

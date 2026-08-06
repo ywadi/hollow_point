@@ -43,6 +43,11 @@ physically-based atmospheric scattering implementation, and the previous
 
 ## Notes / findings
 
+**From D32 (2026-08-06):** when the sky shader is built, it is authored
+against an interface a game can implement — the same default-methods shape as
+`IHpMaterial` — not as a sealed engine file. One design constraint now; the
+retrofit D27 exists to prevent, later.
+
 **Dynamic ambient is the expensive part, not the sky itself.** Drawing a
 procedural sky is cheap. Keeping image-based ambient in sync means re-capturing
 the environment and re-running the prefilter chain (T0087) as the sun moves — and

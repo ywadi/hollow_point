@@ -72,7 +72,7 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 | 9 | [T0142.13](inprogress/0142-slang-shader-language.md) | retire the HLSL path | `HpMaterial.fxh` is still hand-written HLSL and `HpSurface.slang` still includes it, so T0142's "no hand-written HLSL in `engine/shaders/`" is **not** met. `hp_embed_shaders.cmake`'s fate is decided here too, because item 8 may replace it |
 | 10 | [T0143](open/0143-extended-material-features.md) | extended material features | **Everything DiligentFX's PBR has, plus the ability to override it** — clearcoat, sheen, anisotropy, iridescence, transmission, volume. Amends D24. Wiring rather than new maths, because their getters are already included and callable |
 | 11 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | **Shader-independent**, so it may slot anywhere — see below |
-| 12 | [T0086](open/0086-shadows.md) | shadows | Last because it needs the surface stage *and* adds `ShadowFactor` to the material contract, so it wants that contract settled in Slang first — **and it must confront the winding finding 141.12 recorded** before shadow bias is tuned |
+| 12 | [T0086](open/0086-shadows.md) | shadows | Last because it needs the surface stage *and* adds `ShadowFactor` to the material contract, so it wants that contract settled in Slang first — **and it must confront the winding finding 141.12 recorded** before shadow bias is tuned. **Now also behind T0145** (D30): the shadow lookup lives inside the light loop T0145 moves into the engine, so the loop must land before shadow sampling is written — or it is written twice |
 
 ### The three orphaned subtasks are numbered now — resolved 2026-08-06
 
@@ -220,6 +220,13 @@ wrong in the confident voice of a document that is normally right.
 | 425 | [T0143](open/0143-extended-material-features.md) | Everything DiligentFX's PBR has, and the ability to extend it | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 455 | [T0141](inprogress/0141-custom-shader-materials.md) | The surface stage: standard and custom material shaders | 4 — Render layer | 🚧 IN PROGRESS | High | Complex |
 | 460 | [T0096](open/0096-hdr-pipeline-and-tonemapping.md) | HDR pipeline, tonemapping and the linear-workflow policy | 4 — Render layer | 🔜 TODO | High | Moderate |
+| 445 | [T0151](open/0151-shader-variants-and-compile-cost.md) | Shader variants bounded: precompiled modules, link-time specialisation | 4 — Render layer | 🔜 TODO | Medium | Moderate |
+| 456 | [T0146](open/0146-vertex-stage-hook.md) | The vertex stage: own the vertex main, and a game vertex hook | 4 — Render layer | 🔜 TODO | High | Moderate |
+| 458 | [T0147](open/0147-engine-intermediates-for-shaders.md) | Engine intermediates: scene depth, scene colour, game-fed inputs | 4 — Render layer | 🔜 TODO | High | Moderate |
+| 465 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | 🔜 TODO | High | Complex |
+| 492 | [T0148](open/0148-post-process-stack.md) | The post-process stack: engine and game effects at one seam | 4 — Render layer | 🔜 TODO | Medium | Complex |
+| 542 | [T0149](open/0149-style-bundles.md) | Style bundles: the one-click looks | 4 — Render layer | 🔜 TODO | Medium | Complex |
+| 548 | [T0150](open/0150-compute-pipelines.md) | Compute pipelines: the stage D15 promised | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 470 | [T0079](completed/0079-lighting-system.md) | Lights and per-object light selection | 4 — Render layer | ✅ DONE | High | Complex |
 | 480 | [T0086](open/0086-shadows.md) | Shadow rendering | 4 — Render layer | 🔜 TODO | High | Complex |
 | 490 | [T0087](open/0087-environment-lighting.md) | Environment lighting, IBL and skybox | 4 — Render layer | 🔜 TODO | Medium | Moderate |

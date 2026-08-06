@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 480 |
 | **Created** | 2026-08-03 |
-| **Blocked by** | [../inprogress/0141-custom-shader-materials.md](../inprogress/0141-custom-shader-materials.md) **141.10** — the standard material shader. **141.0 is decided (D26): the engine owns the surface stage and Diligent is never modified**, so shadow sampling must be written against *our* pixel shader rather than `RenderPBR.psh`. Waiting is what stops it being built twice |
+| **Blocked by** | [../inprogress/0141-custom-shader-materials.md](../inprogress/0141-custom-shader-materials.md) **141.10** — the standard material shader. **141.0 is decided (D26): the engine owns the surface stage and Diligent is never modified**, so shadow sampling must be written against *our* pixel shader rather than `RenderPBR.psh`. Waiting is what stops it being built twice. **And T0145** (2026-08-06, D30): the shadow lookup (`FilterShadowMapFixedPCF`, `PBR_Shading.fxh:655`) sits *inside* `ApplyPunctualLight`, which T0145 mirrors into the engine's own lighting stage — its loop must land first, or shadow sampling is written against their loop and moved immediately after |
 | **Refs** | T0078, T0085, T0091, T0092, T0093, [../completed/0060-material-system.md](../completed/0060-material-system.md) — needs **cutout** materials (`AlphaMode::Mask`) for alpha-tested shadow casters, delivered by 60.1. **T0141.12 (2026-08-06): the engine's hardware winding is inverted relative to geometric facing** — a glTF front face rasterises as a hardware *back* face, single-sided materials cull `FRONT` to compensate, and `SV_IsFrontFace` reads false on camera-facing fragments. **Settle or accept that convention before tuning shadow bias and choosing the shadow-pass cull mode** — front-face culling for peter-panning avoidance means the *opposite* enum here, and getting it silently wrong is exactly the class of bug T0141's notes document |
 
 **From T0142/D28 (2026-08-06): the material contract is Slang now.** `ShadowFactor`
@@ -112,6 +112,16 @@ drawn again per light. A distant point light deserves a small map or none.
 **Shadow casters need their own culling** — the set visible to the *light* is not
 the set visible to the camera. Reusing camera culling produces shadows that pop in
 as their caster enters view, which is very noticeable.
+
+### From T0145/D30 (2026-08-06) — your sampling call site moves into our loop
+
+T0145 mirrors `ApplyPunctualLight`'s body (attenuation, cone, the
+`ENABLE_SHADOWS` block, kept shape-compatible for exactly this handoff) into
+the engine's lighting stage. Build cascades and filtering as planned, but the
+per-fragment lookup is written **once, in the engine's loop** — and the raw
+shadow factor becomes a contract field on the per-light method when this
+ticket lands (D27's arrival rule; it is the field Godot cannot expose, see
+T0145's notes).
 
 ### Cross-ticket obligations (2026-08-04, T0124 backfill)
 

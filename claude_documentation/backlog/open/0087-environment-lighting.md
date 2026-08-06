@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 490 |
 | **Created** | 2026-08-03 |
-| **Refs** | [0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) — **decide whether this ticket configures DiligentFX's IBL or supersedes it.** T0028 adopted `GLTF_PBR_Renderer`, which ships an IBL path |
+| **Refs** | [0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md) — **decide whether this ticket configures DiligentFX's IBL or supersedes it.** T0028 adopted `GLTF_PBR_Renderer`, which ships an IBL path; [0145-lighting-stage-own-the-light-loop.md](0145-lighting-stage-own-the-light-loop.md) — 145.4 keeps the IBL call a named seam inside the engine's lighting stage; this ticket fills that seam (and the ambient-off render mode 145.5 decides interacts with 87.8's local ambient control) |
 
 **From T0141 (2026-08-06): this ticket owns a check T0141 could not make.** The
 engine now samples metallic/roughness from a material's texture, and the guard

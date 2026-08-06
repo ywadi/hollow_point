@@ -9,7 +9,7 @@
 | **Order** | 540 |
 | **Created** | 2026-08-03 |
 | **Reframed** | 2026-08-04 — see "What this ticket is, and what it stopped being" |
-| **Refs** | T0044 (dropped), T0126, T0045, T0060, T0079, T0085, T0086, T0094, T0120, T0061, T0083, T0109 |
+| **Refs** | T0044 (dropped), T0126, T0045, T0060, T0079, T0085, T0086, T0094, T0120, T0061, T0083, T0109, T0147 |
 
 ## What this ticket is, and what it stopped being
 
@@ -65,7 +65,7 @@ and it fails if they are not. Each is a general capability with its own owner:
 
 | Capability | Owner | Why it is general, not vision-specific |
 |---|---|---|
-| Material shaders receive engine intermediates, not finished colour | **T0060** | any custom shading effect needs this |
+| Material shaders receive engine intermediates, not finished colour | **T0147** | any custom shading effect needs this |
 | Occlusion map renderable from an arbitrary frustum | **T0086** | shadows, projectors, portals, light cookies |
 | A projector that does **not** shade | **T0079** | decals (T0108), cookies, any masked projection |
 | Layer masks controlling what occludes | **T0085** | already general |

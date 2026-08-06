@@ -10,7 +10,7 @@
 | **Created** | 2026-08-05 |
 | **Blocked by** | T0060.1 + T0060.6 only — the material *asset* and per-surface assignment. **Not** the rest of T0060, which was re-cut into this ticket on 2026-08-05 |
 | **Blocks** | **T0086** — shadow sampling must be written against *our* pixel shader, not `RenderPBR.psh` (141.0 is decided; 141.10 is what T0086 now waits on). Height mapping, parallax occlusion, triplanar and vertex displacement — 141.7/141.8 — which no material parameter can express |
-| **Refs** | [../completed/0060-material-system.md](../completed/0060-material-system.md) (split from it), [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md), T0093, T0053, T0094, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D24 |
+| **Refs** | [../completed/0060-material-system.md](../completed/0060-material-system.md) (split from it), [../completed/0134-pbr-renderer-adoption.md](../completed/0134-pbr-renderer-adoption.md), T0093, T0053, T0094, [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D24, [../open/0145-lighting-stage-own-the-light-loop.md](../open/0145-lighting-stage-own-the-light-loop.md) — the lighting rung above this ticket's surface stage (D30), [../open/0146-vertex-stage-hook.md](../open/0146-vertex-stage-hook.md) — owns the `kVertexShader` move this ticket's 141.7 note anticipates, [../open/0147-engine-intermediates-for-shaders.md](../open/0147-engine-intermediates-for-shaders.md) — delivers the *sampled* intermediates this ticket's Done-when promises, [../open/0151-shader-variants-and-compile-cost.md](../open/0151-shader-variants-and-compile-cost.md) — where the "variant growth bounded by a written decision" Done-when gets its decision |
 
 ## Why
 
@@ -978,3 +978,19 @@ doubles the permutation count. Decide early whether variants are enumerated
 ahead of time or compiled on demand, and write the decision down.
 
 ## Notes / findings
+
+### 2026-08-06 — two Done-when items now have owners outside this ticket
+
+- **"Custom shaders receive engine intermediates"** is delivered in two
+  halves: `ScreenPos`/`WorldPos` landed with 141.6; the *sampled* half —
+  scene depth, scene colour, T0093's visibility, game-fed textures — is
+  **T0147**, created because no subtask here delivered it. When T0147 closes,
+  this box ticks against its evidence.
+- **"Variant growth is bounded by a decision that is written down"** — the
+  decision's mechanisms (precompiled modules, link-time specialisation, the
+  dynamic-dispatch escape hatch, all probed on the pinned slangc) live in
+  **T0151**. This box ticks when T0151's 151.5 writes the bound.
+
+The ladder above the surface stage — per-light and whole-loop overrides — is
+**T0145** (D30 amends D24 for it); the vertex stage is **T0146**. Both carry
+the sequencing consequences recorded here (T0086, T0041).

@@ -7,6 +7,7 @@
 | **Complexity** | Complex |
 | **Phase** | 4 — Render layer |
 | **Order** | 550 |
+| **Blocked by** | [0150-compute-pipelines.md](0150-compute-pipelines.md) — 80.2 is a compute dispatch and no compute pipeline exists; T0150 builds the stage and checks its shape against 80.2's needs (150.7) before closing |
 | **Created** | 2026-08-03 |
 | **Refs** | [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D15, T0106 (Blocks this), T0107 |
 

@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 415 |
 | **Created** | 2026-08-06 |
-| **Refs** | **D28** (the decision), D26, D27, **D29**/[T0144](../completed/0144-remove-opengl-backend.md) — removed the OpenGL backend and with it the single-source constraint, unblocking 142.2 and closing 142.13's GL half; [T0141](../inprogress/0141-custom-shader-materials.md) — this supersedes how 141.1, 141.2, 141.5, 141.13 and 141.15 are built; [T0143](../open/0143-extended-material-features.md) — the extended lineup is authored in Slang once this lands; T0087, T0096, T0086 — each adds shading their own shader work must reach |
+| **Refs** | **D28** (the decision), D26, D27, **D29**/[T0144](../completed/0144-remove-opengl-backend.md) — removed the OpenGL backend and with it the single-source constraint, unblocking 142.2 and closing 142.13's GL half; [T0141](../inprogress/0141-custom-shader-materials.md) — this supersedes how 141.1, 141.2, 141.5, 141.13 and 141.15 are built; [T0143](../open/0143-extended-material-features.md) — the extended lineup is authored in Slang once this lands; T0087, T0096, T0086 — each adds shading their own shader work must reach; [../open/0151-shader-variants-and-compile-cost.md](../open/0151-shader-variants-and-compile-cost.md) — owns the session/module-API disposition, precompiled modules against 142.6's 2–4x, and must decide cooked-output shape *with* 142.7; [../open/0150-compute-pipelines.md](../open/0150-compute-pipelines.md) — grows `SlangCompiler`'s stage mapping beyond the two-value ternary |
 
 ## Why
 
@@ -214,6 +214,20 @@ RTX 2080 — their arithmetic, to the byte.
 | 141.10 / 141.11 | **Done**, and 141.11 is the acceptance test for 142.3 |
 
 ## Notes / findings
+
+### For 142.9, measured on the pinned slangc: parameters and hints need no parser
+
+- **`ParameterBlock<T>` works on SPIR-V**: each block lands in its own
+  descriptor set (probe: two blocks → sets 0 and 1, members auto-assigned).
+  A custom material's parameters as a ParameterBlock is the typed alternative
+  to hand-rolled constant buffers when 142.9 gets there.
+- **User-defined attributes survive into reflection**: `[Range(0.0, 1.0)]
+  float roughness;` (declared via `[__AttributeUsage(_AttributeTargets.Var)]`)
+  appears in `-reflection-json` as `userAttribs: [{name: "Range", arguments:
+  [0.0, 1.0]}]` — Godot's `hint_range` shape, carried by the compiler, no
+  annotation parsing. Layout and hints from one reflection pass, no device.
+- Reflection JSON also lists **both entry points of a two-stage module** from
+  one compile — relevant to T0146's single-module plan.
 
 ### 2026-08-06, overnight session — the mechanism landed, measured as it went
 
