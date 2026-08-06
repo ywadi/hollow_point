@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
@@ -54,23 +54,23 @@ The engine pre-declares `HpSamplerLinearWrap`, `HpSamplerLinearClamp`, `HpSample
 
 ## Done when
 
-- [ ] A game module **declares its own textures and buffers under its own names**, at arbitrary count, and a `.hpmat` binds them by those names
-- [ ] The **same mechanism is demonstrably stage-neutral** — the signature-from-reflection helper is written so T0146/T0150/T0148 add only "engine pass signature at index 0"
-- [ ] **The go/no-go measurement exists** (below), and the decision is recorded against the number rather than the argument
-- [ ] **`HpTexture0…3` are migrated**, and a shipped v2 `.hpmat` still loads and renders identically
-- [ ] **Plain glTF materials are byte-identical** and carry *fewer* descriptors than before
-- [ ] **D35 is written**, so the stage-agnostic rule is a decision rather than a thing we remembered once
+- [x] A game module **declares its own textures and buffers under its own names**, at arbitrary count, and a `.hpmat` binds them by those names — textures end to end; buffer declarations ride the same helper (`ModuleSignaturePolicy::allowBuffers`, carrying BUFFER_SRV/UAV and TEXTURE_UAV) and a *surface* module declaring one is refused by name until T0147/T0150 provide a data path that could feed it — their Refs now carry the pointer
+- [x] The **same mechanism is demonstrably stage-neutral** — the signature-from-reflection helper is written so T0146/T0150/T0148 add only "engine pass signature at index 0"
+- [x] **The go/no-go measurement exists** (below), and the decision is recorded against the number rather than the argument
+- [x] **`HpTexture0…3` are migrated**, and a shipped v2 `.hpmat` still loads and renders identically
+- [x] **Plain glTF materials are byte-identical** and carry *fewer* descriptors than before
+- [x] **D35 is written**, so the stage-agnostic rule is a decision rather than a thing we remembered once
 
 ## Subtasks
 
 - [x] 161.1 **Measure first — this is the gate.** Wall-clock CPU frame time for a scene of N custom-material draws, base signature vs base + per-module, on this machine and on llvmpipe. The architecture argument says the marginal cost is one handle in an existing bind call; this project's rule is that an argument is not a number. **If it is expensive, stop and report rather than proceeding.**
-- [ ] 161.2 **The sampler palette** in the base signature and the contract, replacing the hardcoded `Sam_LinearWrap` on module slots
-- [ ] 161.3 **Generalise reflection**: keep *every* author-named resource rather than matching the four reserved names. Dev-time slang reflection sees resource **dimension**; Diligent's `ShaderResourceDesc` does not — so **check dimension there, loudly, by name**, or a `Texture2D`/`Texture2DArray` mismatch surfaces as a raw Vulkan validation error in cooked builds
-- [ ] 161.4 **Build the per-module signature** at PSO-creation time, cached by the module's content hash so two materials sharing a module share the signature
-- [ ] 161.5 **The module SRB**, created lazily on the draw path beside the existing one, with `bindShaderParamSlots` generalised from four fixed slots to a walk over arbitrary names — its white-fallback, checkerboard and GUID-resolution logic transfers verbatim
-- [ ] 161.6 **Migrate `HpTexture0…3`.** They stay as deprecated-but-working declarations; a v2 `.hpmat` naming them binds through the same generalised walk. **Removal from the shared signature is forced, not optional** — a duplicate across signatures is a loud PSO-creation failure, so the migration cannot silently half-happen
-- [ ] 161.7 **Test it properly**: an author-named texture end to end (declare, value, render, exact pixels); a v2 `.hpmat` unchanged; the plain-material byte-identical baseline; the descriptor count *dropping*; a dimension mismatch failing by name; the magenta guard on every asserted frame
-- [ ] 161.8 **Write D35** and flip the matrix's `Game-declared textures` cell to **Y**, with the sampler-state cap recorded as the one deliberate limit
+- [x] 161.2 **The sampler palette** in the base signature and the contract, replacing the hardcoded `Sam_LinearWrap` on module slots
+- [x] 161.3 **Generalise reflection**: keep *every* author-named resource rather than matching the four reserved names. Dev-time slang reflection sees resource **dimension**; Diligent's `ShaderResourceDesc` does not — so **check dimension there, loudly, by name**, or a `Texture2D`/`Texture2DArray` mismatch surfaces as a raw Vulkan validation error in cooked builds
+- [x] 161.4 **Build the per-module signature** at PSO-creation time, cached by the module's content hash so two materials sharing a module share the signature
+- [x] 161.5 **The module SRB**, created lazily on the draw path beside the existing one, with `bindShaderParamSlots` generalised from four fixed slots to a walk over arbitrary names — its white-fallback, checkerboard and GUID-resolution logic transfers verbatim
+- [x] 161.6 **Migrate `HpTexture0…3`.** They stay as deprecated-but-working declarations; a v2 `.hpmat` naming them binds through the same generalised walk. **Removal from the shared signature is forced, not optional** — a duplicate across signatures is a loud PSO-creation failure, so the migration cannot silently half-happen
+- [x] 161.7 **Test it properly**: an author-named texture end to end (declare, value, render, exact pixels); a v2 `.hpmat` unchanged; the plain-material byte-identical baseline; the descriptor count *dropping*; a dimension mismatch failing by name; the magenta guard on every asserted frame
+- [x] 161.8 **Write D35** and flip the matrix's `Game-declared textures` cell to **Y**, with the sampler-state cap recorded as the one deliberate limit
 
 ## Not in scope
 
@@ -129,6 +129,78 @@ It is the default in GPU-driven AAA renderers — id Tech 7, SM6.6's `ResourceDe
 ### The descriptor budget improves
 
 Removing the four slots and the params buffer from the shared signature takes every **plain glTF material** from 10 sampled images / 11 immutable samplers to **6 / 7**, plus the shared palette in the base signature. Custom materials pay exactly what they declare. T0143's projected ~26 images drops by the four it would have inherited.
+
+### Landed 2026-08-07 — what shipped, and the evidence
+
+**The mechanism** (commit after the gate): the compiled pixel shader's Diligent
+reflection is walked, every name the engine's signatures own is subtracted, and
+what is left — the module's, by construction, since it is exactly the set PSO
+creation would fail on — becomes a second `PipelineResourceSignature` at
+binding 1. `engine/src/ModuleResourceSignature.{hpp,cpp}` is the stage-neutral
+helper: a stage passes its base-signature names and a `ModuleSignaturePolicy`
+(`requireTexture2DArray`, `allowBuffers`, `onlyConstantBuffer`), and T0146 /
+T0150 / T0148 / T0147 now carry Refs saying so. Signatures are cached on the
+hash of the **resource set** — see below for why not the module path.
+`HpMaterialParams` moved into the module signature; the module SRB is created
+lazily on the draw path and cached per signature on the material binding; the
+old slot binder's white/checkerboard/GUID logic transferred to author names.
+
+**Evidence, all on both targets (wine included), RTX 2080:**
+
+- gpu suite 45/45, fast 321 + integration 92 on both targets, `zig build all`
+  and `zig build docs` clean.
+- Author-named end to end: 6 declared textures (2 more than the old slot
+  count), 2 bound by `.hpmat` name, 1 sampled-unbound reading the documented
+  white, 3 unused costing nothing, the declared parameter riding the same
+  signature — **(255, 255, 137) exact**, magenta count 0, three palette
+  samplers doing the sampling.
+- Shipped v2 `.hpmat`: the rockcube sample suite (exact-pixel assertions over
+  `rock.hpmat` + `rock_pom.slang`) and T0160's `HpTexture0` test pass
+  unchanged.
+- Plain materials byte-identical: `no-height vs zero-scale: 0` on all three
+  parallax baselines.
+- Descriptors dropped: base signature counted at creation — **6 sampled
+  images, 13 immutable samplers, 4 constant buffers** against T0160's 10/11,
+  logged by the renderer and pinned by a test.
+- Refusals by name, once each, checkerboard rendered: `Texture2D` dimension
+  mismatch (dev-time slang shape, the only place it is visible); an
+  author-declared `SamplerState` (palette listed in the line); a surface
+  buffer; an array-of-textures; a second constant buffer.
+- Scene path after migration: 400 custom draws at 1.86–1.93 ms/frame against
+  the 1.87 ms pre-migration baseline — the 34 ns/draw the gate measured is
+  invisible end to end.
+
+### Findings the next stage should know
+
+- **The signature cache key is the resource *set*, not the module's content
+  hash the subtask named.** Reflection reads the compiled SPIR-V and slang
+  strips unused globals, so two *permutations* of one module can carry
+  different used sets (rock_pom's whole body is inside a permutation `#if`).
+  A path- or content-keyed signature would either underdeclare for one
+  permutation (PSO failure) or force declaration-set reflection the cooked
+  path cannot produce. Keying on the set itself makes every PSO's signature
+  exactly right and shares harder than the subtask asked — two different
+  modules with the same declarations share too. The SRB cache on the material
+  binding is keyed per signature pointer for the same reason.
+- **`layout.textures` is the used set**, so a texture sampled only inside an
+  inactive permutation is absent from that permutation's layout; a `.hpmat`
+  naming it is leniently ignored, same as every other absent name. Recorded
+  in `ShaderParamLayout`'s doc.
+- **The legacy slot samplers are `#define` aliases** of `HpSamplerLinearWrap`
+  in the contract (bit-identical state), not four extra immutable samplers —
+  which is why the sampler count is 13 and not 17.
+- **The palette is declared `VS_PS`**, so T0146's vertex modules sample it
+  with no base-signature change.
+- **`gen_shader_docs.py` now documents top-level globals** in public regions —
+  the palette and the deprecated slots were invisible to it before, and the
+  conventions that are not declarations (reserved block name, the
+  two-namespace split, the sampler cap) moved into `HpMaterial.slang`'s file
+  preamble, which the generator already emits. Nothing new was built; the
+  docs-system ticket keeps its scope.
+- **A benchmark loop that never presents must call `FinishFrame` itself** or
+  Diligent's per-frame dynamic heap grows without bound — the 213 µs/draw
+  first reading, kept as a worked example in the 161.1 findings above, with
+  the base-rerun control now standing in the test.
 
 ### What could not be determined
 

@@ -20,22 +20,33 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-07 — twenty-first revision: `T0161` takes the top, and **D35**
-makes its lesson a rule.** The sequence stays one thing: *give game developers
-full power over shaders*.
+**Set 2026-08-07 — twenty-second revision: `T0161` closed the same day it took
+the top, and a game module's resources are its own.** The sequence stays one
+thing: *give game developers full power over shaders*.
 
-What is left of that is **resources**, and the audit's lesson arrived a second
-time to say so. T0160's four engine-named texture slots are adequate for every
-material technique in the matrix and are a wall in front of the first vertex,
-compute or post-process module wanting a resource of its own — so T0146, T0150
-and T0148 would each rediscover it. **D35 now makes stage-agnostic the rule**
-rather than something remembered once, and pairs it with the standing
-instruction to add a technique's row to the capability matrix *before* building
-it. Researched 2026-08-07; `ParameterBlock<T>` and bindless were both evaluated
-and rejected on evidence, recorded on the ticket and in D35 so neither is
-re-litigated.
+T0161 landed whole: a module declares `Texture2DArray detailAlbedo;` under its
+own name at any count, the engine reflects the compiled shader and builds a
+per-module resource signature by subtracting its own names, and the `.hpmat`
+binds by the author's names. The gate was measured before the design was
+committed to — **34 ns per draw** on the RTX 2080, 40 on llvmpipe, and the
+first reading (213 µs) was the harness, not the mechanism. `HpTexture0…3` are
+deprecated declarations binding through the same walk; a plain glTF material
+dropped from 10 sampled images / 11 immutable samplers to **6 / 13** (palette
+included) and stays byte-identical — `no-height vs zero-scale: 0` on all three
+parallax baselines, the rockcube v2 `.hpmat` pixel-exact. Sampler *state* is
+the one deliberate limit: the six-name immutable palette, an author's own
+`SamplerState` refused by name (D35). The stage-neutral helper
+(`ModuleResourceSignature.hpp`) is what T0146, T0150 and T0148 consume — each
+now carries the Ref saying it supplies only its base signature's names and its
+policy.
 
-Previously — the twentieth revision: `T0160` closed and a game can
+Previously — the twenty-first revision: `T0161` took the top and **D35** made
+its lesson a rule: a game-facing mechanism is designed stage-agnostically or
+not at all, and a technique gets its matrix row *before* it is built.
+`ParameterBlock<T>` and bindless were evaluated and rejected on evidence,
+recorded on the ticket and in D35 so neither is re-litigated.
+
+Before that — the twentieth revision: `T0160` closed and a game can
 ship a *tunable* material.
 
 T0160 landed the largest single row-unblocker in the capability matrix. A game's
@@ -147,10 +158,9 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0161](inprogress/0161-game-resource-model.md) | the game resource model | **The last limit on a game author, and it is the same limit at four stages.** T0160 gave them named parameters and left four engine-named texture slots; the identical wall stands in front of T0146's vertex modules, T0150's compute shaders and T0148's post effects. Researched 2026-08-07: reflect the module's own names off the compile that already happens and bind a per-module signature beside the base one — the budget *improves*, a plain material drops from 10 images/11 samplers to 6/7. **Establishes D35**, and must land before the three that consume it |
-| 2 | [T0146](open/0146-vertex-stage-hook.md) | the vertex stage hook | **Zero of six techniques expressible.** Wind, foliage sway, billboarding, displacement, morph targets, per-instance offsets — the only family with an empty intersection. We use DiligentFX's vertex shader as-is, so there is no hook to open; this one is built, not exposed. Also carries custom interpolators, which every future per-vertex technique needs |
-| 3 | [T0147](open/0147-engine-intermediates-for-shaders.md) | screen resources for shaders | Refraction, soft particles, heat haze, fog-of-war. A shader cannot sample a depth buffer that is not bound to the pipeline, whatever it includes — so this is binding work, not contract work |
-| 4 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | the light loop | **The whole NPR family** — cel, ramp, hatching, custom BRDFs — plus skin, sheen and anisotropy's shading half. T0159 lets a game *read* lights; this lets it replace the loop. **Must land after T0159**, or its interface freezes before hooks are mutable and the break is paid twice |
+| 1 | [T0146](open/0146-vertex-stage-hook.md) | the vertex stage hook | **Zero of six techniques expressible.** Wind, foliage sway, billboarding, displacement, morph targets, per-instance offsets — the only family with an empty intersection. We use DiligentFX's vertex shader as-is, so there is no hook to open; this one is built, not exposed. Also carries custom interpolators, which every future per-vertex technique needs |
+| 2 | [T0147](open/0147-engine-intermediates-for-shaders.md) | screen resources for shaders | Refraction, soft particles, heat haze, fog-of-war. A shader cannot sample a depth buffer that is not bound to the pipeline, whatever it includes — so this is binding work, not contract work |
+| 3 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | the light loop | **The whole NPR family** — cel, ramp, hatching, custom BRDFs — plus skin, sheen and anisotropy's shading half. T0159 lets a game *read* lights; this lets it replace the loop. **Must land after T0159**, or its interface freezes before hooks are mutable and the break is paid twice |
 
 Then, unchanged in substance and pushed behind the above: `T0143` (extended
 material features), `T0152` (the winding remainder), `T0045` (culling and render
@@ -307,7 +317,7 @@ wrong in the confident voice of a document that is normally right.
 | 464 | [T0158](inprogress/0158-parallax-depth-cues.md) | Making parallax read as relief: the reference plane and self-shadowing | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
 | 465 | [T0159](completed/0159-open-the-material-contract.md) | Open the material contract: DiligentFX exposed, state across hooks | 4 — Render layer | ✅ DONE | High | Moderate |
 | 466 | [T0160](completed/0160-material-declared-parameters.md) | Material-declared parameters and resources | 4 — Render layer | ✅ DONE | High | Moderate |
-| 464 | [T0161](inprogress/0161-game-resource-model.md) | The game resource model: a module declares its own resources, by name, at every stage | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
+| 464 | [T0161](completed/0161-game-resource-model.md) | The game resource model: a module declares its own resources, by name, at every stage | 4 — Render layer | ✅ DONE | High | Moderate |
 | 464 | [T0155](open/0155-terrain-rendering.md) | Terrain rendering: their reference implementation is the floor, not the ceiling | 4 — Render layer | 🔜 TODO | Medium | Very Complex |
 | 465 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | 🔜 TODO | High | Complex |
 | 492 | [T0148](open/0148-post-process-stack.md) | The post-process stack: engine and game effects at one seam | 4 — Render layer | 🔜 TODO | Medium | Complex |

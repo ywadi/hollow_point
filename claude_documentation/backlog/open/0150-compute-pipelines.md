@@ -9,7 +9,7 @@
 | **Order** | 548 |
 | **Created** | 2026-08-06 |
 | **Blocks** | [0080-particles.md](0080-particles.md) — 80.2 *is* a compute dispatch (D15: "GPU compute... this subtask is the system"), and no compute pipeline exists to write it against |
-| **Refs** | **D15** (the commitment), **D32** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)); [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md) — `SlangCompiler` grows a stage; D22 — the shape any gameplay exposure must take; T0050 — transitions are not thread-safe, and dispatch placement must respect it; T0030 — dispatches need GPU zones |
+| **Refs** | **T0161** ([../completed/0161-game-resource-model.md](../completed/0161-game-resource-model.md)) / **D35** — a compute module's buffers and textures come from `buildModuleSignatureDesc` (`engine/src/ModuleResourceSignature.hpp`) with `ModuleSignaturePolicy::allowBuffers = true`; the helper already carries BUFFER_SRV/UAV and TEXTURE_UAV, so this ticket supplies the compute base signature's names and the data paths that feed what a module declares — never a parallel reflection walk; **D15** (the commitment), **D32** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)); [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md) — `SlangCompiler` grows a stage; D22 — the shape any gameplay exposure must take; T0050 — transitions are not thread-safe, and dispatch placement must respect it; T0030 — dispatches need GPU zones |
 
 ## Why
 
