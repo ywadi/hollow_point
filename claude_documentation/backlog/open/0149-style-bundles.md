@@ -41,18 +41,72 @@ and has *their* style — progressive disclosure applying inside the style
 system itself. A style must therefore be an asset a game can author, not an
 enum the engine ships.
 
-## Owner decisions — left open deliberately, this ticket cannot start until they are answered
+## Owner decisions — answered 2026-08-06, and they shrink this ticket
 
-- **Are shipped styles an engine product or sample content?** Engine-shipped
-  styles become API: every game that picked "toon" inherits changes to it on
-  engine upgrade — that is a promise with D27's weight. Sample styles are
-  copied into a project and frozen there — no promise, less magic. This is a
-  studio-product question, not an engineering one.
-- **Which styles ship first**, and what does "toon out of box" mean visually?
-  A ramp count, an outline yes/no, and a reference image are product choices.
-- **Is a style per-project or per-scene?** Per-scene styles imply switching
-  cost mid-game (pipeline rebuilds); per-project is cheaper and probably the
-  right first answer, but it forecloses the security-camera-in-noir trick.
+- **Content, not engine API — and cloned on use.** *"they can be content
+  applied by the editor and 'cloned' to use so that even if version changed
+  they are shipped."* The editor copies a style into the project; the project
+  owns its copy from then on. **This removes D27's weight entirely** — an
+  engine upgrade cannot change a shipped game's look, because the game is not
+  referencing the engine's copy.
+
+  **The named cost, so nobody files it as a bug:** a cloned style does not
+  receive improvements either. Fix the toon style and existing projects keep
+  their copy until somebody re-clones. For content that is normal; it is only
+  surprising if you were expecting API semantics.
+- **Realistic and toon are the first two**, named by the owner as the examples.
+  They are deliberately opposite ends: realistic exercises IBL, shadows,
+  tonemapping and T0143's features; toon exercises the rung-3 BRDF override and
+  an outline pass. Between them they cover both halves of what a style *is*.
+  Ultra-realistic and noir stay as later derivations (149.4, 149.5).
+- **Per project, changeable at runtime by the game.** *"Probably per project but
+  the game dev has control to change within each project dynamically."*
+
+  **This is a hard constraint, not a preference**, and it lands on T0151 and
+  T0141.3 rather than here: a style switch that changes the shading model
+  changes pipelines, and a pipeline built on demand is a visible stall. Every
+  style's pipelines must be cooked or cached ahead. See the Godot/Unreal note
+  below — both engines built substantial machinery for exactly this, and it is
+  the single most expensive consequence of the word "dynamically".
+
+## This ticket is much smaller than it was, and the reason is the Godot/Unreal comparison
+
+**Neither Godot nor Unreal has a style system.** Unreal ships no toon mode;
+Godot ships none either. What both ship are *primitives* — per-object material
+override, post-process volumes, material parameter instances, environment
+settings — and a "style" is something a game or a marketplace package
+assembles out of them.
+
+Following them, **the engine builds the primitives and a style becomes
+content.** That is both the easier and the stronger answer, and it is why the
+three questions above stopped being blocking: with no engine-side style
+*system*, there is no API promise to size, no versioning policy to write, and
+no per-scene-versus-per-project machinery to build.
+
+What that leaves as genuinely missing, ranked — and note that most of it is
+owned elsewhere:
+
+| Primitive | Status | Owner |
+|---|---|---|
+| Per-surface material assignment | **landed** (141.12, the `Assigned` row) | — |
+| **BRDF override** | not started | **T0145** |
+| Post-process chain | nothing exists | **T0148** |
+| Project/scene-wide material override | does not exist | **unticketed** — see below |
+| Precompiled pipelines so a switch does not stall | not started | T0151 + 141.3 |
+
+**Material switching alone is not sufficient, and this is the load-bearing
+finding.** Swapping a material changes the *surface* — albedo, roughness,
+normals. It cannot change *how light is applied*, and toon shading is
+fundamentally quantised `N·L`, which lives in the light loop. This is precisely
+why toon in Unreal is painful (fixed shading models, so people reach for
+post-process materials or engine-source edits) and why Godot can do it (it has
+`light()`). **T0145 is what makes this ticket possible at all**, which is why
+it is the blocker rather than a nice-to-have.
+
+**Still to ticket:** a project- or scene-wide material override — "render
+everything with this material". It is the cheapest large win here, most of what
+"one click" means mechanically, and a small addition on `resolveMaterialSlot`.
+It was not raised until the Godot comparison made it obvious.
 
 ## Done when
 
@@ -72,8 +126,12 @@ enum the engine ships.
 
 ## Subtasks
 
-- [ ] 149.1 The bundle asset: fields, serialisation, reflection — after the
-      owner questions above are answered
+- [ ] 149.1 The bundle asset: fields, serialisation, reflection — **and the
+      clone-on-use semantics the owner chose**, which is the part that decides
+      whether this is content or API. The editor copies; the project owns the
+      copy. **Hold this until T0145 and T0148 are shaped** — they may absorb it
+      entirely, and a bundle format written against primitives that do not
+      exist yet is work done twice
 - [ ] 149.2 The toon style — consumes T0145's 145.7 ramp material as its seed,
       adds the style-scoped defaults around it
 - [ ] 149.3 The realistic baseline style (today's output, named — the identity

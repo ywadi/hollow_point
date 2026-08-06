@@ -116,6 +116,36 @@ sampling into *our* loop, once.
 
 ## Notes / findings
 
+### Owner decision 2026-08-06 — the mirrored-loop maintenance is accepted, and the drift guard is built properly
+
+The cost this ticket names — roughly 120 lines copied from `ApplyPunctualLight`,
+re-diffed against DiligentFX on every submodule bump — was put to the owner in
+plain terms: *every time we upgrade Diligent, somebody re-reads their ~120 lines
+to see if anything needs porting across.*
+
+**Accepted, with a steer that changes how to build it:** *"Claude Code will be
+doing the work so we should optimize for the right path."* So the drift guard is
+not a minimum-effort tripwire to spare a human a chore — it should be built to
+catch a real upstream change and show what moved. **Do not compromise the
+architecture to shrink a cost that is not a human one.**
+
+**Offer the hook upstream regardless**, and not to save the effort: a merged
+upstream seam is strictly better than a maintained copy, and if it lands the
+copy disappears. This is T0141's C1/C3 reasoning applied one layer down — write
+it as something offerable, use it either way.
+
+### Build one toon material early, as a probe rather than a style
+
+T0149's toon style is content and arrives last. That leaves a gap: **nothing
+stress-tests this stage's interface before it is frozen**, and D27's promise is
+that adding to a contract is free while removing breaks shipped games.
+
+So build a throwaway toon material *during* this ticket — not shipped, not a
+style, not T0149's. Its only job is to find out whether the interface is short
+while that is still cheap to fix. This is the same role parallax (141.7) plays
+for the surface stage, and that precedent found a real answer rather than
+confirming one.
+
 ### The struct economics, measured (2026-08-06)
 
 The per-light hook's natural vocabulary is cheap to promise:

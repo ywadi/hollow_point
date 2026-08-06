@@ -79,6 +79,27 @@ security-camera static that T0149's custom styles will name.
 
 ## Notes / findings
 
+### 2026-08-06 — this matters more than "noir needs it", and the Godot/Unreal comparison is why
+
+This ticket was justified largely by dark noir needing grading, vignette and
+grain. That undersells it. **Post-processing is half of *every* style**, not one
+style's requirement — and it is the piece both comparison engines lean on
+hardest:
+
+- **Unreal**: Post Process Volumes are blendable at runtime and are where a
+  look actually lives. Unreal has no built-in toon shading model, so a
+  post-process material is the *standard* workaround.
+- **Godot**: `WorldEnvironment` carries tonemap, glow, SSAO, fog and colour
+  adjustments, and swapping one is cheap because it is parameters rather than
+  pipelines.
+
+The shared lesson: both engines split a look into a **cheap layer** (parameters
+and post, switchable instantly) and an **expensive layer** (shader structure,
+needing precompiled pipelines). This stack is the cheap layer, which makes it
+the part of a style that can actually change at runtime without a stall — and
+therefore the part that carries most of the owner's "changeable dynamically"
+requirement. See T0149 and T0151.
+
 ### Why the game shape is a fragment shader and not a compute hook
 
 Godot's `CompositorEffect` is compute-only, which forces every simple colour

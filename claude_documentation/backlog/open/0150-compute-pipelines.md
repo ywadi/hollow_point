@@ -82,6 +82,21 @@ exceeds nothing.
 
 ## Notes / findings
 
+### Owner decision 2026-08-06 — build it now, ahead of T0080
+
+Asked whether compute should land now or after T0080's experience, the owner
+chose now: *"Probably now, because this can be built on for 0080."* That matches
+what this ticket already records — T0080's GPU particles need a compute stage
+and cannot invent one.
+
+**One caveat, and it is an engineering one rather than a disagreement.**
+Building a subsystem with no consumer risks designing it against imagined
+requirements, and a compute API shaped by guesses is the kind of wrong
+abstraction that is expensive to unpick later. **Sequence T0080 immediately
+behind this**, or make the first compute pass something concrete, so the shape
+is decided by a real user rather than by anticipation. "It compiles and
+dispatches" is not evidence the API is right.
+
 ### Sequencing
 
 Sits directly before T0080 in the order because that is its first consumer;

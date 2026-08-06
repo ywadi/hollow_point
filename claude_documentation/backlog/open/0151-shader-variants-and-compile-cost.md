@@ -103,6 +103,40 @@ whose register pressure is the *maximum* over registered materials.
 
 ## Notes / findings
 
+### Owner decision 2026-08-06 — runtime style switching is a requirement, and it lands here
+
+T0149's styles are **per project, with the game able to change them at
+runtime**. That sentence is cheap to say and expensive to honour, and this is
+the ticket that pays for it: a style that changes the shading model changes
+pipelines, and a pipeline built on demand is a visible stall.
+
+**Both comparison engines had to build machinery for exactly this**, which is
+the strongest available evidence that it is not avoidable by being careful:
+Godot added ubershaders and pipeline precompilation in 4.4 and a shader baker in
+4.5; Unreal has PSO precaching and bundled PSO caches, and "shader compilation
+stutter" is its most notorious complaint regardless. **Neither engine lets you
+switch a shading model cheaply at runtime.** So every style's pipelines must be
+cooked or cached ahead — this ticket, plus T0141.3's cache and T0142.7's
+cooking.
+
+### The dynamic-dispatch door should be reopened against this use case, not closed
+
+D30 records Slang's existential dynamic dispatch as **rejected for now** —
+verified working to SPIR-V (`-conformance`, an `OpSwitch` over type IDs, one
+pipeline for N materials), rejected because opaque members are forbidden in
+dyn-conforming structs and the fix (`DescriptorHandle<T>` bindless) needs
+descriptor indexing the engine has not adopted.
+
+**Runtime style switching is precisely the use case that would justify paying
+that price.** One pipeline with a type-ID switch makes a style change nearly
+free — which is the thing Godot and Unreal both built elaborate caching to
+*fake*. The trade is a runtime dispatch cost per material against an entire
+class of stall disappearing.
+
+This is not a decision to take here, but it should be **measured before this
+ticket settles on precompilation as the only answer**, because the two are
+alternatives and only one of them has been costed.
+
 ### Godot's answer to the same problem (4.7.1, surveyed 2026-08-06)
 
 Specialisation constants + **ubershaders** (4.4): a generic variant compiled
