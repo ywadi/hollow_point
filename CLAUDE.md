@@ -125,12 +125,20 @@ required, and the build says so loudly if it falls back to something there.
 
 ### Which runner executes the Windows suite — read the line, do not assume
 
-**On a WSL host the Windows suite runs as a genuine Windows process, not under
-wine.** `binfmt_misc` hands a `.exe` to the real Windows loader, which is higher
-fidelity than wine and needs nothing installed (T0004). Wine is the **fallback**
-for a real Linux box, and `build.zig` calls it *"a degraded path, not a normal
-one"* (T0125). CI's ubuntu runner is such a box, so **CI does use wine** — that
-is the one place the word belongs.
+**It depends on the host, and both answers are correct.**
+
+- **On a WSL host**, `binfmt_misc` hands a `.exe` to the real Windows loader, so
+  the suite runs as a **genuine Windows process** — higher fidelity than wine and
+  needing nothing installed (T0004).
+- **On a real Linux box, wine is the right answer and the only one.** That
+  includes CI's ubuntu runner *and* a Linux development machine — this project is
+  developed on both, so **neither path is the exceptional one**. T0001 proved wine
+  runs this project's binaries including DLL loading.
+
+`build.zig` prints *"a degraded path, not a normal one"* **only** when it finds a
+WSL host whose interop state it cannot read (T0125) — a machine that should have
+been native and was not. It does **not** say that about a plain Linux box, and
+neither should you: choosing wine there is not a fallback from anything.
 
 The build **prints** which one it picked, and that line exists precisely because
 this has been guessed wrong:
@@ -143,14 +151,24 @@ this has been guessed wrong:
 Read it. Saying "verified under wine" about a run that was native understates
 the evidence, and it has now happened in two separate sessions' reports.
 
-**And on this WSL host the *Linux* target gets software Vulkan.** The Linux ICD
-list is `asahi, gfxstream, intel_hasvk, intel, lvp, nouveau, radeon, virtio` —
-`lvp` is lavapipe and there is no NVIDIA ICD, so `llvmpipe` is all Vulkan can
-pick, while the *Windows* target run reaches the real GPU. So a gpu-suite claim
-is hardware-backed on the Windows target and software-backed on the Linux one,
-and the tests print the device. Environment configuration, not an engine defect;
-Mesa's dozen driver over the existing `libd3d12.so` is the known route and
-nobody has needed it yet.
+**Which GPU the suite got is also per-host, so read the device line too.** The
+tests print it, for the same reason the runner line exists.
+
+**On the WSL host** the *Linux* target gets **software** Vulkan: its ICD list is
+`asahi, gfxstream, intel_hasvk, intel, lvp, nouveau, radeon, virtio` — `lvp` is
+lavapipe, there is no NVIDIA ICD, so `llvmpipe` is all Vulkan can pick, while the
+*Windows* target reaches the real GPU. Environment configuration, not an engine
+defect; Mesa's dozen driver over the existing `libd3d12.so` is the known route
+and nobody has needed it yet.
+
+**On a Linux box with a working driver it is the other way round or better** —
+the Linux target runs natively on the real GPU, and wine forwards Vulkan to the
+same driver, so the Windows target usually reaches it too.
+
+**So "the Linux target is software-backed" is a fact about one machine, not about
+this project.** Do not carry a device claim between hosts; read what the run
+printed on the host it ran on. Getting this backwards is the same error as
+assuming the runner, one layer down.
 
 ### Deciding whether the build actually failed
 
