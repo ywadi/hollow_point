@@ -48,7 +48,9 @@
 #include <hp/Vfs.hpp>
 #include <hp/Window.hpp>
 
+#include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -250,7 +252,8 @@ struct Surface {
 /// @returns whether the frame rendered and every surface was submitted.
 bool renderScene(Device& device, const std::vector<Surface>& surfaces,
                  std::vector<std::uint8_t>& pixels, bool screenInputs = true,
-                 bool feedVisibilityTexture = false, int frames = 1) {
+                 bool feedVisibilityTexture = false, int frames = 1, int viewSize = kSize,
+                 bool flushEveryFrame = false) {
     std::error_code ec;
     const std::filesystem::path scratch =
         std::filesystem::temp_directory_path() / "hp-screen-inputs";
@@ -325,7 +328,7 @@ bool renderScene(Device& device, const std::vector<Surface>& surfaces,
     scene.propagateTransforms();
 
     hp::SceneView view;
-    if (!view.create(device.render->device(), device.render->context(), kSize, kSize,
+    if (!view.create(device.render->device(), device.render->context(), viewSize, viewSize,
                      hp::TargetFormat::Colour, screenInputs)) {
         return false;
     }
@@ -342,6 +345,15 @@ bool renderScene(Device& device, const std::vector<Surface>& surfaces,
             return false;
         }
         if (stats.submitted != surfaces.size()) {
+            return false;
+        }
+        // **A flush per frame, for the cost case only.** `render` records
+        // commands and returns; without a wait, timing a loop of them measures
+        // CPU submission and nothing else — which is a real number, and not
+        // the one a bandwidth question is asking. `readback` flushes and waits,
+        // and it costs the same in both variants, so it cancels in the
+        // difference.
+        if (flushEveryFrame && !view.readback(device.render->context(), pixels)) {
             return false;
         }
     }
@@ -770,6 +782,114 @@ struct HpMaterial : IHpMaterial
     CHECK(magentaPixels(standard) == 0);
     CHECK(magentaPixels(quiet) == 0);
     CHECK(magentaPixels(reading) == 0);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
+TEST_CASE("the snapshot's cost is measured, which is what decided full resolution (T0147.2)") {
+    // **147.2 asks for the resolution to be decided by measurement, and this is
+    // the measurement.** The two variants differ in exactly one thing: whether
+    // the view declares its snapshot targets. Same scene, same geometry, same
+    // module, same texture fetches — a module reading the stand-ins does the
+    // same sampling work as one reading the snapshots — so the difference is
+    // the two `CopyTexture` calls and nothing else.
+    //
+    // Wall clock including the final readback, which flushes and waits, so the
+    // GPU's share is inside the number rather than hidden behind a fence.
+    //
+    // **The assertion is a catastrophic-regression guard, not the finding.**
+    // The finding is the printed number, and it goes on the ticket; a tight
+    // bound here would be a timing test failing on a loaded CI machine, which
+    // this project has already learned to distrust.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    constexpr int kBigView = 1024;
+    constexpr int kShort = 20;
+    constexpr int kLong = 120;
+
+    // **The setup is subtracted rather than warmed away.** `renderScene`
+    // mounts, imports, builds a scene and creates a view before it renders
+    // anything, and the snapshot variant creates two more 1024x1024 targets
+    // while doing it -- a one-off cost that would otherwise be divided by the
+    // frame count and reported as if it were per frame. Timing the same
+    // variant at two frame counts and taking the slope cancels all of it
+    // exactly.
+    const auto timeAt = [&](bool screenInputs, int frames) -> double {
+        std::vector<std::uint8_t> pixels;
+        const auto start = std::chrono::steady_clock::now();
+        const bool ok = renderScene(device,
+                                    {
+                                        Surface{6.0F, 6.0F, kRampWall, hp::AlphaMode::Opaque},
+                                        Surface{6.0F, 3.0F, refractivePane("0.02"),
+                                                hp::AlphaMode::Blend},
+                                    },
+                                    pixels, screenInputs, /*feedVisibilityTexture=*/false,
+                                    frames, kBigView, /*flushEveryFrame=*/true);
+        const auto end = std::chrono::steady_clock::now();
+        return ok ? std::chrono::duration<double, std::milli>(end - start).count() : -1.0;
+    };
+
+    // One untimed run so the module is compiled and its pipeline built.
+    REQUIRE(timeAt(true, 2) > 0.0);
+
+    // **Median of five, interleaved, for the reason `module_signature_cost_test`
+    // gives and one this measurement discovered.** A single scheduler hiccup
+    // should not decide anything -- and running one variant's five repeats
+    // before the other's produced a *systematic* 400 us bias in favour of
+    // whichever went first, every time, which is a GPU clock or thermal drift
+    // over ten seconds of load and not the copy. Alternating the two inside the
+    // repeat loop cancels any drift that is monotonic in wall time.
+    std::vector<double> withSlopes;
+    std::vector<double> withoutSlopes;
+    for (int run = 0; run < 5; ++run) {
+        for (bool screenInputs : {true, false}) {
+            const double shortRun = timeAt(screenInputs, kShort);
+            const double longRun = timeAt(screenInputs, kLong);
+            REQUIRE(shortRun > 0.0);
+            REQUIRE(longRun > 0.0);
+            (screenInputs ? withSlopes : withoutSlopes)
+                .push_back((longRun - shortRun) / (kLong - kShort));
+        }
+    }
+    std::sort(withSlopes.begin(), withSlopes.end());
+    std::sort(withoutSlopes.begin(), withoutSlopes.end());
+    const double withPerFrame = withSlopes[withSlopes.size() / 2];
+    const double withoutPerFrame = withoutSlopes[withoutSlopes.size() / 2];
+    const double perFrame = withPerFrame - withoutPerFrame;
+
+    MESSAGE("scene snapshot at " << kBigView << "x" << kBigView << ", median of 5 interleaved: "
+                                 << withPerFrame << " ms per frame with, " << withoutPerFrame
+                                 << " ms without, difference " << perFrame * 1000.0 << " us");
+    MESSAGE("per-run spread: with " << withSlopes.front() << " .. " << withSlopes.back()
+                                    << " ms, without " << withoutSlopes.front() << " .. "
+                                    << withoutSlopes.back() << " ms");
+    MESSAGE("device: " << device.render->adapterDescription());
+
+    // -----------------------------------------------------------------------
+    // **No assertion on the difference, and that is the finding rather than a
+    // gap.** Eight megabytes of copy at 1024x1024 is ~18 us of bandwidth on
+    // this card; the spread of a frame that ends in a readback stall is a
+    // *milli*second. So the difference lands on either side of zero from run
+    // to run -- +26 us, +1120 us and -560 us on three consecutive runs of this
+    // very case -- and any bound tight enough to be interesting would be a
+    // flaky test, which this project has already learned to distrust more than
+    // it distrusts code.
+    //
+    // What the measurement does establish is exactly what 147.2 needed: the
+    // copy is nowhere near expensive enough to justify halving the resolution
+    // and accepting a haloed depth fade and a soft refraction. The bound below
+    // is a catastrophe guard -- a copy that had turned into a format
+    // conversion, a readback or a full stall would be tens of milliseconds and
+    // would break it on every machine.
+    // -----------------------------------------------------------------------
+    CHECK(withPerFrame < 50.0);
+    CHECK(withoutPerFrame < 50.0);
 
     hp::Vfs::shutdown();
     tearDown(device);
