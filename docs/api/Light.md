@@ -132,10 +132,36 @@ void selectLightsFor(const int & lights, const float3 & objectPosition, LayerMas
  what causes that, so this is the line to revisit first when it shows up,
  rather than the conclusion that nearest-N was wrong.
 
+ ## The order is a contract, and `out[0]` is the dominant light (T0145)
+
+ **Nearest, then brightest, then fixed** — a total order:
+
+ 1. ascending distance from the object, with every directional light at 0, so
+    the suns precede every lamp that is not exactly on top of the object;
+ 2. descending Rec. 709 luminance of `colour * intensity`, so the brightest
+    of several equally-near lights wins;
+ 3. ascending entity, so two identical lamps still sort the same way on every
+    run and a frame is reproducible.
+
+ **Step 2 exists because its absence was a bug, found the expensive way.**
+ Until T0145 the comparison was distance alone and `std::sort` is *unstable*,
+ so with two directional lights — both at distance 0 — which one landed at
+ index 0 was unspecified. On the machine it was measured on it was the dim
+ fill, and the rock cube sample's parallax shadow march spent its one
+ expensive ray on the wrong light while reading as correct in its own source
+ (T0158/T0159). The sample ranked by intensity itself to work around it; that
+ workaround is now the engine's rule.
+
+ A shader sees this order as `HpLight::Index`, and `index == 0` is documented
+ there as the dominant light. A technique that can afford one expensive light
+ — a shadow march, a shaped specular, a ramp with a second tint — spends it
+ on that one.
+
  @param lights every light in the frame, from `gatherLights`.
  @param objectPosition the object's world position.
  @param objectLayers the object's `MeshRenderer::layers`.
  @param maxLights how many to keep. Clamped to `kMaxLights`.
- @param out filled with the chosen lights, nearest first. Cleared first, and
-        reused across draws so selection does not allocate per object.
+ @param out filled with the chosen lights, dominant first per the order
+        above. Cleared first, and reused across draws so selection does not
+        allocate per object.
  @returns nothing.

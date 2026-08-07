@@ -59,8 +59,10 @@ practice and is not wasted work when tessellation later lands above it.
       measured as a frame difference against the same material with it off
 - [ ] **Both are off by default and cost nothing when off** — no extra samples,
       and the existing zero-scale bit-identical invariant (T0156) still holds
-- [ ] The **per-light cost decision is made with T0145, not invented here** — see
-      158.3
+- [x] The **per-light cost decision is made with T0145, not invented here** — see
+      158.3. *Decided 2026-08-07: the dominant light only, `HpLight::Index == 0`,
+      with the order itself made a contract by D38 so the sample names it rather
+      than ranking for itself*
 - [ ] **A geometrically displaced cube exists as ground truth**, so every
       approximation is judged against something real rather than against taste
 

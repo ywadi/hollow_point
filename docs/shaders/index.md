@@ -40,13 +40,22 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 
 | Page | Source | Declarations |
 |---|---|---|
-| [`HpMaterial`](HpMaterial.md) | `engine/shaders/HpMaterial.slang` | 22 |
+| [`Engine functions`](engine-functions.md) | `engine/shaders/HpSurface.slang` | 8 |
+| [`HpMaterial`](HpMaterial.md) | `engine/shaders/HpMaterial.slang` | 25 |
 | [`IHpMaterial`](IHpMaterial.md) | `engine/shaders/HpSurface.slang` | 1 |
 
 ## Every symbol
 
 | Symbol | Kind | Page |
 |---|---|---|
+| `HpSceneColour` | function | [`Engine functions`](engine-functions.md) |
+| `HpSceneDepth` | function | [`Engine functions`](engine-functions.md) |
+| `HpViewDepth` | function | [`Engine functions`](engine-functions.md) |
+| `HpSceneViewDepth` | function | [`Engine functions`](engine-functions.md) |
+| `HpLightCount` | function | [`Engine functions`](engine-functions.md) |
+| `HpGetLight` | function | [`Engine functions`](engine-functions.md) |
+| `HpStandardLight` | function | [`Engine functions`](engine-functions.md) |
+| `HpResolveLighting` | function | [`Engine functions`](engine-functions.md) |
 | `HP_UNSHADED` | macro | [`HpMaterial`](HpMaterial.md) |
 | `HpRangeAttribute` | struct | [`HpMaterial`](HpMaterial.md) |
 | `HpRangeAttribute::lo` | field | [`HpMaterial`](HpMaterial.md) |
@@ -114,6 +123,36 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | `HpSurfaceOutput::Roughness` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceOutput::Emissive` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceOutput::Occlusion` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpLight` | struct | [`HpMaterial`](HpMaterial.md) |
+| `HpLight::Type` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpLight::Index` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpLight::Position` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpLight::Direction` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpLight::ToLight` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpLight::Color` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpLight::Attenuation` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpLight::Radiance` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpLight::Range` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpLight::SpotInnerCos` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpLight::SpotOuterCos` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface` | struct | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::Position` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::View` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::Normal` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::NdotV` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::BaseColor` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::Metallic` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::Roughness` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::DiffuseColor` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::Reflectance0` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::Reflectance90` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::Emissive` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::Occlusion` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpLightResponse` | struct | [`HpMaterial`](HpMaterial.md) |
+| `HpLightResponse::Diffuse` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpLightResponse::Specular` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpLightResponse::Intensity` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpLightResponse::NdotL` | field | [`HpMaterial`](HpMaterial.md) |
 | `IHpMaterial` | interface | [`IHpMaterial`](IHpMaterial.md) |
 | `IHpMaterial::vertex` | method | [`IHpMaterial`](IHpMaterial.md) |
 | `IHpMaterial::surfaceCoordinates` | method | [`IHpMaterial`](IHpMaterial.md) |
@@ -124,3 +163,5 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | `IHpMaterial::shadingNormal` | method | [`IHpMaterial`](IHpMaterial.md) |
 | `IHpMaterial::surface` | method | [`IHpMaterial`](IHpMaterial.md) |
 | `IHpMaterial::unshaded` | method | [`IHpMaterial`](IHpMaterial.md) |
+| `IHpMaterial::light` | method | [`IHpMaterial`](IHpMaterial.md) |
+| `IHpMaterial::lighting` | method | [`IHpMaterial`](IHpMaterial.md) |

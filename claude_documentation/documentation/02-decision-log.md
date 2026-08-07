@@ -2535,3 +2535,93 @@ per-draw snapshot, or an OIT path, and belongs with T0045), if T0096's HDR chain
 changes what "the world target" means at 10.9b, or if a technique arrives that
 genuinely needs the deferred normal-roughness pair — in which case the pass that
 produces it is the ticket, not this contract.
+
+---
+
+## D38 — **The light order is a contract, `Lights[0]` is the dominant light, and lighting "render modes" are rung-3 overrides rather than modes**
+
+**Decided 2026-08-07 on T0145**, executing D30 and D31. Two questions the light
+loop could not be handed to a game without answering, and one of them had
+already cost a day.
+
+### The order was undefined, and something shipped against it anyway
+
+`selectLightsFor` ranked by squared distance. Every directional light carries
+the key **0**, and `std::sort` / `std::partial_sort` are **unstable** — so with
+two suns, which one reached `Lights[0]` was unspecified. It is not a
+hypothetical: the rock cube sample's parallax shadow march spent its single
+expensive ray on `Lights[0]`, that turned out to be the *dim fill*, the fill
+lies almost exactly in the front face's plane, and the march's horizon guard
+tripped on 67% of the cube while the shader read as correct in its own source
+(T0158/T0159 found it by rendering the guard paths as colours). The sample
+worked around it by ranking lights itself.
+
+**A material must not have to.** The order is now **total**, and it is a
+promise:
+
+1. **nearest first** — directional lights at distance 0, so the suns precede
+   every lamp that is not on top of the object;
+2. **brightest first** among equal distances, by Rec. 709 luminance of
+   `colour * intensity`;
+3. **entity order** last, so two identical lamps still sort identically on
+   every run and a frame is reproducible.
+
+`HpLight::Index == 0` is therefore **the dominant light**, documented on both
+sides of the buffer. A technique that can afford one expensive light — a shadow
+march, a shaped specular, a second ramp tint — spends it there. The sample's
+hand-rolled ranking is deleted.
+
+**The reorder is byte-identical where it matters and that is arithmetic, not
+luck**: IEEE 754 addition is commutative, so a two-light sum is bit-exact
+either way. Three or more lights can differ in the last bits, which is
+acceptable precisely because the previous order was *undefined* — there was no
+frame to be identical to.
+
+**Rejected: a `dominantLight` flag on `Light`.** It moves the decision to the
+author for a value the engine can compute, and it would have to be reconciled
+with per-object selection — a light flagged dominant that a given object cannot
+see is a contradiction with no good answer.
+
+### Lighting render modes: **decided, and mostly rejected on purpose**
+
+Godot ships `ambient_light_disabled`, `shadows_disabled`, `diffuse_burley |
+lambert | lambert_wrap | toon` and `specular_schlick_ggx | toon | disabled` as
+*render modes*, and the obvious move was to mirror them. Each was decided
+separately, per 141.15's pattern — compile-time bit, material datum, or method
+default, stated with the reason:
+
+| Godot mode | Here | Why |
+|---|---|---|
+| `unshaded` | **exists, two doors** | `Material::unlit` is the `HP_UNSHADED` permutation bit (genuinely excludes the code); `IHpMaterial.unshaded()` is the authored half (T0142.16) |
+| `diffuse_*` / `specular_*` | **rejected as a mode** | Rung 3 *is* the mechanism. `HpLightResponse` splits `Diffuse` and `Specular` with the standard values already filled, so "lambert not Burley" is one assignment and "specular off" is `R.Specular = 0`. An enum would be a **second** mechanism for one domain (D32) and a permutation multiplier for something a line of a module already does |
+| `ambient_light_disabled` | **rejected for now, trigger recorded** | Nothing computes ambient — a mode switching off a term that is identically zero is the D27 mistake in mode form. When T0087 adds the term inside `HpResolveLighting`, a material that does not want it overrides `lighting()` and returns the punctual sum. **Reopen** if that turns out to be too large a hammer for a common case, and then it is a `Material` datum, never a PSO bit: it removes a *term*, not code |
+| `shadows_disabled` | **deferred to T0086, shape decided** | The per-light method will receive `ShadowFactor` **beside** `Attenuation` rather than folded into it — that separation is the specific thing D30 claimed as "more than Godot", whose `ATTENUATION` has shadow multiplied in irrecoverably. A material that ignores the field receives no shadows, in one line, with no permutation. Whether a *standard* material needs a `Material::receiveShadows` datum is T0086's call |
+| `vertex_lighting` | **rejected** | It would need the lighting stage to run in the vertex shader and its result carried through an interpolator, against D36's fixed four `Custom` slots and for a technique whose whole benefit is on hardware this engine does not target |
+
+**The through-line: a knob is only worth having when the ladder cannot express
+the thing.** Rungs 3 and 4 turn most of Godot's lighting render modes into
+ordinary code, and the two that survive as open questions are both waiting on
+the system that would give them something to switch off.
+
+### The costs D30 left unmeasured, measured
+
+D30 wrote: *"An interface-heavy main with per-light methods may cost occupancy
+against the fused original. Unmeasured; T0145 measures before/after on the
+byte-identical baseline."* Measured on an RTX 2080, Linux target, against the
+commit immediately before the mirror:
+
+- **the standard material's SPIR-V is the same size to the byte** — 12504 for
+  `psMain`, 7280 for `vsMain`, before and after;
+- a **custom module's** pixel shader got *smaller*: 19172 → 19048 shaded
+  (19160 → 19036 unshaded). Upstream's dead `NdotV`/`NdotL` and its sheen
+  scaffolding cost more than the mirror's repack, and `HpLight::Range` and the
+  two cone cosines are eliminated when nothing reads them — which is the D31
+  bet, held;
+- **cold compile** of the most-permutations case: 7.79 s → 7.84 s median of 3
+  (7.86/7.79/7.78 against 7.84/8.19/7.81) — inside the run-to-run spread;
+- **per-light fill cost**, 512×512, 262144 covered pixels, 1 lamp against 9:
+  0.0375 → 0.0352 ns/pixel/light median of 3, also inside the spread.
+
+So D31's repack cost is **not detectable**, and the fallback it recorded
+(mirroring layout-compatibly so conversion is a reinterpretation) is not
+needed.

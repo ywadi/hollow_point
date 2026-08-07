@@ -77,6 +77,12 @@ PREPROC_COND = re.compile(r"^\s*#\s*(if|ifdef|ifndef|else|elif|endif)\b")
 # would mean writing the source to suit the generator.
 ATTRIBUTE_LINE = re.compile(r"^\s*\[[^\]]*\]\s*$")
 TYPE_DECL = re.compile(r"^\s*(struct|interface)\s+([A-Za-z_]\w*)\s*(?::[^{]*)?\s*(\{)?\s*$")
+# A free function's signature at column zero -- `HpLight HpGetLight(int index, ...)`.
+# Contract since T0145: the lighting stage's primitives are free functions a game
+# calls (`HpStandardLight`, `HpResolveLighting`), and they cannot live in the
+# public contract file because they read `g_Frame`, which is declared after it.
+# So they are exported from the private file exactly as `IHpMaterial` is.
+FUNCTION_DECL = re.compile(r"^([A-Za-z_][\w:<>, ]*?)\s+([A-Za-z_]\w*)\s*\(")
 DEFINE = re.compile(r"^\s*#\s*define\s+([A-Za-z_]\w*)\s*(.*?)\s*$")
 FIELD = re.compile(r"^\s*([A-Za-z_][\w:<>, ]*?)\s+([A-Za-z_]\w*)\s*(\[[^\]]*\])?\s*;\s*$")
 
@@ -341,6 +347,50 @@ def collect(path: pathlib.Path, lines: list[str], public_file: bool) -> list[dic
             i += 1
             continue
 
+        # An exported free function (T0145). Only ever reached behind an
+        # explicit `export` marker -- `wanted` is checked before the match is
+        # even attempted, so a private helper in a private file is never
+        # documented by accident, which is the failure mode this generator is
+        # most able to cause.
+        if wanted and exported_next:
+            function = FUNCTION_DECL.match(line)
+            if function:
+                signature_lines = [line]
+                k = i
+                joined = line
+                while joined.count("(") > joined.count(")"):
+                    k += 1
+                    if k >= len(lines):
+                        raise SystemExit(
+                            f"error: {path}:{i + 1}: unterminated signature for "
+                            f"'{function.group(2)}'"
+                        )
+                    signature_lines.append(lines[k])
+                    joined = " ".join(part.strip() for part in signature_lines)
+                signature = joined.split("{")[0].split(";")[0].strip()
+                entities.append({
+                    "kind": "function",
+                    "name": function.group(2),
+                    "doc": doc_above(lines, i),
+                    "line": i + 1,
+                    "signature": signature,
+                    "members": [],
+                })
+                exported_next = False
+                # Step over the body so nothing inside it is parsed as a
+                # declaration of its own.
+                depth = 0
+                opened = False
+                while k < len(lines):
+                    depth += lines[k].count("{") - lines[k].count("}")
+                    if "{" in lines[k]:
+                        opened = True
+                    if opened and depth == 0:
+                        break
+                    k += 1
+                i = k + 1
+                continue
+
         # A top-level global declaration -- the sampler palette and the
         # deprecated texture slots (T0161). These are contract exactly as a
         # struct is: an author names `HpSamplerLinearWrap` in code, and a
@@ -439,6 +489,11 @@ def render_unit(unit: dict) -> str:
         out.append("")
         if entity["kind"] in ("macro", "global"):
             out.append(f"```hlsl\n{entity['signature']}\n```")
+        elif entity["kind"] == "function":
+            # The signature, which for a free function *is* the declaration --
+            # `function HpStandardLight` would tell a reader nothing about what
+            # to pass it.
+            out.append(f"```hlsl\n{entity['signature']};\n```")
         else:
             out.append(f"```hlsl\n{entity['kind']} {entity['name']}\n```")
         out.append("")
@@ -559,11 +614,13 @@ def main() -> int:
                 "entities": entities,
             })
         elif entities:
-            # An exported declaration out of an implementation file gets its own
+            # An exported **type** out of an implementation file gets its own
             # page, and the page says so. Titling it after the file would be a
-            # lie in both directions -- the file is not contract, and the
+            # lie in both directions — the file is not contract, and the
             # declaration is.
             for entity in entities:
+                if entity["kind"] == "function":
+                    continue
                 units.append({
                     "title": entity["name"],
                     "page": entity["name"],
@@ -577,6 +634,29 @@ def main() -> int:
                     ),
                     "preamble": "",
                     "entities": [entity],
+                })
+
+            # Exported **functions** share one page, because they are one thing:
+            # the engine helpers a shader may call. A page each would scatter
+            # four lines of signature across four files and bury them in the
+            # index — and they are read as a set, not one at a time.
+            functions = [entity for entity in entities if entity["kind"] == "function"]
+            if functions:
+                units.append({
+                    "title": "Engine functions",
+                    "page": "engine-functions",
+                    "source": rel,
+                    "note": (
+                        f"**Exported from an implementation file.** `{rel}` is the engine's "
+                        f"own shader and is *not* contract — nothing else in it may be relied "
+                        f"on. The functions below are marked `hp-shader-doc: export` because a "
+                        f"game's module calls them: they are the engine's own defaults and "
+                        f"primitives, and they live there because they read the frame's "
+                        f"constant buffers, which are declared after the contract file is "
+                        f"included."
+                    ),
+                    "preamble": "",
+                    "entities": functions,
                 })
 
     if problems:

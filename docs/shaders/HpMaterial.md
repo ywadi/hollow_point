@@ -284,7 +284,7 @@ pass that writes it, and it gets its own row in the capability matrix first.
 still bind from a `.hpmat` that names them — see their declarations below —
 but they are **deprecated**: name your textures yourself.
 
-22 declaration(s), 45 member(s), all documented.
+25 declaration(s), 72 member(s), all documented.
 
 ## `HP_UNSHADED`
 
@@ -990,3 +990,302 @@ float Occlusion;
 ```
 
 How much ambient light reaches this fragment, 0 to 1.
+
+## `HpLight`
+
+```hlsl
+struct HpLight
+```
+
+One light, as it arrives at one fragment (**D31**).
+
+**The engine's own type, mirrored from DiligentFX's rather than re-exported,
+and the difference is the whole of D31.** Their `PBRLightAttribs` carries
+`DirectionX`/`DirectionY`/`DirectionZ` and `IntensityR`/`G`/`B` as separate
+floats — constant-buffer packing artifacts — and its optional members come
+and go with `#if`s, so a game shader reading one would compile on some
+materials and not others. This restates what the ladder needs as `float3`s
+with every field always present, converted inside the engine's own shader at
+the point of use. A game shader never names a Diligent struct.
+
+### `HpLight::Type`
+
+```hlsl
+int Type;
+```
+
+`HpLightDirectional`, `HpLightPoint` or `HpLightSpot`.
+
+**Godot's `light()` cannot ask this** — it exposes only
+`LIGHT_IS_DIRECTIONAL`, so omni and spot are indistinguishable there.
+
+### `HpLight::Index`
+
+```hlsl
+int Index;
+```
+
+Where this light sits in the frame's list. **0 is the dominant light**
+— see the ordering contract above. Ranges over `0 .. HpLightCount()-1`.
+
+### `HpLight::Position`
+
+```hlsl
+float3 Position;
+```
+
+World-space position. **Zero for a directional light**, which has none.
+
+### `HpLight::Direction`
+
+```hlsl
+float3 Direction;
+```
+
+The unit direction the light **travels**, world space.
+
+For a directional or spot light this is the lamp's own aim. For a point
+light it is resolved per fragment: the direction from the light to *this*
+fragment. `ToLight` is its negation and is what shading wants.
+
+### `HpLight::ToLight`
+
+```hlsl
+float3 ToLight;
+```
+
+The unit direction from this fragment **toward the light** — Godot's
+`LIGHT`, and the vector every BRDF takes.
+
+### `HpLight::Color`
+
+```hlsl
+float3 Color;
+```
+
+Linear RGB radiance of the lamp itself, colour times intensity,
+**before** attenuation.
+
+### `HpLight::Attenuation`
+
+```hlsl
+float Attenuation;
+```
+
+Range falloff times the spot cone, 0 to 1. **1 for a directional light.**
+
+**Geometry only.** No shadow term is folded in — that is exactly the
+ceiling Godot's `ATTENUATION` hits — and none exists yet; T0086 adds
+`ShadowFactor` beside this rather than inside it.
+
+### `HpLight::Radiance`
+
+```hlsl
+float3 Radiance;
+```
+
+`Color * Attenuation` — the radiance actually reaching this fragment,
+and what the standard response multiplies by. Precomputed because the
+engine needs it anyway.
+
+### `HpLight::Range`
+
+```hlsl
+float Range;
+```
+
+The lamp's range in metres. **0 means unlimited**, and a directional
+light is always 0. Past its range a light is not handed over at all.
+
+### `HpLight::SpotInnerCos`
+
+```hlsl
+float SpotInnerCos;
+```
+
+Cosine of the spot light's inner cone half-angle — inside it the cone is
+at full brightness. 1 for anything that is not a spot light.
+
+### `HpLight::SpotOuterCos`
+
+```hlsl
+float SpotOuterCos;
+```
+
+Cosine of the spot light's outer cone half-angle — outside it the cone
+contributes nothing. 1 for anything that is not a spot light.
+
+## `HpShadedSurface`
+
+```hlsl
+struct HpShadedSurface
+```
+
+The surface a light is being applied to (**D31**).
+
+The mirror of DiligentFX's `SurfaceShadingInfo` and the
+`SurfaceReflectanceInfo` inside it, flattened and unconditional. Filled from
+`HpSurfaceOutput` after every surface hook has run, so this is the surface
+**as the material finally described it**.
+
+### `HpShadedSurface::Position`
+
+```hlsl
+float3 Position;
+```
+
+World-space position of this fragment.
+
+### `HpShadedSurface::View`
+
+```hlsl
+float3 View;
+```
+
+Unit direction from this fragment toward the camera.
+
+### `HpShadedSurface::Normal`
+
+```hlsl
+float3 Normal;
+```
+
+The unit shading normal — `HpSurfaceOutput::Normal`, normalised.
+
+### `HpShadedSurface::NdotV`
+
+```hlsl
+float NdotV;
+```
+
+`dot(Normal, View)`, clamped away from zero. **Clamped rather than
+saturated**: the BRDF divides by it, and an exactly edge-on normal
+otherwise produces a ring of NaN pixels.
+
+### `HpShadedSurface::BaseColor`
+
+```hlsl
+float3 BaseColor;
+```
+
+The surface's albedo, linear RGB — `HpSurfaceOutput::BaseColor.rgb`.
+What a cel or ramp shader tints; the metal-aware split is below.
+
+### `HpShadedSurface::Metallic`
+
+```hlsl
+float Metallic;
+```
+
+0 = dielectric, 1 = metal.
+
+### `HpShadedSurface::Roughness`
+
+```hlsl
+float Roughness;
+```
+
+Perceptual roughness, 0 = mirror, 1 = fully rough. The same value
+`SurfaceReflectanceInfo::PerceptualRoughness` carries.
+
+### `HpShadedSurface::DiffuseColor`
+
+```hlsl
+float3 DiffuseColor;
+```
+
+The diffusely reflecting colour: `BaseColor * 0.96 * (1 - Metallic)`.
+A metal has none, which is why this is not `BaseColor`.
+
+### `HpShadedSurface::Reflectance0`
+
+```hlsl
+float3 Reflectance0;
+```
+
+Specular reflectance at normal incidence (F0) — 4% for a dielectric,
+the base colour for a metal.
+
+### `HpShadedSurface::Reflectance90`
+
+```hlsl
+float3 Reflectance90;
+```
+
+Specular reflectance at grazing incidence (F90).
+
+### `HpShadedSurface::Emissive`
+
+```hlsl
+float3 Emissive;
+```
+
+Linear RGB emissive, added by the resolve. Not clamped to 1.
+
+### `HpShadedSurface::Occlusion`
+
+```hlsl
+float Occlusion;
+```
+
+How much ambient light reaches this fragment, 0 to 1. Applies to the
+image-based term when T0087 lands; punctual light does not use it.
+
+## `HpLightResponse`
+
+```hlsl
+struct HpLightResponse
+```
+
+What a per-light method answers with (**rung 3**).
+
+**Every field is a factor the engine multiplies**, and that is deliberate:
+
+    Punctual += (Diffuse + Specular) * Intensity * NdotL
+
+so a cel shader quantises `NdotL`, a ramp shader replaces `Diffuse` and sets
+`NdotL` to 1, a coloured-light-response shader rewrites `Intensity`, and a
+custom BRDF writes `Diffuse` and `Specular` outright. Splitting the factors
+rather than returning one radiance is what makes each of those one line.
+
+`HpStandardLight(L, S)` fills it with the engine's physically-based answer,
+so an override starts from the default instead of restating it.
+
+### `HpLightResponse::Diffuse`
+
+```hlsl
+float3 Diffuse;
+```
+
+The diffuse lobe's reflectance, **before** intensity and `NdotL`.
+Lambertian in the default: `DiffuseColor / pi` times one minus the
+Fresnel term.
+
+### `HpLightResponse::Specular`
+
+```hlsl
+float3 Specular;
+```
+
+The specular lobe's reflectance, **before** intensity and `NdotL`.
+Smith-GGX in the default.
+
+### `HpLightResponse::Intensity`
+
+```hlsl
+float3 Intensity;
+```
+
+The radiance reaching this fragment from this light. Defaults to
+`Light.Radiance`, which is the lamp's colour times its attenuation.
+
+### `HpLightResponse::NdotL`
+
+```hlsl
+float NdotL;
+```
+
+The cosine falloff, `saturate(dot(Normal, ToLight))` by default and
+**the term cel shading exists to change**. Quantising it here bands each
+light separately, which is the thing a post-process pass over the summed
+image can never do (Godot proposal #484's exact complaint).

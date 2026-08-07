@@ -4,7 +4,7 @@
 
 **Exported from an implementation file.** `engine/shaders/HpSurface.slang` is the engine's own shader and is *not* contract — nothing else in it may be relied on. `IHpMaterial` is marked `hp-shader-doc: export` because it is what a game implements, and it lives there because its default implementations *are* the standard material.
 
-1 declaration(s), 9 member(s), all documented.
+1 declaration(s), 11 member(s), all documented.
 
 ## `IHpMaterial`
 
@@ -218,3 +218,62 @@ then: for a *standard* material, `Material::unlit` rides the
 `HP_UNSHADED` permutation bit and genuinely excludes the lighting at
 preprocess time; this method is the authored equivalent with exact
 semantics and unproven-but-likely folding.
+
+### `IHpMaterial::light`
+
+```hlsl
+[mutating] HpLightResponse light(HpLight Light, HpShadedSurface Surface, HpSurfaceInput In) { ... }
+```
+
+*Has a default implementation — a material that does not override it gets the standard material's behaviour.*
+
+**The per-light method** — D30's rung 3, and Godot's `light()` with more
+than Godot gives it (T0145).
+
+Called once per light that reaches this fragment, with range
+attenuation and the spot cone **already resolved by the engine** — so an
+override changes how light is *applied* without reimplementing which
+light arrives. Answer with the four factors the engine multiplies:
+
+    Punctual += (Diffuse + Specular) * Intensity * NdotL
+
+Default: `HpStandardLight`, which is DiligentFX's `SmithGGX_BRDF` — so
+a material that overrides nothing renders bit-identically to the build
+before this method existed. Cel shading is that default with `NdotL`
+quantised; `HpMaterial.slang` carries the worked example.
+
+**Zero-attenuation lights never arrive here.** The engine skips a light
+outside its own range or cone before calling, mirroring upstream, so an
+override never has to test for it.
+
+**This is the seam a post-process cannot be.** A pass over the summed
+image quantises the *total*, so a two-light surface bands wrongly and
+per-light rim terms are unrecoverable — which is Godot proposal #484's
+exact complaint, and D30's argument for owning the loop.
+
+### `IHpMaterial::lighting`
+
+```hlsl
+[mutating] float3 lighting(HpShadedSurface Surface, HpSurfaceInput In) { ... }
+```
+
+*Has a default implementation — a material that does not override it gets the standard material's behaviour.*
+
+**The whole lighting stage** — D30's rung 4, which Godot does not have
+at any price short of a fork (T0145).
+
+Owns the loop, the accumulation and the resolve. The default below *is*
+the engine's standard path, written out rather than hidden, so an
+override can start by copying it: `HpLightCount()`, `HpGetLight(i, pos)`
+and `HpResolveLighting(Surface, punctual)` are the primitives it is
+built from, and all three are contract.
+
+Reach for this rather than `light()` when the *loop* is the technique —
+a dominant-light-only look, a per-light budget, an accumulation that is
+not a sum. **T0093's visibility term belongs here**, or in `surface()`:
+visibility is not illumination, so it multiplies the resolved colour and
+never a light's contribution.
+
+@param Surface the surface every hook above finally described.
+@param In the same contract inputs the surface stage saw.
+@returns linear RGB, pre-tonemap. Alpha stays the surface stage's.

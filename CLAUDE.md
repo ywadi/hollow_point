@@ -31,7 +31,7 @@ you in the first ten minutes.
 | What can a game's shader **not** do yet? | [`claude_documentation/documentation/13-shader-capability-matrix.md`](claude_documentation/documentation/13-shader-capability-matrix.md) — the capability audit. **Add a row before building a technique, not after**; an empty cell is the next gap, found in advance rather than after a day of silent debugging |
 | **Does DiligentEngine already do this?** | [`claude_documentation/documentation/12-vendored-capabilities.md`](claude_documentation/documentation/12-vendored-capabilities.md) — **check before building anything in the render layer.** Tone mapping, bloom, DoF, SSAO, SSR, TAA, atmospheric scattering, four shadow-filter modes and a whole terrain implementation are already vendored. The check has failed twice here |
 
-**The decision log is binding.** Entries D1–D35 record what was rejected and
+**The decision log is binding.** Entries D1–D38 record what was rejected and
 why, usually against a specific failure. If you are about to do something one of
 them forbids, read the entry first and change the decision deliberately — do not
 quietly diverge.

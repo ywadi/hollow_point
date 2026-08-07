@@ -43,7 +43,8 @@ owning ticket.
 | Cross-hook state | **Y** — hooks are `[mutating]`, members zero-initialised (2026-08-06, T0159) | — |
 | Game-declared parameters | **Y** — `cbuffer HpMaterialParams` with author-named fields, valued by `.hpmat`, hinted by `[HpRange]`/`[HpColor]`/`[HpTooltip]` (2026-08-06, T0160). float/2/3/4, int, bool; 256 bytes | — |
 | Game-declared textures | **Y** — author-named `Texture2DArray` globals at any count, reflected into a per-module resource signature and bound by `.hpmat` under the author's names (2026-08-07, T0161, D35). Cost measured before commitment: 34 ns/draw (161.1). **The one deliberate limit is sampler *state***: modules sample through the engine's six-name immutable palette (`HpSamplerLinearWrap` …), and a module's own `SamplerState` is refused by name. `HpTexture0`…`3` remain as deprecated declarations | — |
-| Light access | **P** — readable since D27's amendment (2026-08-06, T0159): `g_Frame.Lights[]` is in scope, **but its order is unspecified for directional lights** (unstable sort on equal keys — pick by intensity, never index). Replacing the loop is T0145 | T0145 |
+| Light access | **Y** — `HpLight` (2026-08-07, T0145, D31): the engine's own mirror of DiligentFX's packed struct, with type, position, direction, **`ToLight`**, colour, engine-computed attenuation, radiance, range in **metres** and both cone cosines. Every field exists in every permutation, which is what a re-exported `PBRLightAttribs` could never promise. **The order is a contract now** (D38): nearest, then brightest, then entity — `HpLight::Index == 0` is the **dominant light**, and the unstable-sort hazard that cost T0158/T0159 a day is closed | — |
+| Lighting stage | **Y** — `IHpMaterial.light()` (per light, rung 3) and `IHpMaterial.lighting()` (whole stage, rung 4), 2026-08-07, T0145/D30. `HpLightResponse` splits the four factors the engine multiplies — `(Diffuse + Specular) * Intensity * NdotL` — so cel shading is one assignment. `HpLightCount()`, `HpGetLight(i, pos)`, `HpStandardLight(L, S)` and `HpResolveLighting(S, punctual)` are the primitives a whole-stage override is built from. A material overriding nothing renders **bit-identically**: 0 differing bytes, asserted | — |
 | Vertex hook | **Y** — `IHpMaterial.vertex()`, object space in and out (2026-08-07, T0146, D36). The engine owns the vertex `main`; `HpVertexInput` carries the mesh's own position, normal, tangent, UVs and colour plus the **rest world position**, the object-to-world matrix, the camera position and `Time`. `HpVertexOutput` takes displaced geometry, rewritten UVs and vertex colour. Godot's `skip_vertex_transform` is refused, and D36 says why | — |
 | Custom interpolators | **P** — four fixed `float4` slots, `HpVertexOutput::Custom0` … `Custom3` in and `HpSurfaceInput::Custom0` … `Custom3` out (2026-08-07, T0146.4). **Not a declaration**: `VSOutput` is generated per permutation and reflection rides the compile, so the count cannot depend on the module — D36 records the circularity. Present only in custom-material permutations; unwritten slots read zero | (widening: T0151) |
 | Screen resources (depth, scene colour, fed textures) | **Y** — `HpSceneColour(uv)`, `HpSceneDepth(uv)`, `HpSceneViewDepth(uv)` and `HpViewDepth(z)` over the engine-fed `g_SceneColour`/`g_SceneDepth`, addressed by `HpSurfaceInput::ScreenUV` (2026-08-07, T0147, D37). Snapshots taken between the opaque and blend passes, so **only a material with `alphaMode: Blend` may read them** — enforced at pipeline build, by name, with the checkerboard. A texture a *game layer* produced rides T0161's declaration unchanged: `setGameTexture(name, view)` feeds it, after the `.hpmat` and before white. **No normal-roughness read** — forward-only, see the row below | — |
@@ -60,7 +61,7 @@ owning ticket.
 | **De-tiling / macro variation** | the per-tap sampling seam (declared textures and parameters landed) | T0153.1 |
 | **Layered surfaces** — snow, wetness, moss, detail maps | nothing — declared textures and parameters landed 2026-08-06 (T0160) | *expressible today* |
 | **World-aligned masks, game triplanar** | nothing | *expressible today* |
-| **Anisotropy, sheen, clearcoat, skin** | the light loop, extended features (the real tangent landed — zero only when the mesh has none, `w` always +1) | T0145, T0143 |
+| **Anisotropy, sheen, clearcoat, skin** | the extended features themselves. **The shading half landed 2026-08-07 (T0145)**: a custom BRDF is `light()` writing `R.Diffuse`/`R.Specular`, and the real tangent has been in `HpSurfaceInput` since T0159. What is missing is the *material data* — a sheen colour, a clearcoat normal, an anisotropy direction — and the engine's loop `#error`s on `ENABLE_SHEEN`/`ENABLE_CLEAR_COAT`/`ENABLE_ANISOTROPY` rather than dropping them silently, so T0143 has a named place to write | T0143 |
 | **Rim / Fresnel / unshaded** | nothing | *expressible today* |
 | **Vertex motion** — wind, sway, billboarding, displacement, morph | nothing — the vertex stage landed 2026-08-07 (T0146). Sway is the rock cube sample's worked example; billboarding has `In.CameraPos`; morph deltas need a buffer the mesh format does not carry (T0041's neighbourhood) | *five of six expressible today* |
 | **Vertex motion** — per-instance offsets | per-instance data, which is still undefined bytes in `PBRPrimitiveAttribs::CustomData` | (unowned — see the per-instance row above) |
@@ -70,8 +71,8 @@ owning ticket.
 | **Screen-space** — soft particles, heat haze, frosted glass | nothing — bound screen resources landed 2026-08-07 (T0147, D37). The soft-particle read is the ticket's own depth-fade example, proved before T0106 needs it; heat haze and frosted glass are the refraction with a different offset | *expressible today* |
 | **Screen-space** — fog-of-war | nothing *mechanically* — a game layer renders the visibility field and feeds it by name (T0147.4); what is still absent is the engine **computing** one, and a `HpSurfaceInput::Visibility` field waits on that rather than on this | T0093 (the field; the mechanism is done) |
 | **Time-driven** — scrolling, flowmaps, pulsing emissive | nothing — `In.Time` landed on T0159 and a flowmap's texture is a declared slot (T0160) | *expressible today* |
-| **NPR** — cel, hatching, custom BRDF | the light loop | **T0145** |
-| **NPR** — ramp lighting | the light loop (the ramp texture itself is a declared slot since T0160) | **T0145** |
+| **NPR** — cel, hatching, custom BRDF | nothing — the light loop landed 2026-08-07 (T0145, D30). Cel is `R.NdotL = ceil(R.NdotL * 4) / 4` inside `light()`, measured at **3 distinct colours against a smooth control's 99** on the same material and light; a custom BRDF writes `R.Diffuse`/`R.Specular`; hatching reads `In.ScreenUV` alongside `R.NdotL`. **Per light, which a post-process cannot be** — a pass over the summed image bands two lights wrongly, Godot proposal #484's open complaint | *expressible today* |
+| **NPR** — ramp lighting | nothing — the light loop landed 2026-08-07 (T0145). `R.Diffuse = ramp.SampleLevel(HpSamplerLinearClamp, float2(R.NdotL, 0.5), 0).rgb` over a texture the module declared itself (T0160/T0161), with `R.NdotL = 1.0` so the ramp *is* the falloff | *expressible today* |
 | **NPR** — outlines | a second pass (the vertex stage landed 2026-08-07, T0146: an inverted-hull shell is `Out.Position += In.Normal * width`) | **T0148** |
 
 ---
@@ -103,9 +104,18 @@ thing the audit produced:
 
 ### (c) It does not exist — real work
 
-A D27-clean light (T0145), an instancing path, a LOD fade factor, motion
-vectors, `ShadowFactor` / `Visibility` / `AmbientOcclusionIBL` (T0086 / T0093 /
-T0087).
+An instancing path, a LOD fade factor, motion vectors, `ShadowFactor` /
+`Visibility` / `AmbientOcclusionIBL` (T0086 / T0093 / T0087).
+
+~~A D27-clean light~~ — **landed 2026-08-07 (T0145, D30/D31)**, and it was the
+last whole *family* in this table: cel, hatching, ramp lighting and custom BRDFs
+were blocked on one fact, that quantised `N·L` lives inside DiligentFX's
+`ApplyPunctualLight` with the BRDF called inline at `:690` and no seam anywhere
+in the body. The work was mirroring ~120 lines and deciding a light *order*; the
+hook itself is two methods with defaults. The mirror is guarded rather than
+remembered — `tests/fast/upstream_drift_test.cpp` re-extracts six upstream
+functions on every run of the fast suite and prints a line diff when one
+moves.
 
 ~~Screen resources~~ — **landed 2026-08-07 (T0147, D37)**, and they were the
 only entry in this table whose whole technique *family* was blocked: six
@@ -239,9 +249,16 @@ Recorded because an overstated document is worse than an open question.
   unconditionally. Unmeasured.
 - **Shader hot reload is traced, not executed.** The chain analysis says it does
   not work; no live edit-while-running session was performed.
-- The permutation multiplier once surface, lighting and vertex modules can vary
-  independently — undesigned, so uncounted. **The vertex half of that question
-  is now answered and the answer is 1** (T0146): a game's vertex hook is a
-  method on the *same* module as its surface hooks, compiled from the same
-  file in the same request, so it adds no axis at all. What remains open is
-  the lighting module (T0145).
+- ~~The permutation multiplier once surface, lighting and vertex modules can
+  vary independently~~ — **answered, and the answer is 1** (T0146 for the
+  vertex half, T0145 for the lighting half). Every stage is a method on the
+  *same* `IHpMaterial`, compiled from one file in one request, so no stage adds
+  a permutation axis. A game does not ship a "lighting module"; it ships a
+  material that overrides `light()`.
+- **Register pressure is measured for the standard material and inferred for a
+  game's.** T0145 measured the SPIR-V byte counts before and after the mirrored
+  loop — identical for the standard material (12504 `psMain`, 7280 `vsMain`),
+  124 bytes *smaller* for a custom module — and the per-light fill cost at
+  0.035 ns/pixel/light, unchanged inside the run-to-run spread. What is not
+  measured is a *driver's* register allocation, which SPIR-V size only proxies;
+  no tool here reads it.

@@ -47,6 +47,7 @@
 #include <hp/Vfs.hpp>
 #include <hp/Window.hpp>
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -485,6 +486,104 @@ struct HpMaterial : IHpMaterial
 }
 )";
 
+
+// --- the fill-cost bench (145.8) -------------------------------------------
+
+/// The bench's resolution. Large enough that the fragment shader dominates a
+/// frame whose geometry is two triangles, which is the whole point: this
+/// measures the light loop, not submission.
+constexpr int kBenchSize = 512;
+
+/// A scene held across many draws, for the cost loop.
+struct Bench {
+    hp::AssetPool pool;
+    hp::Scene scene;
+    hp::SceneView view;
+
+    /// @p repeats draws before the single readback — the device-overhead
+    /// amortiser the triplanar bench established. A readback-synchronised
+    /// frame costs about a millisecond and one light loop over half a
+    /// megapixel costs far less, so timing one draw per sync measures the
+    /// sync.
+    bool render(Device& device, int repeats) {
+        for (int i = 0; i < repeats; ++i) {
+            hp::SceneViewStats stats;
+            if (view.render(device.render->context(), scene, pool, 0, &stats) == nullptr ||
+                stats.submitted != 1) {
+                return false;
+            }
+        }
+        std::vector<std::uint8_t> sink;
+        const bool ok = view.readback(device.render->context(), sink);
+        // **Every iteration must be a real engine frame.** `onRender` presents,
+        // and presenting is what recycles Diligent's dynamic heap; without it a
+        // few hundred offscreen renders exhaust it and every draw afterwards
+        // silently writes nothing — which turned half the triplanar bench's
+        // first numbers into measurements of a blank frame.
+        device.render->onRender();
+        return ok;
+    }
+};
+
+/// Builds the bench: the standard material under `lampCount` point lights, all
+/// in range of the quad so every one of them is real work.
+bool setUpBench(Device& device, Bench& bench, int lampCount) {
+    std::error_code ec;
+    const std::filesystem::path scratch =
+        std::filesystem::temp_directory_path() / "hp-lighting-bench";
+    std::filesystem::remove_all(scratch, ec);
+    std::filesystem::create_directories(scratch / "models", ec);
+    writeQuadGltf(scratch / "models");
+
+    hp::Vfs::shutdown();
+    if (!hp::Vfs::init(nullptr) || !hp::Vfs::mount(scratch.string())) {
+        return false;
+    }
+
+    const hp::Guid meshGuid = hp::Guid::generate();
+    auto mesh =
+        hp::loadMesh(device.render->device(), device.render->context(), "models/quad.gltf");
+    if (!mesh || !mesh->valid()) {
+        return false;
+    }
+    bench.pool.store<hp::MeshAsset>(meshGuid, mesh);
+
+    hp::Entity cameraEntity = bench.scene.create("camera");
+    cameraEntity.add<hp::Camera>(hp::Camera{});
+
+    hp::Entity quad = bench.scene.create("quad");
+    hp::MeshRenderer renderer;
+    renderer.mesh = meshGuid;
+    quad.add<hp::MeshRenderer>(renderer);
+
+    for (int i = 0; i < lampCount; ++i) {
+        hp::Entity entity = bench.scene.create(("lamp" + std::to_string(i)).c_str());
+        hp::Light light;
+        // **Point lights, deliberately.** A directional light skips the whole
+        // range-and-cone block, which is exactly the part this ticket mirrored;
+        // timing the loop against lights that take the cheap branch would
+        // measure nothing.
+        light.type = hp::LightType::Point;
+        light.intensity = 1.0F;
+        light.range = 30.0F;
+        entity.add<hp::Light>(light);
+        hp::Transform placed;
+        // Spread across the quad's front so the attenuation varies and no two
+        // lights share a divergence-free path through the loop.
+        placed.position = hp::float3{static_cast<float>(i % 4) - 1.5F,
+                                     static_cast<float>(i / 4) - 1.5F, 0.0F};
+        bench.scene.setLocalTransform(entity, placed);
+    }
+    bench.scene.propagateTransforms();
+
+    if (!bench.view.create(device.render->device(), device.render->context(), kBenchSize,
+                           kBenchSize)) {
+        return false;
+    }
+    bench.view.setClearColour(0.0F, 0.0F, 1.0F, 1.0F);
+    return true;
+}
+
 } // namespace
 
 TEST_CASE("a per-light override cel-shades, and attenuation stays the engine's (T0145.3)") {
@@ -707,6 +806,87 @@ TEST_CASE("light index 0 is the dominant light, whatever order the scene built t
     // Both lights are present — so this is an ordering result, not a selection
     // one. 2 * 0.25 = 0.5 linear -> 188.
     CHECK(first.g == 188);
+
+    tearDown(device);
+}
+
+TEST_CASE("the interface-shaped light loop's cost is measured, not assumed (T0145.8)") {
+    // **D30 named this as unmeasured and owed here**, in as many words: *"an
+    // interface-heavy main with per-light methods may cost occupancy against
+    // the fused original. Unmeasured; T0145 measures before/after on the
+    // byte-identical baseline."*
+    //
+    // The before/after against the pre-T0145 shader is on the ticket — it needs
+    // two builds and cannot live in one test run. What lives here is the
+    // *instrument*, so the number is reproducible rather than a note in a
+    // commit message: the standard material's per-light fill cost, at a
+    // resolution where the fragment shader dominates.
+    //
+    // Point lights, because a directional light skips the range-and-cone block
+    // that is the mirrored part.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    constexpr int kRepeats = 32;
+    double msByCount[2] = {0.0, 0.0};
+    long long covered = 0;
+    int slot = 0;
+    for (const int lampCount : {1, 9}) {
+        Bench bench;
+        REQUIRE(setUpBench(device, bench, lampCount));
+
+        {
+            std::vector<std::uint8_t> pixels;
+            hp::SceneViewStats stats;
+            REQUIRE(bench.view.render(device.render->context(), bench.scene, bench.pool, 0,
+                                      &stats) != nullptr);
+            REQUIRE(bench.view.readback(device.render->context(), pixels));
+            if (slot == 0) {
+                for (std::size_t i = 0; i + 3 < pixels.size(); i += 4) {
+                    const bool clear =
+                        pixels[i] == 0 && pixels[i + 1] == 0 && pixels[i + 2] == 255;
+                    covered += clear ? 0 : 1;
+                }
+            }
+        }
+
+        for (int warm = 0; warm < 3; ++warm) {
+            REQUIRE(bench.render(device, kRepeats));
+        }
+        const auto start = std::chrono::steady_clock::now();
+        int frames = 0;
+        double elapsed = 0.0;
+        while ((elapsed < 1.5 && frames < 40) || frames < 6) {
+            REQUIRE(bench.render(device, kRepeats));
+            ++frames;
+            elapsed =
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        }
+        msByCount[slot] = elapsed * 1000.0 / (static_cast<double>(frames) * kRepeats);
+        ++slot;
+        hp::Vfs::shutdown();
+    }
+
+    // A configuration that rasterises nothing measures nothing — the failure
+    // the triplanar bench hit with an edge-on quad.
+    REQUIRE(covered > 0);
+    const double perLightMs = (msByCount[1] - msByCount[0]) / 8.0;
+    const double nsPerPixelPerLight =
+        perLightMs * 1.0e6 / static_cast<double>(covered);
+    MESSAGE("light loop: 1 lamp " << msByCount[0] << " ms/draw, 9 lamps " << msByCount[1]
+                                  << " ms/draw over " << covered << " covered pixels = "
+                                  << nsPerPixelPerLight << " ns/pixel/light");
+
+    // Deliberately loose, and it is a *sanity* bound rather than a budget: a
+    // punctual light on a rough dielectric is a few dozen ALU, so a per-pixel
+    // per-light cost in the tens of nanoseconds would mean the loop is not
+    // being specialised at all.
+    CHECK(nsPerPixelPerLight > 0.0);
+    CHECK(nsPerPixelPerLight < 20.0);
 
     tearDown(device);
 }

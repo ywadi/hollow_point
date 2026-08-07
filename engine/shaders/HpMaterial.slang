@@ -823,6 +823,32 @@ struct HpSurfaceOutput
 // - **Visibility is not illumination** (T0093). A dark room inside a vision
 //   cone is *visible and dark*, so a visibility term multiplies the **resolved**
 //   colour — rung 4, or `surface()` — never a light's contribution.
+//
+// ### The three primitives a whole-stage override is built from
+//
+// | Helper | What it gives you |
+// |---|---|
+// | `HpLightCount()` | how many lights reach this fragment, already clamped |
+// | `HpGetLight(i, worldPos)` | light `i` as an `HpLight`, attenuation and cone resolved |
+// | `HpStandardLight(L, S)` | the engine's own physically-based response |
+// | `HpResolveLighting(S, punctual)` | punctual + emissive (+ ambient, with T0087) |
+//
+// The default `lighting()` is exactly those four in a loop, so an override that
+// wants "the standard loop, one term changed" copies five lines rather than
+// reimplementing a BRDF.
+//
+// ### Godot's lighting render modes, and where each one went (D38)
+//
+// Written down because the obvious move was to mirror them, and mostly the
+// answer is that the ladder already expresses the thing:
+//
+// | Godot | Here |
+// |---|---|
+// | `unshaded` | **exists, two doors** — `unlit` in the `.hpmat` (a permutation bit, so the lighting is genuinely not compiled) or `IHpMaterial.unshaded()` |
+// | `diffuse_lambert`, `specular_disabled`, … | **write it.** `R.Diffuse = S.DiffuseColor / 3.14159;` is lambert, `R.Specular = float3(0, 0, 0);` is specular off. A mode enum would be a second mechanism for one domain |
+// | `ambient_light_disabled` | **nothing to disable yet.** Ambient arrives with T0087, inside `HpResolveLighting`; a material that does not want it overrides `lighting()` and returns the punctual sum |
+// | `shadows_disabled` | **with T0086.** The shadow factor arrives *beside* `Attenuation`, not folded into it — so ignoring the field is how a material declines shadows, in one line |
+// | `vertex_lighting` | **rejected** (D38) |
 // ---------------------------------------------------------------------------
 
 /// A light that travels one way and never falls off — the sun. `HpLight::Type`.

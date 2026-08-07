@@ -309,6 +309,7 @@ Texture2D g_SceneDepth;
 /// a caller that supplies no target.
 #define HP_TARGET_SIZE (g_Frame.Camera.f4ExtraData[0])
 
+// hp-shader-doc: export
 /// Samples the scene-colour snapshot.
 ///
 /// @param screenUv normalised target coordinates -- `HpSurfaceInput::ScreenUV`,
@@ -319,6 +320,7 @@ float4 HpSceneColour(float2 screenUv)
     return g_SceneColour.SampleLevel(HpSamplerLinearClamp, screenUv, 0.0);
 }
 
+// hp-shader-doc: export
 /// Samples the scene-depth snapshot, **raw**.
 ///
 /// @param screenUv normalised target coordinates.
@@ -331,6 +333,7 @@ float HpSceneDepth(float2 screenUv)
     return g_SceneDepth.SampleLevel(HpSamplerPointClamp, screenUv, 0.0).r;
 }
 
+// hp-shader-doc: export
 /// Turns a device depth into a distance along the view axis, in metres.
 ///
 /// Built from `mProjInv` rather than from the near and far planes, so it is
@@ -347,6 +350,7 @@ float HpViewDepth(float deviceDepth)
     return unprojected.z / unprojected.w;
 }
 
+// hp-shader-doc: export
 /// The scene's linear depth at a screen coordinate, in metres.
 ///
 /// @param screenUv normalised target coordinates.
@@ -739,6 +743,7 @@ void HpSurface(in HpSurfaceInput In, inout HpSurfaceOutput Out)
 #   error "T0086 owns the shadow block inside HpGetLight; enabling ENABLE_SHADOWS before it exists would silently drop the lookup"
 #endif
 
+// hp-shader-doc: export
 /// How many lights reach this fragment (T0145).
 ///
 /// Already clamped to the permutation's `PBR_MAX_LIGHTS`, so a loop over
@@ -753,6 +758,7 @@ int HpLightCount()
 #endif
 }
 
+// hp-shader-doc: export
 /// One light in the engine's own vocabulary, resolved against a world position
 /// (T0145, D31).
 ///
@@ -866,6 +872,7 @@ HpLight HpGetLight(int index, float3 worldPos)
     return L;
 }
 
+// hp-shader-doc: export
 /// The engine's standard response to one light -- **the default a rung-3
 /// override starts from** (T0145).
 ///
@@ -907,6 +914,7 @@ HpLightResponse HpStandardLight(HpLight Light, HpShadedSurface Surface)
     return R;
 }
 
+// hp-shader-doc: export
 /// Turns accumulated punctual light into the fragment's colour (T0145).
 ///
 /// The mirror of `ResolveLighting` (`PBR_Shading.fxh:847`), which is four terms
