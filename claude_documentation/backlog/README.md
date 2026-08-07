@@ -20,9 +20,38 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-07 — twenty-third revision: `T0146` closed the same day it took
-the top, and the last stage that was Diligent's is the engine's.** The sequence
-stays one thing: *give game developers full power over shaders*.
+**Set 2026-08-07 — twenty-fourth revision: `T0147` closed the same day it took
+the top, and a shader can see behind itself.** The sequence stays one thing:
+*give game developers full power over shaders* — and with the screen-space
+family cleared, **T0145's light loop is the only whole family still blocked**.
+
+T0147 landed whole. `g_SceneColour` and `g_SceneDepth` are snapshots taken at a
+new step **10.9b**, between an opaque pass and a blend pass that phase 10 did
+not have before — and the split was owed anyway, because submission in
+draw-list order let a blended surface write depth that *rejected* the opaque
+geometry behind it. **D37** decides the three things a technique would
+otherwise have decided for us: the snapshot point, that the read is a copy
+rather than an alias of the live attachments (a read-only DSV was cheaper and
+lost — no counterpart for colour, and a depth whose contents depend on draw
+order), and that **only a material with `alphaMode: Blend` may read them**,
+enforced at pipeline build by name rather than documented and hoped for.
+Refraction is asserted *pixel for pixel* against a render of the same scene —
+(188, 187, 0) through the pane against (188, 187, 0) without it, and
+(225, 136, 0) at a quarter-screen displacement. A texture a *game layer*
+rendered reaches a material through T0161's declaration unchanged
+(`setGameTexture`), which is T0093's fog-of-war dim expressible today; no
+`Visibility` field was added, deliberately, because no engine system computes
+one. Costs: sampled images 6 → **8**, immutable samplers unchanged at 13 (the
+screen textures sample through the existing palette), and the copy is issued
+only when a blended module reads it — 0 copies for a standard material, 1
+speculative first-frame copy for a module that turns out not to, 2 per two
+frames for one that does. The rock cube sample gained a pane of glass, the
+first material here with no texture of its own. **Normal-roughness is
+rejected**, with its trigger written down: this engine is forward-only, and it
+arrives with the pass that would produce it or not at all.
+
+Previously — the twenty-third revision: `T0146` closed the same day it took
+the top, and the last stage that was Diligent's is the engine's.
 
 T0146 landed everything but its tessellation deferral. The vertex `main` is
 `vsMain` in `HpSurface.slang` — the orchestration ours, `GLTF_TransformVertex`
@@ -181,8 +210,7 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0147](inprogress/0147-engine-intermediates-for-shaders.md) | screen resources for shaders | Refraction, soft particles, heat haze, fog-of-war. A shader cannot sample a depth buffer that is not bound to the pipeline, whatever it includes — so this is binding work, not contract work |
-| 2 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | the light loop | **The whole NPR family** — cel, ramp, hatching, custom BRDFs — plus skin, sheen and anisotropy's shading half. T0159 lets a game *read* lights; this lets it replace the loop. **Must land after T0159**, or its interface freezes before hooks are mutable and the break is paid twice |
+| 1 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | the light loop | **The whole NPR family** — cel, ramp, hatching, custom BRDFs — plus skin, sheen and anisotropy's shading half. T0159 lets a game *read* lights; this lets it replace the loop. **Must land after T0159**, or its interface freezes before hooks are mutable and the break is paid twice. It is now the *only* whole family left blocked: T0147 cleared the screen-space one |
 
 Then, unchanged in substance and pushed behind the above: `T0143` (extended
 material features), `T0152` (the winding remainder), `T0045` (culling and render
@@ -330,7 +358,7 @@ wrong in the confident voice of a document that is normally right.
 | 460 | [T0096](open/0096-hdr-pipeline-and-tonemapping.md) | HDR pipeline, tonemapping and the linear-workflow policy | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 445 | [T0151](open/0151-shader-variants-and-compile-cost.md) | Shader variants bounded: precompiled modules, link-time specialisation | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 456 | [T0146](completed/0146-vertex-stage-hook.md) | The vertex stage: own the vertex main, and a game vertex hook | 4 — Render layer | ✅ DONE | High | Moderate |
-| 458 | [T0147](inprogress/0147-engine-intermediates-for-shaders.md) | Engine intermediates: scene depth, scene colour, game-fed inputs | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
+| 458 | [T0147](completed/0147-engine-intermediates-for-shaders.md) | Engine intermediates: scene depth, scene colour, game-fed inputs | 4 — Render layer | ✅ DONE | High | Moderate |
 | 459 | [T0152](inprogress/0152-winding-convention.md) | The winding convention: hardware facing equals glTF facing | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
 | 460 | [T0153](open/0153-surface-detiling.md) | Surface de-tiling: breaking texture repetition, exposed to the game | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 461 | [T0156](completed/0156-parallax-under-triplanar.md) | Parallax under triplanar, and the silhouette question | 4 — Render layer | ✅ DONE | High | Moderate |

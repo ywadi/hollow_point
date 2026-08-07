@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 535 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0107, T0094, T0096, T0060, T0046; **T0147** ([../inprogress/0147-engine-intermediates-for-shaders.md](../inprogress/0147-engine-intermediates-for-shaders.md)) / **D37** — a screen-space decal reconstructs its target position from **scene depth**, and that read exists now: `HpSceneDepth`/`HpSceneViewDepth` at `In.ScreenUV`. It carries this ticket's two constraints with it — the decal material must be `alphaMode: Blend`, and the depth is the opaque pass's, so a decal cannot land on a transparent surface. What T0147 did **not** give it is per-instance data, which the capability matrix still records as this ticket's other blocker |
+| **Refs** | T0107, T0094, T0096, T0060, T0046; **T0147** ([../completed/0147-engine-intermediates-for-shaders.md](../completed/0147-engine-intermediates-for-shaders.md)) / **D37** — a screen-space decal reconstructs its target position from **scene depth**, and that read exists now: `HpSceneDepth`/`HpSceneViewDepth` at `In.ScreenUV`. It carries this ticket's two constraints with it — the decal material must be `alphaMode: Blend`, and the depth is the opaque pass's, so a decal cannot land on a transparent surface. What T0147 did **not** give it is per-instance data, which the capability matrix still records as this ticket's other blocker |
 
 ## Why
 
