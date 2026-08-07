@@ -210,7 +210,7 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | the light loop | **The whole NPR family** — cel, ramp, hatching, custom BRDFs — plus skin, sheen and anisotropy's shading half. T0159 lets a game *read* lights; this lets it replace the loop. **Must land after T0159**, or its interface freezes before hooks are mutable and the break is paid twice. It is now the *only* whole family left blocked: T0147 cleared the screen-space one |
+| 1 | [T0145](inprogress/0145-lighting-stage-own-the-light-loop.md) | the light loop | **The whole NPR family** — cel, ramp, hatching, custom BRDFs — plus skin, sheen and anisotropy's shading half. T0159 lets a game *read* lights; this lets it replace the loop. **Must land after T0159**, or its interface freezes before hooks are mutable and the break is paid twice. It is now the *only* whole family left blocked: T0147 cleared the screen-space one |
 
 Then, unchanged in substance and pushed behind the above: `T0143` (extended
 material features), `T0152` (the winding remainder), `T0045` (culling and render
@@ -371,7 +371,7 @@ wrong in the confident voice of a document that is normally right.
 | 467 | [T0162](open/0162-shader-authoring-docs.md) | The shader authoring guide: what a game author reads | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 468 | [T0163](open/0163-gpu-suite-teardown-and-cook-skip.md) | A fatal assertion in a gpu case takes the next case with it | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | 464 | [T0155](open/0155-terrain-rendering.md) | Terrain rendering: their reference implementation is the floor, not the ceiling | 4 — Render layer | 🔜 TODO | Medium | Very Complex |
-| 465 | [T0145](open/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | 🔜 TODO | High | Complex |
+| 465 | [T0145](inprogress/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | 🚧 IN PROGRESS | High | Complex |
 | 492 | [T0148](open/0148-post-process-stack.md) | The post-process stack: engine and game effects at one seam | 4 — Render layer | 🔜 TODO | Medium | Complex |
 | 542 | [T0149](open/0149-style-bundles.md) | Style bundles: the one-click looks | 4 — Render layer | 🔜 TODO | Medium | Complex |
 | 548 | [T0150](open/0150-compute-pipelines.md) | Compute pipelines: the stage D15 promised | 4 — Render layer | 🔜 TODO | High | Moderate |

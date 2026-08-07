@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 542 |
 | **Created** | 2026-08-06 |
-| **Blocked by** | [0145-lighting-stage-own-the-light-loop.md](0145-lighting-stage-own-the-light-loop.md) — toon is a rung-3 override, so no styles before the lighting stage; [0148-post-process-stack.md](0148-post-process-stack.md) — a style names a post preset; [0096-hdr-pipeline-and-tonemapping.md](0096-hdr-pipeline-and-tonemapping.md) — a style names a tonemap curve |
+| **Blocked by** | [0145-lighting-stage-own-the-light-loop.md](../inprogress/0145-lighting-stage-own-the-light-loop.md) — toon is a rung-3 override, so no styles before the lighting stage; [0148-post-process-stack.md](0148-post-process-stack.md) — a style names a post preset; [0096-hdr-pipeline-and-tonemapping.md](0096-hdr-pipeline-and-tonemapping.md) — a style names a tonemap curve |
 | **Refs** | **D30** rung 0 ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)); [0143-extended-material-features.md](0143-extended-material-features.md) — "ultra realistic" is largely its features switched on; [0087-environment-lighting.md](0087-environment-lighting.md) — a style names environment defaults; [../completed/0060-material-system.md](../completed/0060-material-system.md) — material defaults are style-scoped; T0078 — where a project's chosen style is stored is its territory |
 
 ## Why
