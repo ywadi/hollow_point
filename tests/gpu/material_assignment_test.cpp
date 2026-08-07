@@ -171,8 +171,11 @@ struct Frame {
 
 /// Renders the quad with the given per-surface override, and no light unless
 /// asked — most of these cases *depend* on the dark.
+///
+/// `scale` is the quad entity's local scale — the determinant-rule case hands
+/// in a mirror (T0152.5); everything else takes the default.
 Frame renderWithMaterials(Device& device, hp::AssetPool& pool, const std::vector<hp::Guid>& slots,
-                          int frames = 1) {
+                          int frames = 1, hp::float3 scale = hp::float3{1.0F, 1.0F, 1.0F}) {
     Frame frame;
 
     std::error_code ec;
@@ -204,6 +207,7 @@ Frame renderWithMaterials(Device& device, hp::AssetPool& pool, const std::vector
     renderer.mesh = meshGuid;
     renderer.materials = slots;
     quad.add<hp::MeshRenderer>(renderer);
+    quad.get<hp::Transform>().scale = scale;
 
     // Without this nothing has a world transform, and the frame comes back
     // pure clear colour with `submitted == 1` — the exact symptom the T0134
@@ -376,6 +380,53 @@ TEST_CASE("an assigned material replaces the imported one, exactly") {
     // Exact, not approximate. Unshaded writes (0, 1, 0) straight out; the
     // sRGB target stores 255 for 1.0 and 0 for 0.0. One count of drift means
     // something else touched the pixel.
+    CHECK(centre.r == 0);
+    CHECK(centre.g == 255);
+    CHECK(centre.b == 0);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
+
+TEST_CASE("a mirrored node keeps its single-sided faces -- the glTF determinant rule") {
+    // **T0152.5's CPU-half probe.** The glTF spec says a negative-determinant
+    // node transform flips effective winding (§instantiation), so a mirrored
+    // single-sided mesh must cull FRONT instead of BACK or the faces that
+    // exist are exactly the wrong ones. The scene is the assigned-green case
+    // above with one change: the quad entity's scale is (-1, 1, 1). The quad
+    // is symmetric, so the mirror moves no geometry -- the *only* thing it
+    // changes is the screen-space winding. Before the determinant rule this
+    // frame came back pure clear-colour blue: every triangle culled, which is
+    // the original T0141.12 symptom reproduced by data instead of by a bug.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    hp::AssetPool pool;
+    const hp::Guid materialGuid = hp::Guid::generate();
+    {
+        auto material = std::make_shared<hp::Material>();
+        material->baseColour = hp::float4{0.0F, 1.0F, 0.0F, 1.0F};
+        // Single-sided and unlit, exactly like the probe above: the exact
+        // green arrives only if the surviving faces are the glTF front faces.
+        material->unlit = true;
+        pool.store<hp::Material>(materialGuid, material);
+    }
+
+    const Frame frame = renderWithMaterials(device, pool, {materialGuid}, /*frames=*/1,
+                                            hp::float3{-1.0F, 1.0F, 1.0F});
+    REQUIRE(frame.ok());
+
+    const Rgb centre = centreOf(frame.pixels);
+    MESSAGE("mirrored single-sided quad: (" << centre.r << ", " << centre.g << ", " << centre.b
+                                            << ")");
+
+    // Exact, for the same reason as the unmirrored probe -- and the failure
+    // modes are distinct colours: culled-away is the blue clear, a magenta
+    // fallback is a failed shader, and anything shaded would be black.
     CHECK(centre.r == 0);
     CHECK(centre.g == 255);
     CHECK(centre.b == 0);

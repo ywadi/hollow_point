@@ -176,6 +176,12 @@ already-flipped normal flips twice -- a double-sided surface lit
 correctly from the front and inverted from behind, which looks like a
 handedness bug and is not one.
 
+`isFrontFace` is **glTF facing, not raw `SV_IsFrontFace`** (T0152.5):
+under a mirrored node -- a negative-determinant transform -- the
+engine has already folded the determinant sign in, so `true` always
+means the authored front of the surface and a material never needs to
+know whether the node it is drawn under is mirrored.
+
 ### `IHpMaterial::surface`
 
 ```hlsl

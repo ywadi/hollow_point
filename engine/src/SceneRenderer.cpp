@@ -1223,6 +1223,28 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
         }
         const float4x4& nodeMatrix = transforms.NodeGlobalMatrices[node->Index];
 
+        // **The glTF determinant rule** (T0152.5, D33). A negative-determinant
+        // node transform — a mirror, from a negative entity scale or a mirrored
+        // glTF node — reverses every triangle's screen-space winding, and the
+        // spec says facing must be judged as if the winding were flipped
+        // (glTF 2.0 §instantiation). Culling is the CPU half: a single-sided
+        // draw under a mirror culls FRONT so the faces that survive are the
+        // same glTF front faces that survive an unmirrored draw. The shader
+        // half — `SV_IsFrontFace` corrected by the same sign, so the two-sided
+        // normal flip keeps pointing at the viewer — lives in
+        // `evaluateSurface` (`HpSurface.slang`), which derives the sign from
+        // the node matrix already in `cbPrimitiveAttribs` rather than trusting
+        // a second copy of this computation to stay in step.
+        //
+        // The sign of the upper-3×3 determinant is all that matters, and it is
+        // transpose-invariant, so the row-vector convention is irrelevant.
+        const float det3 =
+            nodeMatrix._11 * (nodeMatrix._22 * nodeMatrix._33 - nodeMatrix._23 * nodeMatrix._32) -
+            nodeMatrix._12 * (nodeMatrix._21 * nodeMatrix._33 - nodeMatrix._23 * nodeMatrix._31) +
+            nodeMatrix._13 * (nodeMatrix._21 * nodeMatrix._32 - nodeMatrix._22 * nodeMatrix._31);
+        const Diligent::CULL_MODE singleSidedCull =
+            det3 < 0.0F ? Diligent::CULL_MODE_FRONT : Diligent::CULL_MODE_BACK;
+
         for (const Diligent::GLTF::Primitive& primitive : node->pMesh->Primitives) {
             if (primitive.MaterialId >= modelBindings->material.size()) {
                 continue;
@@ -1380,13 +1402,13 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
             // the glTF spec means -- back faces, winding-defined, are culled. The
             // T0141.12 era culled FRONT here to compensate for test assets whose
             // winding contradicted their normals; T0152 re-wound the assets and the
-            // compensation reverted with them. Note the determinant rule (T0152.5):
-            // a negative-determinant node transform flips effective winding by
-            // specification, and when that lands it flips this enum per draw.
+            // compensation reverted with them. `singleSidedCull` is BACK except
+            // under a mirrored node, where the determinant rule (T0152.5, above)
+            // flips it per draw.
             const Diligent::PBR_Renderer::PSOKey key{
                 Diligent::PBR_Renderer::RenderPassType::Main, flags,
                 static_cast<Diligent::PBR_Renderer::ALPHA_MODE>(material->Attribs.AlphaMode),
-                doubleSided ? Diligent::CULL_MODE_NONE : Diligent::CULL_MODE_BACK};
+                doubleSided ? Diligent::CULL_MODE_NONE : singleSidedCull};
 
             Diligent::IPipelineState* pso = renderer->pipeline(graphics, key, customModule);
             if (pso == nullptr && customModule != nullptr) {
@@ -1424,7 +1446,7 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                         Diligent::PBR_Renderer::RenderPassType::Main, flags,
                         static_cast<Diligent::PBR_Renderer::ALPHA_MODE>(
                             material->Attribs.AlphaMode),
-                        doubleSided ? Diligent::CULL_MODE_NONE : Diligent::CULL_MODE_BACK};
+                        doubleSided ? Diligent::CULL_MODE_NONE : singleSidedCull};
                     pso = renderer->pipeline(graphics, errorKey);
                 }
             }

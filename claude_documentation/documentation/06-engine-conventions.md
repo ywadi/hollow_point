@@ -330,6 +330,59 @@ One rule that is not provisional, because it is a correctness constraint rather
 than a performance one: **memory does not cross the module boundary to be
 freed** — see the module boundary section above.
 
+## Winding, facing and chirality
+
+**The convention lives in `engine/include/hp/WindingConvention.hpp` (D33,
+T0152) and it is binding: hardware facing equals glTF facing.**
+`kFrontFaceCounterClockwise = false`, declared rather than defaulted;
+single-sided geometry culls `BACK` — which is what the glTF spec means by
+single-sided, and what every published shadow-bias recipe assumes. The
+engine's chain contains **zero winding reversals**, measured step by step in
+T0152.1: the importer converts nothing, the view is a rigid inverse, the
+left-handed projection has no XY mirror, reverse-Z touches only the Z column,
+and Diligent folds its internal Vulkan viewport flip into the flag's D3D
+screen-space semantics. Every rasterizer state in the engine declares the
+flag from the header; a new pipeline must too, because a defaulted field
+happens to agree today and stops agreeing — silently — the day the convention
+moves.
+
+Three consequences worth knowing before they bite:
+
+- **The glTF determinant rule is honoured per draw** (T0152.5). A
+  negative-determinant node transform — a mirrored entity scale, a mirrored
+  glTF node — flips effective winding by specification, and the engine
+  handles both halves. `SceneRenderer` flips the cull face per draw from the
+  sign of the node matrix's upper-3×3 determinant, and `evaluateSurface` in
+  `HpSurface.slang` folds the same sign into `SV_IsFrontFace` — so the
+  two-sided normal flip and the `shadingNormal` hook always receive **glTF
+  facing**, and a material never needs to know whether the node it draws
+  under is mirrored. The shader derives the sign from the node matrix already
+  in `cbPrimitiveAttribs` rather than trusting a CPU-written flag, so the two
+  halves cannot drift apart. *Not* handled: a **camera** under a mirrored
+  parent — that mirrors the whole view, which is item 5 in the header's list
+  (the flag itself must toggle); no scene here can author one today, and the
+  first game that does is the trigger.
+- **Test assets wind consistently with their normals.** A camera-facing quad
+  with −Z normals winds `{0, 2, 1, 0, 3, 2}` over BL, BR, TR, TL vertices.
+  Copy-pasting the pre-T0152 order `{0, 1, 2, 0, 2, 3}` recreates the
+  backwards asset the whole ticket existed to kill — it does not look like a
+  winding bug when it fails; it looks like invisible geometry or inverted
+  lighting.
+- **The display is chirally mirrored — measured, not derived, and the
+  decision about it is the owner's** (T0152.6, open). With an identity camera
+  looking +Z, **world +X lands on screen right** where a physical observer
+  facing +Z has +X on their *left*; world +Y lands on screen top — one
+  mirror, in X. `tests/gpu/chirality_test.cpp` pins both with an asymmetric
+  glyph and fails in the opposite pattern if a mirror is ever introduced
+  without being decided. The consequence: DCC-authored asymmetric content
+  (text on a sign, a watch on a left wrist) renders flipped today — invisible
+  while every asset is a symmetric test quad, visible the day the first real
+  model is imported. The recorded options: accept and document the
+  D3D-native mirrored convention, or set `kImportMirrorsContent = true` (the
+  Unity-style import mirror), which reverses apparent winding once and
+  **must** flip `kFrontFaceCounterClockwise` with it — the header's
+  `static_assert` refuses to let them move separately.
+
 ## Profiling instrumentation
 
 Zones are added **as code is written**, not retrofitted. That is the whole

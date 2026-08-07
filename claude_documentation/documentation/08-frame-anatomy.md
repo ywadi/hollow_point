@@ -87,7 +87,15 @@ the next few slot into gaps between these steps rather than after them.
 Repeated per `RenderStack` layer for 10.1–10.9c, into **one shared colour
 target** (T0027.5).
 
-**Four things about this order are load-bearing:**
+**Five things about this order are load-bearing:**
+
+- **Facing is decided per draw, inside 10.9a/10.9c.** The cull face in each
+  `PSOKey` comes from the winding convention (D33: single-sided culls `BACK`)
+  *combined with* the sign of the node matrix's upper-3×3 determinant — the
+  glTF determinant rule, T0152.5 — so a mirrored node culls `FRONT` and its
+  fragments get their `SV_IsFrontFace` corrected in the shader from the same
+  matrix. Anything that reorders or batches these submits must keep the
+  per-draw determinant, or mirrored content inverts silently.
 
 - **The layer mask test is first in 10.4, before the mesh check.** An object the
   camera does not render must cost nothing further — no GUID lookup, no list

@@ -449,10 +449,13 @@ float2 HpParallaxUv(float2 uv, HpSurfaceInput In)
     float2 duv2 = ddy(uv);
 
     // **Oriented toward the viewer explicitly, not by `SV_IsFrontFace`.**
-    // In this engine hardware facing and geometric facing disagree (the
-    // winding finding on T0141), and the flipped contract normal can point
-    // away from the camera on perfectly front-facing surfaces. Parallax only
-    // makes sense on the side being looked at, so the normal is forced there.
+    // Parallax only makes sense on the side being looked at, and the contract
+    // normal legitimately points away from the camera when a double-sided
+    // surface is viewed from behind, so the normal is forced toward the
+    // viewer here rather than trusting a facing bit this helper is not
+    // handed. (An earlier version of this comment cited T0141.12's inverted
+    // winding diagnosis; T0152 corrected that -- hardware facing equals glTF
+    // facing -- and this orientation is right for its own reasons.)
     float3 N = normalize(In.Normal);
     if (dot(N, In.ViewDir) < 0.0)
     {
@@ -1119,6 +1122,12 @@ interface IHpMaterial
     /// already-flipped normal flips twice -- a double-sided surface lit
     /// correctly from the front and inverted from behind, which looks like a
     /// handedness bug and is not one.
+    ///
+    /// `isFrontFace` is **glTF facing, not raw `SV_IsFrontFace`** (T0152.5):
+    /// under a mirrored node -- a negative-determinant transform -- the
+    /// engine has already folded the determinant sign in, so `true` always
+    /// means the authored front of the surface and a material never needs to
+    /// know whether the node it is drawn under is mirrored.
     [mutating] float3 shadingNormal(VSOutput VSOut, HpSurfaceInput In, float3 geometricNormal,
                          bool isFrontFace)
     {
@@ -1299,6 +1308,24 @@ struct HpStandardMaterial : IHpMaterial
 PSOutput evaluateSurface<TMaterial : IHpMaterial>(inout TMaterial material, VSOutput VSOut,
                                                   bool IsFrontFace)
 {
+    // **The glTF determinant rule, shader half** (T0152.5, D33). A mirrored
+    // node -- negative entity scale, or a negative-determinant glTF node
+    // transform -- reverses every triangle's screen-space winding, so the
+    // facing the rasteriser reports is the *opposite* of the facing glTF
+    // defines. Everything downstream wants glTF facing: the two-sided normal
+    // flip exists to point authored normals at the viewer, and under a mirror
+    // the raw `SV_IsFrontFace` makes it do exactly the opposite -- geometry
+    // present (the CPU half in `SceneRenderer` flips the cull face) but lit
+    // from the wrong side, `N·L` negative, black. The sign comes from the
+    // node matrix already bound in `cbPrimitiveAttribs`, not from a flag the
+    // CPU writes, so the two halves cannot drift apart; it is
+    // transpose-invariant, so the packing convention is irrelevant.
+    bool gltfFrontFace = IsFrontFace;
+    if (determinant((float3x3)g_Primitive.Transforms.NodeMatrix) < 0.0)
+    {
+        gltfFrontFace = !gltfFrontFace;
+    }
+
     // **Every optional field is guarded, and the guards are the same macros
     // `GetVSOutputStruct` generates the struct from.** A mesh with no texture
     // coordinates produces a `VSOutput` with no `UV0` member at all, so reading
@@ -1350,7 +1377,7 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(inout TMaterial material, VSOu
     // is why the old renderer lit this quad and the first version of this shader
     // did not.
     geometricNormal = normalize(VSOut.Normal);
-    surfaceIn.Normal = geometricNormal * (IsFrontFace ? 1.0 : -1.0);
+    surfaceIn.Normal = geometricNormal * (gltfFrontFace ? 1.0 : -1.0);
 #else
     // No normals on the mesh. Facing the camera is the least wrong answer: it
     // keeps the BRDF finite and the surface visible, where a zero normal makes
@@ -1448,7 +1475,7 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(inout TMaterial material, VSOu
     }
     surfaceOut.Occlusion = material.occlusion(VSOut, surfaceIn);
     surfaceOut.Emissive = material.emissive(VSOut, surfaceIn);
-    surfaceOut.Normal = material.shadingNormal(VSOut, surfaceIn, geometricNormal, IsFrontFace);
+    surfaceOut.Normal = material.shadingNormal(VSOut, surfaceIn, geometricNormal, gltfFrontFace);
 
     // **The surface stage's whole-output hook.** Everything above is the
     // material's per-channel answers; this is the point parallax, triplanar

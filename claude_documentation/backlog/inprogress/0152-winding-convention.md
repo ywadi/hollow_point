@@ -182,15 +182,19 @@ cannot move separately.
       *(2026-08-06 — the material-assignment test's assigned-green case is the
       probe: a **single-sided** correctly-wound quad through `CULL_MODE_BACK`
       must land its exact (0, 255, 0), which only a hardware front face can)*
-- [ ] Negative-determinant node transforms flip facing per the glTF spec, or
+- [x] Negative-determinant node transforms flip facing per the glTF spec, or
       the decision not to support mirrored-scale nodes is written down with a
-      trigger
+      trigger *(2026-08-07 — both halves, cull and shading; measured below)*
 - [ ] The display-handedness question is put to the owner with 152.6's probe
       rendered, and the answer recorded — **open, deliberately; it is not
-      this ticket's to decide**
-- [~] T0086's Refs stop pointing at the inverted diagnosis and point here —
+      this ticket's to decide.** *The probe now exists and has measured the
+      mirror on hardware (2026-08-07, below); what remains open is only the
+      owner's answer*
+- [x] T0086's Refs stop pointing at the inverted diagnosis and point here —
       staged as an exact edit (INTEGRATION-WINDING.md §3) being applied by the
-      coordinating session; verify it landed before this ticket closes
+      coordinating session; *verified landed 2026-08-07: `0086-shadows.md`'s
+      Refs carry the corrected finding, the (211,144,144) → (242,25,25)
+      baseline note and the D33 pointer*
 
 ## Subtasks
 
@@ -227,24 +231,50 @@ cannot move separately.
       change alone makes every single-sided draw invisible, which is the
       original symptom from the other side. *Done 2026-08-06, one commit with
       152.2 and 152.3.*
-- [ ] 152.5 **The glTF determinant rule.** A negative-determinant node
-      transform flips effective winding by specification; nothing in the
-      chain honours it — not the loader, not DiligentFX (`grep determinant`
-      across `GLTFLoader.cpp` and `DiligentFX/PBR`: nothing), not the engine.
-      Cheapest correct form: sign of the upper-3×3 determinant of
-      `nodeMatrix` at draw time flips the cull enum in the `PSOKey`. Decide
-      whether the two-sided normal flip needs the same treatment, and write
-      down whichever half is deferred
-- [ ] 152.6 **The chirality probe.** One gpu test with an asymmetric mesh (an
-      "F" glyph outline is enough) asserting which screen side each world
-      direction lands on — the test that pins display handedness forever, and
-      the rendering the owner decides the mirror question against. Until it
-      exists, the mirror claim above stays "derived, cross-anchored, not
-      observed"
-- [ ] 152.7 **Docs**: `06-engine-conventions.md` gains the winding section;
+- [x] 152.5 **The glTF determinant rule.** *(done 2026-08-07 — both halves,
+      nothing deferred.)* The CPU half is the ticket's cheapest-correct form:
+      `SceneRenderer` computes the sign of the upper-3×3 determinant of
+      `nodeMatrix` once per node and a mirrored single-sided draw culls
+      `FRONT`. **The two-sided normal flip was decided to need the same
+      treatment, and got it**: without it a mirrored draw's geometry *exists*
+      but shades inverted — raw `SV_IsFrontFace` reports the glTF front as a
+      hardware back, the two-sided flip turns the authored normal away from
+      the viewer, `N·L` goes negative, black. `evaluateSurface` in
+      `HpSurface.slang` derives the same determinant sign from the node
+      matrix already bound in `cbPrimitiveAttribs` — not from a CPU-written
+      flag, so the two halves cannot drift — and hands the corrected **glTF
+      facing** to the flip and to the `shadingNormal` hook (contract note
+      added: a material never needs to know its node is mirrored). Not
+      handled, with the trigger written down: a *camera* under a mirrored
+      parent mirrors the whole view — that is `WindingConvention.hpp`'s item
+      5 (the flag must toggle), it is not per-node, and no scene here can
+      author one until a game does. Probes: a mirrored single-sided unlit
+      quad lands its exact (0, 255, 0) through `CULL_MODE_FRONT`
+      (`material_assignment_test`), and a mirrored *lit double-sided* quad
+      measures **(242, 25, 25) — identical to the unmirrored frame** where
+      the uncorrected shader renders it black (`lit_surface_test`)
+- [x] 152.6 **The chirality probe.** *(probe done 2026-08-07 —
+      `tests/gpu/chirality_test.cpp`; the owner's decision is NOT made and is
+      tracked by the Done-when above.)* An "F" of three rectangles, unlit,
+      double-sided — every row shares its world −X edge, so which *screen*
+      side the rows' edges align on is the measurement. Measured on hardware
+      (RTX 2080, Vulkan, both targets): min-x spread across rows **0 px**,
+      max-x spread **55 px** — the stem edge lands screen-left and the arms
+      extend right, so **world +X lands on screen right: the display is
+      mirrored, exactly as derived**. Vertically: arm rows at mean readback
+      row 36 vs stem-only rows at 76, and Vulkan readback row 0 is screen top
+      (present_blit's measurement), so **world +Y lands on screen top** — the
+      mirror is in X, once. The claim graduates from "derived,
+      cross-anchored, not observed" to **measured and pinned**: the test
+      fails in the opposite pattern (varying min-x, aligned max-x) if anyone
+      introduces a mirror without deciding it
+- [x] 152.7 **Docs**: `06-engine-conventions.md` gains the winding section;
       T0086's Refs updated (it currently instructs settling "the inverted
       convention" that does not exist); `08-frame-anatomy.md` if the facing
-      decision's location merits a line
+      decision's location merits a line *(2026-08-07 — conventions section
+      added with the determinant rule and the measured chirality; T0086's
+      Refs verified corrected and extended with the shadow-pass determinant
+      note; frame anatomy gained the facing bullet under 10.9)*
 
 ## Measured 2026-08-06 — the fix on hardware, and the prediction that did not survive
 
@@ -439,3 +469,40 @@ probes (`SV_IsFrontFace` false, the cull-enum flip, the lit suite under
 `FrontCounterClockwise = true`), and the geometric analysis is static and
 checkable by eye against the files cited. The display-mirror claim is derived
 and cross-anchored but not yet observed on a screen; 152.6 is its probe.
+*(Superseded 2026-08-07: the probe exists and the mirror is measured — see
+below.)*
+
+## Measured 2026-08-07 — 152.5 and 152.6 on hardware
+
+Run on an **RTX 2080** (a different host from the 2026-08-06 run's RTX 4070
+Laptop — the values transferred exactly), Vulkan, both targets: Linux native
+on x11, Windows under wine. **64 gpu cases, 1462 assertions, zero failures on
+each target** (62 → 64: the chirality probe and the mirrored single-sided
+case are new; the mirrored lit subcase rides an existing case).
+
+**The determinant rule, both halves:**
+
+| probe | value | what it proves |
+|---|---|---|
+| mirrored single-sided unlit quad, scale (−1, 1, 1) | exact **(0, 255, 0)** | the CPU half: cull flips to FRONT per draw, the glTF front faces survive. Before the rule this frame was the blue clear — every triangle culled |
+| mirrored lit double-sided quad | **(242, 25, 25)**, identical to the unmirrored frame | the shader half: `SV_IsFrontFace` corrected by the node determinant, the two-sided flip keeps pointing the normal at the viewer. Without it: `N·L = −1`, black, with the draw submitted and the light on |
+
+**The chirality probe** (`tests/gpu/chirality_test.cpp`): the F's rows share
+their world −X edge; on screen the shared edge landed at **min-x spread 0 px**
+(perfect column alignment on the left) with max-x spread 55 px (the arms
+extending right), and the arm rows at mean readback row 36 against the
+stem-only rows' 76. So, observed rather than derived: **world +X lands on
+screen right, world +Y on screen top** — one mirror, in X, exactly as the
+D33 derivation said. The owner's decision on it remains open (Done-when
+above); the options are unchanged: accept and document the mirrored
+convention, or set `kImportMirrorsContent = true` and flip
+`kFrontFaceCounterClockwise` with it — the header's `static_assert` will not
+let them move separately, and the probe will fail loudly in the opposite
+pattern the day either happens.
+
+Also found on the way: `HpParallaxUv`'s comment still cited T0141.12's
+inverted diagnosis ("hardware facing and geometric facing disagree") — the
+code was right for other reasons and stays; the comment now says so. The
+`shadingNormal` hook's contract now states its `isFrontFace` is **glTF
+facing**, not raw `SV_IsFrontFace`, which the generated shader reference
+picks up.

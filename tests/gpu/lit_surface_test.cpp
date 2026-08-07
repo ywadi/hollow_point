@@ -37,6 +37,7 @@
 #include <hp/Window.hpp>
 
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -276,6 +277,44 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
     // is what distinguishes "lit red surface" from every failure mode without
     // pinning a BRDF this test does not own -- which is also why every one of
     // these checks survived a change that moved the exact values this much.
+
+    SUBCASE("a mirrored node shades like the unmirrored one -- the determinant "
+            "rule's shader half") {
+        // **T0152.5's GPU-half probe.** The quad's material is double-sided
+        // (`CULL_MODE_NONE`), so a mirror never makes the geometry disappear
+        // -- what a (-1, 1, 1) entity scale flips is raw `SV_IsFrontFace`.
+        // Without the determinant correction in `evaluateSurface`, the
+        // two-sided flip then turns the authored normal *away* from the
+        // viewer, `N·L` goes negative, and this frame renders black with the
+        // draw submitted and the light on -- the exact inverted-shading bug
+        // the backwards-wound assets used to produce, reproduced by data.
+        //
+        // The quad is x-symmetric and the mirror leaves N, V and L untouched
+        // (the normal is pure -Z), so the corrected frame must match the
+        // unmirrored one within readback rounding -- the triangulation
+        // diagonal flips with the mirror, which can move an averaged channel
+        // by a count, and no more.
+        hp::Transform placement = quad.get<hp::Transform>();
+        placement.scale = hp::float3{-1.0F, 1.0F, 1.0F};
+        scene.setLocalTransform(quad, placement);
+        scene.propagateTransforms();
+
+        REQUIRE(view.render(device.render->context(), scene, pool, 0,
+                            &stats) != nullptr);
+        CHECK(stats.submitted == 1);
+        std::vector<std::uint8_t> mirroredPixels;
+        REQUIRE(view.readback(device.render->context(), mirroredPixels));
+        const Rgb mirrored = centreOf(mirroredPixels);
+        MESSAGE("mirrored lit quad: " << mirrored.text() << " versus unmirrored: " << lit.text());
+
+        CHECK(std::abs(mirrored.r - lit.r) <= 2);
+        CHECK(std::abs(mirrored.g - lit.g) <= 2);
+        CHECK(std::abs(mirrored.b - lit.b) <= 2);
+        // The magenta guard, and the white-light symmetry: a failed shader's
+        // (127, 0, 127) fails both.
+        CHECK(mirrored.g == mirrored.b);
+        CHECK(mirrored.r > 60);
+    }
 
     SUBCASE("removing the light returns the frame to black") {
         // The control, and the proof that the colour above came from the light
