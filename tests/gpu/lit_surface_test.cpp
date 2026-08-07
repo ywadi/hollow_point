@@ -18,7 +18,7 @@
 //   * dark   — the light is pointing the wrong way, which is the sign error the
 //              glTF negative-Z convention invites
 //
-// **The light points down +Z and the quad faces the camera at z = 3**, so the
+// **The light points down -Z and the quad faces the camera at z = -3**, so the
 // surface normal (0, 0, -1) faces the light head-on and the geometric term is at
 // its maximum. That is deliberate: a grazing angle would make the expected value
 // depend on the exact BRDF, and this test is about whether light arrives, not
@@ -97,16 +97,21 @@ void writeQuadGltf(const std::filesystem::path& directory, float r, float g, flo
     std::filesystem::create_directories(directory, ec);
 
     const float vertices[] = {
-        -4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-         4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-         4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-        -4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
+        -4.0F, -4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
+         4.0F, -4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
+         4.0F,  4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
+        -4.0F,  4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
     };
-    // Wound consistently with the authored -Z normals (right-hand rule) --
-    // re-wound by T0152, whose trace found the old {0,1,2, 0,2,3} order
-    // pointing the winding-defined front face away from the camera while the
-    // NORMAL attributes pointed at it.
-    const std::uint16_t indices[] = {0, 2, 1, 0, 3, 2};
+    // Wound consistently with the authored **+Z** normals (right-hand rule):
+    // `cross(v1 - v0, v2 - v0)` over BL, BR, TR, TL gives `(0, 0, +area)`.
+    //
+    // **This is `{0, 1, 2, 0, 2, 3}` again, and that is not a revert.** T0152
+    // moved these quads to `{0, 2, 1, 0, 3, 2}` because they faced the camera
+    // with a -Z normal; T0165 turned the camera round, so the quads face it
+    // with a +Z normal and the original order is the consistent one. The rule
+    // never changed -- winding agrees with the authored normal -- only which
+    // normal faces the lens.
+    const std::uint16_t indices[] = {0, 1, 2, 0, 2, 3};
 
     std::vector<unsigned char> bin;
     const auto* vb = reinterpret_cast<const unsigned char*>(vertices);
@@ -148,7 +153,7 @@ void writeQuadGltf(const std::filesystem::path& directory, float r, float g, flo
   ],
   "accessors": [
     { "bufferView": 0, "byteOffset": 0,  "componentType": 5126, "count": 4, "type": "VEC3",
-      "min": [-4.0, -4.0, 3.0], "max": [4.0, 4.0, 3.0] },
+      "min": [-4.0, -4.0, -3.0], "max": [4.0, 4.0, -3.0] },
     { "bufferView": 0, "byteOffset": 12, "componentType": 5126, "count": 4, "type": "VEC3" },
     { "bufferView": 1, "byteOffset": 0,  "componentType": 5123, "count": 6, "type": "SCALAR" }
   ]
@@ -231,13 +236,13 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
     sun.colour = hp::float3{1.0F, 1.0F, 1.0F};
     sun.intensity = 3.0F;
     lightEntity.add<hp::Light>(sun);
-    // Yawed pi about Y: a light travels down its local **negative** Z, so the
-    // half-turn makes it travel +Z -- from the camera's side onto the quad's
-    // -Z-facing front. Before T0152 re-wound the assets this was an identity
-    // transform and the quad was lit from behind, which only looked right
-    // because the backwards winding inverted the two-sided normal flip.
-    lightEntity.get<hp::Transform>().rotation =
-        hp::Quaternion::RotationFromAxisAngle(hp::float3{0.0F, 1.0F, 0.0F}, 3.14159265F);
+    // **No rotation at all, and that is the point of T0165.** A light travels
+    // down its local negative Z (glTF's `KHR_lights_punctual`) and the camera
+    // now looks down its own negative Z too, so an identity lamp beside an
+    // identity camera lights exactly what the camera sees. T0152 needed a pi
+    // yaw here to undo the disagreement between the two conventions; there is
+    // nothing left to undo. The deleted half-turn is the clearest single piece
+    // of evidence that the engine and glTF now agree.
     scene.propagateTransforms();
 
     hp::SceneView view;
@@ -380,14 +385,13 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
             return centreOf(pixels);
         };
 
-        // The quad sits at z = 3 and faces the camera (T0152 re-wound the
-        // asset, so the winding, the normals and the visible side finally
-        // agree). Nearer is brighter -- that is attenuation -- and the lamp
-        // now sits on the camera's side, where a lamp lighting the visible
-        // face belongs. The same distances as before the re-wind, so the
-        // measured pair carries over by symmetry.
-        const Rgb near = renderAt(1.0F);
-        const Rgb far = renderAt(-6.0F);
+        // The quad sits at z = -3 and faces the camera. Nearer is brighter --
+        // that is attenuation -- and the lamp sits on the camera's side, where
+        // a lamp lighting the visible face belongs. **The same distances as
+        // before T0165 (2, 9 and 37 units), mirrored in z**, so the measured
+        // pair carries over by symmetry: same incidence, same view, same BRDF.
+        const Rgb near = renderAt(-1.0F);
+        const Rgb far = renderAt(6.0F);
         MESSAGE("point light 2 units away: " << near.text() << ", 9 units away: " << far.text());
         CHECK(near.r > 0);
         CHECK(near.r > far.r);
@@ -395,7 +399,7 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
         // Beyond `range` the attenuation term clamps to zero, so the surface is
         // unlit however bright the lamp is. A light that kept reaching past its
         // range would make range a decoration rather than a bound.
-        const Rgb beyond = renderAt(-34.0F);
+        const Rgb beyond = renderAt(34.0F);
         MESSAGE("point light past its range: " << beyond.text());
         CHECK(beyond.r < 8);
     }
@@ -408,13 +412,12 @@ void exerciseLitSurface(hp::RenderBackend backend, const char* backendName) {
         lamp.intensity = 60.0F;
         lamp.range = 20.0F;
 
-        // On the camera's side of the quad, aimed at the visible face: the
-        // pi yaw turns the spot's travel direction from -Z to +Z, exactly as
-        // the directional light above (T0152).
+        // On the camera's side of the quad, aimed at the visible face. **No
+        // rotation**, exactly as the directional light above: a spot travels
+        // down its local -Z and the quad's front is at -Z from here, so the
+        // default orientation is already the right one (T0165).
         hp::Transform placement;
-        placement.position = hp::float3{0.0F, 0.0F, 1.0F};
-        placement.rotation =
-            hp::Quaternion::RotationFromAxisAngle(hp::float3{0.0F, 1.0F, 0.0F}, 3.14159265F);
+        placement.position = hp::float3{0.0F, 0.0F, -1.0F};
         scene.setLocalTransform(lightEntity, placement);
         scene.propagateTransforms();
 

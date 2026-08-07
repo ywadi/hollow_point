@@ -75,12 +75,17 @@ std::string rockcube_path() {
 }
 
 /// One entity carrying a component only the gameplay module knows about.
+///
+/// `z = -5` mirrors the sample scene: the camera looks down its own -Z since
+/// T0165, so that is where "in front" is. Nothing here renders, so the value is
+/// documentation rather than data — which is exactly why it is worth keeping
+/// honest, since a fixture is what the next reader copies.
 constexpr const char* kSpinnerScene = R"(version: 1
 entities:
   - name: Spinner
     components:
       Transform:
-        position: [0, 0, 5]
+        position: [0, 0, -5]
         rotation: [0, 0, 0, 1]
         scale: [1, 1, 1]
       RockCubeSpin:

@@ -101,6 +101,11 @@ std::filesystem::path findTextureDir() {
 }
 
 /// How far in front of the camera the quad sits, in metres.
+///
+/// A **distance**, so it stays positive; the camera looks down -Z since T0165,
+/// so the quad's plane is at `-kQuadDistance`. Keeping the sign out of the
+/// constant is what lets `kQuadHalf`'s `distance * tan(fov / 2)` below stay the
+/// framing formula it is meant to be rather than acquiring an `abs`.
 constexpr float kQuadDistance = 3.0F;
 
 /// Half the quad's width, chosen so it **exactly fills the square frame**.
@@ -129,18 +134,23 @@ void writeTexturedQuadGltf(const std::filesystem::path& directory, const std::st
 
     // position(3) normal(3) tangent(4) uv(2) = 12 floats per vertex.
     const float h = kQuadHalf;
-    const float z = kQuadDistance;
+    const float z = -kQuadDistance;
     const float vertices[] = {
-        -h, -h, z,  0.0F, 0.0F, -1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  0.0F, 1.0F,
-         h, -h, z,  0.0F, 0.0F, -1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  1.0F, 1.0F,
-         h,  h, z,  0.0F, 0.0F, -1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  1.0F, 0.0F,
-        -h,  h, z,  0.0F, 0.0F, -1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  0.0F, 0.0F,
+        -h, -h, z,  0.0F, 0.0F, 1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  0.0F, 1.0F,
+         h, -h, z,  0.0F, 0.0F, 1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  1.0F, 1.0F,
+         h,  h, z,  0.0F, 0.0F, 1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  1.0F, 0.0F,
+        -h,  h, z,  0.0F, 0.0F, 1.0F,  1.0F, 0.0F, 0.0F, 1.0F,  0.0F, 0.0F,
     };
-    // Wound consistently with the authored -Z normals (right-hand rule) --
-    // re-wound by T0152, whose trace found the old {0,1,2, 0,2,3} order
-    // pointing the winding-defined front face away from the camera while the
-    // NORMAL attributes pointed at it.
-    const std::uint16_t indices[] = {0, 2, 1, 0, 3, 2};
+    // Wound consistently with the authored **+Z** normals (right-hand rule):
+    // `cross(v1 - v0, v2 - v0)` over BL, BR, TR, TL gives `(0, 0, +area)`.
+    //
+    // **This is `{0, 1, 2, 0, 2, 3}` again, and that is not a revert.** T0152
+    // moved these quads to `{0, 2, 1, 0, 3, 2}` because they faced the camera
+    // with a -Z normal; T0165 turned the camera round, so the quads face it
+    // with a +Z normal and the original order is the consistent one. The rule
+    // never changed -- winding agrees with the authored normal -- only which
+    // normal faces the lens.
+    const std::uint16_t indices[] = {0, 1, 2, 0, 2, 3};
 
     std::vector<unsigned char> bin;
     const auto* vb = reinterpret_cast<const unsigned char*>(vertices);
@@ -190,9 +200,9 @@ void writeTexturedQuadGltf(const std::filesystem::path& directory, const std::st
   "accessors": [
     { "bufferView": 0, "byteOffset": 0,  "componentType": 5126, "count": 4, "type": "VEC3",
       "min": [)" + std::to_string(-kQuadHalf) + R"(, )" + std::to_string(-kQuadHalf) +
-        R"(, )" + std::to_string(kQuadDistance) + R"(],
+        R"(, )" + std::to_string(-kQuadDistance) + R"(],
       "max": [)" + std::to_string(kQuadHalf) + R"(, )" + std::to_string(kQuadHalf) +
-        R"(, )" + std::to_string(kQuadDistance) + R"(] },
+        R"(, )" + std::to_string(-kQuadDistance) + R"(] },
     { "bufferView": 0, "byteOffset": 12, "componentType": 5126, "count": 4, "type": "VEC3" },
     { "bufferView": 0, "byteOffset": 24, "componentType": 5126, "count": 4, "type": "VEC4" },
     { "bufferView": 0, "byteOffset": 40, "componentType": 5126, "count": 4, "type": "VEC2" },
@@ -342,9 +352,10 @@ bool renderTextured(Device& device, const std::string& prefix, std::vector<std::
     sun.intensity = 3.0F;
     lightEntity.add<hp::Light>(sun);
     // **Raked, and a head-on light is why this needed saying.** A light entity
-    // with an identity transform points straight down +Z (`Light.cpp` takes the
-    // local Z axis and negates it), which here is coincident with both the view
-    // direction and the quad's normal — so `N·L` is 1 across the whole surface.
+    // with an identity transform points straight down -Z (`Light.cpp` takes the
+    // local Z axis and negates it), which since T0165 is coincident with both
+    // the view direction and the quad's normal — so `N·L` is 1 across the whole
+    // surface.
     //
     // That is the **worst possible angle for judging a normal map**: the visible
     // effect of perturbing a normal scales with how much it changes `N·L`, and at
@@ -364,14 +375,18 @@ bool renderTextured(Device& device, const std::string& prefix, std::vector<std::
     // under-lit look of a torch held at floor level. The probe below asserts the
     // sign so it cannot silently invert again.
     constexpr float kRake = 0.7F; // ~40 degrees
-    // The pi yaw is T0152's: with the asset re-wound the visible face is the
-    // camera-side one, so the raked light must arrive from the camera's side
-    // -- the half-turn flips its travel from -Z-ish to +Z-ish while the rake
-    // keeps it from above and to one side. The `direction.y < 0` assert below
-    // is unchanged and still guards the "from above" half.
+    // **The pi yaw is gone with T0165, and the yaw's sign flipped to keep the
+    // light where it was.** T0152 needed the half-turn because a lamp's -Z and
+    // the camera's +Z disagreed; they agree now. Dropping it alone would have
+    // left the rake arriving from the opposite side (measured: travel x goes
+    // -0.49 -> +0.49), which is a different scene and would move every recorded
+    // value for no reason -- so the Y rake is negated with it. The resulting
+    // travel is (-0.493, -0.644, -0.585): the exact mirror in z of the
+    // pre-T0165 (-0.493, -0.644, +0.585), same elevation, same side. The
+    // `direction.y < 0` assert below is unchanged and still guards "from
+    // above".
     lightEntity.get<hp::Transform>().rotation =
-        hp::Quaternion::RotationFromAxisAngle(hp::float3{0.0F, 1.0F, 0.0F}, 3.14159265F) *
-        hp::Quaternion::RotationFromAxisAngle(hp::float3{0.0F, 1.0F, 0.0F}, -kRake) *
+        hp::Quaternion::RotationFromAxisAngle(hp::float3{0.0F, 1.0F, 0.0F}, kRake) *
         hp::Quaternion::RotationFromAxisAngle(hp::float3{1.0F, 0.0F, 0.0F}, -kRake);
     scene.propagateTransforms();
     {

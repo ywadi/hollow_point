@@ -91,12 +91,12 @@ void writeQuadGltf(const std::filesystem::path& directory) {
     std::filesystem::create_directories(directory, ec);
 
     const float vertices[] = {
-        -4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-         4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-         4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-        -4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
+        -4.0F, -4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
+         4.0F, -4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
+         4.0F,  4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
+        -4.0F,  4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
     };
-    const std::uint16_t indices[] = {0, 2, 1, 0, 3, 2};
+    const std::uint16_t indices[] = {0, 1, 2, 0, 2, 3};
 
     std::vector<unsigned char> bin;
     const auto* vb = reinterpret_cast<const unsigned char*>(vertices);
@@ -133,7 +133,7 @@ void writeQuadGltf(const std::filesystem::path& directory) {
   ],
   "accessors": [
     { "bufferView": 0, "byteOffset": 0,  "componentType": 5126, "count": 4, "type": "VEC3",
-      "min": [-4.0, -4.0, 3.0], "max": [4.0, 4.0, 3.0] },
+      "min": [-4.0, -4.0, -3.0], "max": [4.0, 4.0, -3.0] },
     { "bufferView": 0, "byteOffset": 12, "componentType": 5126, "count": 4, "type": "VEC3" },
     { "bufferView": 1, "byteOffset": 0,  "componentType": 5123, "count": 6, "type": "SCALAR" }
   ]

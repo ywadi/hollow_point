@@ -104,25 +104,27 @@ void tearDown(Device& device) {
 /// A camera-facing quad of the given half-extent, at the origin of its own
 /// space, positions and normals only.
 ///
-/// **Wound `{0, 2, 1, 0, 3, 2}` for a −Z-facing normal**, per D33 and the
-/// winding convention header. Copying the older `{0, 1, 2, 0, 2, 3}` order is
-/// exactly how the T0152 asset bug spread, and a quad whose indices and normals
-/// disagree renders as an invisible surface rather than as a shading error.
+/// **Wound `{0, 1, 2, 0, 2, 3}` for a +Z-facing normal**, per D33 and the
+/// winding convention header — +Z is what faces a camera looking down its own
+/// -Z (T0165). Copying an index order without checking it against the authored
+/// normal is exactly how the T0152 asset bug spread, and a quad whose indices
+/// and normals disagree renders as an invisible surface rather than as a
+/// shading error.
 void writeQuadGltf(const std::filesystem::path& directory, const char* stem, float half) {
     std::error_code ec;
     std::filesystem::create_directories(directory, ec);
 
     const float vertices[] = {
-        -half, -half, 0.0F, 0.0F, 0.0F, -1.0F, //
-        half,  -half, 0.0F, 0.0F, 0.0F, -1.0F, //
-        half,  half,  0.0F, 0.0F, 0.0F, -1.0F, //
-        -half, half,  0.0F, 0.0F, 0.0F, -1.0F,
+        -half, -half, 0.0F, 0.0F, 0.0F, 1.0F, //
+        half,  -half, 0.0F, 0.0F, 0.0F, 1.0F, //
+        half,  half,  0.0F, 0.0F, 0.0F, 1.0F, //
+        -half, half,  0.0F, 0.0F, 0.0F, 1.0F,
     };
     std::vector<unsigned char> bin;
     const auto* vb = reinterpret_cast<const unsigned char*>(vertices);
     bin.insert(bin.end(), vb, vb + sizeof vertices);
     const std::size_t vertexBytes = bin.size();
-    const std::uint16_t indices[] = {0, 2, 1, 0, 3, 2};
+    const std::uint16_t indices[] = {0, 1, 2, 0, 2, 3};
     const auto* ib = reinterpret_cast<const unsigned char*>(indices);
     bin.insert(bin.end(), ib, ib + sizeof indices);
     while (bin.size() % 4 != 0) {
@@ -221,7 +223,13 @@ struct Surface {
     /// The quad's half-extent, in metres.
     float half = 1.0F;
 
-    /// Where it sits on the view axis.
+    /// How far in front of the camera it sits, in metres.
+    ///
+    /// **A distance, so it is positive**, and the placement below negates it:
+    /// the camera looks down its own -Z since T0165. Keeping the sign out of
+    /// the field is what lets every "the pane is at 5 and the wall at 6, so the
+    /// gap is 1 m" comment in this file stay literally true — and those are the
+    /// same metres `HpViewDepth` returns, which is the quantity under test.
     float z = 5.0F;
 
     /// Its `.slang` module, or empty for the standard material.
@@ -322,7 +330,7 @@ bool renderScene(Device& device, const std::vector<Surface>& surfaces,
         renderer.materials = {materialGuid};
         entity.add<hp::MeshRenderer>(renderer);
         hp::Transform placed;
-        placed.position = hp::float3{0.0F, 0.0F, surface.z};
+        placed.position = hp::float3{0.0F, 0.0F, -surface.z};
         scene.setLocalTransform(entity, placed);
     }
     scene.propagateTransforms();

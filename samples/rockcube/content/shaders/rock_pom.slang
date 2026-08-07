@@ -309,16 +309,13 @@ struct HpMaterial : IHpMaterial
         T = dp2perp * duv1.x + dp1perp * duv2.x;
         B = dp2perp * duv1.y + dp1perp * duv2.y;
 
-        // **The chirality correction** (T0165), identical to `HpParallaxUv`'s
-        // and derived there: the construction above is the adjugate of the UV
-        // Jacobian, so it carries the sign of `dot(cross(dp1, dp2), N)` on top
-        // of the sign it should have. Under the engine's right-handed camera
-        // that sign is negative on every camera-facing surface, and without
-        // this line the relief marches backwards and the self-shadow reaches
-        // the wrong way along the surface.
-        float chirality = dot(cross(dp1, dp2), N) >= 0.0 ? 1.0 : -1.0;
-        T *= chirality;
-        B *= chirality;
+        // **Unchanged by T0165's handedness change** -- see `HpParallaxUv`, and
+        // note that this file is the *reason* that is known: a chirality sign
+        // was added to both copies and this shader's self-shadow is what
+        // measured it wrong (max drop 0 against 124.6). A game shader rebuilding
+        // this frame has no way to discover that from the contract, which is the
+        // gap `13-shader-capability-matrix.md` records against an engine-provided
+        // `HpTangentFrame`.
 
         float invMax = rsqrt(max(max(dot(T, T), dot(B, B)), 1e-12));
         T *= invMax;

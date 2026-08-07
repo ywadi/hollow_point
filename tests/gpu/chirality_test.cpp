@@ -1,27 +1,57 @@
-// The chirality probe: which screen side each world direction lands on (T0152.6).
+// The chirality probe: does DCC-authored asymmetric content render mirrored?
+// (T0152.6, re-derived by T0165.)
 //
-// **This test pins display handedness forever, and it exists to settle a claim
-// that was derived and never observed.** T0152's trace concluded that the
-// engine displays an unconverted right-handed world mirror-imaged: with an
-// identity camera looking +Z, world +X lands on screen *right*, while a
-// physical observer facing +Z has +X on their *left*. That claim decides
-// whether DCC-authored asymmetric content — text on a sign, a watch on a left
-// wrist — renders flipped, and the owner's mirror decision (accept the
-// D3D-native mirrored convention, or introduce exactly one compensating
-// mirror à la Unity) is taken against what this test measures.
+// **This test pins display handedness forever, and it measured the mirror that
+// T0165 then removed.** T0152's trace concluded that the engine displayed an
+// unconverted right-handed world mirror-imaged; this probe observed it on
+// hardware, the owner decided against it, and D33's amendment is the result.
+// What the file has to do now is say that the mirror is *gone*, and say it in a
+// way that could still fail.
 //
-// The mesh is an "F" — asymmetric under both a horizontal and a vertical
-// mirror, which is the whole point: a quad cannot tell left from right. The
-// stem sits at world x ∈ [-2, -1]; the two arms extend toward **world +X**.
-// Every row of the glyph therefore shares its **world -X** edge, and the rows
-// differ only in how far toward +X they reach. On screen that means: all
-// green rows share one column edge (the stem side), and the arms extend away
-// from it — and *which side the shared edge lands on* is the measurement.
+// ## The measurement changed shape, and the reason is worth reading first
 //
-//   * shared edge at the low columns, arms extending right  → world +X is
-//     screen right: the display is **mirrored** (what T0152 derived)
-//   * shared edge at the high columns, arms extending left  → world +X is
-//     screen left: the display is unmirrored and D33's derivation was wrong
+// **"World +X lands on screen right" is true under both conventions and is not
+// the mirror.** The projection's `_11` is positive either way (T0165.1 pins
+// exactly that: a right-handed projection is not a screen-space mirror), so +X
+// is screen right whichever way the camera looks. The mirror was never in where
+// +X lands; it was in the *pairing* of that with the camera's forward. A
+// physical observer's right hand is `cross(forward, up)`: with `forward = +Z`
+// that is **-X**, so screen-right and observer-right disagreed. With
+// `forward = -Z` it is **+X**, and they agree.
+//
+// A rendered image alone cannot see a camera's forward vector. So the probe
+// anchors to the one thing that is both authored *in the content* and visible
+// *on screen*: **which side of the surface you are looking at.** The glyph is
+// **single-sided**, wound and normalled the way a DCC tool exports a readable
+// face — front normal +Z, `cross(v1-v0, v2-v0)` along +Z, glyph readable from
+// +Z. Then:
+//
+//   * it renders at all **only** if the camera is on the glyph's authored front
+//     side, which under a -Z camera means placing it at negative z; and
+//   * its arms land on screen right **only** if that front face is displayed
+//     unmirrored.
+//
+// Both together are the claim "a Blender artist's asset arrives as authored".
+// Under the pre-T0165 convention the same asset placed in front of the camera
+// showed its *back*, which `CULL_MODE_BACK` discards -- so the coverage floor
+// below is a real discriminator and not a formality. (That single-sidedness is
+// new here. The file used to be double-sided on the grounds that "facing is
+// T0152's other probe"; that separation is what left the assertions unable to
+// tell the two conventions apart, because both put +X on screen right.)
+//
+// ## The glyph
+//
+// An "F" — asymmetric under both a horizontal and a vertical mirror, which is
+// the whole point: a quad cannot tell left from right. The stem sits at world
+// x ∈ [-2, -1]; the two arms extend toward **world +X**. Every row of the glyph
+// therefore shares its **world -X** edge, and the rows differ only in how far
+// toward +X they reach. On screen that means: all green rows share one column
+// edge (the stem side), and the arms extend away from it.
+//
+//   * shared edge at the low columns, arms extending right  → the authored
+//     front face reads correctly: **unmirrored**
+//   * shared edge at the high columns, arms extending left  → the front face
+//     is displayed mirrored, and T0165 did not do what it claims
 //
 // The vertical half of the question rides along: the arms live at world
 // y > 0, the stem-only rows mostly below, so the row histogram pins where
@@ -29,8 +59,8 @@
 // measured in present_blit_test as row 0 = screen top on Vulkan, and D29
 // makes Vulkan the only backend — so "row 0" reads as "top" here.
 //
-// The glyph is double-sided and unlit, deliberately: facing and lighting are
-// T0152's *other* probes, and this one asks only where positions land.
+// The glyph is unlit: lighting is T0152's other probe, and this one asks only
+// where a face lands and which side of it is showing.
 //
 // Bucket: gpu. Skips cleanly with no device.
 
@@ -96,17 +126,21 @@ void tearDown(Device& device) {
     device.window.reset();
 }
 
-/// The "F", three axis-aligned rectangles in the z = 6 plane. The camera is
-/// the default — at the origin, looking +Z, 60° vertical FOV — so the visible
-/// half-extent at that depth is 6·tan(30°) ≈ 3.46 world units and the glyph's
-/// ±3 fits with margin.
+/// The "F", three axis-aligned rectangles in the **z = -6** plane. The camera
+/// is the default — at the origin, looking -Z, 60° vertical FOV — so the
+/// visible half-extent at that depth is 6·tan(30°) ≈ 3.46 world units and the
+/// glyph's ±3 fits with margin.
 ///
 ///   stem     x ∈ [-2, -1], y ∈ [-3, 3]
 ///   top arm  x ∈ [-1,  2], y ∈ [ 2, 3]
 ///   mid arm  x ∈ [-1,  1], y ∈ [ 0, 1]
 ///
-/// Wound consistently with the authored -Z normals per D33 — although the
-/// material is double-sided, so nothing here depends on it.
+/// **Authored as a readable face, not as "something in front of the camera".**
+/// Normals are +Z and the winding is `{0, 1, 2, 0, 2, 3}` over BL, BR, TR, TL,
+/// so `cross(v1 - v0, v2 - v0)` is +Z too: the glTF front face is the +Z side,
+/// which is the side the glyph reads correctly from. The material is
+/// single-sided, so the engine draws this only when the camera is on that
+/// side — see the file header for why that is the discriminator.
 void writeGlyphGltf(const std::filesystem::path& directory) {
     std::error_code ec;
     std::filesystem::create_directories(directory, ec);
@@ -127,9 +161,9 @@ void writeGlyphGltf(const std::filesystem::path& directory) {
         const auto base = static_cast<std::uint16_t>(vertices.size() / 6);
         const float corners[4][2] = {{r.x0, r.y0}, {r.x1, r.y0}, {r.x1, r.y1}, {r.x0, r.y1}};
         for (const auto& c : corners) {
-            vertices.insert(vertices.end(), {c[0], c[1], 6.0F, 0.0F, 0.0F, -1.0F});
+            vertices.insert(vertices.end(), {c[0], c[1], -6.0F, 0.0F, 0.0F, 1.0F});
         }
-        for (const std::uint16_t i : {0, 2, 1, 0, 3, 2}) {
+        for (const std::uint16_t i : {0, 1, 2, 0, 2, 3}) {
             indices.push_back(static_cast<std::uint16_t>(base + i));
         }
     }
@@ -160,7 +194,7 @@ void writeGlyphGltf(const std::filesystem::path& directory) {
       "material": 0
   } ] } ],
   "materials": [ {
-    "doubleSided": true,
+    "doubleSided": false,
     "pbrMetallicRoughness": {
       "baseColorFactor": [ 0.5, 0.5, 0.5, 1.0 ],
       "metallicFactor": 0.0,
@@ -177,7 +211,7 @@ void writeGlyphGltf(const std::filesystem::path& directory) {
   ],
   "accessors": [
     { "bufferView": 0, "byteOffset": 0,  "componentType": 5126, "count": 12, "type": "VEC3",
-      "min": [-2.0, -3.0, 6.0], "max": [2.0, 3.0, 6.0] },
+      "min": [-2.0, -3.0, -6.0], "max": [2.0, 3.0, -6.0] },
     { "bufferView": 0, "byteOffset": 12, "componentType": 5126, "count": 12, "type": "VEC3" },
     { "bufferView": 1, "byteOffset": 0,  "componentType": 5123, "count": 18, "type": "SCALAR" }
   ]
@@ -223,14 +257,16 @@ TEST_CASE("the chirality probe: an F pins where each world direction lands on sc
         pool.store<hp::MeshAsset>(meshGuid, mesh);
     }
 
-    // Unlit green, double-sided: the probe asks where positions land, so
-    // neither lighting nor facing is allowed to be part of the answer.
+    // Unlit green so lighting is not part of the answer, and **single-sided**
+    // so that "which side of the glyph am I looking at" is. `CULL_MODE_BACK`
+    // plus `kFrontFaceCounterClockwise` is what turns the authored front face
+    // into the only one that can produce a pixel.
     const hp::Guid materialGuid = hp::Guid::generate();
     {
         auto material = std::make_shared<hp::Material>();
         material->baseColour = hp::float4{0.0F, 1.0F, 0.0F, 1.0F};
         material->unlit = true;
-        material->doubleSided = true;
+        material->doubleSided = false;
         pool.store<hp::Material>(materialGuid, material);
     }
 
@@ -277,6 +313,12 @@ TEST_CASE("the chirality probe: an F pins where each world direction lands on sc
     }
     // The glyph covers 11 world units² at ≈18 px per unit ≈ 3600 px; half
     // that is a generous floor that still fails for any partial render.
+    //
+    // **This is half the verdict, not a formality.** The glyph is single-sided
+    // and authored front-toward-+Z; a camera that saw its back would produce
+    // zero green pixels, which is exactly what the pre-T0165 convention would
+    // do with this asset in front of the lens. Zero here means the display
+    // shows the wrong side of authored content, not that the render failed.
     REQUIRE(total > 1500);
 
     // Rows that clearly hold glyph pixels (a few-pixel floor drops
@@ -333,11 +375,17 @@ TEST_CASE("the chirality probe: an F pins where each world direction lands on sc
     // -----------------------------------------------------------------------
     // **The horizontal verdict.** Every glyph row shares its world -X edge, so
     // whichever *screen* side all the rows' edges align on is where world -X
-    // landed. Aligned low columns + varying high columns = stem on screen
-    // left, arms extending right = **world +X lands on screen right** — the
-    // mirrored display T0152 derived. If the display were unmirrored these
-    // two assertions would fail in the opposite pattern (varying low, aligned
-    // high), which is what makes this a measurement and not a tautology.
+    // landed. Aligned low columns + varying high columns = stem on screen left,
+    // arms extending right — and since the coverage floor above already proved
+    // the camera is on the glyph's authored front side, that is the **F reading
+    // correctly**: the asset arrives as authored.
+    //
+    // A display mirrored in X fails this in the opposite pattern (varying low,
+    // aligned high), which is what keeps it a measurement rather than a
+    // tautology. **These two lines did not change with T0165 and that is not a
+    // gap** — the file header derives why: `_11` stays positive through a
+    // handedness change, so +X is screen right either way. What changed is that
+    // it is now the *front* face landing there.
     // -----------------------------------------------------------------------
     CHECK(lowColumnSpread < minWidth / 2 + 2);
     CHECK(highColumnSpread > (minWidth * 3) / 2);
@@ -346,8 +394,8 @@ TEST_CASE("the chirality probe: an F pins where each world direction lands on sc
     // **The vertical verdict.** The arms live at world y > 0 and the
     // stem-only rows average world y < 0, so wide rows sitting at *smaller*
     // readback rows means **world +Y lands on screen top** (row 0 = top on
-    // Vulkan, per present_blit_test's measurement). Unmirrored vertically —
-    // the mirror is in X, once, exactly as D33 records.
+    // Vulkan, per present_blit_test's measurement). Unchanged by T0165, and
+    // for the same reason as the horizontal pair: `_22` does not move either.
     // -----------------------------------------------------------------------
     CHECK(wideMeanRow < narrowMeanRow);
 

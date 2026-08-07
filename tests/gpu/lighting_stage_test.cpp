@@ -101,23 +101,25 @@ void tearDown(Device& device) {
 
 /// A white quad facing the camera, wound per `WindingConvention.hpp` (D33).
 ///
-/// `{0, 2, 1, 0, 3, 2}` for a −Z-facing normal, and copying the *other* order
-/// is exactly how the backwards test assets spread before T0152.
+/// `{0, 1, 2, 0, 2, 3}` for a **+Z**-facing normal, which is what faces a
+/// camera looking down its own -Z (T0165). Copying an order without checking it
+/// against the authored normal is exactly how the backwards test assets spread
+/// before T0152; the rule is `cross(v1 - v0, v2 - v0)` agrees with `NORMAL`.
 void writeQuadGltf(const std::filesystem::path& directory) {
     std::error_code ec;
     std::filesystem::create_directories(directory, ec);
 
     std::vector<unsigned char> bin;
     const float vertices[] = {
-        -4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-         4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-         4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-        -4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
+        -4.0F, -4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
+         4.0F, -4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
+         4.0F,  4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
+        -4.0F,  4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
     };
     const auto* vb = reinterpret_cast<const unsigned char*>(vertices);
     bin.insert(bin.end(), vb, vb + sizeof vertices);
     const std::size_t vertexBytes = bin.size();
-    const std::uint16_t indices[] = {0, 2, 1, 0, 3, 2};
+    const std::uint16_t indices[] = {0, 1, 2, 0, 2, 3};
     const auto* ib = reinterpret_cast<const unsigned char*>(indices);
     bin.insert(bin.end(), ib, ib + sizeof indices);
     while (bin.size() % 4 != 0) {
@@ -153,7 +155,7 @@ void writeQuadGltf(const std::filesystem::path& directory) {
   ],
   "accessors": [
     { "bufferView": 0, "byteOffset": 0,  "componentType": 5126, "count": 4, "type": "VEC3",
-      "min": [-4.0, -4.0, 3.0], "max": [4.0, 4.0, 3.0] },
+      "min": [-4.0, -4.0, -3.0], "max": [4.0, 4.0, -3.0] },
     { "bufferView": 0, "byteOffset": 12, "componentType": 5126, "count": 4, "type": "VEC3" },
     { "bufferView": 1, "byteOffset": 0,  "componentType": 5123, "count": 6, "type": "SCALAR" }
   ]
@@ -224,10 +226,6 @@ struct Lamp {
     float innerCone = 0.4363F;
     float outerCone = 0.6109F;
     hp::float3 position{0.0F, 0.0F, 0.0F};
-    /// Half-turn about Y, so the lamp travels **+Z** onto the quad's −Z face.
-    /// A light travels down its local negative Z (glTF), and leaving this off
-    /// lights the quad from behind — the sign error the convention invites.
-    bool faceTheQuad = true;
 };
 
 /// Renders the quad under `lamps`, with an optional `.slang` module.
@@ -309,12 +307,14 @@ bool renderLit(Device& device, const std::string& moduleSource, const std::vecto
         light.innerConeAngle = lamp.innerCone;
         light.outerConeAngle = lamp.outerCone;
         entity.add<hp::Light>(light);
+        // **No orientation, and the `faceTheQuad` flag that used to live here
+        // is gone rather than defaulted off.** A lamp travels down its local -Z
+        // and the camera looks down its own -Z, so an unrotated lamp lights
+        // what an unrotated camera sees (T0165). The flag existed only to undo
+        // the disagreement, and a knob whose every caller passes the same value
+        // is a comment pretending to be code.
         hp::Transform placed;
         placed.position = lamp.position;
-        if (lamp.faceTheQuad) {
-            placed.rotation = hp::Quaternion::RotationFromAxisAngle(
-                hp::float3{0.0F, 1.0F, 0.0F}, 3.14159265F);
-        }
         scene.setLocalTransform(entity, placed);
     }
     scene.propagateTransforms();
@@ -358,7 +358,12 @@ constexpr const char* kDome = R"(
                                              float3 geometricNormal, bool isFrontFace)
     {
         float2 fromCentre = (In.ScreenUV - 0.5) * 8.0;
-        return normalize(float3(fromCentre.x, fromCentre.y, -1.0));
+        // **+Z is toward the camera since T0165.** With -1.0 the dome faced
+        // away from the lens, every `dot(S.Normal, L.ToLight)` clamped to zero
+        // and the smooth control collapsed to a single colour -- which the
+        // palette assertions caught, and which is what a synthetic normal
+        // written as a literal costs when the convention moves.
+        return normalize(float3(fromCentre.x, fromCentre.y, 1.0));
     }
 )";
 

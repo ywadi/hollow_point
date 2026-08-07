@@ -102,25 +102,25 @@ void writeQuadGltf(const std::filesystem::path& directory, bool withTangents = f
     if (withTangents) {
         // position(3) normal(3) tangent(4) = 10 floats, stride 40.
         const float vertices[] = {
-            -4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F, 1.0F, 0.0F, 0.0F, 1.0F,
-             4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F, 1.0F, 0.0F, 0.0F, 1.0F,
-             4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F, 1.0F, 0.0F, 0.0F, 1.0F,
-            -4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F, 1.0F, 0.0F, 0.0F, 1.0F,
+            -4.0F, -4.0F,-3.0F, 0.0F, 0.0F, 1.0F, 1.0F, 0.0F, 0.0F, 1.0F,
+             4.0F, -4.0F,-3.0F, 0.0F, 0.0F, 1.0F, 1.0F, 0.0F, 0.0F, 1.0F,
+             4.0F,  4.0F,-3.0F, 0.0F, 0.0F, 1.0F, 1.0F, 0.0F, 0.0F, 1.0F,
+            -4.0F,  4.0F,-3.0F, 0.0F, 0.0F, 1.0F, 1.0F, 0.0F, 0.0F, 1.0F,
         };
         const auto* vb = reinterpret_cast<const unsigned char*>(vertices);
         bin.insert(bin.end(), vb, vb + sizeof vertices);
     } else {
         const float vertices[] = {
-            -4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-             4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-             4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-            -4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
+            -4.0F, -4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
+             4.0F, -4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
+             4.0F,  4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
+            -4.0F,  4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
         };
         const auto* vb = reinterpret_cast<const unsigned char*>(vertices);
         bin.insert(bin.end(), vb, vb + sizeof vertices);
     }
     const std::size_t vertexBytes = bin.size();
-    const std::uint16_t indices[] = {0, 2, 1, 0, 3, 2};
+    const std::uint16_t indices[] = {0, 1, 2, 0, 2, 3};
     const auto* ib = reinterpret_cast<const unsigned char*>(indices);
     bin.insert(bin.end(), ib, ib + sizeof indices);
     while (bin.size() % 4 != 0) {
@@ -165,7 +165,7 @@ void writeQuadGltf(const std::filesystem::path& directory, bool withTangents = f
   ],
   "accessors": [
     { "bufferView": 0, "byteOffset": 0,  "componentType": 5126, "count": 4, "type": "VEC3",
-      "min": [-4.0, -4.0, 3.0], "max": [4.0, 4.0, 3.0] },
+      "min": [-4.0, -4.0, -3.0], "max": [4.0, 4.0, -3.0] },
     { "bufferView": 0, "byteOffset": 12, "componentType": 5126, "count": 4, "type": "VEC3" })" +
                              tangentAccessor + R"(,
     { "bufferView": 1, "byteOffset": 0,  "componentType": 5123, "count": 6, "type": "SCALAR" }
@@ -385,7 +385,94 @@ struct HpMaterial : IHpMaterial
 }
 )";
 
+/// Paints the sign of `dot(cross(ddx(P), ddy(P)), N)` — green positive, red
+/// negative.
+///
+/// **The screen basis's chirality, which nothing else in the tree makes
+/// visible and which every derivative-built tangent frame depends on.** See
+/// the test case for what hangs off it.
+const char* kScreenChiralityModule = R"(
+struct HpMaterial : IHpMaterial
+{
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        float3 dp1 = ddx(In.WorldPos);
+        float3 dp2 = ddy(In.WorldPos);
+        float3 n = normalize(In.Normal);
+        float k = dot(cross(dp1, dp2), n);
+        return k > 0.0 ? float4(0.0, 1.0, 0.0, 1.0) : float4(1.0, 0.0, 0.0, 1.0);
+    }
+}
+)";
+
 } // namespace
+
+TEST_CASE("the screen basis's chirality against the surface normal is pinned (T0165)") {
+    // **A driver-and-abstraction fact the engine depends on, that no source
+    // file can state and that reasoning about got wrong twice.**
+    //
+    // Every tangent frame rebuilt from screen-space derivatives — `HpParallaxUv`,
+    // `rock_pom.slang`'s copy of it, DiligentFX's `GetPerturbNormalInfo`
+    // fallback — is built from `ddx(P)`, `ddy(P)` and the surface normal, and
+    // Schueler's construction is **odd in the normal**: flip `N` and both
+    // tangent vectors come back negated. So which way those frames point is
+    // decided by the sign measured here, and that sign depends on the direction
+    // `ddy` runs in framebuffer coordinates — which Diligent's Vulkan backend
+    // sets by flipping the viewport internally, and which nothing in this
+    // repository can read.
+    //
+    // **Measured, on a camera-facing quad with an outward normal: negative.**
+    // `cross(ddx(P), ddy(P))` points *opposite* the surface normal, i.e. away
+    // from the viewer. Two things hang off it:
+    //
+    //   * `PBRFrameAttribs::Camera.fHandness` is **+1**. DiligentFX computes
+    //     `cross(ddx, ddy) * fHandness` for a mesh with no normals and
+    //     documents the result as facing the viewer; with `cross` facing away,
+    //     +1 leaves it facing away and **-1** would be the value that obeys the
+    //     comment. That disagreement is real and is recorded on T0165 rather
+    //     than patched: +1 is what Diligent's own `fHandness` semantics call
+    //     right-handed, nothing in this engine reaches the branch (every mesh
+    //     carries `NORMAL`), and changing it on this reasoning alone would be
+    //     guessing in the other direction. **This case is where the next person
+    //     starts.**
+    //   * The derivative tangent frames take **no** compensating sign. One was
+    //     added during T0165 on the strength of the oddness above, and the rock
+    //     cube's self-shadow — the only directional consumer in the tree —
+    //     measured a max drop of 0 against 124.6 with it removed. The argument
+    //     for adding it is convincing; the measurement is not on its side.
+    //
+    // This was **positive** before T0165, when the camera looked down +Z: the
+    // camera's forward moved, `N` on a camera-facing surface moved with it, and
+    // `cross(ddx, ddy)` stayed on the same side of the camera's own basis. So a
+    // failure here means either the handedness convention moved without this
+    // case being reconsidered, or a Diligent upgrade changed the viewport flip
+    // — and the symptom in the field is every normal map and every parallax
+    // effect rotated half a turn, which reads as an art bug.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    std::vector<std::uint8_t> pixels;
+    REQUIRE(renderCustom(device, kScreenChiralityModule, /*shaderInPool=*/true, /*unlit=*/true,
+                         pixels));
+    const Rgb centre = centreOf(pixels);
+    MESSAGE("dot(cross(ddx, ddy), N) on a camera-facing surface: "
+            << (centre.g > centre.r ? "positive (same side as N)"
+                                    : "negative (opposite N)")
+            << " -- (" << centre.r << ", " << centre.g << ", " << centre.b << ")");
+
+    // Exact, and unshaded, so a failed shader's magenta (127, 0, 127) cannot
+    // pass for either branch.
+    CHECK(centre.r == 255);
+    CHECK(centre.g == 0);
+    CHECK(centre.b == 0);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
 
 TEST_CASE("a .slang material module overrides one method and inherits the rest") {
     Device device = bringUp();
@@ -1012,7 +1099,7 @@ TEST_CASE("a vertex hook moves the geometry, and doing nothing moves nothing (T0
     // a pixel. This shifts the outline, and the assertion is exactly that —
     // pixels that were covered and are not, and pixels that were not and are.
     //
-    // Three renders of one 8 m quad at z = 3, which more than fills the frame
+    // Three renders of one 8 m quad at z = -3, which more than fills the frame
     // at rest:
     //   * no `vertex()` override at all — the baseline silhouette, and the
     //     proof that a module which says nothing gets today's geometry;

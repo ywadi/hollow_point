@@ -237,7 +237,7 @@ void writeOrientedQuadGltf(const std::filesystem::path& directory, Vec3 centre, 
 }
 
 /// A UV-less heightfield: a grid in x/z with two gaussian hills, normals from
-/// the analytic gradient. The camera at the origin looks down +Z across it,
+/// the analytic gradient. The camera at the origin looks down -Z across it,
 /// so flat ground is one live axis (Y), hillsides are two, and the compound
 /// slopes facing the camera diagonally are three — the whole weight space in
 /// one frame, swept continuously.
@@ -245,8 +245,11 @@ void writeTerrainGltf(const std::filesystem::path& directory) {
     constexpr int kGrid = 33;
     constexpr float kX0 = -6.0F;
     constexpr float kX1 = 6.0F;
-    constexpr float kZ0 = 4.0F;
-    constexpr float kZ1 = 16.0F;
+    // Near edge to far edge, and both negative: the camera looks down -Z
+    // (T0165). The grid therefore runs *backwards* in z as `j` increases, which
+    // reverses the winding of every quad in it -- see the index order below.
+    constexpr float kZ0 = -4.0F;
+    constexpr float kZ1 = -16.0F;
     constexpr float kBase = -3.0F;
 
     struct Hill {
@@ -257,7 +260,7 @@ void writeTerrainGltf(const std::filesystem::path& directory) {
     };
     // Peak slopes ~50 degrees: steep enough that the two- and three-axis
     // blend bands genuinely appear, which is what this mesh exists for.
-    const Hill hills[] = {{3.0F, 1.5F, 9.5F, 2.0F}, {2.2F, -2.5F, 12.0F, 3.0F}};
+    const Hill hills[] = {{3.0F, 1.5F, -9.5F, 2.0F}, {2.2F, -2.5F, -12.0F, 3.0F}};
 
     const auto height = [&](float x, float z) {
         float y = kBase;
@@ -311,9 +314,14 @@ void writeTerrainGltf(const std::filesystem::path& directory) {
             const auto v01 = static_cast<std::uint16_t>((j + 1) * kGrid + i);
             const auto v11 = static_cast<std::uint16_t>((j + 1) * kGrid + i + 1);
             // Wound so the front faces point +Y (up), per the right-hand rule
-            // — cross(v01 - v00, v10 - v00) = +Y for this grid layout.
-            indices.insert(indices.end(), {v00, v01, v10});
-            indices.insert(indices.end(), {v10, v01, v11});
+            // — cross(v10 - v00, v01 - v00) = +Y for this grid layout.
+            //
+            // **The two index triples swapped with T0165**, because the grid's
+            // z now decreases as `j` increases: with `dz` negative the old
+            // order gives -Y and the terrain becomes a ceiling seen from above.
+            // The rule is unchanged; the sign of one edge vector is not.
+            indices.insert(indices.end(), {v00, v10, v01});
+            indices.insert(indices.end(), {v10, v11, v01});
         }
     }
 
@@ -534,8 +542,8 @@ TEST_CASE("parallax under triplanar displaces texels on a UV-less quad") {
         std::filesystem::temp_directory_path() / "hp-triplanar-parallax";
     std::filesystem::remove_all(scratch, ec);
     std::filesystem::create_directories(scratch / "models", ec);
-    writeOrientedQuadGltf(scratch / "models", Vec3{0.0F, 0.0F, 4.0F},
-                          Vec3{0.644F, 0.0F, -0.766F}, 4.0F);
+    writeOrientedQuadGltf(scratch / "models", Vec3{0.0F, 0.0F, -4.0F},
+                          Vec3{0.644F, 0.0F, 0.766F}, 4.0F);
 
     std::vector<std::uint8_t> off;
     std::vector<std::uint8_t> zeroScale;
@@ -647,9 +655,12 @@ TEST_CASE("parallax under triplanar: cost per weight configuration") {
     // CHECK below now catches. Weights: (0,0,1), (0.5,0,0.5) and
     // (0.27,0.27,0.46) — one, two and three live axes under the 1% floor.
     const Config configs[] = {
-        {"one axis (facing)", {0.0F, 0.0F, 5.0F}, {0.0F, 0.0F, -1.0F}},
-        {"two axes (45 deg)", {2.5F, 0.0F, 5.0F}, {0.707F, 0.0F, -0.707F}},
-        {"three axes (corner)", {1.2F, 1.2F, 5.0F}, {-0.55F, -0.55F, -0.63F}},
+        // Mirrored in z by T0165 -- centre and normal together, so each quad
+        // keeps the same obliquity to the camera and the same triplanar weights
+        // (which are `abs(n)` and cannot see the sign at all).
+        {"one axis (facing)", {0.0F, 0.0F, -5.0F}, {0.0F, 0.0F, 1.0F}},
+        {"two axes (45 deg)", {2.5F, 0.0F, -5.0F}, {0.707F, 0.0F, 0.707F}},
+        {"three axes (corner)", {1.2F, 1.2F, -5.0F}, {-0.55F, -0.55F, 0.63F}},
     };
     MESSAGE("cost device: " << device.render->adapterDescription());
 

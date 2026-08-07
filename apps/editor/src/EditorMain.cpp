@@ -272,11 +272,22 @@ private:
         // A quad facing the camera. Rough and non-metallic, because a smooth
         // metal surface reflects nothing without an environment map (T0087) and
         // would look exactly like a bug.
+        //
+        // **At z = -4 with a +Z normal since T0165**: the camera looks down its
+        // own -Z (`hp::kRightHandedCameraSpace`), so "in front" is negative Z
+        // and "toward the camera" is +Z.
+        //
+        // **The winding was wrong before this and is right now, by accident of
+        // the mirror.** `{0, 1, 2, 0, 2, 3}` over BL, BR, TR, TL winds toward
+        // +Z; against the old -Z normal that was the pre-T0152 inconsistency,
+        // surviving only because the demo material is double-sided. Against a
+        // +Z normal it is correct, and `cross(v1 - v0, v2 - v0)` is the check:
+        // `(3,0,0) x (3,3,0) = (0,0,9)`.
         const float vertices[] = {
-            -1.5F, -1.5F, 4.0F, 0.0F, 0.0F, -1.0F,
-             1.5F, -1.5F, 4.0F, 0.0F, 0.0F, -1.0F,
-             1.5F,  1.5F, 4.0F, 0.0F, 0.0F, -1.0F,
-            -1.5F,  1.5F, 4.0F, 0.0F, 0.0F, -1.0F,
+            -1.5F, -1.5F, -4.0F, 0.0F, 0.0F, 1.0F,
+             1.5F, -1.5F, -4.0F, 0.0F, 0.0F, 1.0F,
+             1.5F,  1.5F, -4.0F, 0.0F, 0.0F, 1.0F,
+            -1.5F,  1.5F, -4.0F, 0.0F, 0.0F, 1.0F,
         };
         const std::uint16_t indices[] = {0, 1, 2, 0, 2, 3};
         {
@@ -296,7 +307,7 @@ private:
                  << R"("bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":96,"byteStride":24},)"
                  << R"({"buffer":0,"byteOffset":96,"byteLength":12}],)"
                  << R"("accessors":[{"bufferView":0,"byteOffset":0,"componentType":5126,)"
-                 << R"("count":4,"type":"VEC3","min":[-1.5,-1.5,4.0],"max":[1.5,1.5,4.0]},)"
+                 << R"("count":4,"type":"VEC3","min":[-1.5,-1.5,-4.0],"max":[1.5,1.5,-4.0]},)"
                  << R"({"bufferView":0,"byteOffset":12,"componentType":5126,"count":4,)"
                  << R"("type":"VEC3"},{"bufferView":1,"byteOffset":0,"componentType":5123,)"
                  << R"("count":6,"type":"SCALAR"}]})";
@@ -332,14 +343,17 @@ private:
         renderer.mesh = meshGuid;
         quad.add<hp::MeshRenderer>(renderer);
 
-        // **Angled, and that is not decoration.** An identity transform points a
-        // light straight down -Z, exactly anti-parallel to the camera's view.
-        // The half-vector `normalize(L + V)` then collapses to zero at the
-        // centre of the quad and the specular term with it, producing a dark
-        // radial smudge that looks like a renderer bug and is not — it is the
-        // one lighting arrangement guaranteed to look wrong. Rotating the lamp
-        // off-axis puts the highlight somewhere sensible and shows the surface
-        // actually being shaded.
+        // **Angled, and that is not decoration.** An identity transform points
+        // a light straight down -Z, which since T0165 is the same way the
+        // camera looks — so the lamp is now *co*-parallel with the view rather
+        // than anti-parallel, and the pathological case this comment used to
+        // describe (`normalize(L + V)` collapsing to zero, a dark radial smudge
+        // that reads as a renderer bug) can no longer happen from an identity
+        // transform. What replaces it is a flat frontal key: correct, and
+        // completely uninformative about whether shading works at all, because
+        // a head-on light makes a curved surface and a flat one look the same.
+        // The lamp is still rotated off-axis, now to show the surface being
+        // shaded rather than to avoid a degenerate half-vector.
         hp::Entity sun = scene.create("Sun");
         hp::Light light;
         light.type = hp::LightType::Directional;

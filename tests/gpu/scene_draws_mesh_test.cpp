@@ -77,23 +77,28 @@ void tearDown(Device& device) {
 /// a depth error.
 ///
 /// The engine is left-handed and a default camera at the origin looks down +Z,
-/// so the quad sits at z = 3 and spans well beyond the frustum edges at that
+/// so the quad sits at z = -3 and spans well beyond the frustum edges at that
 /// distance — it should fill the frame.
 void writeQuadGltf(const std::filesystem::path& directory) {
     std::error_code ec;
     std::filesystem::create_directories(directory, ec);
 
     const float vertices[] = {
-        -4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-         4.0F, -4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-         4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-        -4.0F,  4.0F, 3.0F, 0.0F, 0.0F, -1.0F,
+        -4.0F, -4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
+         4.0F, -4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
+         4.0F,  4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
+        -4.0F,  4.0F,-3.0F, 0.0F, 0.0F, 1.0F,
     };
-    // Wound consistently with the authored -Z normals (right-hand rule) --
-    // re-wound by T0152, whose trace found the old {0,1,2, 0,2,3} order
-    // pointing the winding-defined front face away from the camera while the
-    // NORMAL attributes pointed at it.
-    const std::uint16_t indices[] = {0, 2, 1, 0, 3, 2};
+    // Wound consistently with the authored **+Z** normals (right-hand rule):
+    // `cross(v1 - v0, v2 - v0)` over BL, BR, TR, TL gives `(0, 0, +area)`.
+    //
+    // **This is `{0, 1, 2, 0, 2, 3}` again, and that is not a revert.** T0152
+    // moved these quads to `{0, 2, 1, 0, 3, 2}` because they faced the camera
+    // with a -Z normal; T0165 turned the camera round, so the quads face it
+    // with a +Z normal and the original order is the consistent one. The rule
+    // never changed -- winding agrees with the authored normal -- only which
+    // normal faces the lens.
+    const std::uint16_t indices[] = {0, 1, 2, 0, 2, 3};
 
     std::vector<unsigned char> bin;
     const auto* vb = reinterpret_cast<const unsigned char*>(vertices);
@@ -134,7 +139,7 @@ void writeQuadGltf(const std::filesystem::path& directory) {
   ],
   "accessors": [
     { "bufferView": 0, "byteOffset": 0,  "componentType": 5126, "count": 4, "type": "VEC3",
-      "min": [-4.0, -4.0, 3.0], "max": [4.0, 4.0, 3.0] },
+      "min": [-4.0, -4.0, -3.0], "max": [4.0, 4.0, -3.0] },
     { "bufferView": 0, "byteOffset": 12, "componentType": 5126, "count": 4, "type": "VEC3" },
     { "bufferView": 1, "byteOffset": 0,  "componentType": 5123, "count": 6, "type": "SCALAR" }
   ]

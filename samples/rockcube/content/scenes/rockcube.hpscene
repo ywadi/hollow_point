@@ -11,24 +11,34 @@
 #
 # ## Coordinates, since every number below depends on them
 #
-# The camera looks along **+Z** with an identity rotation, +Y is up, and one unit
-# is one metre. The cube is 2 m on a side, centred on the origin in its own space
-# (`samples/rockcube/content/models/cube.gltf`), so at `position: [0, 0, 5]` its
+# The camera looks along **-Z** with an identity rotation, +Y is up, and one unit
+# is one metre — glTF's convention, and Blender's, since T0165 made the engine
+# right-handed (`hp/HandednessConvention.hpp`, D33 as amended). The cube is 2 m
+# on a side, centred on the origin in its own space
+# (`samples/rockcube/content/models/cube.gltf`), so at `position: [0, 0, -5]` its
 # near face is 4 m from the camera plane.
+#
+# **Every Z below changed sign with that decision, and the two quaternions were
+# re-solved rather than sign-flipped by hand** — a quaternion is not a coordinate
+# and negating a component of one is not the same as mirroring what it does. The
+# derivations are below; they were checked by reproducing the *old* numbers from
+# the *old* quaternions first, which is the only way to know the model of
+# `resolvePlacement` used to solve them is the one the engine implements.
 #
 # ## What had to be computed rather than written
 #
 # Both rotations are **quaternions**, because that is what `Transform::rotation`
 # is and the format has no Euler affordance. Neither was guessed:
 #
-#   * the sun's quaternion rotates 140.4 degrees about the axis
-#     `(-0.972, -0.235, 0)`, and the light it produces travels
-#     **`(0.15, -0.62, 0.77)`** — from above, from the camera's side, slightly
-#     from the -X side, and **nearly frontal to the camera's view axis**. A
-#     light convention is glTF's negative-Z (see `hp/Light.hpp`), so an
-#     identity rotation would rake it in from behind the cube — the exact
-#     arrangement the editor's demo scene documents as looking like a renderer
-#     bug.
+#   * the sun's quaternion produces a light travelling
+#     **`(0.15, -0.62, -0.77)`** — from above, from the camera's side, slightly
+#     from the -X side, and **nearly frontal to the camera's view axis**. The
+#     light convention is glTF's negative-Z (see `hp/Light.hpp`), which now
+#     agrees with the camera's: an identity rotation points a lamp the same way
+#     the camera looks, so a key light aimed roughly forward is the *default*
+#     rather than something to compensate for. Only the Z component moved from
+#     the pre-T0165 value; the key still arrives from above and from screen
+#     left, so the look the reviewed frame had is the look this produces.
 #
 #     *(Corrected 2026-08-06 on T0159. This bullet used to claim the value was
 #     `Rot(Y, pi - 0.7) * Rot(X, -0.7)`, travelling `(-0.49, -0.64, 0.59)` —
@@ -40,10 +50,13 @@
 #     key also matters to anyone adding surface shading: shadows cast away
 #     from the viewer, so parallax self-shadowing reads small from this
 #     camera except where a face turns until the key grazes it.)*;
-#   * the camera's is `Rot(X, atan(1.5 / 5))`, which pitches its view down by
-#     16.7 degrees onto a cube 5 m away and 1.5 m below it. Positive X rotation
-#     pitches *down* here, and that sign is derived rather than assumed:
-#     `Rot(X, a)` maps forward `(0, 0, 1)` to `(0, -sin a, cos a)`.
+#   * the camera's is `Rot(X, -atan(1.5 / 5))`, which pitches its view down by
+#     16.7 degrees onto a cube 5 m away and 1.5 m below it. **The sign is
+#     negative, and that is the derivation and not a typo:** `Rot(X, a)` maps
+#     forward `(0, 0, -1)` to `(0, sin a, -cos a)`, so a *positive* angle now
+#     pitches up. Before T0165 forward was `(0, 0, 1)`, `Rot(X, a)` mapped it to
+#     `(0, -sin a, cos a)`, and the positive angle was the one that looked down.
+#     The quaternion's x component is the only thing that moved.
 #
 # Writing those two lines is T0157's clearest finding about the format. See the
 # ticket's awkwardness log.
@@ -54,7 +67,7 @@ entities:
     components:
       Transform:
         position: [0, 1.5, 0]
-        rotation: [0.145213, 0, 0, 0.9894]
+        rotation: [-0.145213, 0, 0, 0.9894]
         scale: [1, 1, 1]
       Camera:
         verticalFov: 1.0472
@@ -76,7 +89,7 @@ entities:
         # coming from behind. Measured N.L with this placement: front 0.74, top
         # 0.62, right 0.26 — the face you are looking at is the lit one.
         position: [-2, 4, -1]
-        rotation: [-0.914385, -0.221222, 0, 0.33906]
+        rotation: [-0.329552, -0.07973, 0, 0.940765]
         scale: [1, 1, 1]
       Light:
         type: Directional
@@ -88,13 +101,13 @@ entities:
     name: Fill
     components:
       Transform:
-        position: [4, 2, 2]
-        # `Rot` mapping forward (0, 0, -1) onto (-0.85, -0.20, 0.48) — light
-        # travelling left, slightly down and away, so it *arrives* from the
+        position: [4, 2, -2]
+        # `Rot` mapping forward (0, 0, -1) onto (-0.85, -0.20, -0.48) — light
+        # travelling left, slightly down and *forward*, so it *arrives* from the
         # **right**, which is the side the key leaves dark. Its job is the
-        # narrow side face: N.L is 0.98 there and effectively zero on the face
-        # the key owns, so the two lamps divide the cube rather than competing.
-        rotation: [-0.197141, 0.83785, 0, 0.509061]
+        # narrow side face, and the two lamps divide the cube rather than
+        # competing. Only the Z component moved with T0165.
+        rotation: [-0.116595, 0.495529, 0, 0.860731]
         scale: [1, 1, 1]
       Light:
         type: Directional
@@ -119,11 +132,13 @@ entities:
       Transform:
         # **On the camera's view axis, in front of the cube.** The camera sits
         # at (0, 1.5, 0) pitched 16.7 degrees down, so the axis passes through
-        # y = 0.481 at z = 3.4 — which is how this y was arrived at rather than
-        # nudged into place. The cube's near face is at z = 4, so the pane has
+        # y = 0.48 at z = -3.4 — which is how this y was arrived at rather than
+        # nudged into place. The cube's near face is at z = -4, so the pane has
         # 0.6 m of clearance behind it, which is what `contactRange` in
-        # `glass.hpmat` is measured against.
-        position: [0, 0.481, 3.4]
+        # `glass.hpmat` is measured against. (The pre-T0165 file said 0.481 for
+        # the mirrored placement; the ray was re-solved rather than transcribed,
+        # and 0.480 is what it gives.)
+        position: [0, 0.48, -3.4]
         rotation: [0, 0, 0, 1]
         # A slab, not a plane: the cube mesh scaled thin in z. **No new mesh
         # asset**, which is the point — a pane of glass is a cube 4 cm thick,
@@ -144,7 +159,7 @@ entities:
     name: RockCube
     components:
       Transform:
-        position: [0, 0, 5]
+        position: [0, 0, -5]
         # A 30-degree resting yaw, `Rot(Y, 30deg)`, so the very first frame
         # shows two faces at an angle rather than one square face flat on. It
         # matters more than decoration with parallax: the march's offset is

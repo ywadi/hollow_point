@@ -338,7 +338,11 @@ TEST_CASE("the rock cube sample renders its committed content") {
     for (std::size_t i = 0; i < lights.size(); ++i) {
         CAPTURE(i);
         CHECK(lights[i].direction.y < 0.0F); // travelling down, therefore from above
-        CHECK(lights[i].direction.z > 0.0F); // travelling away, from the camera's side
+        // Travelling **-Z**: away from the camera, which is the camera's own
+        // forward since T0165, so both lamps light the faces the camera sees.
+        // This read `> 0` while the camera looked +Z; the sentence beside it is
+        // the one that did not change.
+        CHECK(lights[i].direction.z < 0.0F);
     }
     // Key from the +X side, fill from the -X side. Same sign and they stop
     // being a key and a fill and become one brighter lamp.
@@ -564,7 +568,7 @@ TEST_CASE("parallax self-shadowing darkens the frame, measured against itself wi
             return false;
         }
         hp::Transform posed;
-        posed.position = {0.0F, 0.0F, 5.0F};
+        posed.position = {0.0F, 0.0F, -5.0F};
         posed.rotation = hp::Quaternion::RotationFromAxisAngle(hp::float3{0.0F, 1.0F, 0.0F}, yaw);
         scene.setLocalTransform(*cube, posed);
         scene.propagateTransforms();
@@ -587,8 +591,8 @@ TEST_CASE("parallax self-shadowing darkens the frame, measured against itself wi
         return true;
     };
 
-    // **Posed at yaw 0.45, where the sweep found the effect.** The key's
-    // actual travel is (0.15, -0.62, 0.77) — computed from the scene's
+    // **Posed at yaw -0.45, where the sweep found the effect.** The key's
+    // actual travel is (0.15, -0.62, -0.77) — computed from the scene's
     // quaternion, and nearly frontal to the camera — so self-shadowing from
     // this viewpoint concentrates on the face the key grazes, not across the
     // frame. At this yaw that face is visible and its light sits ~11 degrees
@@ -597,6 +601,19 @@ TEST_CASE("parallax self-shadowing darkens the frame, measured against itself wi
     // 0.050**. The assertions below are sized to that shape: a *population* of
     // strongly darkened pixels, not a frame-mean threshold that the small
     // footprint would drown.
+    //
+    // **The yaw negated with T0165, and it was solved rather than guessed.**
+    // Mirroring the scene in z maps `Rot(Y, a)` to `Rot(Y, -a)`, and the
+    // arithmetic confirms the whole configuration is the mirror of the old one
+    // rather than merely something that also works: with the key at
+    // `L = (-0.15, 0.62, 0.77)` and yaw -0.45, the cube's object +X face has
+    // `N = (0.900, 0, 0.435)` and `N.L = 0.200` — the same 11.5 degrees above
+    // its horizon, on the *same* face and therefore the same patch of the same
+    // height map — while the +Z face sits at `N.L = 0.758`, matching the old
+    // 0.758 exactly. Left at +0.45 the key stood 28 degrees off every visible
+    // face, nothing occluded, and the case measured a mean difference of
+    // 0.0001 with zero darkened pixels: a real failure, correctly reported, of
+    // the scene and not of the march.
     //
     // **Those three numbers moved with 158.3** (72 / 51.7 / 0.045 before it),
     // and the direction is the point: the march is a per-light method now
@@ -607,8 +624,8 @@ TEST_CASE("parallax self-shadowing darkens the frame, measured against itself wi
     // key is occluded and nowhere else.
     std::vector<std::uint8_t> withShadow;
     std::vector<std::uint8_t> withoutShadow;
-    REQUIRE(renderVariant(/*shadowOff=*/false, 0.45F, withShadow, "rockcube_selfshadow_on"));
-    REQUIRE(renderVariant(/*shadowOff=*/true, 0.45F, withoutShadow, "rockcube_selfshadow_off"));
+    REQUIRE(renderVariant(/*shadowOff=*/false, -0.45F, withShadow, "rockcube_selfshadow_on"));
+    REQUIRE(renderVariant(/*shadowOff=*/true, -0.45F, withoutShadow, "rockcube_selfshadow_off"));
 
     // **Neither frame is the checkerboard** — without this, one variant
     // failing to compile would register as an enormous "difference" and pass.
@@ -910,7 +927,7 @@ TEST_CASE("the rock cube's faces cull from inside, so they wind outward") {
     const auto camera = scene.find(*cameraGuid);
     REQUIRE(camera.has_value());
     hp::Transform inside;
-    inside.position = {0.0F, 0.0F, 5.0F};
+    inside.position = {0.0F, 0.0F, -5.0F};
     scene.setLocalTransform(*camera, inside);
     scene.propagateTransforms();
 
@@ -1011,7 +1028,7 @@ TEST_CASE("the cube's lighting is anchored to the world, not to the mesh") {
     for (int step = 0; step < 4; ++step) {
         const float yaw = static_cast<float>(step) * 3.14159265358979F / 2.0F;
         hp::Transform placement;
-        placement.position = {0.0F, 0.0F, 5.0F};
+        placement.position = {0.0F, 0.0F, -5.0F};
         placement.rotation =
             hp::Quaternion::RotationFromAxisAngle(hp::float3{0.0F, 1.0F, 0.0F}, yaw);
         scene.setLocalTransform(*cube, placement);

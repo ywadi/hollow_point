@@ -106,16 +106,21 @@ void writeOffsetQuadGltf(const std::filesystem::path& directory) {
     std::filesystem::create_directories(directory, ec);
 
     const float vertices[] = {
-        -4.0F, 0.5F, 3.0F, 0.0F, 0.0F, -1.0F,
-         4.0F, 0.5F, 3.0F, 0.0F, 0.0F, -1.0F,
-         4.0F, 5.0F, 3.0F, 0.0F, 0.0F, -1.0F,
-        -4.0F, 5.0F, 3.0F, 0.0F, 0.0F, -1.0F,
+        -4.0F, 0.5F,-3.0F, 0.0F, 0.0F, 1.0F,
+         4.0F, 0.5F,-3.0F, 0.0F, 0.0F, 1.0F,
+         4.0F, 5.0F,-3.0F, 0.0F, 0.0F, 1.0F,
+        -4.0F, 5.0F,-3.0F, 0.0F, 0.0F, 1.0F,
     };
-    // Wound consistently with the authored -Z normals (right-hand rule) --
-    // re-wound by T0152, whose trace found the old {0,1,2, 0,2,3} order
-    // pointing the winding-defined front face away from the camera while the
-    // NORMAL attributes pointed at it.
-    const std::uint16_t indices[] = {0, 2, 1, 0, 3, 2};
+    // Wound consistently with the authored **+Z** normals (right-hand rule):
+    // `cross(v1 - v0, v2 - v0)` over BL, BR, TR, TL gives `(0, 0, +area)`.
+    //
+    // **This is `{0, 1, 2, 0, 2, 3}` again, and that is not a revert.** T0152
+    // moved these quads to `{0, 2, 1, 0, 3, 2}` because they faced the camera
+    // with a -Z normal; T0165 turned the camera round, so the quads face it
+    // with a +Z normal and the original order is the consistent one. The rule
+    // never changed -- winding agrees with the authored normal -- only which
+    // normal faces the lens.
+    const std::uint16_t indices[] = {0, 1, 2, 0, 2, 3};
 
     std::vector<unsigned char> bin;
     const auto* vb = reinterpret_cast<const unsigned char*>(vertices);

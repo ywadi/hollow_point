@@ -485,28 +485,23 @@ float2 HpParallaxUv(float2 uv, HpSurfaceInput In)
     float3 T = dp2perp * duv1.x + dp1perp * duv2.x;
     float3 B = dp2perp * duv1.y + dp1perp * duv2.y;
 
-    // **The chirality correction, and it is not optional** (T0165).
+    // **Left exactly as it was through T0165's handedness change, and that was
+    // measured rather than assumed.** Schueler's construction is odd in `N` --
+    // flip the normal and both T and B come back negated -- so a handedness
+    // change that moves which side of a surface faces the camera looks like it
+    // must need a compensating sign. A `sign(dot(cross(ddx, ddy), N))` factor
+    // was written, and it **broke** the one directional consumer in the tree:
+    // the rock cube's parallax self-shadow, which marches toward the light and
+    // darkens what is occluded, went from a max drop of 124.6 luminance to
+    // exactly 0. Reverted, and recorded here because the argument for adding it
+    // is convincing and wrong.
     //
-    // The construction above is the *adjugate* of the UV Jacobian, not its
-    // inverse -- it omits the `1 / det(dUV)` factor, which the normalisation
-    // below then discards the magnitude of. What survives is a **sign**, and
-    // the identity is exact: `T_above == dot(cross(dp1, dp2), N) * T_exact`,
-    // where `T_exact` is the solution of `dp = T du + B dv`. So the frame is
-    // correct only where `cross(ddx(P), ddy(P))` and `N` agree.
-    //
-    // They agreed under the old left-handed camera and they do not now. The
-    // screen basis is `(ddx, ddy) = (+X_cam, -Y_cam)`, so `cross(ddx, ddy)` is
-    // `-Z_cam` whichever way the camera looks -- but `N` here is forced toward
-    // the viewer, and *toward the viewer* moved from `-Z_cam` to `+Z_cam` with
-    // the handedness. Without this line T and B both come out anti-parallel to
-    // +u and +v, which reads as relief carved inside-out and a normal map with
-    // x and y negated: wrong, plausible, and invisible to a coverage test.
-    //
-    // Mirrored UV islands are **not** what this handles -- the adjugate gets a
-    // negative `det(dUV)` right on its own, checked both ways.
-    float chirality = dot(cross(dp1, dp2), N) >= 0.0 ? 1.0 : -1.0;
-    T *= chirality;
-    B *= chirality;
+    // What the sign actually is, is now pinned on device rather than reasoned
+    // about: `custom_shader_material_test`'s screen-chirality case measures
+    // `dot(cross(ddx(P), ddy(P)), N)` **negative** on a camera-facing surface
+    // (it was positive before T0165). That is the quantity anything rebuilding
+    // this frame depends on, and it is the one a driver or a Diligent viewport
+    // change could move underneath us.
 
     float invMax = rsqrt(max(max(dot(T, T), dot(B, B)), 1e-12));
     T *= invMax;

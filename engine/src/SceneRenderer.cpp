@@ -1965,21 +1965,26 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
                 // (`BasicStructures.fxh:100`). It was `-1.0F` while the camera
                 // looked down +Z.
                 //
-                // **What actually reads it is narrower than the name suggests,
-                // and saying so is the honest part**: `GetPerturbNormalInfo`
+                // **What consumes it is narrower than the name suggests, and
+                // saying so is the honest part**: `GetPerturbNormalInfo`
                 // multiplies it into `cross(ddx(Pos), ddy(Pos))` to point a
                 // gradient-derived normal at the viewer, and that branch runs
                 // only for a fragment whose interpolated mesh normal is
                 // *zero-length* (`PBR_Shading.fxh:163-176`). No asset in this
                 // engine reaches it — `rockcube_mesh_test` asserts the cube
                 // carries `NORMAL`, and the importer refuses a mesh without
-                // one — so the value is chosen from Diligent's documented
-                // meaning and the chirality of the screen basis, not from a
-                // measurement. The screen basis is what moved: `(ddx, ddy,
-                // toward-viewer)` was a right-handed triple under the +Z
-                // camera and is a left-handed one now, so whatever the correct
-                // absolute value, it flips here. Recorded as unverified on
-                // T0165 rather than claimed.
+                // one — so nothing here fails if this is wrong.
+                //
+                // **It is nonetheless measured, indirectly and on device.**
+                // `custom_shader_material_test`'s screen-chirality case renders
+                // the sign of `dot(cross(ddx(P), ddy(P)), N)` on a
+                // camera-facing quad and finds it **positive**: `cross(ddx,
+                // ddy)` already points at the viewer, so the multiplier that
+                // leaves it alone is +1 — which is independently what
+                // Diligent's comment means by "right-handed". Two readings of
+                // the same fact, agreeing. Under the +Z camera that sign was
+                // negative and this constant was -1, which is the same
+                // agreement one convention earlier.
                 camera.fHandness = kRightHandedCameraSpace ? 1.0F : -1.0F;
 
                 // **`Renderer` must be written, and not writing it was a real bug
