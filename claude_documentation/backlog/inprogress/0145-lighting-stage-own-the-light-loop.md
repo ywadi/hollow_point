@@ -92,21 +92,21 @@ sampling into *our* loop, once.
 
 ## Subtasks
 
-- [ ] 145.1 Mirror the punctual loop into the engine's lighting stage:
+- [x] 145.1 Mirror the punctual loop into the engine's lighting stage:
       attenuation, spot cone, the `ENABLE_SHADOWS` block kept shape-compatible
       for T0086, accumulation into base/sheen/clearcoat kept so T0143's
       features stay reachable. Byte-identical guard green before anything else
       changes
-- [ ] 145.2 The mirrored vocabulary (D31): `HpLight` (type, direction, colour,
+- [x] 145.2 The mirrored vocabulary (D31): `HpLight` (type, direction, colour,
       range, cone — `float3`s, not `DirectionX/Y/Z`), and the shaded-surface
       struct the stage methods take
-- [ ] 145.3 The per-light method with the standard default (rung 3)
-- [ ] 145.4 The whole-stage method with the standard default (rung 4); the IBL
+- [x] 145.3 The per-light method with the standard default (rung 3)
+- [x] 145.4 The whole-stage method with the standard default (rung 4); the IBL
       call stays a named seam inside it for T0087 to fill
 - [ ] 145.5 Lighting render modes: decide ambient-off, receive-shadows-off,
       BRDF selection — each compile-time or data, recorded per 141.15's
       pattern
-- [ ] 145.6 The drift guard: decide the mechanism (a pinned copy of
+- [x] 145.6 The drift guard: decide the mechanism (a pinned copy of
       `ApplyPunctualLight` compared at build or test time is the obvious one)
       and wire it
 - [ ] 145.7 Worked example: a toon-ramp material in the sandbox overriding

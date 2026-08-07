@@ -101,9 +101,44 @@ void selectLightsFor(const LightList& lights, const float3& objectPosition,
     struct Candidate {
         const ResolvedLight* light;
         float distanceSq;
+
+        // **The tiebreak, and it exists because the absence of one was a bug**
+        // (T0145, from T0158/T0159's finding). Every directional light carries
+        // distance 0, `std::sort` and `std::partial_sort` are *unstable*, so
+        // which of two suns landed at index 0 was unspecified -- and measured,
+        // on this machine it was the dim fill. A shader that spent its one
+        // expensive march on `Lights[0]` therefore spent it on the wrong light,
+        // silently, and the rock cube sample had to rank by intensity itself to
+        // work around it.
+        //
+        // Rec. 709 luminance of colour times intensity: the same weighting the
+        // sample used, promoted to the engine so every consumer agrees. The
+        // order it produces is now a **contract** -- `HpLight::Index == 0` is
+        // the dominant light -- documented in `HpMaterial.slang` and honoured
+        // by the lighting stage's per-light method.
+        float luminance;
+
+        // Last resort, so the order is *total* rather than merely
+        // better-defined: two identical lamps still sort the same way on every
+        // run, which is what keeps a frame reproducible and a byte-identical
+        // guard meaningful.
+        std::uint32_t entity;
     };
     std::vector<Candidate> candidates;
     candidates.reserve(lights.size());
+
+    // Nearest, then brightest, then fixed. A strict weak ordering, shared by
+    // both sort paths below so the partial and the full sort cannot disagree
+    // about what "first" means.
+    const auto dominates = [](const Candidate& a, const Candidate& b) {
+        if (a.distanceSq != b.distanceSq) {
+            return a.distanceSq < b.distanceSq;
+        }
+        if (a.luminance != b.luminance) {
+            return a.luminance > b.luminance;
+        }
+        return a.entity < b.entity;
+    };
 
     for (const ResolvedLight& light : lights) {
         // **The layer test first** (T0085.4), because it is one AND and rejects
@@ -133,7 +168,15 @@ void selectLightsFor(const LightList& lights, const float3& objectPosition,
                 continue;
             }
         }
-        candidates.push_back(Candidate{&light, distanceSq});
+        // Rec. 709, the same weighting a shader would use, so "brightest" means
+        // the same thing on both sides of the buffer.
+        const float3& colour = light.light.colour;
+        const float luminance =
+            (colour.x * 0.2126F + colour.y * 0.7152F + colour.z * 0.0722F) *
+            light.light.intensity;
+        candidates.push_back(Candidate{&light, distanceSq, luminance,
+                                       static_cast<std::uint32_t>(
+                                           entt::to_integral(light.entity))});
     }
 
     if (candidates.size() > maxLights) {
@@ -141,15 +184,10 @@ void selectLightsFor(const LightList& lights, const float3& objectPosition,
         // rest are discarded. A full sort would order a tail nothing reads.
         std::partial_sort(candidates.begin(),
                           candidates.begin() + static_cast<std::ptrdiff_t>(maxLights),
-                          candidates.end(), [](const Candidate& a, const Candidate& b) {
-                              return a.distanceSq < b.distanceSq;
-                          });
+                          candidates.end(), dominates);
         candidates.resize(maxLights);
     } else {
-        std::sort(candidates.begin(), candidates.end(),
-                  [](const Candidate& a, const Candidate& b) {
-                      return a.distanceSq < b.distanceSq;
-                  });
+        std::sort(candidates.begin(), candidates.end(), dominates);
     }
 
     out.reserve(candidates.size());

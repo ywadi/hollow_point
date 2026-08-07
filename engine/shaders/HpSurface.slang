@@ -680,6 +680,257 @@ void HpSurface(in HpSurfaceInput In, inout HpSurfaceOutput Out)
 }
 
 // ---------------------------------------------------------------------------
+// The engine's lighting stage (T0145, D30/D31) -- **the loop is ours, the BRDF
+// is still theirs.**
+//
+// This is D26 one level deeper, and it exists for a reason that was *measured*
+// rather than assumed. DiligentFX's `ApplyPunctualLight`
+// (`PBR_Shading.fxh:601-721`) computes range attenuation, the spot cone, the
+// shadow-map lookup, and then calls `SmithGGX_BRDF` **inline** at :690. Their
+// coarse seams are genuinely thin -- `GetBaseLayerLighting` is one line,
+// `ResolveLighting` four terms -- but there is no point *inside* the per-light
+// body where a different shading model could be substituted. The clearcoat
+// layer goes through `ApplyDirectionalLightGGX` (:718); the base layer does not.
+//
+// So the loop body is mirrored here, ~120 lines, and `SmithGGX_BRDF` stays the
+// default. That buys both of D30's remaining rungs at once: rung 3 is the
+// per-light method below, rung 4 is the whole stage, and neither exists in
+// Godot at any price short of a fork (its `light_post()` proposal is open since
+// 2019).
+//
+// **The mirror is a maintained copy, and the maintenance is mechanical.**
+// `tests/fast/upstream_drift_test.cpp` holds a pinned copy of every upstream
+// function reproduced here and fails with a line diff when a submodule bump
+// moves one. The owner accepted that cost explicitly (D30, amended) with the
+// steer that the guard be built to *show what moved* rather than merely trip.
+//
+// **What is not mirrored is refused loudly rather than silently dropped**, the
+// same shape as the `PRIMITIVE_ARRAY_SIZE` guard at the top of this file. The
+// extended material features accumulate into sheen and clearcoat layers this
+// engine has never enabled (D24), and writing those paths blind -- against
+// LUTs nothing binds and a `Shading.Clearcoat` nothing fills -- is exactly the
+// untestable carrying D24 refused. T0143 turns them on, and this is where it
+// writes them.
+// ---------------------------------------------------------------------------
+
+#if ENABLE_SHEEN || ENABLE_CLEAR_COAT || ENABLE_ANISOTROPY || ENABLE_IRIDESCENCE || \
+    ENABLE_TRANSMISSION || ENABLE_VOLUME
+#   error "the engine's light loop mirrors only the base layer; T0143 adds the extended layers here (see HpStandardLight)"
+#endif
+
+#if USE_IBL
+#   error "the engine's lighting stage has no image-based path; T0087 fills the seam in HpResolveLighting"
+#endif
+
+#if ENABLE_SHADOWS
+// **The shape T0086 drops into, and it is empty on purpose.** The shadow lookup
+// lives *inside* the loop body being mirrored (`FilterShadowMapFixedPCF`,
+// `PBR_Shading.fxh:655`), which is the whole reason D30 sequenced this ticket
+// before T0086: building cascades against *their* loop would relocate the
+// sampling a second time. The flag is off in `kFeatureMask`, so no permutation
+// the engine builds reaches this.
+//
+// Two things T0086 must do here rather than anywhere else: multiply the shadow
+// into `HpLight::Attenuation`'s *sibling*, never into `Attenuation` itself
+// (folding them is precisely Godot's ceiling -- see `HpMaterial.slang`), and
+// add `ShadowFactor` to `HpLight` at the same time, because a field that
+// arrives before its system is the D27 mistake this contract is written to
+// avoid.
+#   error "T0086 owns the shadow block inside HpGetLight; enabling ENABLE_SHADOWS before it exists would silently drop the lookup"
+#endif
+
+/// How many lights reach this fragment (T0145).
+///
+/// Already clamped to the permutation's `PBR_MAX_LIGHTS`, so a loop over
+/// `0 .. HpLightCount()-1` can never read past the array the frame buffer
+/// actually reserved.
+int HpLightCount()
+{
+#if defined(PBR_MAX_LIGHTS) && PBR_MAX_LIGHTS > 0
+    return min(g_Frame.Renderer.LightCount, PBR_MAX_LIGHTS);
+#else
+    return 0;
+#endif
+}
+
+/// One light in the engine's own vocabulary, resolved against a world position
+/// (T0145, D31).
+///
+/// **The mirrored half of `ApplyPunctualLight`** -- range attenuation, the spot
+/// cone, and (with T0086) the shadow lookup. Everything a game shader sees of a
+/// light comes through here, so `PBRLightAttribs`' packed layout stops at this
+/// function: `DirectionX/Y/Z` becomes a `float3`, `Range4` becomes a range in
+/// metres, and the spot cone's scale/offset pair becomes two cosines.
+///
+/// The unpacking above the attenuation is **dead code when a game does not read
+/// those fields**, which is the whole bet D31 records as unmeasured: the same
+/// values are loaded either way and the repack is register arithmetic slang and
+/// the driver can eliminate. T0145.8 measured it and the bet held -- see the
+/// ticket.
+///
+/// @param index the light, `0 .. HpLightCount()-1`. **0 is the dominant light**
+///        (`selectLightsFor`, and the contract in `HpMaterial.slang`).
+/// @param worldPos the fragment's world position, for range and cone.
+/// @returns the light as it arrives at that position.
+HpLight HpGetLight(int index, float3 worldPos)
+{
+    HpLight L;
+
+#if defined(PBR_MAX_LIGHTS) && PBR_MAX_LIGHTS > 0
+    PBRLightAttribs Light = g_Frame.Lights[index];
+
+    L.Type = Light.Type;
+    L.Index = index;
+    L.Position = float3(Light.PosX, Light.PosY, Light.PosZ);
+    L.Color = float3(Light.IntensityR, Light.IntensityG, Light.IntensityB);
+
+    // ---- mirrored from `ApplyPunctualLight`, :613-645 ---------------------
+    // Reproduced expression for expression, including the order of the two
+    // multiplies at the end: `RangeAttenuation * AngularAttenuation` and then
+    // `Color * Attenuation` are what makes the standard material's output
+    // bit-identical to the pre-T0145 build, and floating-point multiplication
+    // is not associative.
+    float3 LightDirection = float3(Light.DirectionX, Light.DirectionY, Light.DirectionZ);
+
+    float Attenuation = 1.0;
+    if (Light.Type != PBR_LIGHT_TYPE_DIRECTIONAL)
+    {
+        float3 LightToPoint = worldPos - L.Position;
+        float  Distance2    = dot(LightToPoint, LightToPoint);
+        LightToPoint /= sqrt(Distance2);
+        float RangeAttenuation = 1.0 / Distance2;
+        if (Light.Range4 > 0.0)
+        {
+            // Attenuation = clamp(1 - (Distance/Range)^4, 0, 1) / Distance^2
+            RangeAttenuation *= saturate(1.0 - (Distance2 * Distance2) / Light.Range4);
+        }
+
+        if (Light.Type == PBR_LIGHT_TYPE_POINT)
+        {
+            LightDirection = LightToPoint;
+        }
+
+        float AngularAttenuation = 1.0;
+        if (Light.Type == PBR_LIGHT_TYPE_SPOT)
+        {
+            float CosAngle = dot(LightToPoint, LightDirection);
+            AngularAttenuation = saturate(CosAngle * Light.SpotAngleScale + Light.SpotAngleOffset);
+        }
+
+        Attenuation = RangeAttenuation * AngularAttenuation;
+    }
+    // ---- end of the mirror ------------------------------------------------
+
+    L.Direction = LightDirection;
+    // The BRDF's `PointToLight`, which upstream spells `-LightDirection` at
+    // every call site. Negation is exact, so this costs nothing and removes
+    // the single most common sign error in a lighting hook.
+    L.ToLight = -LightDirection;
+    L.Attenuation = Attenuation;
+    L.Radiance = L.Color * Attenuation;
+
+    // **The unpacking a game reads and the engine does not.** `Range4` is a
+    // fourth power because that is how the attenuation curve uses it; nobody
+    // authoring a shader thinks in metres-to-the-fourth. Zero stays zero, which
+    // is the "unlimited" the C++ side means by it.
+    L.Range = sqrt(sqrt(Light.Range4));
+
+    // `SpotAngleScale` is `1 / max(0.001, cos(inner) - cos(outer))`, so it is
+    // never zero and this division is always safe (`GLTF_PBR_Renderer.cpp`).
+    // Reported as 1 for a light with no cone, rather than as whatever the
+    // packing left behind -- a spot cone on a directional light is meaningless
+    // and a shader reading it should see the identity, not noise.
+    float outerCos = -Light.SpotAngleOffset / Light.SpotAngleScale;
+    L.SpotOuterCos = Light.Type == PBR_LIGHT_TYPE_SPOT ? outerCos : 1.0;
+    L.SpotInnerCos = Light.Type == PBR_LIGHT_TYPE_SPOT
+                         ? (1.0 / Light.SpotAngleScale + outerCos)
+                         : 1.0;
+#else
+    // No lights in this permutation. `HpLightCount()` is 0 so nothing calls
+    // this, but the contract's shape must not depend on a macro -- a method
+    // that exists in some permutations and not others is exactly the hazard
+    // D31 mirrors the structs to avoid.
+    L.Type = HpLightDirectional;
+    L.Index = index;
+    L.Position = float3(0.0, 0.0, 0.0);
+    L.Direction = float3(0.0, 0.0, -1.0);
+    L.ToLight = float3(0.0, 0.0, 1.0);
+    L.Color = float3(0.0, 0.0, 0.0);
+    L.Attenuation = 0.0;
+    L.Radiance = float3(0.0, 0.0, 0.0);
+    L.Range = 0.0;
+    L.SpotInnerCos = 1.0;
+    L.SpotOuterCos = 1.0;
+#endif
+
+    return L;
+}
+
+/// The engine's standard response to one light -- **the default a rung-3
+/// override starts from** (T0145).
+///
+/// The mirrored second half of `ApplyPunctualLight` (:665-693): DiligentFX's
+/// `SmithGGX_BRDF`, called with the surface's own reflectance. Lambertian
+/// diffuse, Smith-GGX specular, Schlick Fresnel -- the same functions the
+/// engine has always used, now reached through a seam instead of past one.
+///
+/// **Returns the factors unmultiplied**, because that is what makes an
+/// override a line rather than a rewrite: the caller computes
+/// `(Diffuse + Specular) * Intensity * NdotL`, and a cel shader changes only
+/// `NdotL`.
+///
+/// @param Light the light, from `HpGetLight`.
+/// @param Surface the shaded surface.
+/// @returns the standard physically-based response.
+HpLightResponse HpStandardLight(HpLight Light, HpShadedSurface Surface)
+{
+    // The mirror's one conversion in the other direction: the engine's
+    // flattened surface back into the four primitive fields their BRDF takes.
+    // Field copies, so the values reaching `SmithGGX_BRDF` are the same bits
+    // `GetSurfaceReflectanceMR` produced.
+    SurfaceReflectanceInfo Srf;
+    Srf.PerceptualRoughness = Surface.Roughness;
+    Srf.Reflectance0 = Surface.Reflectance0;
+    Srf.Reflectance90 = Surface.Reflectance90;
+    Srf.DiffuseColor = Surface.DiffuseColor;
+
+    float3 diffuse;
+    float3 specular;
+    float NdotL;
+    SmithGGX_BRDF(Light.ToLight, Surface.Normal, Surface.View, Srf, diffuse, specular, NdotL);
+
+    HpLightResponse R;
+    R.Diffuse = diffuse;
+    R.Specular = specular;
+    R.Intensity = Light.Radiance;
+    R.NdotL = NdotL;
+    return R;
+}
+
+/// Turns accumulated punctual light into the fragment's colour (T0145).
+///
+/// The mirror of `ResolveLighting` (`PBR_Shading.fxh:847`), which is four terms
+/// of which this engine enables one. **The seam T0087 fills is here**: the
+/// image-based diffuse and specular are added to `punctual` before the
+/// emissive, scaled by the frame's `IBLScale` and the surface's `Occlusion` --
+/// which is why `HpShadedSurface` carries `Occlusion` although no punctual term
+/// reads it.
+///
+/// @param Surface the shaded surface; only `Emissive` is read today.
+/// @param punctual the sum of every light's contribution.
+/// @returns linear RGB, pre-tonemap.
+float3 HpResolveLighting(HpShadedSurface Surface, float3 punctual)
+{
+    // `GetBaseLayerIBL` is `(DiffuseIBL + SpecularIBL) * IBLScale * Occlusion`
+    // and both terms are identically zero while `USE_IBL` is off -- so the
+    // whole product is +0 and adding it is a no-op the compiler removes. It is
+    // written out rather than implied because T0087's change is then one line
+    // in one place, and because the `#if USE_IBL` guard above makes turning IBL
+    // on without writing it impossible rather than merely unlikely.
+    return punctual + Surface.Emissive;
+}
+
+// ---------------------------------------------------------------------------
 // `IHpMaterial` (T0142.2, D28) -- the contract, in a language that can
 // express it.
 //
@@ -919,6 +1170,81 @@ interface IHpMaterial
     bool unshaded()
     {
         return false;
+    }
+
+    /// **The per-light method** — D30's rung 3, and Godot's `light()` with more
+    /// than Godot gives it (T0145).
+    ///
+    /// Called once per light that reaches this fragment, with range
+    /// attenuation and the spot cone **already resolved by the engine** — so an
+    /// override changes how light is *applied* without reimplementing which
+    /// light arrives. Answer with the four factors the engine multiplies:
+    ///
+    ///     Punctual += (Diffuse + Specular) * Intensity * NdotL
+    ///
+    /// Default: `HpStandardLight`, which is DiligentFX's `SmithGGX_BRDF` — so
+    /// a material that overrides nothing renders bit-identically to the build
+    /// before this method existed. Cel shading is that default with `NdotL`
+    /// quantised; `HpMaterial.slang` carries the worked example.
+    ///
+    /// **Zero-attenuation lights never arrive here.** The engine skips a light
+    /// outside its own range or cone before calling, mirroring upstream, so an
+    /// override never has to test for it.
+    ///
+    /// **This is the seam a post-process cannot be.** A pass over the summed
+    /// image quantises the *total*, so a two-light surface bands wrongly and
+    /// per-light rim terms are unrecoverable — which is Godot proposal #484's
+    /// exact complaint, and D30's argument for owning the loop.
+    [mutating] HpLightResponse light(HpLight Light, HpShadedSurface Surface, HpSurfaceInput In)
+    {
+        return HpStandardLight(Light, Surface);
+    }
+
+    /// **The whole lighting stage** — D30's rung 4, which Godot does not have
+    /// at any price short of a fork (T0145).
+    ///
+    /// Owns the loop, the accumulation and the resolve. The default below *is*
+    /// the engine's standard path, written out rather than hidden, so an
+    /// override can start by copying it: `HpLightCount()`, `HpGetLight(i, pos)`
+    /// and `HpResolveLighting(Surface, punctual)` are the primitives it is
+    /// built from, and all three are contract.
+    ///
+    /// Reach for this rather than `light()` when the *loop* is the technique —
+    /// a dominant-light-only look, a per-light budget, an accumulation that is
+    /// not a sum. **T0093's visibility term belongs here**, or in `surface()`:
+    /// visibility is not illumination, so it multiplies the resolved colour and
+    /// never a light's contribution.
+    ///
+    /// @param Surface the surface every hook above finally described.
+    /// @param In the same contract inputs the surface stage saw.
+    /// @returns linear RGB, pre-tonemap. Alpha stays the surface stage's.
+    [mutating] float3 lighting(HpShadedSurface Surface, HpSurfaceInput In)
+    {
+        float3 punctual = float3(0.0, 0.0, 0.0);
+
+        int lightCount = HpLightCount();
+        for (int i = 0; i < lightCount; ++i)
+        {
+            HpLight Light = HpGetLight(i, Surface.Position);
+            if (Light.Attenuation <= 0.0)
+            {
+                // Mirrors `ApplyPunctualLight`'s own early return (:661). Out
+                // of range or outside the cone contributes nothing, and
+                // skipping keeps a rung-3 override off the fragments where it
+                // could only multiply by zero.
+                continue;
+            }
+
+            HpLightResponse Response = this.light(Light, Surface, In);
+            // **The accumulation, in upstream's exact expression order**
+            // (`:693`). `(D + S) * I * N` and not `D*I*N + S*I*N`: floating
+            // point multiplication does not distribute, and the byte-identical
+            // guard on the standard material is what caught the difference.
+            punctual += (Response.Diffuse + Response.Specular) * Response.Intensity *
+                        Response.NdotL;
+        }
+
+        return HpResolveLighting(Surface, punctual);
     }
 }
 
@@ -1223,40 +1549,50 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(inout TMaterial material, VSOu
         return Out;
     }
 
-    // Their lighting, from `PBR_Shading.fxh`. Surface properties in, radiance
-    // out -- the split D26 chose, and the reason none of the BRDF, the punctual
-    // light attenuation or the IBL is reimplemented here.
-    BaseLayerShadingInfo baseLayer;
-    baseLayer.Srf = GetSurfaceReflectanceMR(surfaceOut.BaseColor.rgb, surfaceOut.Metallic,
-                                            surfaceOut.Roughness);
-    baseLayer.Metallic = surfaceOut.Metallic;
-    baseLayer.Normal = normalize(surfaceOut.Normal);
+    // -----------------------------------------------------------------------
+    // **The lighting stage** (T0145, D30/D31) — the engine's own since this
+    // ticket, and Diligent's BRDF still underneath it.
+    //
+    // What used to be here was `ApplyPunctualLight` in a loop and
+    // `ResolveLighting` after it — theirs, called directly with their
+    // `SurfaceShadingInfo`. It is now the mirror: this block converts the
+    // surface stage's answers into `HpShadedSurface`, the engine's own type,
+    // and hands it to `material.lighting()`. A material overriding nothing gets
+    // the same arithmetic in the same order and the same pixels; one overriding
+    // `light()` replaces the shading model for a single light without touching
+    // attenuation, the cone or the loop.
+    //
+    // **The conversion is D31's cost, and it is register arithmetic rather than
+    // memory traffic**: the same values are loaded either way, so nothing here
+    // reads a byte the old path did not.
+    // -----------------------------------------------------------------------
+    HpShadedSurface shaded;
+    shaded.Position = surfaceIn.WorldPos;
+    shaded.View = surfaceIn.ViewDir;
+    shaded.Normal = normalize(surfaceOut.Normal);
     // Clamped away from zero: a normal facing exactly edge-on makes the BRDF
     // divide by it, and the result is a ring of NaN pixels that survives into
     // the target as black or white speckle depending on the backend.
-    baseLayer.NdotV = clamp(dot(baseLayer.Normal, surfaceIn.ViewDir), 1e-4, 1.0);
-
-    SurfaceShadingInfo shading;
-    shading.Pos = surfaceIn.WorldPos;
-    shading.View = surfaceIn.ViewDir;
-    shading.Occlusion = surfaceOut.Occlusion;
-    shading.Emissive = surfaceOut.Emissive;
-    shading.BaseLayer = baseLayer;
-    shading.IBLScale = g_Frame.Renderer.IBLScale.rgb;
-
-    SurfaceLightingInfo lighting = GetDefaultSurfaceLightingInfo();
-
-#if defined(PBR_MAX_LIGHTS) && PBR_MAX_LIGHTS > 0
+    shaded.NdotV = clamp(dot(shaded.Normal, surfaceIn.ViewDir), 1e-4, 1.0);
+    shaded.BaseColor = surfaceOut.BaseColor.rgb;
+    shaded.Metallic = surfaceOut.Metallic;
+    shaded.Roughness = surfaceOut.Roughness;
     {
-        int lightCount = min(g_Frame.Renderer.LightCount, PBR_MAX_LIGHTS);
-        for (int i = 0; i < lightCount; ++i)
-        {
-            ApplyPunctualLight(shading, g_Frame.Lights[i], lighting);
-        }
+        // **Theirs, called once, and flattened into the mirror.** The metal
+        // split and the 4% dielectric F0 are a formula worth not owning
+        // (`GetSurfaceReflectanceMR`), and copying its four fields out is what
+        // keeps `HpShadedSurface` free of a Diligent struct without
+        // reimplementing one.
+        SurfaceReflectanceInfo srf = GetSurfaceReflectanceMR(
+            surfaceOut.BaseColor.rgb, surfaceOut.Metallic, surfaceOut.Roughness);
+        shaded.DiffuseColor = srf.DiffuseColor;
+        shaded.Reflectance0 = srf.Reflectance0;
+        shaded.Reflectance90 = srf.Reflectance90;
     }
-#endif
+    shaded.Emissive = surfaceOut.Emissive;
+    shaded.Occlusion = surfaceOut.Occlusion;
 
-    Out.Color.rgb = ResolveLighting(shading, lighting);
+    Out.Color.rgb = material.lighting(shaded, surfaceIn);
     Out.Color.a = surfaceOut.BaseColor.a;
 #endif
 

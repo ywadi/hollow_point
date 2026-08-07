@@ -744,4 +744,246 @@ struct HpSurfaceOutput
     float Occlusion;
 };
 
+// ---------------------------------------------------------------------------
+// ## The lighting stage (T0145, D30, D31)
+//
+// **The surface stage says what a surface *is*; this one says how light
+// responds to it.** Everything above decides albedo, roughness, normals — and
+// then the engine applies a fixed physically-based response. Two methods on
+// `IHpMaterial` replace that response, wholly or per light:
+//
+// | Rung | Method | You own | The engine still owns |
+// |---|---|---|---|
+// | 3 | `light()` | the response to **one** light | the loop, range attenuation, the spot cone, which lights are here |
+// | 4 | `lighting()` | the **whole** stage — loop, accumulation, resolve | the pass, its targets, the light *data* |
+//
+// **This is Godot's `light()`, with three things Godot does not have** (checked
+// against 4.7.1-stable, D30 carries the sources): the light's **type** is
+// visible, so omni and spot are distinguishable where Godot's `light()` can
+// only ask "is it directional"; attenuation arrives **unfolded** from the
+// shadow term, where Godot's `ATTENUATION` has shadow multiplied in with no way
+// back (godot-proposals #15040, open); and rung 4 exists at all, where Godot's
+// equivalent (`light_post()`, proposal #484) has been open since 2019.
+//
+// ### Cel shading, the whole of it
+//
+//     struct HpMaterial : IHpMaterial
+//     {
+//         [mutating] override HpLightResponse light(HpLight L, HpShadedSurface S,
+//                                                   HpSurfaceInput In)
+//         {
+//             HpLightResponse R = HpStandardLight(L, S);
+//             // The one line the whole rung exists for: quantise the falloff.
+//             R.NdotL = floor(R.NdotL * 3.0) / 3.0;
+//             return R;
+//         }
+//     }
+//
+// `HpStandardLight` is the engine's own default — the physically-based response
+// — so an override starts from it and changes one term rather than restating a
+// BRDF. Everything the engine multiplies is a **field**, which is what makes the
+// override a line instead of a rewrite:
+//
+//     Punctual += (R.Diffuse + R.Specular) * R.Intensity * R.NdotL
+//
+// A **ramp** shader writes `R.Diffuse = ramp.SampleLevel(HpSamplerLinearClamp,
+// float2(R.NdotL, 0.5), 0).rgb` over its own declared texture and sets
+// `R.NdotL = 1.0`. A **custom BRDF** writes `R.Diffuse` and `R.Specular`
+// outright. **Hatching** reads `In.ScreenUV` and `R.NdotL` together.
+//
+// ### Whose lights, and in what order — decided, not left to the sort (T0145)
+//
+// **`Light.Index == 0` is the dominant light**, and that is a promise rather
+// than an accident. Until T0145 the engine's per-object selection ranked lights
+// by squared distance, every directional light carried the key 0, and
+// `std::sort` is not stable — so which directional light landed at index 0 was
+// *unspecified*, and on the machine it was measured on it was the dim fill
+// (T0158/T0159 found this the expensive way). The order is now total:
+//
+//   * **nearest first** — directional lights carry distance 0, so they precede
+//     every punctual light that is not exactly on top of the object;
+//   * **brightest first** among lights at equal distance, by Rec. 709 luminance
+//     of colour × intensity;
+//   * **entity order** last, so two identical lights still have a fixed order
+//     and a frame is reproducible.
+//
+// So `Index == 0` is "the sun, or the brightest of several suns" for any object
+// a directional light reaches. A technique that wants to spend something on one
+// light — a parallax shadow march, a shaped specular — spends it there.
+//
+// ### What a hook must not assume
+//
+// - **`Attenuation` is geometry only** — range falloff times the spot cone.
+//   The shadow term is *not* folded in, deliberately (that is the Godot ceiling
+//   above), and it does not exist yet at all: `ShadowFactor` arrives with T0086
+//   as a field of its own, and no field arrives before its system (D27).
+// - **A light whose attenuation is zero is never handed over.** The engine
+//   skips it, as DiligentFX's loop does, so a hook never runs for a light
+//   outside its own range or outside its cone.
+// - **Visibility is not illumination** (T0093). A dark room inside a vision
+//   cone is *visible and dark*, so a visibility term multiplies the **resolved**
+//   colour — rung 4, or `surface()` — never a light's contribution.
+// ---------------------------------------------------------------------------
+
+/// A light that travels one way and never falls off — the sun. `HpLight::Type`.
+static const int HpLightDirectional = 1;
+
+/// A light radiating from a point in every direction. `HpLight::Type`.
+static const int HpLightPoint = 2;
+
+/// A point light restricted to a cone. `HpLight::Type`.
+static const int HpLightSpot = 3;
+
+/// One light, as it arrives at one fragment (**D31**).
+///
+/// **The engine's own type, mirrored from DiligentFX's rather than re-exported,
+/// and the difference is the whole of D31.** Their `PBRLightAttribs` carries
+/// `DirectionX`/`DirectionY`/`DirectionZ` and `IntensityR`/`G`/`B` as separate
+/// floats — constant-buffer packing artifacts — and its optional members come
+/// and go with `#if`s, so a game shader reading one would compile on some
+/// materials and not others. This restates what the ladder needs as `float3`s
+/// with every field always present, converted inside the engine's own shader at
+/// the point of use. A game shader never names a Diligent struct.
+struct HpLight
+{
+    /// `HpLightDirectional`, `HpLightPoint` or `HpLightSpot`.
+    ///
+    /// **Godot's `light()` cannot ask this** — it exposes only
+    /// `LIGHT_IS_DIRECTIONAL`, so omni and spot are indistinguishable there.
+    int Type;
+
+    /// Where this light sits in the frame's list. **0 is the dominant light**
+    /// — see the ordering contract above. Ranges over `0 .. HpLightCount()-1`.
+    int Index;
+
+    /// World-space position. **Zero for a directional light**, which has none.
+    float3 Position;
+
+    /// The unit direction the light **travels**, world space.
+    ///
+    /// For a directional or spot light this is the lamp's own aim. For a point
+    /// light it is resolved per fragment: the direction from the light to *this*
+    /// fragment. `ToLight` is its negation and is what shading wants.
+    float3 Direction;
+
+    /// The unit direction from this fragment **toward the light** — Godot's
+    /// `LIGHT`, and the vector every BRDF takes.
+    float3 ToLight;
+
+    /// Linear RGB radiance of the lamp itself, colour times intensity,
+    /// **before** attenuation.
+    float3 Color;
+
+    /// Range falloff times the spot cone, 0 to 1. **1 for a directional light.**
+    ///
+    /// **Geometry only.** No shadow term is folded in — that is exactly the
+    /// ceiling Godot's `ATTENUATION` hits — and none exists yet; T0086 adds
+    /// `ShadowFactor` beside this rather than inside it.
+    float Attenuation;
+
+    /// `Color * Attenuation` — the radiance actually reaching this fragment,
+    /// and what the standard response multiplies by. Precomputed because the
+    /// engine needs it anyway.
+    float3 Radiance;
+
+    /// The lamp's range in metres. **0 means unlimited**, and a directional
+    /// light is always 0. Past its range a light is not handed over at all.
+    float Range;
+
+    /// Cosine of the spot light's inner cone half-angle — inside it the cone is
+    /// at full brightness. 1 for anything that is not a spot light.
+    float SpotInnerCos;
+
+    /// Cosine of the spot light's outer cone half-angle — outside it the cone
+    /// contributes nothing. 1 for anything that is not a spot light.
+    float SpotOuterCos;
+};
+
+/// The surface a light is being applied to (**D31**).
+///
+/// The mirror of DiligentFX's `SurfaceShadingInfo` and the
+/// `SurfaceReflectanceInfo` inside it, flattened and unconditional. Filled from
+/// `HpSurfaceOutput` after every surface hook has run, so this is the surface
+/// **as the material finally described it**.
+struct HpShadedSurface
+{
+    /// World-space position of this fragment.
+    float3 Position;
+
+    /// Unit direction from this fragment toward the camera.
+    float3 View;
+
+    /// The unit shading normal — `HpSurfaceOutput::Normal`, normalised.
+    float3 Normal;
+
+    /// `dot(Normal, View)`, clamped away from zero. **Clamped rather than
+    /// saturated**: the BRDF divides by it, and an exactly edge-on normal
+    /// otherwise produces a ring of NaN pixels.
+    float NdotV;
+
+    /// The surface's albedo, linear RGB — `HpSurfaceOutput::BaseColor.rgb`.
+    /// What a cel or ramp shader tints; the metal-aware split is below.
+    float3 BaseColor;
+
+    /// 0 = dielectric, 1 = metal.
+    float Metallic;
+
+    /// Perceptual roughness, 0 = mirror, 1 = fully rough. The same value
+    /// `SurfaceReflectanceInfo::PerceptualRoughness` carries.
+    float Roughness;
+
+    /// The diffusely reflecting colour: `BaseColor * 0.96 * (1 - Metallic)`.
+    /// A metal has none, which is why this is not `BaseColor`.
+    float3 DiffuseColor;
+
+    /// Specular reflectance at normal incidence (F0) — 4% for a dielectric,
+    /// the base colour for a metal.
+    float3 Reflectance0;
+
+    /// Specular reflectance at grazing incidence (F90).
+    float3 Reflectance90;
+
+    /// Linear RGB emissive, added by the resolve. Not clamped to 1.
+    float3 Emissive;
+
+    /// How much ambient light reaches this fragment, 0 to 1. Applies to the
+    /// image-based term when T0087 lands; punctual light does not use it.
+    float Occlusion;
+};
+
+/// What a per-light method answers with (**rung 3**).
+///
+/// **Every field is a factor the engine multiplies**, and that is deliberate:
+///
+///     Punctual += (Diffuse + Specular) * Intensity * NdotL
+///
+/// so a cel shader quantises `NdotL`, a ramp shader replaces `Diffuse` and sets
+/// `NdotL` to 1, a coloured-light-response shader rewrites `Intensity`, and a
+/// custom BRDF writes `Diffuse` and `Specular` outright. Splitting the factors
+/// rather than returning one radiance is what makes each of those one line.
+///
+/// `HpStandardLight(L, S)` fills it with the engine's physically-based answer,
+/// so an override starts from the default instead of restating it.
+struct HpLightResponse
+{
+    /// The diffuse lobe's reflectance, **before** intensity and `NdotL`.
+    /// Lambertian in the default: `DiffuseColor / pi` times one minus the
+    /// Fresnel term.
+    float3 Diffuse;
+
+    /// The specular lobe's reflectance, **before** intensity and `NdotL`.
+    /// Smith-GGX in the default.
+    float3 Specular;
+
+    /// The radiance reaching this fragment from this light. Defaults to
+    /// `Light.Radiance`, which is the lamp's colour times its attenuation.
+    float3 Intensity;
+
+    /// The cosine falloff, `saturate(dot(Normal, ToLight))` by default and
+    /// **the term cel shading exists to change**. Quantising it here bands each
+    /// light separately, which is the thing a post-process pass over the summed
+    /// image can never do (Godot proposal #484's exact complaint).
+    float NdotL;
+};
+
 #endif // _HP_MATERIAL_SLANG_
