@@ -1847,6 +1847,20 @@ architecture is not compromised to shrink a cost that is not a human one.** The
 upstream hook is still worth offering — a merged seam beats a maintained copy —
 which is T0141's C1/C3 reasoning applied one layer down.
 
+**Executed 2026-08-07 (T0145), with one half outstanding.** The guard is
+`tools/pin_upstream_shading.py` plus `tests/fast/upstream_drift_test.cpp`: six
+upstream functions pinned verbatim, re-extracted and diffed on every run of the
+fast suite, printing a line diff and the file to port into — and demonstrated
+failing on a deliberately perturbed pin before it was trusted.
+
+**The upstream offer was not made.** No issue or pull request has been opened
+against DiligentFX. The mirror is written to be offerable — the loop body is
+unchanged from theirs, and what would go upstream is a callback seam inside
+`ApplyPunctualLight` between the attenuation block and the BRDF call — but
+approaching a third-party project is an owner action rather than a code change
+here. **Recorded as owed rather than quietly dropped**, because the whole reason
+this amendment exists is that a merged seam would delete the copy.
+
 ### Why rung 3 is load-bearing rather than optional: material switching cannot substitute for it
 
 Recorded because the cheaper-looking alternative is genuinely tempting and is

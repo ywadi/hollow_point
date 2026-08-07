@@ -20,10 +20,55 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-07 — twenty-fourth revision: `T0147` closed the same day it took
-the top, and a shader can see behind itself.** The sequence stays one thing:
-*give game developers full power over shaders* — and with the screen-space
-family cleared, **T0145's light loop is the only whole family still blocked**.
+**Set 2026-08-07 — twenty-fifth revision: `T0145` closed, and with it the
+sequence's own goal.** *Give game developers full power over shaders* was five
+tickets; the last of them landed today. **No technique family in the capability
+matrix is blocked on a missing hook any more** — what remains blocked is
+blocked on a *system* nobody has built yet (shadows, ambient, motion vectors),
+which is a different kind of gap and belongs to those tickets rather than to the
+contract.
+
+T0145 landed whole. The engine's pixel shader iterates lights in its own loop:
+`IHpMaterial.light()` is D30's rung 3 and `IHpMaterial.lighting()` is rung 4,
+each with a default that *is* the standard path. The seam did not exist upstream
+and that was measured, not assumed — `ApplyPunctualLight` calls `SmithGGX_BRDF`
+inline at `PBR_Shading.fxh:690` — so ~120 lines are mirrored, and the mirror is
+guarded rather than remembered: a pinned copy of six upstream functions, diffed
+by the **fast** suite on every run, printing a line diff and the file to port
+into. It was demonstrated failing before it was trusted.
+
+**A material overriding nothing renders bit-identically**: every numeric line
+the 57-case gpu suite prints is unchanged except timings, and a dedicated case
+compares 49152 bytes at **0 differing**. Cel shading is `R.NdotL =
+ceil(R.NdotL * 4) / 4` and measures **3 distinct colours against a smooth
+control's 99** — the NPR family, blocked since the matrix was written, is
+expressible today along with ramp lighting and custom BRDFs.
+
+**D38** decides the two things a light loop cannot be handed over without.
+`selectLightsFor` ranked by distance alone, every directional light carried 0,
+and `std::sort` is unstable — so `Lights[0]` was *undefined*, and the rock cube's
+shadow march had been spending its one ray on the dim fill. The order is total
+now (nearest, then brightest, then entity) and `HpLight::Index == 0` is the
+**dominant light**, which is what let **158.3 close**: the sample's march moved
+onto the per-light method, its share-of-incident-light approximation deleted, and
+the effect went 72 → 85 pixels darkened with the silhouette and the black-pixel
+count unmoved. D38 also decided Godot's lighting render modes, and mostly
+rejected them: `diffuse_*`/`specular_*` are one assignment inside `light()`, so a
+mode enum would be a second mechanism for one domain.
+
+**The costs D30 left open are measured and there is nothing to pay.** The
+standard material's SPIR-V is identical to the byte (12504 `psMain`, 7280
+`vsMain`); a custom module's got 124 bytes *smaller*; cold compile and per-light
+fill cost both moved less than the run-to-run spread. D31's fallback — mirroring
+layout-compatibly — is not needed.
+
+**One thing is owed and not done**: D30 asked that the hook be offered upstream
+regardless of the copy. No issue or PR was opened; it is an owner action on a
+third-party repository, and it is recorded on the ticket as owed rather than
+ticked.
+
+Previously — the twenty-fourth revision: `T0147` closed the same day it took
+the top, and a shader can see behind itself.
 
 T0147 landed whole. `g_SceneColour` and `g_SceneDepth` are snapshots taken at a
 new step **10.9b**, between an opaque pass and a blend pass that phase 10 did
@@ -210,12 +255,18 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0145](inprogress/0145-lighting-stage-own-the-light-loop.md) | the light loop | **The whole NPR family** — cel, ramp, hatching, custom BRDFs — plus skin, sheen and anisotropy's shading half. T0159 lets a game *read* lights; this lets it replace the loop. **Must land after T0159**, or its interface freezes before hooks are mutable and the break is paid twice. It is now the *only* whole family left blocked: T0147 cleared the screen-space one |
+| 1 | [T0143](open/0143-extended-material-features.md) | extended material features | The order behind T0145 was already set, and this was next in it. It is also the ticket T0145 pointed at most concretely: sheen, clearcoat, anisotropy, iridescence, transmission and volume each **`#error`** in the engine's lighting stage now, so this ticket has a named place to write and cannot turn a flag on whose path silently does nothing. D31 constrains the shape — its fields go on `HpShadedSurface`, present and zeroed, never behind an `#if` |
+| 2 | [T0152](inprogress/0152-winding-convention.md) | the winding remainder | Already in `inprogress/`, and small |
+| 3 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | The movable one — see below. It needs nothing from the surface or lighting stages, and T0147 gave it the opaque/blend pass split it would have had to build |
+| 4 | [T0086](open/0086-shadows.md) | shadows | Now unblocked in the way D30 sequenced it: the loop the shadow lookup goes inside is the engine's, the `ENABLE_SHADOWS` block's shape is waiting in `HpGetLight`, and T0145's Ref says where the factor goes and why it must not fold into `Attenuation` |
+| 5 | [T0158](inprogress/0158-parallax-depth-cues.md) | parallax depth cues, remainder | 158.2 closed with T0159 and **158.3 closed with T0145**; what is left is the reference/tuning subtasks and the geometrically-displaced ground-truth cube |
 
-Then, unchanged in substance and pushed behind the above: `T0143` (extended
-material features), `T0152` (the winding remainder), `T0045` (culling and render
-queues), `T0086` (shadows), and `T0158`, whose 158.2 **closed with T0159** —
-its remainder is 158.3 (with T0145) and the reference/tuning subtasks.
+**Raised rather than reordered, because the order is the owner's call:**
+[T0162](open/0162-shader-authoring-docs.md) (the shader authoring guide) listed
+T0146, T0147 and T0145 among the capabilities it should be written *after*, and
+all three have now landed. It is not placed above, because deciding whether
+documentation comes before T0143's features is a call this ticket should not
+make on its own — but it is the item whose blockers just emptied.
 
 ### T0045 is the movable one, and that is the useful thing to know about it
 
@@ -371,7 +422,7 @@ wrong in the confident voice of a document that is normally right.
 | 467 | [T0162](open/0162-shader-authoring-docs.md) | The shader authoring guide: what a game author reads | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 468 | [T0163](open/0163-gpu-suite-teardown-and-cook-skip.md) | A fatal assertion in a gpu case takes the next case with it | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | 464 | [T0155](open/0155-terrain-rendering.md) | Terrain rendering: their reference implementation is the floor, not the ceiling | 4 — Render layer | 🔜 TODO | Medium | Very Complex |
-| 465 | [T0145](inprogress/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | 🚧 IN PROGRESS | High | Complex |
+| 465 | [T0145](completed/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | ✅ DONE | High | Complex |
 | 492 | [T0148](open/0148-post-process-stack.md) | The post-process stack: engine and game effects at one seam | 4 — Render layer | 🔜 TODO | Medium | Complex |
 | 542 | [T0149](open/0149-style-bundles.md) | Style bundles: the one-click looks | 4 — Render layer | 🔜 TODO | Medium | Complex |
 | 548 | [T0150](open/0150-compute-pipelines.md) | Compute pipelines: the stage D15 promised | 4 — Render layer | 🔜 TODO | High | Moderate |
