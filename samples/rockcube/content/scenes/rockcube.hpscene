@@ -113,6 +113,33 @@ entities:
         intensity: 10
         enabled: true
 
+  - guid: 1570000000000105
+    name: GlassPane
+    components:
+      Transform:
+        # **On the camera's view axis, in front of the cube.** The camera sits
+        # at (0, 1.5, 0) pitched 16.7 degrees down, so the axis passes through
+        # y = 0.481 at z = 3.4 — which is how this y was arrived at rather than
+        # nudged into place. The cube's near face is at z = 4, so the pane has
+        # 0.6 m of clearance behind it, which is what `contactRange` in
+        # `glass.hpmat` is measured against.
+        position: [0, 0.481, 3.4]
+        rotation: [0, 0, 0, 1]
+        # A slab, not a plane: the cube mesh scaled thin in z. **No new mesh
+        # asset**, which is the point — a pane of glass is a cube 4 cm thick,
+        # and adding a `.gltf` for it would be adding a file to avoid a number.
+        # Back-face culling leaves exactly the near face drawing.
+        #
+        # 1.1 m wide by 0.9 m tall at 3.4 m covers about a quarter of the
+        # frame: enough that the rock behind it is visibly displaced, small
+        # enough that the cube's own silhouette is still visible around it.
+        scale: [0.55, 0.45, 0.02]
+      MeshRenderer:
+        # The cube's mesh, reused. See `scale` above.
+        mesh: 15700000000000c0
+        materials: [15700000000000a2]
+        layers: 1
+
   - guid: 1570000000000103
     name: RockCube
     components:

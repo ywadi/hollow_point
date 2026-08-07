@@ -45,6 +45,7 @@
 #include <hp/Window.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -136,6 +137,37 @@ std::filesystem::path writePpm(const std::string& name, const std::vector<std::u
 }
 
 /// Pixels that are not the clear colour.
+/// Removes the sample's glass pane from a loaded scene (T0147.5).
+///
+/// **Every case below except the committed-content one measures the *cube*** —
+/// its silhouette, its coverage, its luminance, its frame-to-frame delta — and
+/// those measurements are the standing evidence for T0141's parallax, T0152's
+/// winding, T0156's triplanar march, T0159's self-shadowing and T0146's vertex
+/// hook. A translucent surface in front of the cube changes every pixel of
+/// them.
+///
+/// So the pane is removed rather than baselined around: it is not the subject
+/// of those cases, and re-tuning five other tickets' numbers to accommodate a
+/// sixth ticket's demonstration would be paying down their evidence to
+/// decorate this one. The committed-content case keeps it, asserts it, and is
+/// where the scene as shipped is checked.
+///
+/// @param scene a scene loaded from `rockcube.hpscene`.
+/// @returns whether the pane was there to remove — false means the scene file
+///          changed and this helper is now silently doing nothing.
+bool removeGlassPane(hp::Scene& scene) {
+    const auto guid = hp::Guid::parse("1570000000000105");
+    if (!guid) {
+        return false;
+    }
+    const auto pane = scene.find(*guid);
+    if (!pane) {
+        return false;
+    }
+    scene.destroy(*pane);
+    return true;
+}
+
 long long covered(const std::vector<std::uint8_t>& rgba) {
     long long count = 0;
     for (std::size_t i = 0; i + 3 < rgba.size(); i += 4) {
@@ -254,6 +286,10 @@ TEST_CASE("the rock cube sample renders its committed content") {
     for (const char* path : {"textures/rock_basecolour.png", "textures/rock_orm.png",
                              "textures/rock_height.png", "textures/rock_normal.png",
                              "shaders/rock_pom.slang", "materials/rock.hpmat",
+                             // The glass pane (T0147.5). Imported only here:
+                             // every other case in this file removes the pane
+                             // before rendering, because it measures the cube.
+                             "shaders/glass.slang", "materials/glass.hpmat",
                              "models/cube.gltf"}) {
         const hp::ImportResult result =
             hp::importAsset(device.render->device(), device.render->context(), pool, path);
@@ -268,10 +304,13 @@ TEST_CASE("the rock cube sample renders its committed content") {
     // would render as the missing-material checkerboard.
     const auto meshGuid = hp::Guid::parse("15700000000000c0");
     const auto materialGuid = hp::Guid::parse("15700000000000a1");
+    const auto glassGuid = hp::Guid::parse("15700000000000a2");
     REQUIRE(meshGuid.has_value());
     REQUIRE(materialGuid.has_value());
+    REQUIRE(glassGuid.has_value());
     CHECK(pool.contains<hp::MeshAsset>(*meshGuid));
     CHECK(pool.contains<hp::Material>(*materialGuid));
+    CHECK(pool.contains<hp::Material>(*glassGuid));
 
     const auto text = hp::Vfs::readText("scenes/rockcube.hpscene");
     REQUIRE(text.has_value());
@@ -280,7 +319,8 @@ TEST_CASE("the rock cube sample renders its committed content") {
     const hp::SceneLoadResult loaded =
         hp::loadSceneFromString(scene, *text, "scenes/rockcube.hpscene");
     REQUIRE(loaded.status == hp::SceneLoadStatus::Ok);
-    CHECK(loaded.entities == 4);
+    // Camera, two lights, the cube, and the glass pane (T0147.5).
+    CHECK(loaded.entities == 5);
     // `RockCubeSpin` belongs to the gameplay module, which is not loaded here.
     // Preserved, not dropped, and not fatal (D23).
     CHECK(loaded.unknownComponents == 1);
@@ -315,7 +355,10 @@ TEST_CASE("the rock cube sample renders its committed content") {
         hp::SceneViewStats stats;
         REQUIRE(view.render(device.render->context(), scene, pool, 0, &stats) != nullptr);
         CHECK(stats.hadCamera);
-        CHECK(stats.submitted == 1);
+        // The cube and the pane. **Two passes, one number**: the pane is
+        // `alphaMode: Blend` and is submitted at 10.9c, the cube at 10.9a, and
+        // `submitted` counts items rather than passes (T0147).
+        CHECK(stats.submitted == 2);
         CHECK(stats.missingMesh == 0);
         REQUIRE(view.readback(device.render->context(), pixels));
     }
@@ -332,6 +375,13 @@ TEST_CASE("the rock cube sample renders its committed content") {
     // are wide because this is a composition check, not a pixel comparison:
     // what they catch is a cube that vanished, and a cube that fills the frame
     // the way the editor's demo quad did before somebody noticed.
+    //
+    // **The glass pane (T0147.5) did not move this number at all**, measured:
+    // 18.079% before it and 18.079% after. It sits entirely inside the cube's
+    // silhouette, so it changes what those pixels *are* without changing
+    // whether they are covered. The luminance variation did move, 26.7341 to
+    // 26.0499, which is the tint and the refraction softening the rock behind
+    // it — and is the reason that bound is a floor rather than a window.
     CHECK(share > 0.04);
     CHECK(share < 0.40);
 
@@ -349,6 +399,63 @@ TEST_CASE("the rock cube sample renders its committed content") {
     const double magentaShare = magentaShareOfCovered(pixels);
     MESSAGE("magenta share of covered pixels: " << magentaShare);
     CHECK(magentaShare < 0.05);
+
+    // -----------------------------------------------------------------------
+    // **The glass pane actually refracts** (T0147.5), measured against the
+    // same scene with the pane removed.
+    //
+    // The pane is the sample's engine-intermediate demonstration: it samples
+    // `g_SceneColour` at a displaced coordinate and `g_SceneDepth` to fade
+    // where the cube presses against it, and it carries no texture of its own
+    // at all. So the assertion is a difference: the pane's rectangle changes,
+    // and nothing outside it does.
+    //
+    // **The "nothing outside it" half is the one that would catch a real
+    // mistake.** A blended surface that wrote depth over the whole frame, or a
+    // snapshot taken at the wrong point, would move pixels the pane never
+    // covers.
+    // -----------------------------------------------------------------------
+    std::vector<std::uint8_t> withoutPane;
+    {
+        CHECK(removeGlassPane(scene));
+        scene.propagateTransforms();
+        hp::SceneViewStats stats;
+        REQUIRE(view.render(device.render->context(), scene, pool, 0, &stats) != nullptr);
+        CHECK(stats.submitted == 1);
+        REQUIRE(view.readback(device.render->context(), withoutPane));
+    }
+    writePpm("rockcube_sample_no_pane", withoutPane, kSize);
+
+    long long changed = 0;
+    for (std::size_t i = 0; i + 3 < pixels.size(); i += 4) {
+        if (pixels[i] != withoutPane[i] || pixels[i + 1] != withoutPane[i + 1] ||
+            pixels[i + 2] != withoutPane[i + 2]) {
+            ++changed;
+        }
+    }
+    const double changedShare = static_cast<double>(changed) / (kSize * kSize);
+    const auto pixelAt = [&](const std::vector<std::uint8_t>& rgba, int x, int y) {
+        const std::size_t i = (static_cast<std::size_t>(y) * kSize + x) * 4;
+        return std::array<int, 3>{rgba[i], rgba[i + 1], rgba[i + 2]};
+    };
+    const auto centreWith = pixelAt(pixels, kSize / 2, kSize / 2);
+    const auto centreWithout = pixelAt(withoutPane, kSize / 2, kSize / 2);
+    MESSAGE("glass pane changes " << changedShare * 100.0 << "% of the frame; centre ("
+                                  << centreWith[0] << ", " << centreWith[1] << ", "
+                                  << centreWith[2] << ") against (" << centreWithout[0] << ", "
+                                  << centreWithout[1] << ", " << centreWithout[2] << ")");
+
+    // The pane sits on the camera's view axis, so the centre pixel is under it
+    // and must have moved.
+    CHECK((centreWith != centreWithout));
+    // And its footprint is a rectangle of the frame, not the whole thing: the
+    // pane is 1.1 x 0.9 m at 3.4 m through a 60-degree lens.
+    CHECK(changedShare > 0.02);
+    CHECK(changedShare < 0.30);
+    // The corners are outside it and must be untouched, to the bit.
+    CHECK((pixelAt(pixels, 2, 2) == pixelAt(withoutPane, 2, 2)));
+    CHECK((pixelAt(pixels, kSize - 3, 2) == pixelAt(withoutPane, kSize - 3, 2)));
+    CHECK((pixelAt(pixels, 2, kSize - 3) == pixelAt(withoutPane, 2, kSize - 3)));
 
     hp::Vfs::shutdown();
     tearDown(device);
@@ -438,6 +545,8 @@ TEST_CASE("parallax self-shadowing darkens the frame, measured against itself wi
             hp::SceneLoadStatus::Ok) {
             return false;
         }
+        // The glass pane is not what this case measures; see `removeGlassPane`.
+        removeGlassPane(scene);
         // **Posed, not resting.** At the scene's resting yaw the key light
         // stands 15-48 degrees off every visible face, and this height map is
         // smooth — the p90 rise over 12 texels is 0.078 of the range — so
@@ -658,6 +767,8 @@ TEST_CASE("the sample's shader parameter comes from its .hpmat, not from the sha
             hp::SceneLoadStatus::Ok) {
             return false;
         }
+        // The glass pane is not what this case measures; see `removeGlassPane`.
+        removeGlassPane(scene);
         scene.propagateTransforms();
 
         hp::SceneView view;
@@ -777,6 +888,8 @@ TEST_CASE("the rock cube's faces cull from inside, so they wind outward") {
     hp::Scene scene;
     REQUIRE(hp::loadSceneFromString(scene, *text, "scenes/rockcube.hpscene").status ==
             hp::SceneLoadStatus::Ok);
+    // The glass pane is not what this case measures; see `removeGlassPane`.
+    CHECK(removeGlassPane(scene));
 
     // Move the camera to the cube's centre. The cube is at [0, 0, 5] and is
     // 2 metres across, so every face is a metre away — well beyond the 0.1
@@ -845,6 +958,8 @@ TEST_CASE("the cube's lighting is anchored to the world, not to the mesh") {
     REQUIRE(text.has_value());
     hp::Scene scene;
     REQUIRE(hp::loadSceneFromString(scene, *text, "scene").status == hp::SceneLoadStatus::Ok);
+    // The glass pane is not what this case measures; see `removeGlassPane`.
+    CHECK(removeGlassPane(scene));
 
     const auto cubeGuid = hp::Guid::parse("1570000000000103");
     REQUIRE(cubeGuid.has_value());
@@ -973,6 +1088,8 @@ TEST_CASE("the sample's vertex hook moves the silhouette, and rests at time zero
     hp::Scene scene;
     REQUIRE(hp::loadSceneFromString(scene, *text, "scenes/rockcube.hpscene").status ==
             hp::SceneLoadStatus::Ok);
+    // The glass pane is not what this case measures; see `removeGlassPane`.
+    CHECK(removeGlassPane(scene));
 
     hp::SceneView view;
     REQUIRE(view.create(device.render->device(), device.render->context(), kSize, kSize));

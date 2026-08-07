@@ -1,0 +1,78 @@
+# The glass pane's material (T0147.5).
+#
+# **Three lines of this file are the whole of T0147 as a person meets it**:
+# `alphaMode: Blend`, `shader: 1570000000000021`, and the `refraction` parameter
+# under it. Everything else is defaults.
+#
+# ## `alphaMode: Blend` is not a look, it is a permission
+#
+# `glass.slang` samples `g_SceneColour` and `g_SceneDepth`, and those are
+# **snapshots** taken between the opaque pass (10.9a) and the blend pass (10.9c)
+# — so a material that is not blended reads them before they were written, which
+# is the previous frame at best. D37 refuses it rather than documenting it:
+# change this one word to `Opaque` and the pane renders the missing-material
+# checkerboard with one console line naming this shader and the rule.
+#
+# So the pairing is the thing to remember. A refraction, a heat haze, a frosted
+# pane or a soft particle is `alphaMode: Blend` **and** a screen read. Setting
+# one without the other is the mistake the loud refusal exists to name.
+#
+# ## No textures at all, which is the point worth noticing
+#
+# The rock beside this pane needs four images to look like rock. This material
+# needs none: everything it draws comes from the frame the engine had already
+# rendered. That is what "engine intermediates" buys, and it is why the
+# screen-space family — refraction, heat haze, frosted glass, soft particles,
+# fog-of-war — was six techniques blocked on one binding rather than six
+# separate features.
+version: 2
+material:
+  # See above. This is the permission, not the look.
+  alphaMode: Blend
+  # A pane has two sides and the camera may end up behind it; a single-sided
+  # pane vanishes the moment it is looked at from the wrong side, which reads
+  # as the object having been deleted.
+  doubleSided: true
+  shader: 1570000000000021
+  params:
+    # 6% of the frame at full wave amplitude — **chosen by looking at it**, not
+    # by taste. At 2% and 3% the displaced rock is still within a texel or two
+    # of the rock beside it and the pane reads as a slight change of tint
+    # rather than as glass; at 6% the strata behind it visibly step sideways
+    # against the strata outside it, which is the thing a person has to be able
+    # to see for this sample to be a demonstration of anything. Still not a
+    # funhouse: the rock inside the pane is recognisably the same rock.
+    - name: refraction
+      value: 0.06
+    # The pane is 1.1 m tall, so ~4 ripples per metre puts four or five bands
+    # across it: enough to read as a surface, few enough not to alias at the
+    # frame sizes the gpu suite renders at.
+    - name: rippleFrequency
+      value: 4.5
+    # Radians per second. A ~2.8 second period, deliberately unrelated to the
+    # cube's 15 second rotation and to its 4.5 second sway, so nothing in the
+    # scene ever lines up and the motion never looks mechanical.
+    - name: rippleSpeed
+      value: 2.2
+    # **Measured, not guessed.** The cube rests at a 30-degree yaw, so its
+    # nearest corner edge is ~0.25 m behind the pane at the frame's centre and
+    # its faces fall away from there; the empty background is 995 m behind.
+    # Half a metre puts the fade squarely inside that range, so the glass reads
+    # thinner where the cube presses against it and full-strength around the
+    # silhouette — which is the depth read doing something a person can point
+    # at rather than a number in a test.
+    - name: contactRange
+      value: 0.5
+    # **Cool and clearly not neutral, and that is a legibility decision rather
+    # than a taste one.** With a near-white tint the displacement was the only
+    # evidence the pane existed, and a still frame of displaced rock reads as a
+    # rendering artefact rather than as glass — which is a bad thing for a
+    # sample whose whole job is to make a capability visible. A tint puts a
+    # recognisable rectangle around it.
+    - name: tint
+      value: [0.58, 0.82, 0.95]
+    # Grazing-angle brightening, standing in for a reflection until T0087 gives
+    # the engine an environment to reflect. Low: a stand-in that draws
+    # attention to itself is worse than one that does not.
+    - name: sheen
+      value: 0.25

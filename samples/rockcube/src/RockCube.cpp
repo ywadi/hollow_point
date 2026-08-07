@@ -90,6 +90,10 @@ constexpr const char* kAssets[] = {
     // the order a person would look for it.
     "shaders/rock_pom.slang",
     "materials/rock.hpmat",
+    // The glass pane (T0147.5): a second material on the *same* mesh, whose
+    // shader reads the frame behind it rather than a texture of its own.
+    "shaders/glass.slang",
+    "materials/glass.hpmat",
     "models/cube.gltf",
 };
 
