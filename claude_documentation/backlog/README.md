@@ -421,6 +421,7 @@ wrong in the confident voice of a document that is normally right.
 | 464 | [T0161](completed/0161-game-resource-model.md) | The game resource model: a module declares its own resources, by name, at every stage | 4 — Render layer | ✅ DONE | High | Moderate |
 | 467 | [T0162](open/0162-shader-authoring-docs.md) | The shader authoring guide: what a game author reads | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 468 | [T0163](open/0163-gpu-suite-teardown-and-cook-skip.md) | A fatal assertion in a gpu case takes the next case with it | 4 — Render layer | 🔜 TODO | Medium | Simple |
+| 469 | [T0164](open/0164-per-instance-data.md) | Per-instance data: the last empty cell in the capability matrix | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 464 | [T0155](open/0155-terrain-rendering.md) | Terrain rendering: their reference implementation is the floor, not the ceiling | 4 — Render layer | 🔜 TODO | Medium | Very Complex |
 | 465 | [T0145](completed/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | ✅ DONE | High | Complex |
 | 492 | [T0148](open/0148-post-process-stack.md) | The post-process stack: engine and game effects at one seam | 4 — Render layer | 🔜 TODO | Medium | Complex |
