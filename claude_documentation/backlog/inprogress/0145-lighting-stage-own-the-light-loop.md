@@ -109,7 +109,7 @@ sampling into *our* loop, once.
 - [x] 145.6 The drift guard: decide the mechanism (a pinned copy of
       `ApplyPunctualLight` compared at build or test time is the obvious one)
       and wire it
-- [ ] 145.7 Worked example: a toon-ramp material in the sandbox overriding
+- [x] 145.7 Worked example: a toon-ramp material in the sandbox overriding
       only the per-light method — doubles as T0149's seed style
 - [ ] 145.8 Measure: register pressure and pipeline compile time,
       interface-shaped loop vs current, on the gpu suite's existing scenes
