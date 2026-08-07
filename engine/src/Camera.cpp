@@ -1,5 +1,7 @@
 #include <hp/Camera.hpp>
 
+#include <hp/HandednessConvention.hpp>
+
 #include <cmath>
 
 namespace hp {
@@ -24,6 +26,35 @@ bool usable(const Camera& camera, float aspect) {
         return camera.orthographicSize > 0.0F;
     }
     return camera.verticalFov > 0.0F && camera.verticalFov < kPi;
+}
+
+/// Turns Diligent's left-handed projection into a right-handed one.
+///
+/// **Exactly `diag(1, 1, -1, 1) * M`, which is a negation of view-space Z
+/// applied before the projection** -- so in the engine's row-vector,
+/// left-to-right convention (`hp/Math.hpp`) it is a negation of the matrix's
+/// third *row*, and nothing else. `_31` and `_32` are zero in both the
+/// perspective and the orthographic form, so the two elements below are the
+/// whole of it.
+///
+/// **Measured before the conversion was swept, because "does a right-handed
+/// projection compose with reverse-Z" is a decision and not an implementation
+/// detail** (T0165.1). It composes exactly, and `camera_test.cpp` pins each
+/// claim:
+///
+/// - `_11` and `_22` are untouched, so this is **not** a screen-space mirror:
+///   world +X still lands on screen right and +Y on screen top. The mirror is
+///   in which direction the camera *looks*, which is the point.
+/// - `_43` is untouched and `_33`/`_34` flip together, so the near/far
+///   endpoints land exactly where the left-handed form put them with the sign
+///   of view-space Z flipped: **near -> 1, far -> 0**, reverse-Z intact.
+/// - The orthographic form needs no special case: its `_34` is already zero,
+///   so negating it is a no-op and the `_33` negation is all that happens.
+/// - The 4x4 determinant changes sign. That *is* the mirror, it is the only
+///   thing that changes, and `WindingConvention.hpp` counts it.
+void makeRightHanded(float4x4& m) {
+    m._33 = -m._33;
+    m._34 = -m._34;
 }
 
 } // namespace
@@ -77,13 +108,26 @@ float4x4 projectionMatrix(const Camera& camera, float aspect) {
     const float clipNear = kReverseZ ? camera.farPlane : camera.nearPlane;
     const float clipFar = kReverseZ ? camera.nearPlane : camera.farPlane;
 
-    if (camera.orthographic) {
-        const float height = camera.orthographicSize * 2.0F;
-        return float4x4::Ortho(height * aspect, height, clipNear, clipFar, kNegativeOneToOneZ);
-    }
+    // **Diligent's helpers are the left-handed forms, and building on them is
+    // deliberate.** Their headers say so (`BasicMath.hpp:1835`, "Left-handed
+    // projection"), so the engine takes their algebra -- including the
+    // reverse-Z swap above, which is theirs -- and applies one mirror on top,
+    // rather than hand-rolling a projection and owning every coefficient. The
+    // fast suite still pins the result against their helper byte for byte,
+    // now with `makeRightHanded` applied to the expectation, so an upstream
+    // change to the algebra is still caught.
+    float4x4 projection =
+        camera.orthographic
+            ? float4x4::Ortho(camera.orthographicSize * 2.0F * aspect,
+                              camera.orthographicSize * 2.0F, clipNear, clipFar,
+                              kNegativeOneToOneZ)
+            : float4x4::Projection(camera.verticalFov, aspect, clipNear, clipFar,
+                                   kNegativeOneToOneZ);
 
-    return float4x4::Projection(camera.verticalFov, aspect, clipNear, clipFar,
-                                kNegativeOneToOneZ);
+    if (kRightHandedCameraSpace) {
+        makeRightHanded(projection);
+    }
+    return projection;
 }
 
 } // namespace hp

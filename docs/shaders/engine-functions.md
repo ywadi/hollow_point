@@ -46,8 +46,19 @@ its own. **A far-plane pixel returns the far plane's distance**, which for
 a cleared background is the largest number in the scene -- fade against it
 deliberately, or mask it with `HpSceneDepth(uv) > 0`.
 
+**Positive, growing with distance, on both sides of T0165's handedness
+change.** The engine's camera space is right-handed -- the camera looks
+down its own −Z (`hp::kRightHandedCameraSpace`) -- so unprojecting gives a
+*negative* view-space Z for everything in front of the lens, and the
+distance is its negation. This is the one place a shader hardcodes the
+camera's handedness; the C++ constant is the authority and
+`screen_inputs_test` is what pins the sign, because a silently negated
+depth does not look like a depth bug: a `saturate` clamps it to zero and a
+contact fade simply stops fading.
+
 @param deviceDepth a depth as `HpSceneDepth` or `In.ScreenPos.z` gives it.
-@returns view-space distance in world units.
+@returns view-space distance in world units. Positive in front of the
+         camera.
 
 ## `HpSceneViewDepth`
 

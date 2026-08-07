@@ -278,9 +278,18 @@ struct HpMaterial : IHpMaterial
     /// The same construction the engine's `HpParallaxUv` uses, for the same
     /// reason: it needs no vertex tangents, so this works on any mesh that has
     /// texture coordinates at all. `N` is oriented toward the viewer explicitly
-    /// rather than by `SV_IsFrontFace`, because in this engine hardware facing
-    /// and geometric facing disagree and the flipped contract normal can point
-    /// away from the camera on a perfectly front-facing surface.
+    /// rather than by `SV_IsFrontFace`, because the contract normal
+    /// legitimately points away from the camera on a double-sided surface seen
+    /// from behind, and parallax only means anything on the side being looked
+    /// at. (An earlier version of this comment said hardware and geometric
+    /// facing "disagree in this engine" -- that was T0141.12's inverted
+    /// diagnosis, corrected by T0152.)
+    ///
+    /// **Including the chirality correction, which a game shader has to know
+    /// about and currently cannot discover** -- see the comment on it below,
+    /// and `13-shader-capability-matrix.md`, where the missing engine-provided
+    /// `HpTangentFrame` is recorded as the gap this duplication is evidence
+    /// of.
     void tangentFrame(HpSurfaceInput In, float2 uv, out float3 T, out float3 B, out float3 N,
                       out float2 duv1, out float2 duv2)
     {
@@ -299,6 +308,18 @@ struct HpMaterial : IHpMaterial
         float3 dp1perp = cross(N, dp1);
         T = dp2perp * duv1.x + dp1perp * duv2.x;
         B = dp2perp * duv1.y + dp1perp * duv2.y;
+
+        // **The chirality correction** (T0165), identical to `HpParallaxUv`'s
+        // and derived there: the construction above is the adjugate of the UV
+        // Jacobian, so it carries the sign of `dot(cross(dp1, dp2), N)` on top
+        // of the sign it should have. Under the engine's right-handed camera
+        // that sign is negative on every camera-facing surface, and without
+        // this line the relief marches backwards and the self-shadow reaches
+        // the wrong way along the surface.
+        float chirality = dot(cross(dp1, dp2), N) >= 0.0 ? 1.0 : -1.0;
+        T *= chirality;
+        B *= chirality;
+
         float invMax = rsqrt(max(max(dot(T, T), dot(B, B)), 1e-12));
         T *= invMax;
         B *= invMax;

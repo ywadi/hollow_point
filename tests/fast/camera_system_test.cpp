@@ -13,7 +13,9 @@
 
 namespace {
 
-/// A camera entity at a position, looking down +Z (the engine is left-handed).
+/// A camera entity at a position, looking down **-Z** -- the engine's camera
+/// space is right-handed since T0165 (`hp::kRightHandedCameraSpace`), matching
+/// glTF. Everything below that names a Z coordinate depends on that.
 hp::Entity makeCamera(hp::Scene& scene, const char* name, int priority, std::uint8_t slot = 0) {
     hp::Entity entity = scene.create(name);
     hp::Camera camera;
@@ -79,7 +81,7 @@ TEST_CASE("a view is built from the entity's world transform") {
     hp::Entity entity = makeCamera(scene, "camera", 0);
 
     hp::Transform transform;
-    transform.position = hp::float3(0.0F, 2.0F, -10.0F);
+    transform.position = hp::float3(0.0F, 2.0F, 10.0F);
     scene.setLocalTransform(entity, transform);
     scene.propagateTransforms();
 
@@ -89,10 +91,12 @@ TEST_CASE("a view is built from the entity's world transform") {
     CHECK(view->viewportHeight == 1080);
     CHECK(view->aspect == doctest::Approx(1920.0F / 1080.0F));
 
-    // A point at the origin is 10 units in front of a camera at z = -10, and
-    // the engine is left-handed, so it must land at positive view-space z.
+    // A point at the origin is 10 units in front of a camera at z = +10, and
+    // the camera looks down -Z, so it must land at **negative** view-space z.
+    // (Before T0165 this case put the camera at z = -10 and asserted +10; the
+    // arithmetic never changed, only which side of the lens the world is on.)
     const hp::float4 viewSpace = hp::float4(0.0F, 2.0F, 0.0F, 1.0F) * view->view;
-    CHECK(viewSpace.z == doctest::Approx(10.0F));
+    CHECK(viewSpace.z == doctest::Approx(-10.0F));
     CHECK(viewSpace.x == doctest::Approx(0.0F));
     CHECK(viewSpace.y == doctest::Approx(0.0F));
 }
@@ -113,10 +117,11 @@ TEST_CASE("a camera inherits its parent's transform") {
     const auto view = hp::buildView(entity, 800, 600);
     REQUIRE(view.has_value());
 
-    // The camera is at x = 5, so a world point at x = 5 is straight ahead.
-    const hp::float4 viewSpace = hp::float4(5.0F, 0.0F, 4.0F, 1.0F) * view->view;
+    // The camera is at x = 5, so a world point at x = 5 is straight ahead --
+    // four units ahead means world z = -4, and view-space z = -4 with it.
+    const hp::float4 viewSpace = hp::float4(5.0F, 0.0F, -4.0F, 1.0F) * view->view;
     CHECK(viewSpace.x == doctest::Approx(0.0F));
-    CHECK(viewSpace.z == doctest::Approx(4.0F));
+    CHECK(viewSpace.z == doctest::Approx(-4.0F));
 }
 
 TEST_CASE("the view offset moves the view without touching the entity") {
@@ -273,20 +278,20 @@ TEST_CASE("the frustum contains what is in front and rejects what is not") {
     REQUIRE(view.has_value());
     const hp::Frustum frustum = hp::extractFrustum(view->viewProjection);
 
-    // Straight ahead, comfortably between the planes.
-    CHECK(frustum.contains(hp::float3(0.0F, 0.0F, 10.0F)));
-    CHECK(frustum.contains(hp::float3(0.0F, 0.0F, 99.0F)));
+    // Straight ahead -- down **-Z** -- comfortably between the planes.
+    CHECK(frustum.contains(hp::float3(0.0F, 0.0F, -10.0F)));
+    CHECK(frustum.contains(hp::float3(0.0F, 0.0F, -99.0F)));
 
     // Behind the camera, and beyond the far plane.
-    CHECK_FALSE(frustum.contains(hp::float3(0.0F, 0.0F, -10.0F)));
-    CHECK_FALSE(frustum.contains(hp::float3(0.0F, 0.0F, 200.0F)));
+    CHECK_FALSE(frustum.contains(hp::float3(0.0F, 0.0F, 10.0F)));
+    CHECK_FALSE(frustum.contains(hp::float3(0.0F, 0.0F, -200.0F)));
 
     // Between the camera and the near plane -- the case that a wrong near-plane
     // sign gets backwards, and which culls geometry in front of the player.
-    CHECK_FALSE(frustum.contains(hp::float3(0.0F, 0.0F, 0.5F)));
+    CHECK_FALSE(frustum.contains(hp::float3(0.0F, 0.0F, -0.5F)));
 
     // Far off to the side at close range.
-    CHECK_FALSE(frustum.contains(hp::float3(100.0F, 0.0F, 5.0F)));
+    CHECK_FALSE(frustum.contains(hp::float3(100.0F, 0.0F, -5.0F)));
 }
 
 TEST_CASE("a sphere straddling a plane is not culled") {
@@ -303,11 +308,11 @@ TEST_CASE("a sphere straddling a plane is not culled") {
     const hp::Frustum frustum = hp::extractFrustum(view->viewProjection);
 
     // Centre is behind the far plane, but the sphere reaches back inside it.
-    CHECK(frustum.intersectsSphere(hp::float3(0.0F, 0.0F, 105.0F), 10.0F));
+    CHECK(frustum.intersectsSphere(hp::float3(0.0F, 0.0F, -105.0F), 10.0F));
     // Centre behind the camera, radius large enough to reach the near plane.
-    CHECK(frustum.intersectsSphere(hp::float3(0.0F, 0.0F, -2.0F), 5.0F));
+    CHECK(frustum.intersectsSphere(hp::float3(0.0F, 0.0F, 2.0F), 5.0F));
     // Genuinely nowhere near.
-    CHECK_FALSE(frustum.intersectsSphere(hp::float3(0.0F, 0.0F, -500.0F), 10.0F));
+    CHECK_FALSE(frustum.intersectsSphere(hp::float3(0.0F, 0.0F, 500.0F), 10.0F));
 }
 
 TEST_CASE("frustum planes are normalised, so distances mean something") {
@@ -337,7 +342,7 @@ TEST_CASE("world to screen and back is a round trip") {
     const auto view = hp::buildView(entity, 1920, 1080);
     REQUIRE(view.has_value());
 
-    const hp::float3 world(1.5F, -0.75F, 12.0F);
+    const hp::float3 world(1.5F, -0.75F, -12.0F);
     float x = 0.0F;
     float y = 0.0F;
     float depth = 0.0F;
@@ -376,13 +381,13 @@ TEST_CASE("the screen centre maps to the centre of the viewport") {
     float x = 0.0F;
     float y = 0.0F;
     float depth = 0.0F;
-    REQUIRE(hp::worldToScreen(*view, hp::float3(0.0F, 0.0F, 10.0F), x, y, depth));
+    REQUIRE(hp::worldToScreen(*view, hp::float3(0.0F, 0.0F, -10.0F), x, y, depth));
     CHECK(x == doctest::Approx(960.0F));
     CHECK(y == doctest::Approx(540.0F));
 
     // Up in the world is up the screen, which means a *smaller* y in pixels.
     float upY = 0.0F;
-    REQUIRE(hp::worldToScreen(*view, hp::float3(0.0F, 1.0F, 10.0F), x, upY, depth));
+    REQUIRE(hp::worldToScreen(*view, hp::float3(0.0F, 1.0F, -10.0F), x, upY, depth));
     CHECK(upY < 540.0F);
 }
 
@@ -400,7 +405,11 @@ TEST_CASE("a point behind the camera is refused, not projected") {
     float x = -1.0F;
     float y = -1.0F;
     float depth = -1.0F;
-    CHECK_FALSE(hp::worldToScreen(*view, hp::float3(0.0F, 0.0F, -5.0F), x, y, depth));
+    // **+5, not -5, and this is the case that inverted with T0165.** The
+    // camera looks down -Z, so positive Z is behind it. The refusal itself is
+    // unchanged: `worldToScreen` rejects `w <= 0`, and a right-handed
+    // projection is what makes `w` carry the sign (`camera_test.cpp`'s gate).
+    CHECK_FALSE(hp::worldToScreen(*view, hp::float3(0.0F, 0.0F, 5.0F), x, y, depth));
     // Untouched, so a caller that ignores the return value at least does not
     // get a plausible-looking coordinate.
     CHECK(x == -1.0F);

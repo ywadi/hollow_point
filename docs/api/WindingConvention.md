@@ -6,37 +6,101 @@
 #include <hp/WindingConvention.hpp>
 ```
 
-2 public declaration(s), 2 documented.
+3 public declaration(s), 3 documented.
+
+## `kImportMirrorsContent`
+
+```cpp
+inline constexpr bool kImportMirrorsContent = false
+```
+
+ Whether the importer mirrors content — negates one axis — to convert
+ glTF's coordinate space into the engine's.
+
+ **False: imported geometry passes through untouched, and this is now a
+ decision rather than an accident** (T0165, D33 as amended). The engine's
+ camera space is right-handed like glTF's (`kRightHandedCameraSpace`), so
+ there is nothing left to convert: what a Blender artist authored is what
+ the engine stores, debugs and displays.
+
+ **The Unity-style import mirror was considered and rejected.** It fixes
+ the display and leaves the *boundary* permanently converted — every future
+ attribute type owes a conversion, and a missed one renders subtly mirrored
+ rather than failing. Flipping this to true reverses apparent winding once,
+ so `kFrontFaceCounterClockwise` must flip with it; the `static_assert`
+ below is what enforces that at compile time rather than as a code-review
+ hope.
+
+## `kChainMirrorCount`
+
+```cpp
+inline constexpr int kChainMirrorCount = ( kImportMirrorsContent ? 1 : 0 ) + ( kRightHandedCameraSpace ? 0 : 1 )
+```
+
+ The number of mirrors between authored glTF space and the framebuffer.
+
+ **This is the quantity the engine actually depends on, and modelling it
+ with one term too few is how T0165 nearly went wrong.** Each entry is an
+ independent place a determinant can go negative on the way from a glTF
+ index buffer to the rasteriser's facing decision; only the *parity* of the
+ total matters, because each mirror flips apparent winding exactly once.
+
+ - **The importer** (`kImportMirrorsContent`) — an axis negation applied to
+   every position and normal at load. Currently none.
+ - **The camera chain** (`kRightHandedCameraSpace`) — the screen frame
+   (screen-right, screen-up, toward-viewer) expressed in world coordinates.
+   Under a right-handed camera that frame is `(+X, +Y, +Z)` of the camera's
+   own basis, which is right-handed: no mirror. Under a left-handed one —
+   what the engine had until T0165 — it is `(+X, +Y, -Z)`, which is
+   left-handed: **one mirror**, and the one T0152's chirality probe
+   measured on screen.
+
+ **Not counted here, deliberately: per-node mirrors.** A negative-determinant
+ node transform is the glTF spec's own determinant clause, it varies per
+ draw, and it is handled per draw (T0152.5) — on the CPU by flipping the
+ cull face and in `HpSurface.slang` by flipping the facing bit. This
+ constant is the engine's *global* baseline, which is what a compile-time
+ constant can honestly be.
 
 ## `kFrontFaceCounterClockwise`
 
 ```cpp
-inline constexpr bool kFrontFaceCounterClockwise = false
+inline constexpr bool kFrontFaceCounterClockwise = true
 ```
 
  Whether counter-clockwise framebuffer winding is front-facing.
 
- **False, declared rather than defaulted, and this is the single place
- that decides it.** Vulkan has no preferred winding — facing is the sign
- of the triangle's area in framebuffer coordinates, and both `VkFrontFace`
- values are equally standard. The convention that binds this engine is
- glTF's, its only mesh format: front faces wind counter-clockwise seen
- from the front. Measured through this engine's chain (T0152.1), a glTF
- front face facing the camera arrives at the rasteriser **clockwise as
- displayed**: the importer converts nothing, the view is a rigid inverse,
- the left-handed projection has no XY mirror, reverse-Z touches only the
- Z column, and Diligent's Vulkan backend folds its internal viewport flip
- into this flag's D3D screen-space semantics. Clockwise-front — this
- value — is therefore the setting under which **hardware facing equals
- glTF facing**, which is the invariant everything downstream assumes.
+ **True, declared rather than defaulted, and this is the single place that
+ decides it.** Vulkan has no preferred winding — facing is the sign of the
+ triangle's area in framebuffer coordinates, and both `VkFrontFace` values
+ are equally standard. The convention that binds this engine is glTF's, its
+ only mesh format: front faces wind counter-clockwise seen from the front.
 
- **It is not free, and the cost is that it is not local.** Five things
- must agree, and any one left behind produces a failure that does not
- look like a winding bug:
+ Since T0165 the engine's chain contains **zero mirrors** — the importer
+ converts nothing, the view is a rigid inverse, the right-handed projection
+ negates only the Z row (no XY mirror), reverse-Z touches only the Z
+ column, and Diligent's Vulkan backend folds its internal viewport flip
+ into this flag's D3D screen-space semantics. So a glTF front face facing
+ the camera arrives at the rasteriser **counter-clockwise as displayed**,
+ and counter-clockwise-front — this value — is the setting under which
+ **hardware facing equals glTF facing**, which is the invariant everything
+ downstream assumes.
+
+ **This value moved once, and the move is the whole of T0165.** It was
+ `false` while the camera was left-handed, because that chain carried one
+ mirror. The invariant did not change; the mirror count did. That is why
+ the `static_assert` below counts mirrors rather than comparing two bools:
+ the old form modelled the importer as the only possible mirror source, so
+ a handedness change would have had to be smuggled past it by flipping a
+ constant that should not move.
+
+ **It is not free, and the cost is that it is not local.** Five things must
+ agree, and any one left behind produces a failure that does not look like
+ a winding bug:
 
  1. Every pipeline's `RasterizerStateDesc::FrontCounterClockwise` is this
-    constant. A pipeline that defaults it happens to agree today and
-    stops agreeing the day the convention moves — silently.
+    constant. A pipeline that defaults it happens to agree today and stops
+    agreeing the day the convention moves — silently.
  2. Single-sided materials cull `BACK`. Culling anything else is not a
     tuning choice; it inverts which side of every wall exists.
  3. The two-sided flip (`SV_IsFrontFace` in `HpSurface.slang`, and
@@ -47,31 +111,17 @@ inline constexpr bool kFrontFaceCounterClockwise = false
     against this convention. Bias tuned against an inverted one bakes the
     inversion into every tuned value permanently.
  5. A mirror introduced anywhere between authored space and the
-    framebuffer — an import-time axis flip, a negative camera-parent
-    scale, a render-to-texture blit that flips Y inside the scene pass —
-    toggles apparent winding once, and this flag must toggle with it.
-    That is what the static_assert below is for. A mirror left
-    uncompensated does not look like a mirror: it looks like every
-    single-sided mesh in the world vanishing.
+    framebuffer — an import-time axis flip, a camera-space handedness
+    change, a negative camera-parent scale, a render-to-texture blit that
+    flips Y inside the scene pass — toggles apparent winding once, and this
+    flag must toggle with it. The first two are `kChainMirrorCount`'s two
+    terms; the last two are **not modelled**, because they are per-scene
+    rather than per-build, and the trigger for modelling them is written
+    down on T0152.5. A mirror left uncompensated does not look like a
+    mirror: it looks like every single-sided mesh in the world vanishing.
 
- Per-node mirrors are the glTF determinant rule and are handled per draw
- (T0152.5), not here: this constant is the zero-mirror baseline of the
- engine's own chain.
-
-## `kImportMirrorsContent`
-
-```cpp
-inline constexpr bool kImportMirrorsContent = false
-```
-
- Whether the importer mirrors content — negates one axis — to convert
- glTF's right-handed space into a left-handed one.
-
- **False: imported geometry passes through untouched.** The consequence,
- derived in T0152 and pinned by its chirality probe, is that the engine
- displays right-handed content mirror-imaged; the compensating
- consequence is that no winding flip is needed at import. Flipping this
- to true (the Unity-style answer to the mirror) reverses apparent winding
- once, so `kFrontFaceCounterClockwise` must flip with it — which the
- assert below enforces at compile time rather than as a code review
- hope.
+ **Written as a literal, not as `kChainMirrorCount % 2 == 0`.** Deriving it
+ would make the assert below a tautology, and the assert is the point: the
+ value a pipeline actually rasterises with, and the mirror count it must
+ agree with, are stated independently so that disagreeing about them is a
+ compile error rather than a rendering one.

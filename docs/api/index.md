@@ -43,6 +43,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Event.hpp>`](Event.md) | 80 | 23 |
 | [`<hp/FrameTargets.hpp>`](FrameTargets.md) | 27 | 27 |
 | [`<hp/Guid.hpp>`](Guid.md) | 13 | 5 |
+| [`<hp/HandednessConvention.hpp>`](HandednessConvention.md) | 1 | 1 |
 | [`<hp/Input.hpp>`](Input.md) | 39 | 39 |
 | [`<hp/Layer.hpp>`](Layer.md) | 28 | 16 |
 | [`<hp/Layers.hpp>`](Layers.md) | 15 | 15 |
@@ -69,11 +70,11 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/ShaderSources.hpp>`](ShaderSources.md) | 5 | 5 |
 | [`<hp/Time.hpp>`](Time.md) | 21 | 10 |
 | [`<hp/Vfs.hpp>`](Vfs.md) | 23 | 23 |
-| [`<hp/WindingConvention.hpp>`](WindingConvention.md) | 2 | 2 |
+| [`<hp/WindingConvention.hpp>`](WindingConvention.md) | 3 | 3 |
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 47 | 47 |
 
-**772 public declarations across 42 headers, 655 documented.**
+**774 public declarations across 43 headers, 657 documented.**
 
 ## Every symbol
 
@@ -339,6 +340,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Guid::parse` | [`Guid.hpp`](Guid.md) |
 | `hash` | [`Guid.hpp`](Guid.md) |
 | `hash::operator()` | [`Guid.hpp`](Guid.md) |
+| `kRightHandedCameraSpace` | [`HandednessConvention.hpp`](HandednessConvention.md) |
 | `ActionId` | [`Input.hpp`](Input.md) |
 | `ActionId::ActionId` | [`Input.hpp`](Input.md) |
 | `ActionId::ActionId` | [`Input.hpp`](Input.md) |
@@ -783,8 +785,9 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Vfs::remove` | [`Vfs.hpp`](Vfs.md) |
 | `Vfs::list` | [`Vfs.hpp`](Vfs.md) |
 | `Vfs::resolvedSource` | [`Vfs.hpp`](Vfs.md) |
-| `kFrontFaceCounterClockwise` | [`WindingConvention.hpp`](WindingConvention.md) |
 | `kImportMirrorsContent` | [`WindingConvention.hpp`](WindingConvention.md) |
+| `kChainMirrorCount` | [`WindingConvention.hpp`](WindingConvention.md) |
+| `kFrontFaceCounterClockwise` | [`WindingConvention.hpp`](WindingConvention.md) |
 | `DisplayMode` | [`Window.hpp`](Window.md) |
 | `DisplayInfo` | [`Window.hpp`](Window.md) |
 | `WindowConfig` | [`Window.hpp`](Window.md) |

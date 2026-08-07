@@ -349,12 +349,23 @@ float HpSceneDepth(float2 screenUv)
 /// a cleared background is the largest number in the scene -- fade against it
 /// deliberately, or mask it with `HpSceneDepth(uv) > 0`.
 ///
+/// **Positive, growing with distance, on both sides of T0165's handedness
+/// change.** The engine's camera space is right-handed -- the camera looks
+/// down its own −Z (`hp::kRightHandedCameraSpace`) -- so unprojecting gives a
+/// *negative* view-space Z for everything in front of the lens, and the
+/// distance is its negation. This is the one place a shader hardcodes the
+/// camera's handedness; the C++ constant is the authority and
+/// `screen_inputs_test` is what pins the sign, because a silently negated
+/// depth does not look like a depth bug: a `saturate` clamps it to zero and a
+/// contact fade simply stops fading.
+///
 /// @param deviceDepth a depth as `HpSceneDepth` or `In.ScreenPos.z` gives it.
-/// @returns view-space distance in world units.
+/// @returns view-space distance in world units. Positive in front of the
+///          camera.
 float HpViewDepth(float deviceDepth)
 {
     float4 unprojected = mul(float4(0.0, 0.0, deviceDepth, 1.0), g_Frame.Camera.mProjInv);
-    return unprojected.z / unprojected.w;
+    return -(unprojected.z / unprojected.w);
 }
 
 // hp-shader-doc: export
@@ -473,6 +484,30 @@ float2 HpParallaxUv(float2 uv, HpSurfaceInput In)
     float3 dp1perp = cross(N, dp1);
     float3 T = dp2perp * duv1.x + dp1perp * duv2.x;
     float3 B = dp2perp * duv1.y + dp1perp * duv2.y;
+
+    // **The chirality correction, and it is not optional** (T0165).
+    //
+    // The construction above is the *adjugate* of the UV Jacobian, not its
+    // inverse -- it omits the `1 / det(dUV)` factor, which the normalisation
+    // below then discards the magnitude of. What survives is a **sign**, and
+    // the identity is exact: `T_above == dot(cross(dp1, dp2), N) * T_exact`,
+    // where `T_exact` is the solution of `dp = T du + B dv`. So the frame is
+    // correct only where `cross(ddx(P), ddy(P))` and `N` agree.
+    //
+    // They agreed under the old left-handed camera and they do not now. The
+    // screen basis is `(ddx, ddy) = (+X_cam, -Y_cam)`, so `cross(ddx, ddy)` is
+    // `-Z_cam` whichever way the camera looks -- but `N` here is forced toward
+    // the viewer, and *toward the viewer* moved from `-Z_cam` to `+Z_cam` with
+    // the handedness. Without this line T and B both come out anti-parallel to
+    // +u and +v, which reads as relief carved inside-out and a normal map with
+    // x and y negated: wrong, plausible, and invisible to a coverage test.
+    //
+    // Mirrored UV islands are **not** what this handles -- the adjugate gets a
+    // negative `det(dUV)` right on its own, checked both ways.
+    float chirality = dot(cross(dp1, dp2), N) >= 0.0 ? 1.0 : -1.0;
+    T *= chirality;
+    B *= chirality;
+
     float invMax = rsqrt(max(max(dot(T, T), dot(B, B)), 1e-12));
     T *= invMax;
     B *= invMax;
@@ -1627,7 +1662,11 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(inout TMaterial material, VSOu
     // No normals on the mesh. Facing the camera is the least wrong answer: it
     // keeps the BRDF finite and the surface visible, where a zero normal makes
     // every lighting term collapse to black with no diagnostic.
-    surfaceIn.Normal = float3(0.0, 0.0, -1.0);
+    //
+    // **+Z since T0165**: the camera looks down its own −Z
+    // (`hp::kRightHandedCameraSpace`), so +Z is what points back at it. It was
+    // −Z while the camera looked +Z, and it is the same sentence either way.
+    surfaceIn.Normal = float3(0.0, 0.0, 1.0);
     // Zero, deliberately: `GetPerturbNormalInfo` treats a zero-length normal as
     // "derive one from the position gradients", which is a better answer for a
     // mesh with no normals than the constant above and is the only place that

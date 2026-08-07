@@ -157,7 +157,12 @@ struct ResolvedLight {
 
     /// World-space direction the light points, normalised. **Along the
     /// entity's negative Z**, per glTF.
-    float3 direction{0.0F, 0.0F, 1.0F};
+    ///
+    /// (The default read `+1` until T0165, contradicting both the sentence
+    /// above it and `ResolvedPlacement`'s identical field. Harmless -- every
+    /// path assigns it from `resolvePlacement` -- and fixed on sight rather
+    /// than left as a second answer to the same question.)
+    float3 direction{0.0F, 0.0F, -1.0F};
 };
 
 /// Every light that will contribute to a frame, in registry order.

@@ -10,9 +10,17 @@
 // So the assertion is on the numbers, not on the pixels: for every triangle,
 // `cross(v1 - v0, v2 - v0)` must point away from the cube's centre. That is
 // glTF's winding rule, and per D33 (`hp/WindingConvention.hpp`) it is also this
-// engine's, because `kFrontFaceCounterClockwise` and `kImportMirrorsContent` are
-// both false — the importer converts nothing and hardware facing ends up equal
-// to glTF facing.
+// engine's: the importer converts nothing and hardware facing ends up equal to
+// glTF facing.
+//
+// **The asset's rule is object-space and did not move when T0165 flipped the
+// engine's handedness.** What moved is which framebuffer winding the hardware
+// calls front — `kFrontFaceCounterClockwise` — and that is a fact about the
+// camera chain, not about the cube. The last case in this file used to assert
+// both convention constants were `false` and said "if either of these moves,
+// the asset is wrong", which was true under the two-mirror model it was written
+// against and is not true of a handedness change. It now asserts the invariant
+// instead.
 //
 // This reads the **committed** asset rather than regenerating it. A test that
 // re-runs the generator and checks its own output is a tautology; this one fails
@@ -304,9 +312,24 @@ TEST_CASE("the UV frame has the handedness a tangent-space normal map needs") {
 }
 
 TEST_CASE("the cube's winding rule is the one the engine declares") {
-    // If either of these moves, the asset above is wrong and this test is the
-    // thing that says so — the numbers in a `.bin` cannot notice that the
-    // convention changed underneath them.
-    CHECK_FALSE(hp::kFrontFaceCounterClockwise);
+    // **What this asserts, and why it is not `CHECK_FALSE` on two constants any
+    // more.** The cube above is authored in glTF's object space and is correct
+    // there whatever the camera does; what could invalidate it is a *mirror*
+    // between that space and the framebuffer, because a mirror is the only
+    // thing that makes an outward-wound triangle arrive inward. So the real
+    // precondition is "the importer does not mirror" — and the rest of the
+    // chain's chirality is `kFrontFaceCounterClockwise`'s job to absorb, which
+    // is exactly what `WindingConvention.hpp`'s mirror count now expresses.
+    //
+    // Written the old way (`CHECK_FALSE(kFrontFaceCounterClockwise)`) this case
+    // failed the moment T0165 flipped the camera's handedness, reporting a
+    // correct asset as a broken one. That is the failure mode a check should
+    // never have: it models a cause it cannot see.
     CHECK_FALSE(hp::kImportMirrorsContent);
+    CHECK(hp::kFrontFaceCounterClockwise == ((hp::kChainMirrorCount % 2) == 0));
+
+    // And the mirror count is what it should be for a chain with no importer
+    // mirror and a right-handed camera: zero.
+    CHECK(hp::kChainMirrorCount == 0);
+    CHECK(hp::kFrontFaceCounterClockwise);
 }

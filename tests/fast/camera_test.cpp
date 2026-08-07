@@ -12,6 +12,14 @@
 // proves the thing that actually matters, and would have caught a reverse-Z
 // convention applied to the perspective path and forgotten on the orthographic
 // one.
+//
+// **The camera is right-handed since T0165** (`hp::kRightHandedCameraSpace`),
+// so a point in front of the lens has *negative* view-space Z. Every case here
+// goes through `viewZFor`, which converts a distance into a view-space Z, so
+// the cases read in distances and the convention lives in one place. The first
+// case below is the gate that proved a right-handed projection composes with
+// reverse-Z at all, and it is deliberately the only one that touches
+// coefficients.
 
 #include <doctest/doctest.h>
 
@@ -32,6 +40,16 @@ constexpr float kPi = 3.14159265358979323846F;
 float ndcDepth(const hp::float4x4& projection, float viewZ) {
     const hp::float4 clip = hp::float4(0.0F, 0.0F, viewZ, 1.0F) * projection;
     return clip.w != 0.0F ? clip.z / clip.w : clip.z;
+}
+
+/// The view-space Z of a point a given distance in front of the camera.
+///
+/// Negative under the engine's right-handed convention, positive under a
+/// left-handed one. Written against the constant rather than as a literal
+/// negation so the cases below state distances -- which is what a lens
+/// parameter is -- and flipping the convention moves one expression.
+constexpr float viewZFor(float distanceInFront) {
+    return hp::kRightHandedCameraSpace ? -distanceInFront : distanceInFront;
 }
 
 /// How many representable floats separate two values.
@@ -59,6 +77,95 @@ TEST_CASE("the engine is on reverse-Z, and the clear value follows it") {
     CHECK(hp::kDepthClearValue == 0.0F);
 }
 
+TEST_CASE("the camera is right-handed, and right-handed composes with reverse-Z") {
+    // **T0165.1: the gate.** Diligent's `Matrix4x4::Projection` is commented
+    // "Left-handed projection" and every rotation helper in `BasicMath.hpp` is
+    // "D3D-style left-handed", so a right-handed engine is built against their
+    // grain. Whether that grain can carry reverse-Z was a decision, not an
+    // implementation detail: if it could not compose, the answer was to stop
+    // and say so rather than work around it. It composes exactly, and this case
+    // is what says so -- deliberately the one place in this file that touches
+    // coefficients, because the claim *is* about the matrix's structure.
+    CHECK(hp::kRightHandedCameraSpace);
+
+    hp::Camera camera;
+    camera.verticalFov = 1.0472F;
+    camera.nearPlane = 0.1F;
+    camera.farPlane = 100.0F;
+    const float aspect = 16.0F / 9.0F;
+    const hp::float4x4 rh = hp::projectionMatrix(camera, aspect);
+    const hp::float4x4 lh = hp::float4x4::Projection(camera.verticalFov, aspect,
+                                                     camera.farPlane, camera.nearPlane, false);
+
+    SUBCASE("it differs from the left-handed form in the third row and nowhere else") {
+        // A right-handed projection is `diag(1, 1, -1, 1) * M` -- a negation of
+        // view-space Z before the projection, which in this engine's row-vector
+        // convention is a negation of the matrix's third row. `_31` and `_32`
+        // are zero in both forms, so two elements are the whole difference.
+        CHECK(rh._33 == -lh._33);
+        CHECK(rh._34 == -lh._34);
+        CHECK(rh._11 == lh._11);
+        CHECK(rh._22 == lh._22);
+        CHECK(rh._43 == lh._43);
+        CHECK(rh._44 == lh._44);
+    }
+
+    SUBCASE("it is not a screen-space mirror -- world +X still lands on screen right") {
+        // The distinction that makes the whole change safe to describe as "the
+        // camera looks the other way" rather than "the image flips". `_11` and
+        // `_22` are untouched above; this measures the consequence through the
+        // perspective divide, which is what the rasteriser sees.
+        const hp::float4 clip = hp::float4(1.0F, 2.0F, viewZFor(5.0F), 1.0F) * rh;
+        REQUIRE(clip.w > 0.0F);
+        CHECK(clip.x / clip.w > 0.0F);
+        CHECK(clip.y / clip.w > 0.0F);
+    }
+
+    SUBCASE("w is positive in front of the camera and negative behind it") {
+        // `CameraSystem::worldToScreen` refuses `w <= 0` to keep a point behind
+        // the player off the screen. That test is only a test if `w` actually
+        // carries the sign, which under a right-handed projection means
+        // `_34 = -1` rather than `+1`.
+        CHECK(rh._34 == -1.0F);
+        const hp::float4 front = hp::float4(0.0F, 0.0F, viewZFor(5.0F), 1.0F) * rh;
+        const hp::float4 behind = hp::float4(0.0F, 0.0F, -viewZFor(5.0F), 1.0F) * rh;
+        CHECK(front.w > 0.0F);
+        CHECK(behind.w < 0.0F);
+    }
+
+    SUBCASE("reverse-Z survives the mirror, perspective and orthographic alike") {
+        // The gate's actual question. `SetNearFarClipPlanes` is handed the
+        // planes the other way round -- Diligent's own comment says that is how
+        // it is told the buffer is reversed -- and the mirror is applied on top.
+        // The endpoints are what prove the two do not interfere.
+        CHECK(ndcDepth(rh, viewZFor(camera.nearPlane)) == doctest::Approx(1.0F));
+        CHECK(ndcDepth(rh, viewZFor(camera.farPlane)) == doctest::Approx(0.0F));
+
+        hp::Camera ortho;
+        ortho.orthographic = true;
+        ortho.orthographicSize = 5.0F;
+        ortho.nearPlane = 0.1F;
+        ortho.farPlane = 100.0F;
+        const hp::float4x4 orthoProj = hp::projectionMatrix(ortho, 1.0F);
+        // The orthographic form needs no special case: its `_34` is already
+        // zero, so the mirror is entirely in `_33`. Checked because "it needs no
+        // special case" is exactly the kind of claim that is true until it is
+        // not.
+        CHECK(orthoProj._34 == 0.0F);
+        CHECK(ndcDepth(orthoProj, viewZFor(ortho.nearPlane)) == doctest::Approx(1.0F));
+        CHECK(ndcDepth(orthoProj, viewZFor(ortho.farPlane)) == doctest::Approx(0.0F));
+    }
+
+    SUBCASE("the handedness change is exactly one mirror") {
+        // The determinant is the honest statement of "one mirror", and it is
+        // what `WindingConvention.hpp`'s mirror count is counting. Facing never
+        // consults the 4x4 determinant -- T0152.1 is emphatic about that -- but
+        // the *chain's* chirality is what the winding flag has to agree with,
+        // and this is where that chirality is introduced.
+        CHECK(rh.Determinant() * lh.Determinant() < 0.0F);
+    }
+}
+
 TEST_CASE("a perspective projection puts the near plane at 1 and the far plane at 0") {
     hp::Camera camera;
     camera.nearPlane = 0.1F;
@@ -69,14 +176,14 @@ TEST_CASE("a perspective projection puts the near plane at 1 and the far plane a
     // Reverse-Z. Getting this backwards renders a scene in which distant
     // geometry occludes near geometry -- which does not look like a depth bug,
     // it looks like the model is inside out.
-    CHECK(ndcDepth(projection, camera.nearPlane) == doctest::Approx(1.0F));
-    CHECK(ndcDepth(projection, camera.farPlane) == doctest::Approx(0.0F));
+    CHECK(ndcDepth(projection, viewZFor(camera.nearPlane)) == doctest::Approx(1.0F));
+    CHECK(ndcDepth(projection, viewZFor(camera.farPlane)) == doctest::Approx(0.0F));
 
     // Monotonic in between, or depth testing is meaningless regardless of which
     // end is which.
     float previous = 1.0F;
     for (float z = 1.0F; z < 1000.0F; z *= 2.0F) {
-        const float depth = ndcDepth(projection, z);
+        const float depth = ndcDepth(projection, viewZFor(z));
         CHECK(depth < previous);
         previous = depth;
     }
@@ -95,28 +202,40 @@ TEST_CASE("an orthographic projection uses the same reverse-Z convention") {
 
     const hp::float4x4 projection = hp::projectionMatrix(camera, 1.0F);
 
-    CHECK(ndcDepth(projection, camera.nearPlane) == doctest::Approx(1.0F));
-    CHECK(ndcDepth(projection, camera.farPlane) == doctest::Approx(0.0F));
-    CHECK(ndcDepth(projection, 50.05F) == doctest::Approx(0.5F));
+    CHECK(ndcDepth(projection, viewZFor(camera.nearPlane)) == doctest::Approx(1.0F));
+    CHECK(ndcDepth(projection, viewZFor(camera.farPlane)) == doctest::Approx(0.0F));
+    CHECK(ndcDepth(projection, viewZFor(50.05F)) == doctest::Approx(0.5F));
 }
 
-TEST_CASE("the projection is Diligent's [0, 1] mapping with the planes swapped, byte for byte") {
-    // The regression guard for T0144.3: simplifying the clip-space machinery
-    // must not move the matrix. The expected value is constructed through
-    // Diligent's own helper with the exact arguments the engine is meant to
-    // pass -- reversed planes, [0, 1] clip space -- so a drift in the
-    // implementation fails exactly rather than approximately, and a
-    // simplification that produces the same construction provably changes
-    // nothing.
+TEST_CASE("the projection is Diligent's [0, 1] mapping, planes swapped, third row negated") {
+    // The regression guard for T0144.3, extended by T0165: simplifying the
+    // clip-space machinery must not move the matrix, and neither must the
+    // handedness change. The expected value is constructed through Diligent's
+    // own helper with the exact arguments the engine is meant to pass --
+    // reversed planes, [0, 1] clip space -- and then mirrored, so a drift in
+    // the implementation fails exactly rather than approximately.
+    //
+    // **The mirror is applied to the expectation, not asserted away.** Building
+    // the expectation as `Projection(...)` alone would silently pass a
+    // left-handed engine; building it as a hand-written matrix would only prove
+    // the test and the implementation share a derivation, which is the failure
+    // mode the file header rejects.
+    auto mirrored = [](hp::float4x4 m) {
+        m._33 = -m._33;
+        m._34 = -m._34;
+        return m;
+    };
+
     hp::Camera camera;
     camera.verticalFov = 1.0472F;
     camera.nearPlane = 0.25F;
     camera.farPlane = 500.0F;
     const float aspect = 16.0F / 9.0F;
 
-    const hp::float4x4 expected = hp::float4x4::Projection(
+    const hp::float4x4 lh = hp::float4x4::Projection(
         camera.verticalFov, aspect, camera.farPlane, camera.nearPlane,
         /*NegativeOneToOne = */ false);
+    const hp::float4x4 expected = hp::kRightHandedCameraSpace ? mirrored(lh) : lh;
     CHECK(hp::projectionMatrix(camera, aspect) == expected);
 
     hp::Camera ortho;
@@ -125,9 +244,11 @@ TEST_CASE("the projection is Diligent's [0, 1] mapping with the planes swapped, 
     ortho.nearPlane = 0.1F;
     ortho.farPlane = 100.0F;
     const float height = ortho.orthographicSize * 2.0F;
-    const hp::float4x4 expectedOrtho =
+    const hp::float4x4 lhOrtho =
         hp::float4x4::Ortho(height, height, ortho.farPlane, ortho.nearPlane,
                             /*NegativeOneToOne = */ false);
+    const hp::float4x4 expectedOrtho =
+        hp::kRightHandedCameraSpace ? mirrored(lhOrtho) : lhOrtho;
     CHECK(hp::projectionMatrix(ortho, 1.0F) == expectedOrtho);
 }
 
@@ -153,8 +274,12 @@ TEST_CASE("reverse-Z is what makes a float depth buffer worth having") {
 
     // At 900 metres -- far from the camera, where z-fighting actually happens --
     // one metre of world movement must still change the stored depth.
-    const float reverseNear = ndcDepth(reverse, 900.0F);
-    const float reverseFar = ndcDepth(reverse, 901.0F);
+    // The engine's matrix is right-handed, so it is fed a negative view Z; the
+    // `conventional` control is Diligent's raw left-handed helper and is fed a
+    // positive one. Both describe the same point 900 m in front of the lens --
+    // the comparison is between depth *mappings*, not between handednesses.
+    const float reverseNear = ndcDepth(reverse, viewZFor(900.0F));
+    const float reverseFar = ndcDepth(reverse, viewZFor(901.0F));
     const float plainNear = ndcDepth(conventional, 900.0F);
     const float plainFar = ndcDepth(conventional, 901.0F);
 
@@ -291,7 +416,7 @@ TEST_CASE("a default camera is a usable camera") {
     const hp::float4x4 projection = hp::projectionMatrix(camera, 16.0F / 9.0F);
 
     CHECK_FALSE(projection == hp::float4x4::Identity());
-    CHECK(ndcDepth(projection, camera.nearPlane) == doctest::Approx(1.0F));
-    CHECK(ndcDepth(projection, camera.farPlane) == doctest::Approx(0.0F));
+    CHECK(ndcDepth(projection, viewZFor(camera.nearPlane)) == doctest::Approx(1.0F));
+    CHECK(ndcDepth(projection, viewZFor(camera.farPlane)) == doctest::Approx(0.0F));
     CHECK(camera.verticalFov * 180.0F / kPi == doctest::Approx(60.0F).epsilon(0.001));
 }

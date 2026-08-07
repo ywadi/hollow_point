@@ -6,6 +6,7 @@
 
 #include <hp/Assets.hpp>
 #include <hp/DepthConvention.hpp>
+#include <hp/HandednessConvention.hpp>
 #include <hp/Log.hpp>
 #include <hp/Material.hpp>
 #include <hp/Profiling.hpp>
@@ -1958,8 +1959,28 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
                 // backwards, which the depth test alone would not reveal.
                 camera.SetClipPlanes(view.camera.farPlane, view.camera.nearPlane);
 
-                // Left-handed, matching the engine's convention (T0056/T0130).
-                camera.fHandness = -1.0F;
+                // **Right-handed, matching the engine's convention**
+                // (`kRightHandedCameraSpace`, T0165) — Diligent's own spelling
+                // is "+1.0 for right-handed coordinate system"
+                // (`BasicStructures.fxh:100`). It was `-1.0F` while the camera
+                // looked down +Z.
+                //
+                // **What actually reads it is narrower than the name suggests,
+                // and saying so is the honest part**: `GetPerturbNormalInfo`
+                // multiplies it into `cross(ddx(Pos), ddy(Pos))` to point a
+                // gradient-derived normal at the viewer, and that branch runs
+                // only for a fragment whose interpolated mesh normal is
+                // *zero-length* (`PBR_Shading.fxh:163-176`). No asset in this
+                // engine reaches it — `rockcube_mesh_test` asserts the cube
+                // carries `NORMAL`, and the importer refuses a mesh without
+                // one — so the value is chosen from Diligent's documented
+                // meaning and the chirality of the screen basis, not from a
+                // measurement. The screen basis is what moved: `(ddx, ddy,
+                // toward-viewer)` was a right-handed triple under the +Z
+                // camera and is a left-handed one now, so whatever the correct
+                // absolute value, it flips here. Recorded as unverified on
+                // T0165 rather than claimed.
+                camera.fHandness = kRightHandedCameraSpace ? 1.0F : -1.0F;
 
                 // **`Renderer` must be written, and not writing it was a real bug
                 // (T0134).** The buffer is mapped `MAP_FLAG_DISCARD`, so every field

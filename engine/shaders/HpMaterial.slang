@@ -461,7 +461,8 @@ Texture2DArray HpTexture3;
 // ### What the hook must not do
 //
 // **Do not invert a triangle.** D33 is binding: `cross(v1-v0, v2-v0)` points
-// outward and `FrontCounterClockwise = false`. Displacement composes with that
+// outward, and the engine rasterises with `FrontCounterClockwise = true`
+// (`hp::kFrontFaceCounterClockwise`, T0165). Displacement composes with that
 // as long as it does not turn a face inside out; pushing a vertex past its
 // neighbours does, and the symptom is a surface that culls away rather than a
 // shading error.

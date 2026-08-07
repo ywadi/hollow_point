@@ -189,13 +189,21 @@ float4x4 projectionMatrix(const Camera & camera, float aspect)
 
  Builds the projection matrix for a camera.
 
- **Left-handed, +Z into the screen**, which is Diligent's camera-space
- convention and not ours to reopen — its projection helpers, its
- `SetNearFarClipPlanes` and its sample shaders all assume it, and picking the
- other handedness means fighting every one of them for no gain.
+ **Right-handed: the camera looks down its own −Z**, matching glTF —
+ which is Blender's, Maya's, Houdini's and Godot's convention too. See
+ `kRightHandedCameraSpace` for why, and for the Unity-style import mirror
+ that was rejected. (This used to read "left-handed, +Z into the screen …
+ not ours to reopen"; T0165 reopened it deliberately, and D33's amendment
+ records the argument.)
+
+ Built by mirroring Diligent's left-handed helper rather than replacing it:
+ its algebra, including the reverse-Z near/far swap, is still what produces
+ the coefficients.
 
  **Reverse-Z**, so the near plane maps to 1 and the far plane to 0. See
- `kReverseZ` for what else must agree.
+ `kReverseZ` for what else must agree. Reverse-Z and right-handedness
+ compose exactly — measured on T0165.1 before anything else moved, because
+ if they had not, that would have been a decision rather than a bug.
 
  @param camera the lens. `nearPlane` and `farPlane` must be positive with
         near strictly less than far; `verticalFov` must be in (0, pi) for a
