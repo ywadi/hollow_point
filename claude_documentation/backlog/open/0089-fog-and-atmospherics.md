@@ -8,6 +8,7 @@
 | **Phase** | 11 — World & environment |
 | **Order** | 840 |
 | **Created** | 2026-08-03 |
+| **Refs** | **T0147** ([../inprogress/0147-engine-intermediates-for-shaders.md](../inprogress/0147-engine-intermediates-for-shaders.md)) / **D37** — **the depth read fog wants exists**: `HpSceneViewDepth(In.ScreenUV)` gives view-space distance in metres from the opaque pass's depth, and `HpViewDepth` linearises any device depth without this ticket needing to know the projection's convention. Two things follow. A **per-material** fog is a blended surface today and needs nothing else. A **frame-wide** fog is a full-screen pass and belongs with T0148's chain, reading the same `scene.colour.snapshot`/`scene.depth.snapshot` targets rather than declaring its own — the two must not each copy the frame. Note also that vendored DiligentFX ships atmospheric scattering (see `12-vendored-capabilities.md`), which is the first thing this ticket should evaluate |
 
 ## Why
 

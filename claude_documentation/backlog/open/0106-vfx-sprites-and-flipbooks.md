@@ -9,7 +9,7 @@
 | **Order** | 545 |
 | **Created** | 2026-08-03 |
 | **Blocks** | T0080 |
-| **Refs** | [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D15, T0060, T0097 |
+| **Refs** | [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) D15, T0060, T0097; **T0147** ([../inprogress/0147-engine-intermediates-for-shaders.md](../inprogress/0147-engine-intermediates-for-shaders.md)) / **D37** — **106.5's soft-particle depth read is built and proved before this ticket needed it**: `HpSceneViewDepth(In.ScreenUV)` against the fragment's own `HpViewDepth(In.ScreenPos.z)`, worked example in `tests/gpu/screen_inputs_test.cpp`. Two obligations come with it: the particle material must be `alphaMode: Blend` (any other alpha mode is refused by name at pipeline build), and the depth it reads is the **opaque** depth, so particles do not fade against each other |
 
 ## Why
 

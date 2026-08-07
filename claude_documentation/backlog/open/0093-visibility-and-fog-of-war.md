@@ -9,7 +9,7 @@
 | **Order** | 540 |
 | **Created** | 2026-08-03 |
 | **Reframed** | 2026-08-04 — see "What this ticket is, and what it stopped being" |
-| **Refs** | T0044 (dropped), T0126, T0045, T0060, T0079, T0085, T0086, T0094, T0120, T0061, T0083, T0109, T0147 |
+| **Refs** | T0044 (dropped), T0126, T0045, T0060, T0079, T0085, T0086, T0094, T0120, T0061, T0083, T0109; **T0147** ([../inprogress/0147-engine-intermediates-for-shaders.md](../inprogress/0147-engine-intermediates-for-shaders.md)) / **D37** — **the mechanism is built and this ticket must use it rather than invent one**: a layer renders the visibility field into a target it owns, calls `setGameTexture("visibility", view)`, and a material samples it as an ordinary declared `Texture2DArray` under that name. **No `HpSurfaceInput::Visibility` field was added, deliberately** — a contract field returning 1.0 because nothing computes it is the exact failure the arrival table exists to prevent, so it arrives with *this* ticket's system and is one line then |
 
 ## What this ticket is, and what it stopped being
 
