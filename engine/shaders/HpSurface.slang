@@ -265,6 +265,97 @@ float3 HpGetVertexPosition(VSInput VSIn)
 // never been evaluated.
 #include "PBR_Textures.fxh"
 
+// ---------------------------------------------------------------------------
+// The engine's screen intermediates (T0147).
+//
+// **Snapshots, not the live attachments**, and everything about how they may
+// be used follows from that one word. `SceneRenderer` copies the colour and
+// depth targets between the opaque pass and the blend pass; a material samples
+// the copies, never the surface it is writing into. `HpMaterial.slang`'s
+// "Screen resources" section is the authoring documentation and carries the
+// validity rules; what is here is the declaration and the four helpers.
+//
+// Declared unconditionally rather than behind a permutation bit, because there
+// is nothing to gate: slang strips a resource nothing samples, so a standard
+// material's bytecode names neither and the base signature's slots cost it
+// nothing at draw time -- the same superset pattern `g_HeightMap` and
+// DiligentFX's seventeen already use.
+//
+// **No samplers of their own** (T0147, D35): sample through the palette,
+// `HpSamplerLinearClamp` for colour and `HpSamplerPointClamp` for depth.
+// Clamped rather than wrapped is load-bearing -- a screen-space read that
+// leaves the frame must not fetch the opposite edge, which is the artefact a
+// wrap sampler puts along every border of a refraction.
+// ---------------------------------------------------------------------------
+
+/// The scene's colour as of the end of the opaque pass. **Linear**, and
+/// pre-tonemap when T0096's HDR chain lands. See `HpSceneColour`.
+Texture2D g_SceneColour;
+
+/// The scene's depth as of the end of the opaque pass, raw device depth under
+/// the engine's reverse-Z convention (near = 1, far = 0). See `HpSceneDepth`.
+Texture2D g_SceneDepth;
+
+/// The **render target's** size in pixels in `xy` and its reciprocal in `zw`.
+///
+/// The target's, not the viewport's: `SV_POSITION` is in target pixels and the
+/// snapshots are target-sized, so this is the divisor that turns one into the
+/// other. They differ under a letterboxing aspect policy (T0081), which is
+/// exactly when using `f4ViewportSize` here would sample the wrong texel.
+///
+/// `CameraAttribs::f4ExtraData` is Diligent's own "any application-specific
+/// data" slot; `SceneRenderer` writes element 0 every frame, and the camera
+/// block is value-initialised first, so this is zero rather than undefined in
+/// a caller that supplies no target.
+#define HP_TARGET_SIZE (g_Frame.Camera.f4ExtraData[0])
+
+/// Samples the scene-colour snapshot.
+///
+/// @param screenUv normalised target coordinates -- `HpSurfaceInput::ScreenUV`,
+///        or that plus a distortion offset, which is the whole of refraction.
+/// @returns linear RGB in `rgb`, and whatever the target's alpha holds in `a`.
+float4 HpSceneColour(float2 screenUv)
+{
+    return g_SceneColour.SampleLevel(HpSamplerLinearClamp, screenUv, 0.0);
+}
+
+/// Samples the scene-depth snapshot, **raw**.
+///
+/// @param screenUv normalised target coordinates.
+/// @returns device depth: 1 at the near plane and 0 at the far one (reverse-Z,
+///          T0130). A pixel nothing was drawn into reads the clear value, 0.
+///          Comparing two of these is valid; subtracting them is not linear in
+///          distance, which is what `HpSceneViewDepth` is for.
+float HpSceneDepth(float2 screenUv)
+{
+    return g_SceneDepth.SampleLevel(HpSamplerPointClamp, screenUv, 0.0).r;
+}
+
+/// Turns a device depth into a distance along the view axis, in metres.
+///
+/// Built from `mProjInv` rather than from the near and far planes, so it is
+/// correct whichever way round the depth range runs and needs no constant of
+/// its own. **A far-plane pixel returns the far plane's distance**, which for
+/// a cleared background is the largest number in the scene -- fade against it
+/// deliberately, or mask it with `HpSceneDepth(uv) > 0`.
+///
+/// @param deviceDepth a depth as `HpSceneDepth` or `In.ScreenPos.z` gives it.
+/// @returns view-space distance in world units.
+float HpViewDepth(float deviceDepth)
+{
+    float4 unprojected = mul(float4(0.0, 0.0, deviceDepth, 1.0), g_Frame.Camera.mProjInv);
+    return unprojected.z / unprojected.w;
+}
+
+/// The scene's linear depth at a screen coordinate, in metres.
+///
+/// @param screenUv normalised target coordinates.
+/// @returns view-space distance to whatever the opaque pass left there.
+float HpSceneViewDepth(float2 screenUv)
+{
+    return HpViewDepth(HpSceneDepth(screenUv));
+}
+
 #if HP_USE_HEIGHT_MAP
 // The engine's own height slot (T0141.7), added to the signature by
 // `SurfacePipeline::CreateCustomSignature` -- not one of DiligentFX's
@@ -983,6 +1074,12 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(inout TMaterial material, VSOu
     surfaceIn.VertexColor = float4(1.0, 1.0, 1.0, 1.0);
 #endif
     surfaceIn.ScreenPos = VSOut.ClipPos;
+    // **The screen coordinate the snapshots are addressed by** (T0147).
+    // `ClipPos` is `SV_POSITION`, in *target* pixels; the snapshots are
+    // target-sized; so this one multiply is the whole conversion. Computed
+    // rather than interpolated, per the contract's rule — it is two
+    // instructions off a value the stage already has.
+    surfaceIn.ScreenUV = VSOut.ClipPos.xy * HP_TARGET_SIZE.zw;
 
     // -----------------------------------------------------------------------
     // Every channel through the material's methods (142.2). For

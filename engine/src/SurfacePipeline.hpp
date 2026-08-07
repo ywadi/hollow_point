@@ -34,6 +34,7 @@
 #include <RefCntAutoPtr.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -92,6 +93,34 @@ public:
     /// The height map's resource names in the signature and the shader.
     static constexpr const char* kHeightMapVariable = "g_HeightMap";
 
+    /// The scene-colour snapshot's name in the signature and the shader
+    /// (T0147.2). Engine-fed, so it lives in the **base** signature under an
+    /// engine name — the other half of D35's two-namespace line, whose
+    /// game-declared side is `ModuleResourceSignature`.
+    static constexpr const char* kSceneColourVariable = "g_SceneColour";
+
+    /// The scene-depth snapshot's name (T0147.1). See `kSceneColourVariable`.
+    static constexpr const char* kSceneDepthVariable = "g_SceneDepth";
+
+    /// Whether a module samples the screen resources, as far as this pipeline
+    /// knows (T0147.2).
+    ///
+    /// **Three answers, because the third is what makes the snapshot exact on
+    /// the first frame.** A module's demand is a fact about its compiled
+    /// bytecode, so it is unknown until a pipeline has been built for it — and
+    /// treating "unknown" as "wants it" is what lets the renderer take the
+    /// snapshot *before* the pass that would tell it, rather than a frame late.
+    enum class ScreenInputUse : std::uint8_t {
+        /// No pipeline has been built for this module yet.
+        Unknown,
+
+        /// Built, and its bytecode names neither screen resource.
+        No,
+
+        /// Built, and it samples at least one.
+        Yes,
+    };
+
     /// What the module compiled into this pipeline declared (T0160.2).
     ///
     /// Filled by `build()` from the reflection of the compile it makes — the
@@ -106,6 +135,16 @@ public:
     ///          missing** — the caller writes no parameters, which is exactly
     ///          what a module declaring none needs anyway.
     [[nodiscard]] const ShaderParamLayout* paramLayout(const char* customModule) const;
+
+    /// Whether a module reads scene colour or scene depth (T0147.2).
+    ///
+    /// @param customModule the module's virtual path; null or empty for the
+    ///        standard material, which never reads either and answers `No`
+    ///        without a lookup.
+    /// @returns what the last build of that module found, or `Unknown` when
+    ///          none has happened. The renderer uses `Unknown` and `Yes`
+    ///          identically — see the enum.
+    [[nodiscard]] ScreenInputUse screenInputUse(const char* customModule) const;
 
     /// Fills in the engine's renderer settings.
     ///
@@ -221,6 +260,12 @@ private:
     /// in `SceneRenderer` (keyed on the signature pointer) small and correct.
     std::unordered_map<std::size_t, Diligent::RefCntAutoPtr<Diligent::IPipelineResourceSignature>>
         moduleSignatures_;
+
+    /// What each built module turned out to do with the screen resources
+    /// (T0147.2), keyed by module path. Filled by `build()` from the same
+    /// reflection walk that enforces the blend-only rule, so the answer the
+    /// renderer reads and the answer the refusal was based on are one fact.
+    std::unordered_map<std::string, ScreenInputUse> screenInputUse_;
 
     /// Every name the engine's own signatures carry — resources and immutable
     /// samplers, the sampler palette included. Built once, after

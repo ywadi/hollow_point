@@ -27,15 +27,55 @@
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <string_view>
 
 namespace Diligent {
 struct IRenderDevice;
 struct IDeviceContext;
+struct ITextureView;
 } // namespace Diligent
 
 namespace hp {
 
 class AssetPool;
+
+/// The targets a render draws into and the snapshots it copies them to, so a
+/// material shader can sample what is behind it (T0147).
+///
+/// **All four or none.** The renderer needs the first two in order to put the
+/// targets back after the copy, and the second two are what it copies into and
+/// what the shader samples; leaving any of them null disables the intermediate
+/// it belongs to. A default-constructed value is the pre-T0147 behaviour
+/// exactly: no copy is issued, `g_SceneColour` and `g_SceneDepth` bind the
+/// engine's white and black stand-ins, and a material that reads them is
+/// warned about once.
+///
+/// **Every pointer is valid for the call and not beyond**, the same rule
+/// `FrameTargets` states: a resize recreates the textures behind these views.
+///
+/// This is the *engine-fed* half of the game resource model — engine names in
+/// the engine's base signature — and D35's other half, a game's own
+/// declarations, needs nothing here.
+struct SceneScreenInputs {
+    /// The colour render-target view this render is drawing into.
+    ///
+    /// Needed because the snapshot is a copy: the render pass ends for it and
+    /// the renderer re-binds exactly these two afterwards. **It does not
+    /// choose targets** — it restores the ones it was handed.
+    Diligent::ITextureView* colour = nullptr;
+
+    /// The depth-stencil view this render is drawing into. See `colour`.
+    Diligent::ITextureView* depth = nullptr;
+
+    /// The shader-resource view of the texture `colour` is copied into, and
+    /// what a shader samples as `g_SceneColour`. Must be the same size and
+    /// format as `colour`'s texture; a mismatch is refused and logged once.
+    Diligent::ITextureView* colourSnapshot = nullptr;
+
+    /// The shader-resource view of the texture `depth` is copied into, and
+    /// what a shader samples as `g_SceneDepth`. See `colourSnapshot`.
+    Diligent::ITextureView* depthSnapshot = nullptr;
+};
 
 /// What one submit pass did, for logging and for tests.
 struct DrawSubmitStats {
@@ -112,11 +152,45 @@ public:
     /// @returns whether `create` succeeded and this renderer can draw.
     [[nodiscard]] bool valid() const;
 
+    /// Feeds a texture a game layer produced to material shaders, by name
+    /// (T0147.4, T0094.5).
+    ///
+    /// **The second source for a declared texture.** A module declares
+    /// `Texture2DArray visibility;` exactly as it declares any other texture
+    /// (T0161, D35); a `.hpmat` binds one to an *asset*, and this binds one to
+    /// whatever a game layer just rendered — a fog-of-war field (T0093), a flow
+    /// simulation, a minimap. One declaration mechanism, two feeds, and the
+    /// `.hpmat` wins when both name the same slot.
+    ///
+    /// **Not refcounted, deliberately**, matching `FrameTargets`' rule: this
+    /// object does not keep the texture alive, and a resize invalidates the
+    /// view. Feed it again after a resize; feeding null removes the entry.
+    ///
+    /// @param name the shader-side declaration name. Empty is ignored.
+    /// @param view the view to bind, or null to remove the entry.
+    /// @returns nothing.
+    void setGameTexture(std::string_view name, Diligent::ITextureView* view);
+
+    /// Removes every game-fed texture. What a layer calls on detach.
+    /// @returns nothing.
+    void clearGameTextures();
+
     /// Draws a list through a view.
     ///
     /// Targets must already be bound by the caller -- this issues draws and does
     /// not set render targets, because the layer that owns the target is the one
-    /// that knows what else shares it (T0027).
+    /// that knows what else shares it (T0027). The **one** exception is the
+    /// screen snapshot (T0147): when @p screen names them, the renderer copies
+    /// the frame between its opaque and blend passes and re-binds exactly the
+    /// two views it was handed. It still never chooses a target.
+    ///
+    /// **Two passes since T0147, and that changed draw order.** Every `Opaque`
+    /// and `Mask` primitive is submitted before every `Blend` one, rather than
+    /// in draw-list order — which is a correctness fix in its own right (a
+    /// transparent surface drawn before the opaque geometry behind it blended
+    /// against the clear colour) and is what gives the snapshot a moment to
+    /// happen in. Ordering *within* the blend pass is still submission order;
+    /// the back-to-front sort is T0045's.
     /// @param context the immediate context to record into. Must not be null.
     /// @param list what to draw, from `parseScene`.
     /// @param view the resolved camera, from `buildView`.
@@ -133,10 +207,14 @@ public:
     ///        `HpSurfaceInput::Time`. Defaulted to zero so a caller that has no
     ///        clock (a thumbnail, a one-shot test render) gets a defined value,
     ///        not a stale or undefined one.
+    /// @param screen the targets being drawn into and the snapshots a material
+    ///        shader samples (T0147). Defaulted to nothing, which is what a
+    ///        caller with no need for scene colour or depth passes — no copy is
+    ///        issued and the intermediates read the engine's stand-ins.
     std::size_t render(Diligent::IDeviceContext* context, const DrawList& list,
                        const ResolvedView& view, const AssetPool& pool,
                        const LightList& lights = {}, DrawSubmitStats* stats = nullptr,
-                       double timeSeconds = 0.0);
+                       double timeSeconds = 0.0, const SceneScreenInputs& screen = {});
 
 private:
     struct Impl;

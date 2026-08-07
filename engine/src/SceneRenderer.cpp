@@ -14,16 +14,22 @@
 #include <GLTFLoader.hpp>
 #include <GraphicsTypesX.hpp>
 #include <GraphicsUtilities.h>
+#include <DeviceContext.h>
 #include <MapHelper.hpp>
 #include <RefCntAutoPtr.hpp>
 #include <RenderDevice.h>
+#include <Texture.h>
+#include <TextureView.h>
 
 #include <GLTF_PBR_Renderer.hpp>
 #include <PBR_Renderer.hpp>
 
 #include <array>
+#include <cstdint>
 #include <cstring>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -359,6 +365,20 @@ struct SceneRenderer::Impl {
         /// material-level miss, drawn as the checkerboard (T0141.12).
         bool shaderMissing = false;
 
+        /// One module signature this material has drawn with, and the SRB
+        /// bound against it (T0161.5).
+        struct ModuleSrb {
+            Diligent::RefCntAutoPtr<Diligent::IPipelineResourceSignature> signature;
+            Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding> srb;
+
+            /// The game-feed generation this SRB's textures were resolved at
+            /// (T0147.4). A game layer's texture is a *render target*: it is
+            /// replaced on resize and may be fed at any time, so an SRB bound
+            /// once and cached forever would hold a stale view. Compared per
+            /// draw -- one integer -- and the walk re-runs only on a change.
+            std::uint64_t gameGeneration = 0;
+        };
+
         /// The SRBs for the module's own resource signature (T0161.5), one
         /// per signature this material has drawn with.
         ///
@@ -369,9 +389,7 @@ struct SceneRenderer::Impl {
         /// signature, and an SRB committed against the wrong one is a
         /// validation error. Created lazily on the draw path, because the
         /// signature does not exist until the module has been compiled.
-        std::vector<std::pair<Diligent::RefCntAutoPtr<Diligent::IPipelineResourceSignature>,
-                              Diligent::RefCntAutoPtr<Diligent::IShaderResourceBinding>>>
-            moduleSrbs;
+        std::vector<ModuleSrb> moduleSrbs;
     };
 
     /// Assigned materials, keyed by asset GUID.
@@ -394,6 +412,43 @@ struct SceneRenderer::Impl {
     /// compiler's error is logged by the pipeline on the compile attempt;
     /// this guards the one renderer-side line that names the module.
     std::unordered_set<std::string> reportedBroken;
+
+    // --- the engine's screen intermediates (T0147) --------------------------
+
+    /// What `g_SceneColour` and `g_SceneDepth` are currently bound to on every
+    /// cached SRB.
+    ///
+    /// **Held so the rebind can be conditional.** These are frame-wide
+    /// resources on a per-material binding, which is the awkward shape: they
+    /// belong to the frame but live in signatures that are cached across
+    /// frames. A resize replaces the views, and every SRB in the engine then
+    /// holds a dead one -- so the rebind walk runs when these differ from what
+    /// the caller handed in, which is on the first frame and after a resize,
+    /// and never otherwise.
+    Diligent::ITextureView* boundSceneColour = nullptr;
+
+    /// See `boundSceneColour`.
+    Diligent::ITextureView* boundSceneDepth = nullptr;
+
+    /// Textures a game layer feeds by name (T0147.4), for a module that
+    /// declared a slot no `.hpmat` fills.
+    ///
+    /// **Raw views, not references**, matching `FrameTargets`' rule: holding
+    /// one alive past a resize is the leak that class exists to prevent, and
+    /// the feeder is told to re-feed instead.
+    std::unordered_map<std::string, Diligent::ITextureView*> gameTextures;
+
+    /// Bumped whenever `gameTextures` changes, so a cached module SRB can tell
+    /// that its texture bindings are stale without comparing them.
+    std::uint64_t gameGeneration = 1;
+
+    /// Whether the "a material reads the screen and nothing supplied a
+    /// snapshot" line has been logged. Once per renderer, not per frame --
+    /// the T0141 rule about reporting on the transition.
+    bool warnedNoSnapshot = false;
+
+    /// Whether the snapshot-size mismatch line has been logged. Same rule.
+    bool warnedSnapshotSize = false;
 
     /// Scratch, reused across frames so a draw does not allocate.
     Diligent::GLTF::ModelTransforms transforms;
@@ -470,6 +525,65 @@ struct SceneRenderer::Impl {
                               const AssetPool* pool, bool placeholderBaseColour,
                               MaterialBinding& out);
 
+    /// Which of the two passes a submission walk is (T0147).
+    ///
+    /// **The split exists for two reasons and would be worth it for either.**
+    /// A blended surface submitted before the opaque geometry behind it blends
+    /// against the clear colour, which was simply wrong; and the boundary
+    /// between the passes is the only moment in the frame at which "the opaque
+    /// image" exists, which is what a scene-colour snapshot has to be taken at.
+    enum class DrawPass : std::uint8_t {
+        /// `Opaque` and `Mask` materials.
+        Opaque,
+
+        /// `Blend` materials.
+        Blend,
+    };
+
+    /// What the opaque walk learned about the primitives it skipped (T0147).
+    struct PassScan {
+        /// This item has at least one primitive for the other pass, so the
+        /// blend walk must visit it. **Items without one are not revisited**,
+        /// which is what keeps a scene of opaque geometry paying nothing at
+        /// all for the split -- no second `ComputeTransforms`, no second
+        /// vertex-buffer bind.
+        bool otherPass = false;
+
+        /// At least one skipped blend primitive's module reads the screen, or
+        /// has never been compiled and therefore might. Drives the snapshot.
+        bool screenDemand = false;
+    };
+
+    /// Binds `g_SceneColour` and `g_SceneDepth` on one SRB (T0147).
+    ///
+    /// @param srb the binding to set them on. Null is ignored.
+    /// @returns nothing.
+    void bindScreenResources(Diligent::IShaderResourceBinding* srb) const;
+
+    /// Re-binds them on every SRB this renderer has cached.
+    ///
+    /// Called only when the views actually changed -- first frame, and after a
+    /// resize. The walk is over every model and material binding, which is
+    /// linear in what has been drawn so far and happens a handful of times in
+    /// a session.
+    /// @returns nothing.
+    void rebindScreenResources();
+
+    /// Resolves and sets one module SRB's textures from the `.hpmat` and the
+    /// game feed (T0161.5, T0147.4).
+    ///
+    /// Split out of `ensureModuleSrb` because it runs again when the game feed
+    /// changes, against an SRB that already exists.
+    /// @param context the context, for the bound textures' state transitions.
+    /// @param binding the material's binding, which owns the pinned textures.
+    /// @param signature the module signature whose resources are walked.
+    /// @param srb the binding to set.
+    /// @param pool where a `.hpmat`'s texture GUIDs resolve.
+    /// @returns nothing.
+    void bindModuleResources(Diligent::IDeviceContext* context, MaterialBinding& binding,
+                             Diligent::IPipelineResourceSignature* signature,
+                             Diligent::IShaderResourceBinding* srb, const AssetPool& pool);
+
     /// Draws one model at one transform.
     /// @param context the context to record into.
     /// @param model the model to draw.
@@ -477,9 +591,13 @@ struct SceneRenderer::Impl {
     ///        per-surface material overrides.
     /// @param guid the mesh asset's identity, for the binding cache.
     /// @param pool where material and texture overrides resolve from.
+    /// @param pass which half of the frame is being submitted (T0147).
+    /// @param scan receives what the walk learned about the primitives it
+    ///        skipped, for the caller's snapshot decision.
     /// @returns whether anything was submitted.
     bool drawModel(Diligent::IDeviceContext* context, const Diligent::GLTF::Model& model,
-                   const DrawItem& item, Guid guid, const AssetPool& pool);
+                   const DrawItem& item, Guid guid, const AssetPool& pool, DrawPass pass,
+                   PassScan& scan);
 };
 
 SceneRenderer::Impl::ModelBindings*
@@ -563,6 +681,12 @@ SceneRenderer::Impl::ensureBindings(Guid guid, const Diligent::GLTF::Model& mode
             height->Set(renderer->GetWhiteTexSRV());
         }
 
+        // The screen intermediates (T0147), bound on every SRB for the same
+        // reason the height map is: the base signature declares them for every
+        // pipeline, and Diligent verifies that a declared resource is bound
+        // whether the shader names it or not.
+        bindScreenResources(srb);
+
         // A game module's resources are **not** bound here any more (T0161.6).
         // They used to be: four engine-named slots and a parameter block sat
         // in the shared signature, so every model SRB in the engine bound
@@ -578,6 +702,46 @@ SceneRenderer::Impl::ensureBindings(Guid guid, const Diligent::GLTF::Model& mode
     return &bindings[guid];
 }
 
+void SceneRenderer::Impl::bindScreenResources(Diligent::IShaderResourceBinding* srb) const {
+    if (srb == nullptr) {
+        return;
+    }
+    // **White for colour, black for depth**, and the asymmetry is the neutral
+    // answer in each case rather than a convention. White is the identity for
+    // a multiplied factor, as it is for every other unfilled slot here; black
+    // is device depth 0, which under reverse-Z (T0130) is the *far* plane --
+    // "nothing was drawn there" -- so an unfed depth fade reads as maximum
+    // distance rather than as a surface pressed against the camera.
+    Diligent::ITextureView* colour =
+        boundSceneColour != nullptr ? boundSceneColour : renderer->GetWhiteTexSRV();
+    Diligent::ITextureView* depth =
+        boundSceneDepth != nullptr ? boundSceneDepth : renderer->GetBlackTexSRV();
+    // One stage bit, for the same reason `ensureModuleSrb` uses one: the
+    // variable manager is per stage, and the resources are declared `VS_PS`.
+    if (Diligent::IShaderResourceVariable* variable = srb->GetVariableByName(
+            Diligent::SHADER_TYPE_PIXEL, SurfacePipeline::kSceneColourVariable)) {
+        variable->Set(colour);
+    }
+    if (Diligent::IShaderResourceVariable* variable = srb->GetVariableByName(
+            Diligent::SHADER_TYPE_PIXEL, SurfacePipeline::kSceneDepthVariable)) {
+        variable->Set(depth);
+    }
+}
+
+void SceneRenderer::Impl::rebindScreenResources() {
+    for (auto& [guid, model] : bindings) {
+        for (auto& srb : model.material) {
+            bindScreenResources(srb);
+        }
+    }
+    for (auto& [guid, material] : materials) {
+        bindScreenResources(material.srb);
+    }
+    if (fallback) {
+        bindScreenResources(fallback->srb);
+    }
+}
+
 Diligent::IShaderResourceBinding*
 SceneRenderer::Impl::ensureModuleSrb(Diligent::IDeviceContext* context,
                                      MaterialBinding& binding, Diligent::IPipelineState* pso,
@@ -591,9 +755,17 @@ SceneRenderer::Impl::ensureModuleSrb(Diligent::IDeviceContext* context,
     if (signature == nullptr) {
         return nullptr;
     }
-    for (const auto& cached : binding.moduleSrbs) {
-        if (cached.first == signature) {
-            return cached.second;
+    for (auto& cached : binding.moduleSrbs) {
+        if (cached.signature == signature) {
+            // **Re-resolved when the game feed moved** (T0147.4). A `.hpmat`'s
+            // textures are assets and never change behind a live binding; a
+            // game-fed one is a render target and does, so the generation is
+            // what tells a cached SRB it is looking at a dead view.
+            if (cached.gameGeneration != gameGeneration) {
+                bindModuleResources(context, binding, signature, cached.srb, pool);
+                cached.gameGeneration = gameGeneration;
+            }
+            return cached.srb;
         }
     }
 
@@ -605,6 +777,19 @@ SceneRenderer::Impl::ensureModuleSrb(Diligent::IDeviceContext* context,
         return nullptr;
     }
 
+    bindModuleResources(context, binding, signature, srb, pool);
+
+    binding.moduleSrbs.push_back(MaterialBinding::ModuleSrb{
+        Diligent::RefCntAutoPtr<Diligent::IPipelineResourceSignature>{signature}, srb,
+        gameGeneration});
+    return binding.moduleSrbs.back().srb;
+}
+
+void SceneRenderer::Impl::bindModuleResources(Diligent::IDeviceContext* context,
+                                              MaterialBinding& binding,
+                                              Diligent::IPipelineResourceSignature* signature,
+                                              Diligent::IShaderResourceBinding* srb,
+                                              const AssetPool& pool) {
     // Textures bound here may never have met a context: pool textures are
     // loaded without one, so their first binding is where the transition
     // happens -- the same pattern `buildMaterialBinding` uses.
@@ -671,10 +856,23 @@ SceneRenderer::Impl::ensureModuleSrb(Diligent::IDeviceContext* context,
             view = placeholder->shaderResource();
         }
         if (view == nullptr) {
+            // **The game's feed, by the same name** (T0147.4), after the
+            // `.hpmat` and before white. The order is the design: a material
+            // that names an asset for this slot is the more specific
+            // statement, so authored content wins, and a slot no `.hpmat`
+            // mentions is where a game layer's own texture lands. A texture
+            // fed under a name no module declares is simply never asked for.
+            const auto fed = gameTextures.find(resource.Name);
+            if (fed != gameTextures.end()) {
+                view = fed->second;
+            }
+        }
+        if (view == nullptr) {
             // White, the identity for a multiplied factor and the same
             // no-texture answer an unset engine slot gives. Also what an
-            // author-named texture the `.hpmat` never mentions samples,
-            // which is the leniency every other field of the format has.
+            // author-named texture neither the `.hpmat` nor the game names
+            // samples, which is the leniency every other field of the format
+            // has.
             view = renderer->GetWhiteTexSRV();
         }
         variable->Set(view);
@@ -684,11 +882,6 @@ SceneRenderer::Impl::ensureModuleSrb(Diligent::IDeviceContext* context,
         context->TransitionResourceStates(static_cast<Diligent::Uint32>(barriers.size()),
                                           barriers.data());
     }
-
-    binding.moduleSrbs.emplace_back(
-        Diligent::RefCntAutoPtr<Diligent::IPipelineResourceSignature>{signature},
-        std::move(srb));
-    return binding.moduleSrbs.back().second;
 }
 
 void SceneRenderer::Impl::writeShaderParams(Diligent::IDeviceContext* context,
@@ -861,6 +1054,12 @@ bool SceneRenderer::Impl::buildMaterialBinding(Diligent::IDeviceContext* context
         }
     }
 
+    // The screen intermediates (T0147). Unlike the module's resources below,
+    // these live in the *base* signature and exist before any module does, so
+    // they are bound here with everything else -- and re-bound by
+    // `rebindScreenResources` when a resize replaces the views.
+    bindScreenResources(out.srb);
+
     // A game module's parameter buffer and textures are bound on the draw
     // path (`ensureModuleSrb`, T0161.5), not here: their signature does not
     // exist until the module has been compiled, and that happens after this
@@ -956,7 +1155,8 @@ SceneRenderer::Impl::ensureFallbackBinding(Diligent::IDeviceContext* context) {
 
 bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                                     const Diligent::GLTF::Model& model, const DrawItem& item,
-                                    Guid guid, const AssetPool& pool) {
+                                    Guid guid, const AssetPool& pool, DrawPass pass,
+                                    PassScan& scan) {
     HP_PROFILE_ZONE();
 
     constexpr Diligent::Uint32 kSceneIndex = 0;
@@ -1088,6 +1288,36 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                 }
             }
             if (srb == nullptr) {
+                continue;
+            }
+
+            // -----------------------------------------------------------------
+            // **Which pass this primitive belongs to** (T0147). The alpha mode
+            // is a property of the material that will *actually* be drawn --
+            // including a fallback substituted for a missing one, which is
+            // opaque -- so it is read here, after every substitution above and
+            // before anything is committed.
+            //
+            // A primitive for the other pass is skipped, and the skip is where
+            // the caller learns two things it cannot learn anywhere else: that
+            // this item needs the second walk at all, and whether the module
+            // behind it will want the scene snapshot. Learning the second
+            // during the *opaque* walk is what lets the copy happen before the
+            // pass that needs it rather than a frame later.
+            // -----------------------------------------------------------------
+            const bool blended = material->Attribs.AlphaMode ==
+                                 Diligent::GLTF::Material::ALPHA_MODE_BLEND;
+            if (blended != (pass == DrawPass::Blend)) {
+                scan.otherPass = true;
+                if (blended) {
+                    // `Unknown` counts as demand: a module compiled for the
+                    // first time in the blend pass would otherwise have its
+                    // answer arrive one frame after the snapshot it needed.
+                    const SurfacePipeline::ScreenInputUse use =
+                        renderer->screenInputUse(customModule);
+                    scan.screenDemand = scan.screenDemand ||
+                                        use != SurfacePipeline::ScreenInputUse::No;
+                }
                 continue;
             }
 
@@ -1414,10 +1644,43 @@ bool SceneRenderer::valid() const {
     return impl_ != nullptr && impl_->renderer != nullptr;
 }
 
+void SceneRenderer::setGameTexture(std::string_view name, Diligent::ITextureView* view) {
+    if (impl_ == nullptr || name.empty()) {
+        return;
+    }
+    const std::string key{name};
+    const auto existing = impl_->gameTextures.find(key);
+    if (view == nullptr) {
+        if (existing == impl_->gameTextures.end()) {
+            return;
+        }
+        impl_->gameTextures.erase(existing);
+    } else {
+        if (existing != impl_->gameTextures.end() && existing->second == view) {
+            // **Idempotent, and that matters**: a layer that feeds the same
+            // view every frame is the expected shape, and bumping the
+            // generation for it would re-walk every module SRB's textures
+            // every frame.
+            return;
+        }
+        impl_->gameTextures[key] = view;
+    }
+    ++impl_->gameGeneration;
+}
+
+void SceneRenderer::clearGameTextures() {
+    if (impl_ == nullptr || impl_->gameTextures.empty()) {
+        return;
+    }
+    impl_->gameTextures.clear();
+    ++impl_->gameGeneration;
+}
+
 std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawList& list,
                                   const ResolvedView& view, const AssetPool& pool,
                                   const LightList& lights,
-                                  DrawSubmitStats* stats, double timeSeconds) {
+                                  DrawSubmitStats* stats, double timeSeconds,
+                                  const SceneScreenInputs& screen) {
     HP_PROFILE_ZONE();
 
     DrawSubmitStats counted;
@@ -1429,6 +1692,39 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
     }
 
     Impl& impl = *impl_;
+
+    // -----------------------------------------------------------------------
+    // **The screen intermediates' bindings, settled before any draw** (T0147).
+    //
+    // These are frame-wide resources living in per-material bindings that are
+    // cached across frames, which is the awkward shape of the whole feature: a
+    // resize replaces the views and every SRB in the engine then holds a dead
+    // one. The rebind walk is therefore conditional on the views having
+    // actually moved -- first frame, and after a resize -- rather than
+    // per-frame work proportional to what has been drawn.
+    // -----------------------------------------------------------------------
+    const bool canSnapshot = screen.colour != nullptr && screen.depth != nullptr &&
+                             (screen.colourSnapshot != nullptr || screen.depthSnapshot != nullptr);
+    if (impl.boundSceneColour != screen.colourSnapshot ||
+        impl.boundSceneDepth != screen.depthSnapshot) {
+        impl.boundSceneColour = screen.colourSnapshot;
+        impl.boundSceneDepth = screen.depthSnapshot;
+        impl.rebindScreenResources();
+    }
+
+    // The render target's size, for `HpSurfaceInput::ScreenUV` (T0147). Read
+    // off the target itself rather than plumbed in: `SV_POSITION` is in target
+    // pixels and the snapshots are target-sized, so this is the one divisor
+    // that makes the two agree -- and under a letterboxing policy (T0081) it
+    // is *not* the viewport size, which is the case that would silently sample
+    // the wrong texel.
+    float targetWidth = static_cast<float>(view.viewportWidth);
+    float targetHeight = static_cast<float>(view.viewportHeight);
+    if (screen.colour != nullptr && screen.colour->GetTexture() != nullptr) {
+        const Diligent::TextureDesc& desc = screen.colour->GetTexture()->GetDesc();
+        targetWidth = static_cast<float>(desc.Width);
+        targetHeight = static_cast<float>(desc.Height);
+    }
 
     // **Written per draw, not per frame, because light selection is per
     // object** (79.3). The camera half is identical every time and re-uploading
@@ -1468,6 +1764,18 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
                 const auto width = static_cast<float>(view.viewportWidth);
                 const auto height = static_cast<float>(view.viewportHeight);
                 camera.f4ViewportSize = float4(width, height, 1.0F / width, 1.0F / height);
+
+                // **The render *target*'s size, in Diligent's own
+                // application-data slot** (T0147). `f4ExtraData` is documented
+                // upstream as "any application-specific data"; element 0 is
+                // the engine's, and `HpSurface.slang` reads it through
+                // `HP_TARGET_SIZE` to build `HpSurfaceInput::ScreenUV`.
+                //
+                // Separate from `f4ViewportSize` above because they are
+                // different rectangles the moment a letterboxing aspect policy
+                // is in play, and the snapshots are the size of the *target*.
+                camera.f4ExtraData[0] =
+                    float4(targetWidth, targetHeight, 1.0F / targetWidth, 1.0F / targetHeight);
 
                 // **Near > far is how Diligent is told the buffer is reversed** --
                 // its own comment on this helper says so. Passing them the usual way
@@ -1584,6 +1892,33 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
                                           Diligent::MAP_FLAG_DISCARD};
     }
 
+    // -----------------------------------------------------------------------
+    // 10.9a — the opaque pass (T0147).
+    //
+    // Every `Opaque` and `Mask` primitive, in draw-list order. What it also
+    // does is *scan*: an item carrying blended primitives is remembered here,
+    // together with whether the modules behind them will want the scene
+    // snapshot, so the second walk visits only the items that need it and the
+    // snapshot decision is made from complete information.
+    // -----------------------------------------------------------------------
+    struct Pending {
+        const DrawItem* item = nullptr;
+        const Diligent::GLTF::Model* model = nullptr;
+        bool counted = false;
+    };
+    std::vector<Pending> blendItems;
+    bool screenDemand = false;
+
+    const auto submit = [&](const DrawItem& item, const Diligent::GLTF::Model& model,
+                            SceneRenderer::Impl::DrawPass pass,
+                            SceneRenderer::Impl::PassScan& scan) {
+        // The object's world position is the translation row of its transform.
+        const float3 objectPosition{item.world.m30, item.world.m31, item.world.m32};
+        selectLightsFor(lights, objectPosition, item.layers, kMaxLights, impl.selected);
+        writeFrameAttribs(impl.selected);
+        return impl.drawModel(context, model, item, item.mesh, pool, pass, scan);
+    };
+
     for (const DrawItem& item : list) {
         const std::shared_ptr<MeshAsset> mesh = pool.get<MeshAsset>(item.mesh);
         if (!mesh || !mesh->valid() || mesh->model() == nullptr) {
@@ -1592,13 +1927,120 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
             continue;
         }
 
-        // The object's world position is the translation row of its transform.
-        const float3 objectPosition{item.world.m30, item.world.m31, item.world.m32};
-        selectLightsFor(lights, objectPosition, item.layers, kMaxLights, impl.selected);
-        writeFrameAttribs(impl.selected);
-
-        if (impl.drawModel(context, *mesh->model(), item, item.mesh, pool)) {
+        SceneRenderer::Impl::PassScan scan;
+        const bool drew = submit(item, *mesh->model(), SceneRenderer::Impl::DrawPass::Opaque, scan);
+        if (drew) {
             ++counted.submitted;
+        }
+        if (scan.otherPass) {
+            blendItems.push_back(Pending{&item, mesh->model(), drew});
+            screenDemand = screenDemand || scan.screenDemand;
+        }
+    }
+
+    if (!blendItems.empty()) {
+        // -------------------------------------------------------------------
+        // 10.9b — the scene snapshot (T0147).
+        //
+        // **The only moment the opaque image exists**, which is what makes it
+        // the snapshot point rather than one of several candidates. A copy,
+        // not an alias of the live attachments: a shader must never sample the
+        // surface it is writing into, and a read-only depth alias would have
+        // given a depth that depends on how many blended surfaces had already
+        // drawn. The ticket records the alternative and why it lost.
+        //
+        // Issued only when a module actually reads the screen -- `Unknown`
+        // counts, so a module compiling for the first time in the pass below
+        // still gets a correct snapshot on the frame it appears.
+        // -------------------------------------------------------------------
+        if (screenDemand && canSnapshot) {
+            HP_PROFILE_ZONE_NAMED("scene snapshot");
+            const auto copy = [&](Diligent::ITextureView* from,
+                                  Diligent::ITextureView* to) -> bool {
+                if (from == nullptr || to == nullptr) {
+                    return true;
+                }
+                Diligent::ITexture* source = from->GetTexture();
+                Diligent::ITexture* destination = to->GetTexture();
+                if (source == nullptr || destination == nullptr) {
+                    return false;
+                }
+                const Diligent::TextureDesc& src = source->GetDesc();
+                const Diligent::TextureDesc& dst = destination->GetDesc();
+                if (src.Width != dst.Width || src.Height != dst.Height ||
+                    src.Format != dst.Format) {
+                    if (!impl.warnedSnapshotSize) {
+                        impl.warnedSnapshotSize = true;
+                        HP_LOG_ERROR(kLog,
+                                     "the scene snapshot target '{}' is {}x{} format {} and the "
+                                     "target it copies is {}x{} format {}; no snapshot is taken "
+                                     "and materials reading the screen see the stand-ins",
+                                     dst.Name != nullptr ? dst.Name : "?", dst.Width, dst.Height,
+                                     static_cast<int>(dst.Format), src.Width, src.Height,
+                                     static_cast<int>(src.Format));
+                    }
+                    return false;
+                }
+                Diligent::CopyTextureAttribs attribs;
+                attribs.pSrcTexture = source;
+                attribs.pDstTexture = destination;
+                attribs.SrcTextureTransitionMode =
+                    Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+                attribs.DstTextureTransitionMode =
+                    Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION;
+                context->CopyTexture(attribs);
+                return true;
+            };
+            const bool copied = copy(screen.colour, screen.colourSnapshot) &&
+                                copy(screen.depth, screen.depthSnapshot);
+            (void)copied;
+
+            // **Put the targets back, explicitly.** A copy ends the render
+            // pass and moves both textures through `COPY_SOURCE`; re-binding
+            // the same two views is what returns them to attachment state
+            // before the blend pass draws. The renderer still chooses nothing
+            // -- these are the views the caller handed it.
+            //
+            // The viewport goes back with them: Diligent resets the viewport
+            // to the full target whenever the bound set actually changes, and
+            // a letterboxed view (T0081) would otherwise widen by exactly the
+            // bars for the blend pass alone.
+            Diligent::ITextureView* colourTarget = screen.colour;
+            context->SetRenderTargets(1, &colourTarget, screen.depth,
+                                      Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            Diligent::Viewport viewport;
+            viewport.TopLeftX = static_cast<float>(view.viewportX);
+            viewport.TopLeftY = static_cast<float>(view.viewportY);
+            viewport.Width = static_cast<float>(view.viewportWidth);
+            viewport.Height = static_cast<float>(view.viewportHeight);
+            viewport.MinDepth = 0.0F;
+            viewport.MaxDepth = 1.0F;
+            context->SetViewports(1, &viewport, 0, 0);
+        } else if (screenDemand && !impl.warnedNoSnapshot) {
+            impl.warnedNoSnapshot = true;
+            HP_LOG_WARN(kLog,
+                        "a blended material reads the scene colour or depth, but this render was "
+                        "given no snapshot targets; it will sample the engine's stand-ins "
+                        "(white colour, far depth). The caller has to supply "
+                        "SceneScreenInputs -- see SceneView::create's screenInputs flag");
+        }
+
+        // -------------------------------------------------------------------
+        // 10.9c — the blend pass (T0147). Only the items the opaque walk found
+        // blended primitives on, so a scene of opaque geometry pays nothing
+        // for the split beyond one empty vector.
+        //
+        // Ordering inside it is submission order: the back-to-front sort a
+        // correct transparent pass needs is T0045's, and this ticket
+        // deliberately does not invent half of it.
+        // -------------------------------------------------------------------
+        for (const Pending& pending : blendItems) {
+            SceneRenderer::Impl::PassScan scan;
+            const bool drew =
+                submit(*pending.item, *pending.model, SceneRenderer::Impl::DrawPass::Blend, scan);
+            if (drew && !pending.counted) {
+                ++counted.submitted;
+            }
         }
     }
 

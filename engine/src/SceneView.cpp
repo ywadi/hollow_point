@@ -28,6 +28,15 @@ const LogCategory kLog("render.view");
 constexpr const char* kColourTarget = "scene.colour";
 constexpr const char* kDepthTarget = "scene.depth";
 
+// The snapshots a material shader samples (T0147) are `kSceneColourSnapshotTarget`
+// and `kSceneDepthSnapshotTarget` from `FrameTargets.hpp` -- named there rather
+// than here because a `RenderStack` frame declares the same pair on targets this
+// class does not own, and one string in two places is one string that drifts.
+//
+// Separate textures rather than aliases of the two above, because a shader may
+// never sample the surface it is writing into. They are the same size and format
+// as their sources, which is what `SceneRenderer` checks before it copies.
+
 } // namespace
 
 struct SceneView::Impl {
@@ -35,6 +44,10 @@ struct SceneView::Impl {
     FrameTargets targets;
     SceneRenderer renderer;
     std::array<float, 4> clearColour{0.16F, 0.22F, 0.34F, 1.0F};
+
+    /// Whether the two snapshot targets were declared (T0147). False makes
+    /// `SceneScreenInputs` empty, which is the pre-T0147 behaviour exactly.
+    bool screenInputs = true;
 
     /// Reused between frames so a frame does not allocate a draw list.
     DrawList drawList;
@@ -46,7 +59,7 @@ SceneView::SceneView(SceneView&&) noexcept = default;
 SceneView& SceneView::operator=(SceneView&&) noexcept = default;
 
 bool SceneView::create(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context,
-                       int width, int height, TargetFormat colour) {
+                       int width, int height, TargetFormat colour, bool screenInputs) {
     HP_PROFILE_ZONE();
 
     if (device == nullptr || context == nullptr) {
@@ -59,6 +72,20 @@ bool SceneView::create(Diligent::IRenderDevice* device, Diligent::IDeviceContext
 
     impl->targets.declare(FrameTargetDesc{kColourTarget, colour, 1.0F});
     impl->targets.declare(FrameTargetDesc{kDepthTarget, TargetFormat::Depth, 1.0F});
+
+    // **Full resolution, not half** (T0147.2). Half was the obvious saving and
+    // it is the wrong default for both consumers: a depth fade compared against
+    // a half-resolution depth buffer haloes along every silhouette, and a
+    // refraction that samples a half-resolution colour is visibly soft exactly
+    // where the eye is looking through it. The saving is bandwidth in a copy
+    // that only happens when something reads it; the cost is an artefact in the
+    // technique the copy exists for. A material that wants a blurred read can
+    // sample with a mip bias or march its own taps.
+    impl->screenInputs = screenInputs;
+    if (screenInputs) {
+        impl->targets.declare(FrameTargetDesc{kSceneColourSnapshotTarget, colour, 1.0F});
+        impl->targets.declare(FrameTargetDesc{kSceneDepthSnapshotTarget, TargetFormat::Depth, 1.0F});
+    }
 
     if (!impl->targets.create(device, std::max(width, 1), std::max(height, 1))) {
         HP_LOG_ERROR(kLog, "could not create the scene view's targets");
@@ -96,6 +123,12 @@ bool SceneView::valid() const {
 void SceneView::setClearColour(float r, float g, float b, float a) {
     if (impl_ != nullptr) {
         impl_->clearColour = {r, g, b, a};
+    }
+}
+
+void SceneView::setGameTexture(std::string_view name, Diligent::ITextureView* view) {
+    if (impl_ != nullptr) {
+        impl_->renderer.setGameTexture(name, view);
     }
 }
 
@@ -216,8 +249,20 @@ Diligent::ITextureView* SceneView::render(Diligent::IDeviceContext* context, Sce
     // and the illumination layer mask are T0079.3/79.5.
     const LightList lights = gatherLights(scene);
 
+    // The engine's screen intermediates (T0147). The two targets being drawn
+    // into go along with the snapshots, because the copy ends the render pass
+    // and the renderer puts exactly these back afterwards.
+    SceneScreenInputs screen;
+    if (impl.screenInputs) {
+        screen.colour = colourTarget;
+        screen.depth = depthTarget;
+        screen.colourSnapshot = impl.targets.shaderResource(kSceneColourSnapshotTarget);
+        screen.depthSnapshot = impl.targets.shaderResource(kSceneDepthSnapshotTarget);
+    }
+
     DrawSubmitStats submitted;
-    impl.renderer.render(context, impl.drawList, *view, pool, lights, &submitted, timeSeconds);
+    impl.renderer.render(context, impl.drawList, *view, pool, lights, &submitted, timeSeconds,
+                         screen);
     counted.submitted = submitted.submitted;
     counted.missingMesh = submitted.missingMesh;
 

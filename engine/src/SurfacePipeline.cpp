@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <iterator>
 #include <string>
 #include <string_view>
@@ -246,6 +247,27 @@ bool mapDiligentParamType(const Diligent::ShaderCodeVariableDesc& variable, Shad
     }
 }
 
+/// Whether a compiled stage's bytecode names a resource (T0147.2).
+///
+/// **The used set, not the declared set**, for the same reason the module
+/// signature is built that way: slang strips a resource nothing samples, so
+/// this answers "does this shader actually read it" on the dev path and the
+/// cooked path alike, from the one artefact both have.
+bool shaderNamesResource(Diligent::IShader* shader, const char* wanted) {
+    if (shader == nullptr) {
+        return false;
+    }
+    const Diligent::Uint32 resources = shader->GetResourceCount();
+    for (Diligent::Uint32 i = 0; i < resources; ++i) {
+        Diligent::ShaderResourceDesc resource;
+        shader->GetResourceDesc(i, resource);
+        if (resource.Name != nullptr && std::strcmp(resource.Name, wanted) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// Reads the module's declared *parameters* back out of the compiled shader
 /// (T0160.2).
 ///
@@ -386,6 +408,36 @@ void SurfacePipeline::CreateCustomSignature(Diligent::PipelineResourceSignatureD
     desc.AddImmutableSampler(Diligent::SHADER_TYPE_PIXEL, "g_HeightMap_sampler",
                              Diligent::Sam_LinearWrap);
 
+    // **The engine's screen intermediates** (T0147), and their side of D35's
+    // two-namespace line: a game *declares* its own resources and they are
+    // reflected into a per-module signature; what the engine *feeds* is named
+    // by the engine and lives here, where `buildModuleSignatureDesc`'s
+    // subtraction leaves it alone for nothing.
+    //
+    // `VS_PS`, so a vertex hook can read scene depth too -- a billboard that
+    // shrinks near geometry is a vertex-stage technique, and a stage flag on a
+    // binding costs nothing (the same argument the sampler palette makes below).
+    //
+    // **No samplers of their own.** A module samples them through the palette
+    // -- `HpSamplerLinearClamp` for colour, `HpSamplerPointClamp` for depth --
+    // so the base signature's immutable-sampler count is unchanged and the
+    // sampling vocabulary stays the one D35 decided on. Clamped is the point:
+    // a screen-space read at the frame's edge must not wrap round to the other
+    // side, which is exactly the artefact a wrap sampler produces in a
+    // refraction.
+    //
+    // Declared for **every** pipeline and named by almost none: slang strips a
+    // resource nothing samples, so a standard material's bytecode carries
+    // neither, and a signature resource an SPIR-V module never names costs
+    // nothing at draw time. That is the same superset pattern as the height map
+    // above and DiligentFX's seventeen.
+    desc.AddResource(Diligent::SHADER_TYPE_VS_PS, kSceneColourVariable,
+                     Diligent::SHADER_RESOURCE_TYPE_TEXTURE_SRV,
+                     Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE);
+    desc.AddResource(Diligent::SHADER_TYPE_VS_PS, kSceneDepthVariable,
+                     Diligent::SHADER_RESOURCE_TYPE_TEXTURE_SRV,
+                     Diligent::SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE);
+
     // **The sampler palette** (T0161.2, D35): the one piece of a game's
     // resource vocabulary that must exist before any module does, because
     // sampler *state* is the single thing SPIR-V cannot carry. An author
@@ -433,6 +485,16 @@ const ShaderParamLayout* SurfacePipeline::paramLayout(const char* customModule) 
     }
     const auto found = paramLayouts_.find(std::string{customModule});
     return found != paramLayouts_.end() ? &found->second : nullptr;
+}
+
+SurfacePipeline::ScreenInputUse SurfacePipeline::screenInputUse(const char* customModule) const {
+    if (customModule == nullptr || customModule[0] == '\0') {
+        // The standard material's own shader samples neither, and no game code
+        // can change that -- so this is a fact rather than a cache miss.
+        return ScreenInputUse::No;
+    }
+    const auto found = screenInputUse_.find(std::string{customModule});
+    return found != screenInputUse_.end() ? found->second : ScreenInputUse::Unknown;
 }
 
 Diligent::IPipelineState* SurfacePipeline::pipeline(const Diligent::GraphicsPipelineDesc& graphics,
@@ -809,6 +871,47 @@ SurfacePipeline::build(const Diligent::GraphicsPipelineDesc& graphics, const PSO
         if (!vertexShader || !pixelShader) {
             return pso;
         }
+
+        // -------------------------------------------------------------------
+        // **The screen resources' validity rule** (T0147), enforced here
+        // rather than written down and hoped for.
+        //
+        // `g_SceneColour` and `g_SceneDepth` are snapshots of the frame taken
+        // between the opaque pass and the blend pass, so a material that is
+        // not blended reads them *before* they were written -- last frame's
+        // image at best, an uninitialised texture on the first. That is
+        // precisely the class of bug that works on one driver and not the
+        // next, so it is refused: the pipeline is not created, the renderer
+        // substitutes the missing-material checkerboard, and this line says
+        // which module and why.
+        //
+        // The alpha mode is already in the key, so the check costs nothing and
+        // fires at the one moment both facts -- what the bytecode reads and
+        // which pass it will draw in -- are in the same scope.
+        // -------------------------------------------------------------------
+        const bool readsScreen = shaderNamesResource(pixelShader, kSceneColourVariable) ||
+                                 shaderNamesResource(pixelShader, kSceneDepthVariable) ||
+                                 shaderNamesResource(vertexShader, kSceneColourVariable) ||
+                                 shaderNamesResource(vertexShader, kSceneDepthVariable);
+        if (custom) {
+            // Recorded **before** the refusal below, deliberately: a module
+            // that asked for the screen and was refused has still told the
+            // renderer what it wants, which is what keeps the snapshot
+            // decision exact rather than a frame late.
+            screenInputUse_[std::string{customModule}] =
+                readsScreen ? ScreenInputUse::Yes : ScreenInputUse::No;
+        }
+        if (readsScreen && key.GetAlphaMode() != Diligent::PBR_Renderer::ALPHA_MODE_BLEND) {
+            HP_LOG_ERROR(kLog,
+                         "shader module '{}' samples {} or {}, which only a material with "
+                         "alphaMode: Blend may do -- the snapshot is taken after the opaque "
+                         "pass, so an opaque read would see the previous frame. Set the "
+                         "material's alpha mode to Blend, or stop sampling them",
+                         custom ? customModule : "(the standard material)", kSceneColourVariable,
+                         kSceneDepthVariable);
+            return pso;
+        }
+
         if (custom) {
             if (layout.params.empty()) {
                 // Either the module declares no parameters -- common, and

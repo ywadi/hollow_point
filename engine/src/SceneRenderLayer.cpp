@@ -5,6 +5,7 @@
 #include <hp/Light.hpp>
 #include <hp/Log.hpp>
 #include <hp/Profiling.hpp>
+#include <hp/FrameTargets.hpp>
 #include <hp/Scene.hpp>
 
 #include <DeviceContext.h>
@@ -50,6 +51,10 @@ void SceneRenderLayer::setScene(Scene* scene, const AssetPool* pool) {
 
 Scene* SceneRenderLayer::scene() const {
     return scene_;
+}
+
+void SceneRenderLayer::setGameTexture(std::string_view name, Diligent::ITextureView* view) {
+    renderer_.setGameTexture(name, view);
 }
 
 const char* SceneRenderLayer::name() const {
@@ -126,8 +131,25 @@ void SceneRenderLayer::onRenderLayer(const RenderPassContext& pass) {
     // share one scene and each draw only its own objects.
     drawList_ = parseScene(*scene_, view->camera.cullingMask);
     const LightList lights = gatherLights(*scene_);
+
+    // **The engine's screen intermediates, opt-in by declaration** (T0147).
+    // A stack-driven frame gets them by declaring the conventional snapshot
+    // pair on the targets it owns; a stack whose targets do not carry them
+    // leaves this empty and nothing changes. `pass.colour` and `pass.depth`
+    // ride along because the copy ends the render pass and the renderer puts
+    // exactly those two back afterwards -- it still chooses nothing.
+    SceneScreenInputs screen;
+    if (pass.targets != nullptr) {
+        screen.colourSnapshot = pass.targets->shaderResource(kSceneColourSnapshotTarget);
+        screen.depthSnapshot = pass.targets->shaderResource(kSceneDepthSnapshotTarget);
+        if (screen.colourSnapshot != nullptr || screen.depthSnapshot != nullptr) {
+            screen.colour = pass.colour;
+            screen.depth = pass.depth;
+        }
+    }
+
     renderer_.render(pass.context, drawList_, *view, *pool_, lights, &lastFrame,
-                     pass.timeSeconds);
+                     pass.timeSeconds, screen);
 }
 
 void configureAsHud(SceneRenderLayer& layer, std::uint8_t slot, int order) {

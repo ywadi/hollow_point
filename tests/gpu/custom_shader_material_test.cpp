@@ -1531,8 +1531,15 @@ TEST_CASE("the base signature's descriptor budget dropped, and it is pinned (T01
     // the per-module signature, so the base holds the engine's own vocabulary
     // plus the sampler palette and nothing else:
     //
-    //   6 sampled images   — 5 glTF maps + g_HeightMap (was 10)
+    //   8 sampled images   — 5 glTF maps + g_HeightMap + the two screen
+    //                        intermediates (was 10 under T0160, 6 after T0161)
     //   13 immutable samplers — their 7 + the 6-entry palette (was 11)
+    //
+    // **T0147 put the two back up and no samplers with them**, which is the
+    // half of that design worth pinning: `g_SceneColour` and `g_SceneDepth`
+    // are sampled through the existing palette rather than through slot
+    // samplers of their own, so the count that was under pressure from T0143
+    // (samplers) did not move at all.
     //
     // Pinned from the renderer's own creation-time count, so the budget the
     // capability matrix quotes cannot drift from the code silently — the
@@ -1545,7 +1552,7 @@ TEST_CASE("the base signature's descriptor budget dropped, and it is pinned (T01
         return;
     }
 
-    MessageCatcher images("6 sampled images");
+    MessageCatcher images("8 sampled images");
     MessageCatcher samplers("13 immutable samplers");
     MessageCatcher line("base signature:");
     hp::logAddSink(&images);

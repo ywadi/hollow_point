@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <string_view>
 #include <vector>
 
 namespace Diligent {
@@ -94,10 +95,23 @@ public:
     /// @param height initial height in pixels. Clamped to at least 1.
     /// @param colour the colour target's format. `ColourHDR` is what T0096 will
     ///        want; `Colour` is what composites directly to a swap chain today.
+    /// @param screenInputs whether to declare the two snapshot targets a
+    ///        material shader samples as `g_SceneColour` and `g_SceneDepth`
+    ///        (T0147).
+    ///
+    ///        **On by default, and it costs memory rather than time**: two more
+    ///        full-resolution targets, one per format, so about 16 MB at 1080p
+    ///        with an 8-bit colour target. No copy is issued unless a blended
+    ///        material actually reads them, so the per-frame cost of leaving
+    ///        this on in a scene that never refracts is zero. Turn it off for a
+    ///        view that is certain not to want it — a thumbnail render, a
+    ///        shadow-only view — and the intermediates then read the engine's
+    ///        stand-ins with one warning.
     /// @returns whether everything came up. False leaves this empty, never
     ///          half-created.
     bool create(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context, int width,
-                int height, TargetFormat colour = TargetFormat::Colour);
+                int height, TargetFormat colour = TargetFormat::Colour,
+                bool screenInputs = true);
 
     /// Resizes the targets. A no-op when the size is unchanged, so it is safe to
     /// call every frame.
@@ -132,6 +146,14 @@ public:
     Diligent::ITextureView* render(Diligent::IDeviceContext* context, Scene& scene,
                                    const AssetPool& pool, std::uint8_t viewSlot = 0,
                                    SceneViewStats* stats = nullptr, double timeSeconds = 0.0);
+
+    /// Feeds a texture a game layer produced to this view's material shaders,
+    /// by name (T0147.4). See `SceneRenderer::setGameTexture`, which this
+    /// forwards to unchanged.
+    /// @param name the shader-side declaration name.
+    /// @param view the view to bind, or null to remove the entry.
+    /// @returns nothing.
+    void setGameTexture(std::string_view name, Diligent::ITextureView* view);
 
     /// @returns the colour target's shader-resource view, or nullptr. **Valid
     ///          for the current frame only** — a resize recreates it.
