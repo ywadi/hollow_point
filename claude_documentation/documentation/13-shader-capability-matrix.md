@@ -40,6 +40,7 @@ owning ticket.
 | Per-channel hooks (`baseColor`, `occlusion`, …) | **Y** | — |
 | Whole-output hook (`surface`) | **Y** | — |
 | Per-tap sampling seam | **–** | T0153.1 |
+| Tangent frame (`HpTangentFrame`) | **–** — a game rebuilds it by hand, and the chirality sign it needs is **not discoverable from the contract**; T0165 measured the sign and recorded the hazard (see "The engine computes it and throws it away") | *(unowned)* |
 | Cross-hook state | **Y** — hooks are `[mutating]`, members zero-initialised (2026-08-06, T0159) | — |
 | Game-declared parameters | **Y** — `cbuffer HpMaterialParams` with author-named fields, valued by `.hpmat`, hinted by `[HpRange]`/`[HpColor]`/`[HpTooltip]` (2026-08-06, T0160). float/2/3/4, int, bool; 256 bytes | — |
 | Game-declared textures | **Y** — author-named `Texture2DArray` globals at any count, reflected into a per-module resource signature and bound by `.hpmat` under the author's names (2026-08-07, T0161, D35). Cost measured before commitment: 34 ns/draw (161.1). **The one deliberate limit is sampler *state***: modules sample through the engine's six-name immutable palette (`HpSamplerLinearWrap` …), and a module's own `SamplerState` is refused by name. `HpTexture0`…`3` remain as deprecated declarations | — |
@@ -89,6 +90,26 @@ thing the audit produced:
   inside DiligentFX's `PerturbNormal`, and handed to a game **zero** times. The
   rock cube sample computes it a **third** time — and since T0159 it can at
   least *keep* its copy across hooks rather than rebuilding per hook.
+
+  **T0165 turned this from a cost into a hazard, and it is the strongest case
+  in the audit for closing a gap.** A frame rebuilt from `ddx`/`ddy` is only
+  correct up to the sign of `dot(cross(ddx(P), ddy(P)), N)` — Schüler's
+  construction is odd in the normal — and that sign is set by which way `ddy`
+  runs in framebuffer coordinates, which Diligent's Vulkan backend decides by
+  flipping the viewport internally. **A game shader cannot discover it.** The
+  engine knows the answer (measured: negative on a camera-facing surface,
+  pinned by `custom_shader_material_test`) and has no way to say it.
+
+  During T0165 a compensating sign was added to *both* copies on the strength
+  of a plausible derivation, and it collapsed the rock cube's parallax
+  self-shadow from a max drop of 124.6 luminance to **exactly 0** — caught only
+  because that sample happens to have a directional assertion. A game with the
+  same mistake would ship relief carved inside-out.
+
+  The row this argues for is **`HpTangentFrame(worldPos, uv, N, out T, out B)`**
+  as an engine function: one implementation, one place the sign lives, and the
+  duplication in `rock_pom.slang` becomes a call. Unowned — **add the row
+  before building it**, per D35.
 - ~~The undisplaced UV0~~ — **landed 2026-08-06** as
   `HpSurfaceInput::UV0Base` (T0159.3).
 - **Camera matrices, viewport size, mip bias, the previous camera.** All written

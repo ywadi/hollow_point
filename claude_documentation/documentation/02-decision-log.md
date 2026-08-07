@@ -2019,7 +2019,21 @@ open, rather than eroded by a hook that seemed harmless.
 - **Geometry shaders.** Godot refuses them too; tessellation is already
   covered by 141.9's named trigger.
 
-## D33 — **Hardware facing equals glTF facing.** `FrontCounterClockwise` is `false`, declared; single-sided culls `BACK`; and the "engine-wide winding inversion" was the test assets
+## D33 — **Hardware facing equals glTF facing.** Single-sided culls `BACK`, and the "engine-wide winding inversion" was the test assets
+
+> **AMENDED 2026-08-07 by the owner, on T0165: the engine is right-handed,
+> matching glTF — Godot's convention, not Unity's.** The camera looks down its
+> own **−Z**, and `FrontCounterClockwise` is therefore **`true`**. What follows
+> is the original entry, kept because it was not wrong when written and a reader
+> must be able to see why a constant it states as `false` is now `true`. The
+> amendment's reasoning is immediately below it, under "Why the handedness was
+> reopened".
+>
+> **The invariant this entry is named for did not move**: hardware facing still
+> equals glTF facing, `CULL_MODE_BACK` still means what the spec means by it,
+> and the determinant rule is untouched. What moved is the *mirror count* the
+> flag is the parity of — which is the amendment's whole technical content.
+
 
 **Decided 2026-08-06**, triggered by the owner's question after T0141.12's
 single-sided workaround: *"my worry is we are moving away from Vulkan
@@ -2132,6 +2146,146 @@ way: whichever parity is chosen, hardware facing equals glTF facing, and
 adds view-dependent IBL baselines, T0143 adds per-feature pixel tests.
 Every one of them calibrated against inverted assets makes the correction
 strictly more expensive; none of them starts before T0152 lands.
+
+
+### Why the handedness was reopened — 2026-08-07, the owner's call on T0165
+
+The entry above left one thing open "deliberately, for the owner": the same
+trace that proved the engine glTF-conformant also showed it displaying
+right-handed content **mirror-imaged**, and T0152.6's probe then measured that
+mirror on hardware. The decision was whether to accept it or spend exactly one
+mirror to remove it. **It is removed, and the mirror is spent in the camera
+rather than at the import boundary.**
+
+#### The argument
+
+**The entire content-authoring ecosystem is right-handed** — Blender, Maya,
+Houdini, and glTF itself. Unity and Unreal are the outliers. Matching the format
+we import means a Blender artist's model arrives as authored, a position
+debugged in the engine has the same sign as in Blender, and a round trip is
+lossless. There is nothing to convert, so there is nothing to get wrong.
+
+**The rejected alternative is Unity's: mirror at import.** It makes the engine
+internally correct and leaves the **boundary** permanently converted. Every
+future attribute type would owe a conversion — tangents, morph targets, skinning
+weights, physics collision normals, camera-relative audio, a navmesh — and a
+missed one renders subtly mirrored rather than failing. That is precisely the
+silent-failure class **D35** exists to prevent, and this codebase was bitten by
+it three times in two days. A conversion you must remember at every future
+boundary is a worse bargain than a convention you set once.
+
+`kImportMirrorsContent` stays `false`, and it is now `false` as a **decision**
+rather than as the absence of one.
+
+#### The gate, measured before anything was swept
+
+Diligent's `Matrix4x4::Projection` is commented *"Left-handed projection"*
+(`BasicMath.hpp:1835`) and every rotation helper there is *"D3D-style
+left-handed"*, so this is built against their grain, and **whether a
+right-handed projection composes with reverse-Z was treated as a decision, not
+an implementation detail**: if it had not composed, the answer was to stop and
+report rather than work around it.
+
+It composes exactly. A right-handed projection is `diag(1, 1, −1, 1) · M` — a
+negation of view-space Z applied *before* the projection, which in this engine's
+row-vector convention is a negation of the matrix's **third row**. `_31` and
+`_32` are zero in both the perspective and the orthographic form, so `_33` and
+`_34` are the whole of it, and:
+
+- `_11`, `_22` and `_43` are untouched, so **it is not a screen-space mirror**:
+  world +X still lands on screen right and +Y on screen top;
+- `SetNearFarClipPlanes(far, near)` — Diligent's own way of being told the
+  buffer is reversed — still puts near at 1 and far at 0, with the sign of view
+  Z flipped;
+- the orthographic form needs no special case, its `_34` already being zero;
+- the **4×4 determinant changes sign**, which *is* the mirror and is the only
+  thing that changes.
+
+`camera_test.cpp` pins each of those as a subcase, and the byte-for-byte pin
+against Diligent's helper now mirrors the *expectation* rather than being
+deleted, so an upstream change to their algebra is still caught.
+
+#### The assert that would have fought the correct fix
+
+`WindingConvention.hpp` chained `kFrontFaceCounterClockwise ==
+kImportMirrorsContent`, which models **the importer as the only possible
+mirror**. A projection handedness change is a mirror that assert cannot see, so
+satisfying it would have meant flipping `kImportMirrorsContent` to `true` —
+declaring an import mirror that does not exist, to make a compile-time check
+happy. That is the failure mode of a check that models a cause rather than an
+invariant, and it is worth naming because the check was *this project's own*,
+written three days earlier, and it was right for the model it had.
+
+The real invariant is **parity**:
+
+> `kFrontFaceCounterClockwise` is true exactly when the number of mirrors
+> between authored glTF space and the framebuffer is even.
+
+`kChainMirrorCount` names the two terms — the importer, and the camera chain's
+chirality — and `kFrontFaceCounterClockwise` is still written as a literal so
+the assert stays a check rather than becoming a tautology. Per-node mirrors are
+deliberately **not** counted: they vary per draw and are handled there (T0152.5).
+`rockcube_mesh_test`'s convention case was rewritten the same way, for the same
+reason: it asserted `CHECK_FALSE` on both constants and said *"if either of
+these moves, the asset is wrong"*, which was true under the two-mirror model and
+is false of a handedness change — the cube is authored in object space and is
+still correct.
+
+#### What this cost, and the two things that were not on anyone's list
+
+The sweep is large but shallow: sixteen gpu quads mirrored in z with their
+normals and index order following, one hand-authored scene re-solved, the
+editor's demo quad (which was backwards-wound all along, hidden by
+`doubleSided`), and **every π-yaw light compensation deleted** — a lamp travels
+down its local −Z and the camera now looks down its own −Z, so an identity lamp
+beside an identity camera lights what the camera sees. `lighting_stage`'s whole
+`faceTheQuad` flag went with them. That deletion is the clearest single piece of
+evidence that the engine and glTF now agree.
+
+Two things were found by tracing rather than by searching, and neither was on
+the brief:
+
+- **`HpViewDepth` unprojects to a view-space Z, which is now negative in front
+  of the lens.** Its contract says "distance in metres" and `glass.slang`
+  subtracts two of them; a silently negated depth does not look like a depth bug
+  — a `saturate` clamps it to zero and a contact fade simply stops fading.
+  Negated at the source so the contract holds.
+- **The chirality probe measures something other than what everyone thought.**
+  "World +X lands on screen right" is true under *both* conventions — `_11`
+  stays positive — so the probe's assertions do not flip, and simply moving its
+  glyph would have left a test that cannot distinguish the two conventions at
+  all. The mirror was in the *pairing* of that with the camera's forward, which
+  no rendered image can see. The glyph is now **single-sided** and authored as a
+  readable face, so it renders only when the camera is on its authored front
+  side, and coverage is half the verdict.
+
+#### What is still open, and it is a real one
+
+Schüler's cotangent frame — `HpParallaxUv`, and `rock_pom.slang`'s copy — is
+**odd in the normal**: flip `N` and both tangent vectors come back negated. A
+handedness change moves which side of a surface faces the camera, so a
+compensating `sign(dot(cross(ddx, ddy), N))` looks mandatory. It was written,
+and it **broke** the only directional consumer in the tree: the rock cube's
+parallax self-shadow, which marches toward the light, went from a max drop of
+124.6 luminance to exactly **0**. It was reverted, and the frames are shipping
+exactly as they were before T0165.
+
+What the sign *is* is now measured rather than argued
+(`custom_shader_material_test`, T0165): `dot(cross(ddx(P), ddy(P)), N)` is
+**negative** on a camera-facing surface, where it was positive before. That case
+exists because the quantity is invisible from any source file — it depends on
+which way `ddy` runs in framebuffer coordinates, which Diligent's Vulkan backend
+decides by flipping the viewport internally — and because it would move silently
+under a driver or upstream change with "every normal map rotated half a turn" as
+the symptom.
+
+It leaves `Camera.fHandness` in a **stated** disagreement rather than a hidden
+one. Diligent's comment says `cross(ddx, ddy) * fHandness` faces the viewer;
+with `cross` measured facing away, `−1` is what obeys the comment and `+1` is
+what their own "right-handed" semantics call for. It is set to `+1`. Nothing in
+this engine reaches the branch that reads it — every mesh carries `NORMAL` and
+the importer refuses one that does not — so it is recorded on T0165 and on the
+probe rather than guessed in the other direction.
 
 ---
 

@@ -15,10 +15,10 @@ The output is committed as data. Re-run it only to change the cube:
 
 ## The winding rule, which is the whole reason this is careful
 
-`hp::kFrontFaceCounterClockwise` is **false** and `hp::kImportMirrorsContent` is
-**false** (D33, `engine/include/hp/WindingConvention.hpp`). Together those mean
-the importer passes glTF through untouched and hardware facing ends up equal to
-glTF facing. The rule an asset must satisfy is therefore glTF's own:
+`hp::kImportMirrorsContent` is **false** (D33,
+`engine/include/hp/WindingConvention.hpp`): the importer passes glTF through
+untouched, so hardware facing ends up equal to glTF facing. The rule an asset
+must satisfy is therefore glTF's own:
 
     for every triangle (v0, v1, v2):  cross(v1 - v0, v2 - v0) points *outward*
 
@@ -26,6 +26,14 @@ which is the right-hand rule about the face's authored normal. The engine's gpu
 suite authors its quads the same way (`writeOrientedQuadGltf` in
 `tests/gpu/triplanar_parallax_test.cpp`), so a cube built to this rule and one of
 those quads cannot disagree.
+
+**This rule is object-space and did not move when T0165 made the engine
+right-handed.** What moved is `kFrontFaceCounterClockwise` — a fact about the
+camera chain, not about the cube — so nothing here needed regenerating. That
+distinction is worth stating because `tests/fast/rockcube_mesh_test.cpp` used to
+assert *both* convention constants were false and said "if either moves, this
+asset is wrong"; under a handedness change that is false, and the test now
+asserts the mirror-count parity instead.
 
 Each face picks a tangent `t` and bitangent `b` with `cross(t, b) == n`, emits
 its four corners in the order (-t-b), (+t-b), (+t+b), (-t+b), and indexes them

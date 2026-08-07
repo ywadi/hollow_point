@@ -12,9 +12,29 @@ serialization is generated from reflection rather than written per type, see
 
 ---
 
+## Coordinates, because every number in a scene file depends on them
+
+**Right-handed, +Y up, one unit is one metre — glTF's convention, and
+Blender's.** A camera with an identity rotation looks down its own **−Z**, so
+something in front of the camera has a *negative* z. A light with an identity
+rotation travels down its own −Z too (`KHR_lights_punctual`), which is the same
+way an unrotated camera looks — so an identity lamp lights what an identity
+camera sees, and needs no compensating rotation.
+
+`Rot(X, a)` maps a camera's forward `(0, 0, −1)` to `(0, sin a, −cos a)`, so a
+**negative** angle pitches the view down. That sign is the one most often got
+backwards, and it is derived rather than remembered.
+
+Nothing is converted at import: a model exported from Blender arrives with the
+coordinates it was authored with. See **D33** as amended by T0165 for why, and
+`hp/HandednessConvention.hpp` for the constant.
+
+---
+
 ## A complete example
 
-Everything the format can express, in one file:
+Everything the format can express, in one file. The Sun's identity rotation
+points it down −Z, away from the camera and onto the Player's front:
 
 ```yaml
 version: 1

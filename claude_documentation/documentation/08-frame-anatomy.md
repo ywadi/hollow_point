@@ -72,7 +72,7 @@ the next few slot into gaps between these steps rather than after them.
 | Step | What | Owner |
 |---|---|---|
 | 10.1 | Resolve the camera for a view slot | T0081 |
-| 10.2 | Build view + projection (reverse-Z) | T0081, T0130 |
+| 10.2 | Build view + projection (**right-handed**, reverse-Z) | T0081, T0130, T0165 |
 | 10.3 | **Set the viewport from the resolved view**, not the target size | T0081 |
 | 10.4 | `parseScene` — filter by **object layer mask**, then by mesh | T0085 |
 | 10.5 | *(gap)* frustum cull, sort into queues | **T0045** |
@@ -87,7 +87,15 @@ the next few slot into gaps between these steps rather than after them.
 Repeated per `RenderStack` layer for 10.1–10.9c, into **one shared colour
 target** (T0027.5).
 
-**Five things about this order are load-bearing:**
+**Six things about this order are load-bearing:**
+
+- **The projection is where the engine's one chirality decision lands, in
+  10.2.** `hp::projectionMatrix` negates the third row of Diligent's
+  left-handed form, so camera space is right-handed and the camera looks down
+  its own −Z (D33 as amended, T0165). Everything downstream that names a Z sign
+  — the frustum's near plane, `worldToScreen`'s `w > 0` refusal, `HpViewDepth`'s
+  negation — reads it out of the matrix rather than restating it, which is why
+  step 10.2 is the only place the decision appears.
 
 - **Facing is decided per draw, inside 10.9a/10.9c.** The cull face in each
   `PSOKey` comes from the winding convention (D33: single-sided culls `BACK`)

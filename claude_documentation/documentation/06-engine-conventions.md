@@ -330,21 +330,58 @@ One rule that is not provisional, because it is a correctness constraint rather
 than a performance one: **memory does not cross the module boundary to be
 freed** — see the module boundary section above.
 
-## Winding, facing and chirality
+## Handedness, winding and facing
 
-**The convention lives in `engine/include/hp/WindingConvention.hpp` (D33,
-T0152) and it is binding: hardware facing equals glTF facing.**
-`kFrontFaceCounterClockwise = false`, declared rather than defaulted;
-single-sided geometry culls `BACK` — which is what the glTF spec means by
-single-sided, and what every published shadow-bias recipe assumes. The
-engine's chain contains **zero winding reversals**, measured step by step in
-T0152.1: the importer converts nothing, the view is a rigid inverse, the
-left-handed projection has no XY mirror, reverse-Z touches only the Z column,
-and Diligent folds its internal Vulkan viewport flip into the flag's D3D
-screen-space semantics. Every rasterizer state in the engine declares the
-flag from the header; a new pipeline must too, because a defaulted field
-happens to agree today and stops agreeing — silently — the day the convention
-moves.
+**The engine is right-handed, matching glTF — Blender's, Maya's, Houdini's and
+Godot's convention, not Unity's.** The camera looks down its own **−Z**, +Y is
+up, +X is right, and one unit is one metre. `hp/HandednessConvention.hpp` is the
+single place that decides it (`kRightHandedCameraSpace`, D33 as amended by
+T0165); `hp::projectionMatrix` implements it by negating the third row of
+Diligent's left-handed helper, which is exactly `diag(1, 1, −1, 1)` applied
+before the projection.
+
+**Nothing is converted at import.** That is the point: a Blender artist's model
+arrives as authored, a position debugged in the engine has the same sign as in
+Blender, and asymmetric content — text on a sign, a watch on a left wrist —
+renders the right way round. The rejected alternative was Unity's import mirror,
+which leaves the *boundary* permanently converted so every future attribute type
+owes a conversion; D33's amendment has the full argument.
+
+Things that follow, and that surprise people:
+
+- **Reverse-Z composes with it exactly, and that was measured before anything
+  else moved.** Negating `_33` and `_34` leaves `_11`, `_22` and `_43` alone, so
+  a right-handed projection is **not** a screen-space mirror — world +X still
+  lands on screen right — and `SetClipPlanes(far, near)` still puts near at 1
+  and far at 0. The 4×4 determinant flips, which *is* the mirror and is the only
+  thing that does.
+- **"In front of the camera" is negative Z.** Every scene file, every gpu test
+  quad and the editor's demo geometry sits at negative z. A `worldToScreen` that
+  refuses a point is refusing one at *positive* z.
+- **A light needs no compensating rotation.** A lamp travels down its local −Z
+  (glTF's `KHR_lights_punctual`) and so does the camera, so an identity lamp
+  beside an identity camera lights exactly what the camera sees. Before T0165
+  every test scene carried a π yaw about Y to undo the disagreement; all of them
+  are gone.
+
+### Winding
+
+**`kFrontFaceCounterClockwise` is `true`** (`hp/WindingConvention.hpp`), declared
+rather than defaulted, and single-sided geometry culls `BACK` — which is what
+the glTF spec means by single-sided, and what every published shadow-bias recipe
+assumes. Every rasterizer state in the engine declares the flag from the header;
+a new pipeline must too, because a defaulted field happens to agree today and
+stops agreeing — silently — the day the convention moves.
+
+**The flag is the parity of a mirror count, and modelling it any other way is
+how T0165 nearly went wrong.** `kChainMirrorCount` counts the two places a
+determinant can go negative between a glTF index buffer and the rasteriser: the
+importer (currently none) and the camera chain's chirality (currently
+right-handed, so none). Zero mirrors, even parity, counter-clockwise front. The
+header's `static_assert` checks that parity rather than comparing two bools —
+the older form modelled the importer as the *only* mirror source, so a
+handedness change could only have been smuggled past it by declaring an import
+mirror that does not exist.
 
 Three consequences worth knowing before they bite:
 
@@ -358,30 +395,47 @@ Three consequences worth knowing before they bite:
   facing**, and a material never needs to know whether the node it draws
   under is mirrored. The shader derives the sign from the node matrix already
   in `cbPrimitiveAttribs` rather than trusting a CPU-written flag, so the two
-  halves cannot drift apart. *Not* handled: a **camera** under a mirrored
+  halves cannot drift apart. *Not* counted in `kChainMirrorCount` and
+  deliberately so: it varies per draw, and a compile-time constant cannot
+  honestly describe it. *Not* handled at all: a **camera** under a mirrored
   parent — that mirrors the whole view, which is item 5 in the header's list
   (the flag itself must toggle); no scene here can author one today, and the
   first game that does is the trigger.
-- **Test assets wind consistently with their normals.** A camera-facing quad
-  with −Z normals winds `{0, 2, 1, 0, 3, 2}` over BL, BR, TR, TL vertices.
-  Copy-pasting the pre-T0152 order `{0, 1, 2, 0, 2, 3}` recreates the
-  backwards asset the whole ticket existed to kill — it does not look like a
-  winding bug when it fails; it looks like invisible geometry or inverted
-  lighting.
-- **The display is chirally mirrored — measured, not derived, and the
-  decision about it is the owner's** (T0152.6, open). With an identity camera
-  looking +Z, **world +X lands on screen right** where a physical observer
-  facing +Z has +X on their *left*; world +Y lands on screen top — one
-  mirror, in X. `tests/gpu/chirality_test.cpp` pins both with an asymmetric
-  glyph and fails in the opposite pattern if a mirror is ever introduced
-  without being decided. The consequence: DCC-authored asymmetric content
-  (text on a sign, a watch on a left wrist) renders flipped today — invisible
-  while every asset is a symmetric test quad, visible the day the first real
-  model is imported. The recorded options: accept and document the
-  D3D-native mirrored convention, or set `kImportMirrorsContent = true` (the
-  Unity-style import mirror), which reverses apparent winding once and
-  **must** flip `kFrontFaceCounterClockwise` with it — the header's
-  `static_assert` refuses to let them move separately.
+- **Test assets wind consistently with their normals, and the order follows the
+  normal rather than being memorised.** A camera-facing quad now has a **+Z**
+  normal and winds `{0, 1, 2, 0, 2, 3}` over BL, BR, TR, TL vertices —
+  `cross(v1 − v0, v2 − v0) = (0, 0, +area)`. That is the same order T0152
+  *removed*, and it is not a revert: T0152's quads faced the camera with a −Z
+  normal, so they wanted `{0, 2, 1, 0, 3, 2}`. The rule never changed. Copying
+  an index order without checking it against the authored normal is exactly how
+  the backwards assets spread, and when it fails it does not look like a winding
+  bug — it looks like invisible geometry or inverted lighting.
+- **The display is not mirrored, and `tests/gpu/chirality_test.cpp` is what says
+  so.** An asymmetric "F", authored as a DCC tool would export a readable face
+  (+Z normal, wound CCW about it) and **single-sided**, is placed in front of
+  the camera: it renders only if the camera is on its authored front side, and
+  its arms land on screen right only if that face is displayed unmirrored. Both
+  halves together are "a Blender artist's asset arrives as authored". Note that
+  *"world +X lands on screen right"* is true under either handedness and is
+  **not** the measurement — the single-sidedness is what makes the probe able to
+  tell the two apart.
+
+### The one sign a shader cannot discover
+
+Any tangent frame rebuilt from screen-space derivatives — `HpParallaxUv`,
+DiligentFX's `GetPerturbNormalInfo` fallback, and any game shader copying the
+pattern — depends on the sign of `dot(cross(ddx(P), ddy(P)), N)`, because
+Schüler's construction is **odd in the normal**. That sign is set by which way
+`ddy` runs in framebuffer coordinates, which Diligent's Vulkan backend decides
+by flipping the viewport internally, and it is invisible from any source file.
+
+**Measured: negative on a camera-facing surface** (positive before T0165), and
+pinned by `custom_shader_material_test`'s screen-chirality case. The frames need
+**no** compensating sign — one was added during T0165 on the strength of the
+oddness above and measured *wrong*, collapsing the rock cube's self-shadow from
+a max drop of 124.6 to 0. If that case ever fails, every normal map and every
+parallax effect in the engine is rotated half a turn, and it reads as an art
+bug.
 
 ## Profiling instrumentation
 

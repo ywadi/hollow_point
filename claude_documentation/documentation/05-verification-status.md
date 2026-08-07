@@ -136,11 +136,14 @@ had been issued.
 |---|---|
 | A glTF mesh loads through the VFS and rasterises | 65,536 / 65,536 pixels differ from the clear colour (T0028) |
 | Reverse-Z is right | It draws at all. Under a mismatched comparison **nothing** would (T0130/T0028) |
+| Reverse-Z survives the right-handed projection | Near maps to 1 and far to 0 on both the perspective and the orthographic form, with `_11`/`_22`/`_43` byte-identical to the left-handed build (T0165.1, deviceless) |
+| The display is not chirally mirrored | A single-sided "F" authored as a DCC tool exports a readable face renders **at all** (camera is on its authored front side) and lands its arms on screen right (T0165, `chirality_test`) |
 | Layers composite in order | Right half is clear-colour with the world alone, covered with the HUD (T0027) |
 | Object layer masks filter | One scene, two cameras, each drawing only its own layer (T0085) |
-| **Surfaces are actually shaded** | Red quad + white light = `(211, 144, 144)`; no light = `(0, 0, 0)` (T0079) |
-| Point-light attenuation | 2 units `(255,145,145)`, 9 units `(80,46,46)`, past range `(0,0,0)` |
-| Spot cone falloff | Wide cone `(255,251,251)`, narrow cone `(0,0,0)` |
+| **Surfaces are actually shaded** | Red quad + white light = `(242, 25, 25)`; no light = `(0, 0, 0)` (T0079, value corrected by T0152 and unchanged by T0165) |
+| Point-light attenuation | 2 units `(255,39,39)`, 9 units `(90,4,4)`, past range `(0,0,0)` |
+| Spot cone falloff | Wide cone `(255,58,58)`, narrow cone `(0,0,0)` |
+| An identity lamp lights what an identity camera sees | `present_blit`'s quad went from luma 27.6 to 219.2 across T0165 with no light moved — before, the lamp's −Z and the camera's +Z disagreed and the quad was lit from behind (T0165) |
 
 **Until T0079 landed, this engine rendered every mesh pure black** — no lights,
 no IBL, no emissive — and it is worth knowing why that went unnoticed for three
