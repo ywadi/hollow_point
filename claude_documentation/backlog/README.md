@@ -20,7 +20,41 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-07 — twenty-seventh revision: `T0152` closed, the owner answered
+**Set 2026-08-08 — twenty-eighth revision: the owner put `T0166` and `T0167` at
+the top, and the engine goes and looks at an asset it did not help make.**
+Every mesh this engine has ever rendered was written by the people who wrote the
+code that consumes it — `make_cube_gltf.py` generates the sample cube, the gpu
+suite hand-winds its quads — so every shared assumption between authoring and
+rendering is **invisible by construction**. That is the class of bug that has
+cost this project the most: T0157 lost a session to a tangent basis nobody could
+see was wrong, T0152 spent a whole ticket on assets that contradicted their own
+normals.
+
+One instance is already diagnosed by reading, before any asset arrives.
+`HpParallaxUv` normalises Schüler's cotangent frame with a **positive**
+`invMax`, which drops the sign of the UV determinant — so on a **mirrored UV
+shell**, standard practice in game art, it returns −T and −B and parallax
+marches backwards. DiligentFX's own normal-mapping frame divides by the
+*signed* determinant, so on those pixels lighting and parallax disagree about
+which way the bump faces, and the symptom is relief reading inside-out on half a
+symmetric model while the other half looks right. **Not a T0165 regression** —
+it predates the handedness work, and T0165's reverted `sign()` correction was
+right to revert (the argument, not just the measurement, is on T0166).
+
+`T0166` fixes that against a controlled two-shell case and settles the
+conventions underneath it that have never been checked — `Tangent.w`, which is a
+constant pretending to be data because Diligent's vertex path is `float3`, and
+the normal-map green channel. `T0167` then renders a real Sketchfab model,
+**by eye and by number**. The order between them is not caution: a production
+model has several things wrong at once, so it says *something* is wrong rather
+than *which*, and running it first means the first real asset renders wrong for
+two reasons and the visible one gets blamed.
+
+**T0167 is also the observation D33's amendment was argued from and never
+made.** The engine went right-handed on the reasoning that a Blender artist's
+model arrives as authored. That claim is currently *derived*, not observed.
+
+Previously — the twenty-seventh revision: `T0152` closed, the owner answered
 its one open question, and `T0165` swept the answer through the engine.** The
 engine is **right-handed, matching glTF** — Godot's convention, not Unity's
 (D33 as amended). The camera looks down its own **−Z**, so *in front of the
@@ -301,9 +335,11 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | The movable one — see below. It needs nothing from the surface or lighting stages, and T0147 gave it the opaque/blend pass split it would have had to build. **T0152.5 adds one constraint**: facing is per-draw (the determinant rule), so any batching or sorting must keep the per-draw cull decision |
-| 2 | [T0086](open/0086-shadows.md) | shadows | Now unblocked in the way D30 sequenced it: the loop the shadow lookup goes inside is the engine's, the `ENABLE_SHADOWS` block's shape is waiting in `HpGetLight`, and T0145's Ref says where the factor goes and why it must not fold into `Attenuation`. Its Refs carry T0152.5's shadow-pass determinant note — and its bias tuning is now made against a **settled** convention (T0165), which is the whole reason T0152 blocked it |
-| 3 | [T0158](inprogress/0158-parallax-depth-cues.md) | parallax depth cues, remainder | 158.2 closed with T0159 and **158.3 closed with T0145**; what is left is the reference/tuning subtasks and the geometrically-displaced ground-truth cube. **T0165 re-posed its self-shadow probe** (yaw −0.45, the mirror of the old +0.45 onto the same object face at the same 11.5° grazing incidence) — any further tuning starts from there |
+| 1 | [T0166](open/0166-tangent-frames-and-real-assets.md) | tangent frames, the conventions underneath them, and the first unfamiliar asset | **Its first subtask is to scan the findings already on disk**, because the one defect it fixes was found by reading and the rest probably can be too. `HpParallaxUv`'s positive `invMax` drops the UV determinant's sign, so a **mirrored UV shell** — standard game art — marches parallax backwards while DiligentFX's normal-mapping frame, which divides by the *signed* determinant, does not. Predates T0165; nothing in CI can catch it, because every test asset has consistent UV winding |
+| 2 | [T0167](open/0167-sketchfab-asset-validation.md) | a Sketchfab model, rendered and measured | The owner supplies the asset. Judged **by eye and by number** — a screenshot alone has misled this project twice. **Blocked by T0166 and not softly**: a production model has several things wrong at once, so it says *something* is wrong rather than *which*. It is also the observation **D33's amendment was argued from and never made** — that a Blender artist's model arrives as authored is currently derived, not observed |
+| 3 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | The movable one — see below. It needs nothing from the surface or lighting stages, and T0147 gave it the opaque/blend pass split it would have had to build. **T0152.5 adds one constraint**: facing is per-draw (the determinant rule), so any batching or sorting must keep the per-draw cull decision |
+| 4 | [T0086](open/0086-shadows.md) | shadows | Now unblocked in the way D30 sequenced it: the loop the shadow lookup goes inside is the engine's, the `ENABLE_SHADOWS` block's shape is waiting in `HpGetLight`, and T0145's Ref says where the factor goes and why it must not fold into `Attenuation`. Its Refs carry T0152.5's shadow-pass determinant note — and its bias tuning is now made against a **settled** convention (T0165), which is the whole reason T0152 blocked it |
+| 5 | [T0158](inprogress/0158-parallax-depth-cues.md) | parallax depth cues, remainder | 158.2 closed with T0159 and **158.3 closed with T0145**; what is left is the reference/tuning subtasks and the geometrically-displaced ground-truth cube. **T0165 re-posed its self-shadow probe** (yaw −0.45, the mirror of the old +0.45 onto the same object face at the same 11.5° grazing incidence) — any further tuning starts from there |
 
 **Raised rather than reordered, because the order is the owner's call:**
 [T0162](open/0162-shader-authoring-docs.md) (the shader authoring guide) listed
@@ -467,6 +503,8 @@ wrong in the confident voice of a document that is normally right.
 | 467 | [T0162](open/0162-shader-authoring-docs.md) | The shader authoring guide: what a game author reads | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 468 | [T0163](open/0163-gpu-suite-teardown-and-cook-skip.md) | A fatal assertion in a gpu case takes the next case with it | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | 469 | [T0164](open/0164-per-instance-data.md) | Per-instance data: the last empty cell in the capability matrix | 4 — Render layer | 🔜 TODO | Medium | Moderate |
+| 462 | [T0166](open/0166-tangent-frames-and-real-assets.md) | Tangent frames, the conventions underneath them, and the first real asset this engine has ever rendered | 4 — Render layer | 🔜 TODO | High | Moderate |
+| 463 | [T0167](open/0167-sketchfab-asset-validation.md) | A model from Sketchfab, rendered and measured: the first asset chosen by somebody other than us | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 464 | [T0155](open/0155-terrain-rendering.md) | Terrain rendering: their reference implementation is the floor, not the ceiling | 4 — Render layer | 🔜 TODO | Medium | Very Complex |
 | 465 | [T0145](completed/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | ✅ DONE | High | Complex |
 | 492 | [T0148](open/0148-post-process-stack.md) | The post-process stack: engine and game effects at one seam | 4 — Render layer | 🔜 TODO | Medium | Complex |
