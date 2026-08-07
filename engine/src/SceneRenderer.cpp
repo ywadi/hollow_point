@@ -1955,6 +1955,19 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
         // -------------------------------------------------------------------
         if (screenDemand && canSnapshot) {
             HP_PROFILE_ZONE_NAMED("scene snapshot");
+
+            // **Unbound explicitly, because Diligent asks to be told.** A copy
+            // out of a texture that is still bound as a render target unbinds
+            // every target on its own and logs
+            // "Texture 'x' is currently bound as render target and will be
+            // unset ... To silence this message, explicitly unbind the texture
+            // with SetRenderTargets(0, nullptr, nullptr, ...)". Doing it here
+            // is not cosmetic: it is the documented contract for reading a
+            // target you have been writing, and it makes the re-bind below
+            // obviously required rather than defensive.
+            context->SetRenderTargets(0, nullptr, nullptr,
+                                      Diligent::RESOURCE_STATE_TRANSITION_MODE_NONE);
+
             const auto copy = [&](Diligent::ITextureView* from,
                                   Diligent::ITextureView* to) -> bool {
                 if (from == nullptr || to == nullptr) {
@@ -1993,7 +2006,13 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
             };
             const bool copied = copy(screen.colour, screen.colourSnapshot) &&
                                 copy(screen.depth, screen.depthSnapshot);
-            (void)copied;
+            // **Logged so that "costs nothing when nothing wants it" is
+            // testable rather than asserted.** Debug level, once per frame
+            // that actually copies -- a scene of opaque geometry, or one whose
+            // blended materials ignore the screen, prints nothing at all, and
+            // that silence is what `screen_inputs_test` checks.
+            HP_LOG_DEBUG(kLog, "scene snapshot: {} for {} blended item(s)",
+                         copied ? "copied" : "skipped", blendItems.size());
 
             // **Put the targets back, explicitly.** A copy ends the render
             // pass and moves both textures through `COPY_SOURCE`; re-binding
