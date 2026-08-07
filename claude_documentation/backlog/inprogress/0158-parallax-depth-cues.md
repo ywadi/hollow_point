@@ -83,13 +83,27 @@ practice and is not wasted work when tessellation later lands above it.
       asserted in `tests/gpu/rockcube_sample_test.cpp`. What stays with
       158.3/T0145 is the real per-light answer — the sample approximates it by
       capping the bite at the marched light's incident share
-- [ ] 158.3 **How many lights get a shadow march — with T0145.** Naively this is
-      one march *per light*, which is the real cost risk and is a **lighting**
-      decision, not a material one. The likely answer is "the dominant light
-      only, and the fill goes unshadowed, because nobody can tell" — but a
-      material must not hard-code a light index, and the loop that would know
-      which light dominates is the one T0145 moves into the engine. **Two-way
-      reference required**
+- [x] 158.3 **How many lights get a shadow march — with T0145.** *Landed
+      2026-08-07 with T0145.* The predicted answer held — **the dominant light
+      only, and the fill goes unshadowed** — and the two things that made it
+      unwritable here both arrived on T0145: the per-light method
+      (`IHpMaterial.light()`, D30's rung 3), and a **documented** light order
+      so a material can name the dominant light without hard-coding a guess.
+      `selectLightsFor` now sorts nearest, then brightest by Rec. 709
+      luminance, then entity; `HpLight::Index == 0` is the dominant light, and
+      `rock_pom.slang` marches exactly that one.
+
+      **What this removed is more interesting than what it added.** 158.2's
+      march multiplied `Out.BaseColor` in the whole-output hook, which darkens
+      *every* light's contribution — so it had to cap its own bite by the
+      marched light's estimated share of incident light (a second luminance
+      ranking, an `N·L` product per light, and a number that was never exactly
+      right). Scaling `R.Intensity` in the per-light method darkens that light
+      and nothing else, so the share estimate, the intensity ranking and the
+      `surface()` override are all gone. Measured on the gpu suite at the same
+      pose: **72 → 85 pixels darkened beyond 10 luminance, max drop 51.7 →
+      55.6, frame-mean difference 0.045 → 0.050**, black pixels still
+      bit-identical at 431/431 and the silhouette unchanged
 - [ ] 158.4 **Both parameters reach a `.hpmat`**, reflected and serialised like
       every other material parameter (D23), and appear in the generated shader
       reference

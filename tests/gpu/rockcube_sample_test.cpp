@@ -592,11 +592,19 @@ TEST_CASE("parallax self-shadowing darkens the frame, measured against itself wi
     // quaternion, and nearly frontal to the camera — so self-shadowing from
     // this viewpoint concentrates on the face the key grazes, not across the
     // frame. At this yaw that face is visible and its light sits ~11 degrees
-    // above its horizon; the measured effect is 72 pixels darkened by more
-    // than 10 luminance (max drop 51.7) and a frame-mean difference of 0.045.
-    // The assertions below are sized to that shape: a *population* of
+    // above its horizon; the measured effect is **85 pixels darkened by more
+    // than 10 luminance (max drop 55.6) and a frame-mean difference of
+    // 0.050**. The assertions below are sized to that shape: a *population* of
     // strongly darkened pixels, not a frame-mean threshold that the small
     // footprint would drown.
+    //
+    // **Those three numbers moved with 158.3** (72 / 51.7 / 0.045 before it),
+    // and the direction is the point: the march is a per-light method now
+    // (T0145's rung 3), so it scales the marched light's own radiance instead
+    // of the assembled base colour. The share estimate that used to cap the
+    // bite — because darkening base colour dimmed the *fill* the ray never
+    // tested — is gone, so the shadow reaches its full depth exactly where the
+    // key is occluded and nowhere else.
     std::vector<std::uint8_t> withShadow;
     std::vector<std::uint8_t> withoutShadow;
     REQUIRE(renderVariant(/*shadowOff=*/false, 0.45F, withShadow, "rockcube_selfshadow_on"));
@@ -665,7 +673,7 @@ TEST_CASE("parallax self-shadowing darkens the frame, measured against itself wi
     CHECK(meanOn < meanOff);
 
     // **The population of shadowed pixels, which is what a zero term has none
-    // of.** Measured 72 darkened beyond 10 luminance with a max drop of 51.7;
+    // of.** Measured 85 darkened beyond 10 luminance with a max drop of 55.6;
     // the bounds sit at half and well under that so texture tweaks do not
     // flake them. T0158's collapsed term — the bug this case exists to catch —
     // measures zero on both.
@@ -677,7 +685,9 @@ TEST_CASE("parallax self-shadowing darkens the frame, measured against itself wi
     // N-dot-L clamp with a normal map and no ambient (T0087, and the scene
     // file's own comment) — and this pins that the march does not add to it:
     // the count is bit-identical with the march on and off, measured at
-    // 431/431 here (and 10000/10000 at yaw 0.9, where the artefact peaks).
+    // 431/431 here (and 10000/10000 at yaw 0.9, where the artefact peaks) —
+    // still 431/431 after 158.3 moved the march onto the per-light method,
+    // which is the check that the per-light multiply did not start clipping.
     CHECK(blackOn == blackOff);
 
     hp::Vfs::shutdown();

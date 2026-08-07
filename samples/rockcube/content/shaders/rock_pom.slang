@@ -64,21 +64,39 @@
 // module, deliberately). The march below is the one written on T0158; what it
 // lacked was a frame and a light, and now it has both.
 //
-// **One march, against the dominant light — chosen by intensity, never by
-// index.** `Lights[0]` was the first version and it was wrong in a way worth
-// recording: two directional lights carry the same (zero) sort key through
-// `selectLightsFor`'s *unstable* sort, so which one lands at index 0 is
-// unspecified — and on this machine it was the fill, which lies almost exactly
-// in the front face's plane, so the march's horizon guard tripped on 67% of
-// the cube and the shadow term measured 0.02 luminance. Found by rendering
-// the guard paths as colours, the same way T0158 found the collapsed frame.
-// Per-light shadowing proper is a *lighting-stage* decision (which lights
-// deserve a march, whether the fill goes unshadowed) and belongs to
-// T0145/158.3, where the loop that knows the lights lives; a sample picking
-// its one light by brightest intensity is honest game content.
+// ## 3. The march is per-light now (158.3, landed by T0145)
+//
+// **This used to be an approximation, and the approximation is gone.** The
+// march lived in `surface()`, which can only multiply the *assembled* base
+// colour — so darkening it at full strength darkened every light's
+// contribution, including the fill the ray never tested, and blacked out faces
+// the fill still reaches. The workaround was to cap the bite by the marched
+// light's estimated *share* of incident light: two extra `N·L` products per
+// light, a second luminance ranking, and a number that was never exactly
+// right.
+//
+// T0145 made the light loop the engine's and gave a material `light()`, so the
+// march now multiplies **that one light's radiance** and nothing else. The
+// share estimate, the intensity ranking and the whole-output hook all went with
+// it; what remains is one `R.Intensity *= term`.
+//
+// **`L.Index == 0` is the dominant light, and that is now the engine's
+// promise** rather than this shader's guess. `Lights[0]` was the first version
+// and it was wrong in a way worth recording: two directional lights carry the
+// same (zero) sort key through `selectLightsFor`, `std::sort` is *unstable*, so
+// which one landed at index 0 was unspecified — and on this machine it was the
+// fill, which lies almost exactly in the front face's plane, so the march's
+// horizon guard tripped on 67% of the cube and the shadow term measured 0.02
+// luminance. Found by rendering the guard paths as colours, the same way T0158
+// found the collapsed frame. T0145 made the order total — nearest, then
+// brightest, then fixed — so ranking by intensity here would now be
+// reimplementing the engine.
+//
+// One light is still a *budget* decision this shader makes: a march per light
+// is a march per light, and the fill contributes far less than it would cost.
 //
 // `struct HpMaterial : IHpMaterial` overrides the coordinate hook and the
-// whole-output hook, and keeps state between them — the first material to do
+// per-light method, and keeps state between them — the first material to do
 // either.
 
 // **The shader's own parameter, declared here and valued in `rock.hpmat`**
@@ -358,44 +376,31 @@ struct HpMaterial : IHpMaterial
         return VSOut;
     }
 
-    /// The shadow march (158.2): from the displaced texel toward the light,
-    /// darkening where the height field occludes it. Tatarchuk's approximate
-    /// soft shadows: every sample above the ray contributes, weighted toward
-    /// blockers near the surface, and the maximum wins — a penumbra rather
-    /// than a hard edge, from the same eight samples.
-    [mutating] override void surface(HpSurfaceInput In, inout HpSurfaceOutput Out)
+    /// The shadow march (158.2, per-light since 158.3/T0145): from the
+    /// displaced texel toward the light, darkening where the height field
+    /// occludes it. Tatarchuk's approximate soft shadows: every sample above
+    /// the ray contributes, weighted toward blockers near the surface, and the
+    /// maximum wins — a penumbra rather than a hard edge, from the same eight
+    /// samples.
+    ///
+    /// **Rung 3, and the reason it is worth being here rather than in
+    /// `surface()`**: this darkens one light's radiance. The whole-output hook
+    /// could only darken the sum, which is why it needed the share estimate
+    /// the header describes and this does not.
+    [mutating] override HpLightResponse light(HpLight L, HpShadedSurface S, HpSurfaceInput In)
     {
-#if defined(PBR_MAX_LIGHTS) && PBR_MAX_LIGHTS > 0
-        if (!marched || g_Frame.Renderer.LightCount < 1)
+        HpLightResponse R = HpStandardLight(L, S);
+
+        // **The dominant light only** — `Index == 0`, the engine's documented
+        // order. A march per light is a march per light, and the fill returns
+        // far less than it costs; this is the sample's budget decision, not a
+        // limit of the hook.
+        if (L.Index != 0 || !marched)
         {
-            return;
+            return R;
         }
 
-        // The dominant light only, picked by intensity — see the header for
-        // why index 0 is not it, and why one light is this sample's call to
-        // make rather than the engine's. `IntensityRGB` arrives premultiplied
-        // by the light's colour, so its luminance is the ranking.
-        int lightCount = min(g_Frame.Renderer.LightCount, PBR_MAX_LIGHTS);
-        int dominant = 0;
-        float bestLuminance = -1.0;
-        for (int i = 0; i < lightCount; ++i)
-        {
-            float luminance = dot(float3(g_Frame.Lights[i].IntensityR,
-                                         g_Frame.Lights[i].IntensityG,
-                                         g_Frame.Lights[i].IntensityB),
-                                  float3(0.2126, 0.7152, 0.0722));
-            if (luminance > bestLuminance)
-            {
-                bestLuminance = luminance;
-                dominant = i;
-            }
-        }
-        // `Direction` is the light's direction of travel, so toward the light
-        // is its negation.
-        PBRLightAttribs light = g_Frame.Lights[dominant];
-        float3 toLight = -normalize(float3(light.DirectionX, light.DirectionY,
-                                           light.DirectionZ));
-
+        float3 toLight = L.ToLight;
         float3 lightTS = float3(dot(frameT, toLight), dot(frameB, toLight),
                                 dot(frameN, toLight));
         if (lightTS.z <= 1e-4)
@@ -403,7 +408,7 @@ struct HpMaterial : IHpMaterial
             // The light is at or below the surface's horizon. N·L shading
             // already darkens this case; a marched term would only shimmer
             // (158.5's guard, same threshold as the view ray's).
-            return;
+            return R;
         }
 
         // Where the ray starts: on the height field at the displaced texel.
@@ -419,7 +424,7 @@ struct HpMaterial : IHpMaterial
         float totalRise = hitDepth + above;
         if (totalRise <= kMinRise)
         {
-            return; // at (or within the bias of) the top; nothing real occludes
+            return R; // at (or within the bias of) the top; nothing real occludes
         }
 
         // The reach ratio, clamped — see `kMaxReachRatio`. The direction in
@@ -457,47 +462,18 @@ struct HpMaterial : IHpMaterial
             rayUv += stepUv;
         }
 
-        // **The bite is capped by the marched light's share of the incident
-        // light.** Multiplying base colour darkens *every* light's
-        // contribution, but only the dominant light was marched — at full
-        // strength that blacked out faces the fill still reaches, watched
-        // live as the cube rotated. The share is estimated with the same
-        // N·L·intensity products the lighting will compute, so a face the
-        // key barely grazes keeps the fill's portion of its light. The
-        // per-light answer this approximates is T0145/158.3's.
-        float dominantIncident = 0.0;
-        float totalIncident = 0.0;
-        for (int j = 0; j < lightCount; ++j)
-        {
-            float3 towardJ = -normalize(float3(g_Frame.Lights[j].DirectionX,
-                                               g_Frame.Lights[j].DirectionY,
-                                               g_Frame.Lights[j].DirectionZ));
-            float incident = dot(float3(g_Frame.Lights[j].IntensityR,
-                                        g_Frame.Lights[j].IntensityG,
-                                        g_Frame.Lights[j].IntensityB),
-                                 float3(0.2126, 0.7152, 0.0722)) *
-                             saturate(dot(Out.Normal, towardJ));
-            totalIncident += incident;
-            if (j == dominant)
-            {
-                dominantIncident = incident;
-            }
-        }
-        float share = totalIncident > 1e-6 ? dominantIncident / totalIncident : 0.0;
-
         // The horizon fade — smooth toward `lightTS.z == 0`, so the
         // terminator moves rather than pops (158.5).
         float fade = smoothstep(0.0, kHorizonFade, lightTS.z);
 
-        // Applied to base colour: with no ambient or IBL in this engine yet
-        // (T0087), diffuse is the only large term, and `Occlusion` would not
-        // reach the punctual lights at all. Dielectric specular (F0 0.04)
-        // stays — visible as a faint sheen inside shadowed crevices, which is
-        // physically defensible and cheap.
-        float term = 1.0 -
-                     saturate(shadow * kShadowHardness) * kShadowStrength * share * fade;
-        Out.BaseColor.rgb *= term;
-#endif
+        // **Applied to this light's radiance, which is what makes the term
+        // exact.** Occluding a light removes its diffuse *and* its specular,
+        // so scaling `Intensity` is the physically right place — where the old
+        // base-colour multiply left a dielectric sheen inside crevices the
+        // light never reached, and dimmed the fill that was never marched.
+        float term = 1.0 - saturate(shadow * kShadowHardness) * kShadowStrength * fade;
+        R.Intensity *= term;
+        return R;
     }
 #endif
 }
