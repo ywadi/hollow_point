@@ -1030,7 +1030,18 @@ where T0060's per-entity overrides and T0045's sorting have to live anyway.
 - **Extended materials** — clearcoat, sheen, anisotropy, iridescence,
   transmission, volume. Each widens the PSO permutation space and the material
   attribs buffer **whether or not any material uses it**. Off until a ticket asks
-  by name.
+  by name. *(Amended 2026-08-07 by **T0143**, which is the ticket that asked by
+  name — the owner's requirement was "what they have ++, not less". All six are
+  on, and the cost this bullet feared was made per-material instead of global:
+  `extendedMaterialFlags` raises a feature's PSO bits only for a material whose
+  data carries it, so a material using none keys its pre-T0143 pipeline and the
+  suite's frame-byte-identity guards held unchanged. What stayed true from the
+  original entry: the signature superset is paid engine-wide — 8 → 19 sampled
+  images, 13 → 19 immutable samplers, measured and pinned — and the sheen LUT
+  is embedded from the pinned submodule because upstream ships it only as a
+  sample asset. The volume family is wired and debug-visible but shades
+  nothing until T0087's image-based refraction, stated on the ticket rather
+  than papered over.)*
 - **OIT** — order-independent transparency is a transparency *design*, not a
   flag, and nothing has designed transparency.
 - **An abstraction over the renderer** — **D22**. One implementation, so an

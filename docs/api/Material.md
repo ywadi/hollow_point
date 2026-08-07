@@ -117,7 +117,7 @@ struct AssetTraits
 ## `kMaterialSchemaVersion`
 
 ```cpp
-inline constexpr std :: uint32_t kMaterialSchemaVersion = 2
+inline constexpr std :: uint32_t kMaterialSchemaVersion = 3
 ```
 
  The schema version written into a `.hpmat` document.
@@ -131,6 +131,12 @@ inline constexpr std :: uint32_t kMaterialSchemaVersion = 2
  absent from them — and the bump is the signal in the other direction: a
  build that predates this refuses a document that might carry parameters it
  would drop on the next save.
+
+ **3 since T0143**, which added the extended material features — clearcoat,
+ sheen, anisotropy, iridescence, transmission and volume, factors and
+ textures both. Same shape as the 2 bump: version-2 documents load
+ unchanged, and a pre-T0143 build refuses a document whose clearcoat it
+ would silently drop on the next save.
 
 ## `kMaterialExtension`
 

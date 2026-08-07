@@ -14,6 +14,11 @@
 #include <GraphicsTypesX.hpp>
 #include <RenderDevice.h>
 #include <ShaderSourceFactoryUtils.h>
+#include <TextureLoader.h>
+
+// The sheen albedo-scaling LUT, embedded from the pinned submodule at build
+// time (T0143) -- see `cmake/hp_embed_binary.cmake` for why it is not a file.
+#include <hp/SheenAlbedoScalingLut.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -348,6 +353,48 @@ SurfacePipeline::SurfacePipeline(Diligent::IRenderDevice* device,
     // and the engine's resources would silently not join the signature. This
     // is the pattern the flag exists for.
     : Diligent::PBR_Renderer(device, cache, context, info, /*InitSignature = */ false) {
+    // **The sheen albedo-scaling LUT, from the embedded bytes** (T0143.1).
+    // `EnableSheen` makes the base class declare `g_SheenAlbedoScalingLUT` in
+    // the signature and set it from `m_pSheenAlbedoScaling_LUT_SRV` -- but its
+    // only way of *filling* that member is `CreateTextureFromFile` on a native
+    // path this engine deliberately does not have (D13; the data ships as a
+    // GLTFViewer sample asset). So the member is filled here instead, before
+    // `CreateSignature()` runs the base's static-variable binding, from bytes
+    // embedded out of the same pinned submodule -- decoded by the importer's
+    // own `CreateTextureLoaderFromMemory`, R8 exactly as upstream loads it.
+    //
+    // One landmine recorded rather than fixed: a Diligent build with
+    // `DILIGENT_DEBUG` would hit the base constructor's UNEXPECTED("path is
+    // not specified") before this line runs. This tree pins release Diligent
+    // on every configuration; if a debug third-party config is ever added,
+    // this is the assert it will trip, and the fix is upstreaming an SRV
+    // field on `CreateInfo` beside the path.
+    if (GetSettings().EnableSheen && !m_pSheenAlbedoScaling_LUT_SRV) {
+        Diligent::TextureLoadInfo loadInfo{"hp sheen albedo scaling LUT"};
+        loadInfo.Format = Diligent::TEX_FORMAT_R8_UNORM;
+        Diligent::RefCntAutoPtr<Diligent::ITextureLoader> loader;
+        Diligent::CreateTextureLoaderFromMemory(hp::embedded::kSheenAlbedoScalingLutJpg,
+                                                hp::embedded::kSheenAlbedoScalingLutJpgSize,
+                                                /*MakeDataCopy=*/false, loadInfo, &loader);
+        Diligent::RefCntAutoPtr<Diligent::ITexture> lut;
+        if (loader) {
+            loader->CreateTexture(device, &lut);
+        }
+        if (lut) {
+            m_pSheenAlbedoScaling_LUT_SRV =
+                lut->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+            const Diligent::StateTransitionDesc barrier{
+                lut, Diligent::RESOURCE_STATE_UNKNOWN, Diligent::RESOURCE_STATE_SHADER_RESOURCE,
+                Diligent::STATE_TRANSITION_FLAG_UPDATE_STATE};
+            context->TransitionResourceStates(1, &barrier);
+        } else {
+            // Loud, once, at the only moment it can be diagnosed. The failure
+            // downstream would be Diligent refusing SRB commits against an
+            // unbound static variable -- far from the cause.
+            HP_LOG_ERROR(kLog, "the embedded sheen albedo-scaling LUT did not decode; "
+                               "sheen materials will fail to bind");
+        }
+    }
     CreateSignature();
 
     // Every name the engine's signatures own, for the subtraction that
@@ -532,6 +579,20 @@ void SurfacePipeline::configure(CreateInfo& info) {
     // having built it.
     info.EnableAO = true;
     info.EnableEmissive = true;
+    // **The six extended features, on** (T0143.1, amending D24). Each setting
+    // builds its signature slots and defaults; whether a *pipeline* pays for a
+    // feature stays per material -- `SceneRenderer::extendedMaterialFlags`
+    // raises the ENABLE/USE bits only for a material that carries the data, so
+    // a material using none of them keys the exact PSO it did before these
+    // were true. The three-switch rule (the ticket's own finding): the setting
+    // here, the PSO flag per material, and the `TextureAttribIndices` mapping
+    // below must all exist or the feature silently is not there.
+    info.EnableClearCoat = true;
+    info.EnableSheen = true;
+    info.EnableAnisotropy = true;
+    info.EnableIridescence = true;
+    info.EnableTransmission = true;
+    info.EnableVolume = true;
     info.EnableShadows = false;
     // **Sizes the frame attributes buffer**, which is
     // `CameraAttribs * 2 + renderer params + PBRLightAttribs * MaxLightCount`.
@@ -590,11 +651,11 @@ void SurfacePipeline::configure(CreateInfo& info) {
     // so the mapping stays correct by construction if `DefaultTextureAttributes`
     // is ever reordered.
     //
-    // **Only the five glTF core textures are mapped.** The rest stay -1 on
-    // purpose: D24 keeps clearcoat, sheen, anisotropy, iridescence, transmission
-    // and volume off, so a mapping for them would claim support that the
-    // pipeline flags, the signature and the shader all lack. Whichever ticket
-    // turns one on adds its line here.
+    // **All fifteen texture slots are mapped** (T0143.2). Until T0143 only the
+    // five glTF core textures were, and the rest stayed -1 -- which every
+    // reader treats as "this renderer does not use that texture" and none of
+    // them logs. The constants are the loader's own, so the mapping stays
+    // correct by construction if `DefaultTextureAttributes` is ever reordered.
     auto& textureSlots = info.TextureAttribIndices;
     textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_BASE_COLOR] =
         Diligent::GLTF::DefaultBaseColorTextureAttribId;
@@ -609,6 +670,29 @@ void SurfacePipeline::configure(CreateInfo& info) {
         Diligent::GLTF::DefaultOcclusionTextureAttribId;
     textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_EMISSIVE] =
         Diligent::GLTF::DefaultEmissiveTextureAttribId;
+    // The extended features' ten (T0143.2), in the loader's own vocabulary --
+    // this is the third of the three switches, and the one whose absence
+    // surfaces only as a shader that will not compile.
+    textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_CLEAR_COAT] =
+        Diligent::GLTF::DefaultClearcoatTextureAttribId;
+    textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_CLEAR_COAT_ROUGHNESS] =
+        Diligent::GLTF::DefaultClearcoatRoughnessTextureAttribId;
+    textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_CLEAR_COAT_NORMAL] =
+        Diligent::GLTF::DefaultClearcoatNormalTextureAttribId;
+    textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_SHEEN_COLOR] =
+        Diligent::GLTF::DefaultSheenColorTextureAttribId;
+    textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_SHEEN_ROUGHNESS] =
+        Diligent::GLTF::DefaultSheenRoughnessTextureAttribId;
+    textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_ANISOTROPY] =
+        Diligent::GLTF::DefaultAnisotropyTextureAttribId;
+    textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_IRIDESCENCE] =
+        Diligent::GLTF::DefaultIridescenceTextureAttribId;
+    textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_IRIDESCENCE_THICKNESS] =
+        Diligent::GLTF::DefaultIridescenceThicknessTextureAttribId;
+    textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_TRANSMISSION] =
+        Diligent::GLTF::DefaultTransmissionTextureAttribId;
+    textureSlots[Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_THICKNESS] =
+        Diligent::GLTF::DefaultThicknessTextureAttribId;
     // **The engine is row-major and the shaders must be told so.**
     // `hp::float4x4` is Diligent's, documented in `hp/Math.hpp` as row-major and
     // multiplied left to right (`World * View * Proj`) -- and `PBR_Renderer`

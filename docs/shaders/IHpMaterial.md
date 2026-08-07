@@ -4,7 +4,7 @@
 
 **Exported from an implementation file.** `engine/shaders/HpSurface.slang` is the engine's own shader and is *not* contract — nothing else in it may be relied on. `IHpMaterial` is marked `hp-shader-doc: export` because it is what a game implements, and it lives there because its default implementations *are* the standard material.
 
-1 declaration(s), 11 member(s), all documented.
+1 declaration(s), 21 member(s), all documented.
 
 ## `IHpMaterial`
 
@@ -181,6 +181,119 @@ under a mirrored node -- a negative-determinant transform -- the
 engine has already folded the determinant sign in, so `true` always
 means the authored front of the surface and a material never needs to
 know whether the node it is drawn under is mirrored.
+
+### `IHpMaterial::clearcoat`
+
+```hlsl
+[mutating] float clearcoat(VSOutput VSOut, HpSurfaceInput In) { ... }
+```
+
+*Has a default implementation — a material that does not override it gets the standard material's behaviour.*
+
+Clearcoat layer strength. Default: the map times the material factor.
+
+### `IHpMaterial::clearcoatRoughness`
+
+```hlsl
+[mutating] float clearcoatRoughness(VSOutput VSOut, HpSurfaceInput In) { ... }
+```
+
+*Has a default implementation — a material that does not override it gets the standard material's behaviour.*
+
+The coat's own perceptual roughness.
+
+### `IHpMaterial::clearcoatNormal`
+
+```hlsl
+[mutating] float3 clearcoatNormal(VSOutput VSOut, HpSurfaceInput In, float3 geometricNormal, bool isFrontFace) { ... }
+```
+
+*Has a default implementation — a material that does not override it gets the standard material's behaviour.*
+
+The coat's world-space normal. Default mirrors `RenderPBR.psh`'s rule
+(`ReadClearcoatLayerProperties`): the *geometric* normal unless the
+material carries a clearcoat normal map -- the base material's normal
+map is deliberately **not** inherited by the coat, per upstream and per
+the glTF extension.
+
+`isFrontFace` is glTF facing, exactly as `shadingNormal` receives it.
+
+### `IHpMaterial::sheenColor`
+
+```hlsl
+[mutating] float3 sheenColor(VSOutput VSOut, HpSurfaceInput In) { ... }
+```
+
+*Has a default implementation — a material that does not override it gets the standard material's behaviour.*
+
+Sheen colour, linear RGB. Black -- the default in a permutation
+without sheen -- is "no sheen".
+
+### `IHpMaterial::sheenRoughness`
+
+```hlsl
+[mutating] float sheenRoughness(VSOutput VSOut, HpSurfaceInput In) { ... }
+```
+
+*Has a default implementation — a material that does not override it gets the standard material's behaviour.*
+
+Sheen roughness.
+
+### `IHpMaterial::anisotropy`
+
+```hlsl
+[mutating] float3 anisotropy(VSOutput VSOut, HpSurfaceInput In) { ... }
+```
+
+*Has a default implementation — a material that does not override it gets the standard material's behaviour.*
+
+Anisotropy, **packed as upstream's getter packs it**: `xy` the
+tangent-space direction in [-1, 1] *before* the material's authored
+rotation, `z` the strength times the material factor. The engine
+applies the rotation and splits the pack into
+`HpSurfaceOutput::Anisotropy` / `AnisotropyDirection`.
+
+### `IHpMaterial::iridescence`
+
+```hlsl
+[mutating] float iridescence(VSOutput VSOut, HpSurfaceInput In) { ... }
+```
+
+*Has a default implementation — a material that does not override it gets the standard material's behaviour.*
+
+Thin-film iridescence factor.
+
+### `IHpMaterial::iridescenceThickness`
+
+```hlsl
+[mutating] float iridescenceThickness(VSOutput VSOut, HpSurfaceInput In) { ... }
+```
+
+*Has a default implementation — a material that does not override it gets the standard material's behaviour.*
+
+Thin-film thickness, nanometres -- the map lerps between the
+material's authored minimum and maximum.
+
+### `IHpMaterial::transmission`
+
+```hlsl
+[mutating] float transmission(VSOutput VSOut, HpSurfaceInput In) { ... }
+```
+
+*Has a default implementation — a material that does not override it gets the standard material's behaviour.*
+
+Transmission factor.
+
+### `IHpMaterial::thickness`
+
+```hlsl
+[mutating] float thickness(VSOutput VSOut, HpSurfaceInput In) { ... }
+```
+
+*Has a default implementation — a material that does not override it gets the standard material's behaviour.*
+
+Volume thickness, metres. Carried to `HpShadedSurface::Thickness`;
+shades nothing until T0087's image-based refraction exists.
 
 ### `IHpMaterial::surface`
 

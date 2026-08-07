@@ -25,8 +25,10 @@
 #include <PBR_Renderer.hpp>
 
 #include <array>
+#include <cfloat>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -98,6 +100,26 @@ constexpr Diligent::PBR_Renderer::PSO_FLAGS kFeatureMask =
         // flag; without it the attribs are written and silently ignored. Set
         // per material, only when a transform is not the identity.
         Diligent::PBR_Renderer::PSO_FLAG_ENABLE_TEXCOORD_TRANSFORM |
+        // The six extended features and their ten maps (T0143, amending D24).
+        // Raised per material by `extendedMaterialFlags` below -- the mask
+        // only permits them; a material carrying none of the data keys the
+        // same PSO it did before T0143.
+        Diligent::PBR_Renderer::PSO_FLAG_ENABLE_CLEAR_COAT |
+        Diligent::PBR_Renderer::PSO_FLAG_USE_CLEAR_COAT_MAP |
+        Diligent::PBR_Renderer::PSO_FLAG_USE_CLEAR_COAT_ROUGHNESS_MAP |
+        Diligent::PBR_Renderer::PSO_FLAG_USE_CLEAR_COAT_NORMAL_MAP |
+        Diligent::PBR_Renderer::PSO_FLAG_ENABLE_SHEEN |
+        Diligent::PBR_Renderer::PSO_FLAG_USE_SHEEN_COLOR_MAP |
+        Diligent::PBR_Renderer::PSO_FLAG_USE_SHEEN_ROUGHNESS_MAP |
+        Diligent::PBR_Renderer::PSO_FLAG_ENABLE_ANISOTROPY |
+        Diligent::PBR_Renderer::PSO_FLAG_USE_ANISOTROPY_MAP |
+        Diligent::PBR_Renderer::PSO_FLAG_ENABLE_IRIDESCENCE |
+        Diligent::PBR_Renderer::PSO_FLAG_USE_IRIDESCENCE_MAP |
+        Diligent::PBR_Renderer::PSO_FLAG_USE_IRIDESCENCE_THICKNESS_MAP |
+        Diligent::PBR_Renderer::PSO_FLAG_ENABLE_TRANSMISSION |
+        Diligent::PBR_Renderer::PSO_FLAG_USE_TRANSMISSION_MAP |
+        Diligent::PBR_Renderer::PSO_FLAG_ENABLE_VOLUME |
+        Diligent::PBR_Renderer::PSO_FLAG_USE_THICKNESS_MAP |
         // The engine's unshaded permutation (T0141.12/141.15) -- the
         // missing-material fallback and `Material::unlit` both need pixels
         // scene lights cannot dim.
@@ -106,6 +128,52 @@ constexpr Diligent::PBR_Renderer::PSO_FLAGS kFeatureMask =
         SurfacePipeline::kPsoFlagHeightMap |
         // World-space triplanar projection (T0141.8).
         SurfacePipeline::kPsoFlagTriplanar);
+
+/// The PSO bits one material's extended features ask for (T0143.1).
+///
+/// **The inlined `GetMaterialPSOFlags`, extended half** -- the derived-class
+/// helper D26 stopped using consults `Mat.HasClearcoat`, `Mat.Sheen` and
+/// friends exactly like this (`GLTF_PBR_Renderer.cpp:447-489`), and mirrors
+/// its choice of raising the USE bits *with* the feature rather than per
+/// texture: an absent map's UV selector stays -1, which `SampleTexture`
+/// answers with the default value, so the permutation space stays one bit per
+/// feature rather than one per map.
+///
+/// A material with none of the data returns `PSO_FLAG_NONE`, which is what
+/// keeps every pre-T0143 pipeline key -- and its cached, byte-identical
+/// SPIR-V -- exactly as it was.
+Diligent::PBR_Renderer::PSO_FLAGS extendedMaterialFlags(const Diligent::GLTF::Material& mat) {
+    Diligent::PBR_Renderer::PSO_FLAGS flags = Diligent::PBR_Renderer::PSO_FLAG_NONE;
+    if (mat.HasClearcoat) {
+        flags |= Diligent::PBR_Renderer::PSO_FLAG_ENABLE_CLEAR_COAT |
+                 Diligent::PBR_Renderer::PSO_FLAG_USE_CLEAR_COAT_MAP |
+                 Diligent::PBR_Renderer::PSO_FLAG_USE_CLEAR_COAT_ROUGHNESS_MAP |
+                 Diligent::PBR_Renderer::PSO_FLAG_USE_CLEAR_COAT_NORMAL_MAP;
+    }
+    if (mat.Sheen) {
+        flags |= Diligent::PBR_Renderer::PSO_FLAG_ENABLE_SHEEN |
+                 Diligent::PBR_Renderer::PSO_FLAG_USE_SHEEN_COLOR_MAP |
+                 Diligent::PBR_Renderer::PSO_FLAG_USE_SHEEN_ROUGHNESS_MAP;
+    }
+    if (mat.Anisotropy) {
+        flags |= Diligent::PBR_Renderer::PSO_FLAG_ENABLE_ANISOTROPY |
+                 Diligent::PBR_Renderer::PSO_FLAG_USE_ANISOTROPY_MAP;
+    }
+    if (mat.Iridescence) {
+        flags |= Diligent::PBR_Renderer::PSO_FLAG_ENABLE_IRIDESCENCE |
+                 Diligent::PBR_Renderer::PSO_FLAG_USE_IRIDESCENCE_MAP |
+                 Diligent::PBR_Renderer::PSO_FLAG_USE_IRIDESCENCE_THICKNESS_MAP;
+    }
+    if (mat.Transmission) {
+        flags |= Diligent::PBR_Renderer::PSO_FLAG_ENABLE_TRANSMISSION |
+                 Diligent::PBR_Renderer::PSO_FLAG_USE_TRANSMISSION_MAP;
+    }
+    if (mat.Volume) {
+        flags |= Diligent::PBR_Renderer::PSO_FLAG_ENABLE_VOLUME |
+                 Diligent::PBR_Renderer::PSO_FLAG_USE_THICKNESS_MAP;
+    }
+    return flags;
+}
 
 /// Features the engine **turns on**, as opposed to what the mask above permits.
 ///
@@ -130,7 +198,8 @@ constexpr Diligent::PBR_Renderer::PSO_FLAGS kEnabledFeatures =
 // and reimplementing its packing is how a layout drifts silently (D24). The
 // conversion below is the whole translation, in one place.
 
-/// The five texture slots a material asset carries, in renderer terms.
+/// The fifteen texture slots a material asset carries, in renderer terms
+/// (five core since T0060, ten extended since T0143).
 struct MaterialTextureSlot {
     /// Which renderer slot this feeds.
     Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID slot;
@@ -148,7 +217,7 @@ struct MaterialTextureSlot {
 
 /// The material's slots, in one place so conversion and binding cannot
 /// disagree about which GUID feeds which slot.
-std::array<MaterialTextureSlot, 5> materialTextureSlots(const Material& material) {
+std::array<MaterialTextureSlot, 15> materialTextureSlots(const Material& material) {
     return {{
         {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_BASE_COLOR,
          Diligent::GLTF::DefaultBaseColorTextureAttribId, material.baseColourTexture,
@@ -165,6 +234,37 @@ std::array<MaterialTextureSlot, 5> materialTextureSlots(const Material& material
         {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_EMISSIVE,
          Diligent::GLTF::DefaultEmissiveTextureAttribId, material.emissiveTexture,
          material.emissiveUv},
+        // The extended features' ten (T0143), same shape.
+        {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_CLEAR_COAT,
+         Diligent::GLTF::DefaultClearcoatTextureAttribId, material.clearcoatTexture,
+         material.clearcoatUv},
+        {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_CLEAR_COAT_ROUGHNESS,
+         Diligent::GLTF::DefaultClearcoatRoughnessTextureAttribId,
+         material.clearcoatRoughnessTexture, material.clearcoatRoughnessUv},
+        {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_CLEAR_COAT_NORMAL,
+         Diligent::GLTF::DefaultClearcoatNormalTextureAttribId, material.clearcoatNormalTexture,
+         material.clearcoatNormalUv},
+        {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_SHEEN_COLOR,
+         Diligent::GLTF::DefaultSheenColorTextureAttribId, material.sheenColourTexture,
+         material.sheenColourUv},
+        {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_SHEEN_ROUGHNESS,
+         Diligent::GLTF::DefaultSheenRoughnessTextureAttribId, material.sheenRoughnessTexture,
+         material.sheenRoughnessUv},
+        {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_ANISOTROPY,
+         Diligent::GLTF::DefaultAnisotropyTextureAttribId, material.anisotropyTexture,
+         material.anisotropyUv},
+        {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_IRIDESCENCE,
+         Diligent::GLTF::DefaultIridescenceTextureAttribId, material.iridescenceTexture,
+         material.iridescenceUv},
+        {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_IRIDESCENCE_THICKNESS,
+         Diligent::GLTF::DefaultIridescenceThicknessTextureAttribId,
+         material.iridescenceThicknessTexture, material.iridescenceThicknessUv},
+        {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_TRANSMISSION,
+         Diligent::GLTF::DefaultTransmissionTextureAttribId, material.transmissionTexture,
+         material.transmissionUv},
+        {Diligent::PBR_Renderer::TEXTURE_ATTRIB_ID_THICKNESS,
+         Diligent::GLTF::DefaultThicknessTextureAttribId, material.thicknessTexture,
+         material.thicknessUv},
     }};
 }
 
@@ -235,6 +335,58 @@ Diligent::GLTF::Material toGltfMaterial(const Material& material, bool placehold
     // `HP_TRIPLANAR`).
     basic.CustomData.x = material.heightScale;
     basic.CustomData.y = material.triplanarScale;
+
+    // -----------------------------------------------------------------------
+    // The extended features (T0143). **A feature is in use when its factor is
+    // non-zero or it names a texture, and only then is its block allocated**
+    // -- `extendedMaterialFlags` keys the PSO bits off these blocks'
+    // presence, so this predicate is precisely what keeps a material using no
+    // feature on its pre-T0143 pipeline, byte for byte. The loader applies
+    // the same rule from the other direction: a glTF without the extension
+    // has no block.
+    // -----------------------------------------------------------------------
+    if (material.clearcoat != 0.0F || material.clearcoatTexture.isValid()) {
+        gltf.HasClearcoat = true;
+        basic.ClearcoatFactor = material.clearcoat;
+        basic.ClearcoatRoughnessFactor = material.clearcoatRoughness;
+        basic.ClearcoatNormalScale = material.clearcoatNormalScale;
+    }
+    if (material.sheenColour.x != 0.0F || material.sheenColour.y != 0.0F ||
+        material.sheenColour.z != 0.0F || material.sheenColourTexture.isValid()) {
+        gltf.Sheen = std::make_unique<Diligent::GLTF::Material::SheenShaderAttribs>();
+        gltf.Sheen->ColorFactor =
+            float3{material.sheenColour.x, material.sheenColour.y, material.sheenColour.z};
+        gltf.Sheen->RoughnessFactor = material.sheenRoughness;
+    }
+    if (material.anisotropyStrength != 0.0F || material.anisotropyTexture.isValid()) {
+        gltf.Anisotropy = std::make_unique<Diligent::GLTF::Material::AnisotropyShaderAttribs>();
+        gltf.Anisotropy->Strength = material.anisotropyStrength;
+        gltf.Anisotropy->Rotation = material.anisotropyRotation;
+    }
+    if (material.iridescence != 0.0F || material.iridescenceTexture.isValid()) {
+        gltf.Iridescence = std::make_unique<Diligent::GLTF::Material::IridescenceShaderAttribs>();
+        gltf.Iridescence->Factor = material.iridescence;
+        gltf.Iridescence->IOR = material.iridescenceIor;
+        gltf.Iridescence->ThicknessMinimum = material.iridescenceThicknessMin;
+        gltf.Iridescence->ThicknessMaximum = material.iridescenceThicknessMax;
+    }
+    if (material.transmission != 0.0F || material.transmissionTexture.isValid()) {
+        gltf.Transmission =
+            std::make_unique<Diligent::GLTF::Material::TransmissionShaderAttribs>();
+        gltf.Transmission->Factor = material.transmission;
+        gltf.Transmission->IOR = material.ior;
+    }
+    if (material.thickness != 0.0F || material.thicknessTexture.isValid()) {
+        gltf.Volume = std::make_unique<Diligent::GLTF::Material::VolumeShaderAttribs>();
+        gltf.Volume->ThicknessFactor = material.thickness;
+        gltf.Volume->AttenuationColor = float3{material.attenuationColour.x,
+                                               material.attenuationColour.y,
+                                               material.attenuationColour.z};
+        // 0 is the engine's "unlimited" (the `Light::range` convention); the
+        // extension spells that +infinity, and its packing expects it.
+        gltf.Volume->AttenuationDistance =
+            material.attenuationDistance == 0.0F ? FLT_MAX : material.attenuationDistance;
+    }
 
     Diligent::GLTF::MaterialBuilder builder{gltf};
     for (const MaterialTextureSlot& slot : materialTextureSlots(material)) {
@@ -1348,14 +1500,12 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
             // than trusted, because a glTF that references an emissive map would
             // otherwise ask for a shader feature nothing here configures.
             // `GetMaterialPSOFlags` lives on `GLTF_PBR_Renderer`, not the base,
-            // so it is inlined here -- and with this `CreateInfo` it collapses
-            // to a constant. Its optional flags are each gated on a setting
-            // (`EnableAO`, `EnableEmissive`, `EnableClearCoat`, sheen,
-            // anisotropy, iridescence, transmission, volume) and every one of
-            // them is off above, so only the three always-on maps survive.
-            // **If any of those settings is ever enabled, this must go back to
-            // consulting the material** -- which is T0134's business, and the
-            // static_assert below is what will make that impossible to forget.
+            // so it is inlined here in two halves: the always-on maps below,
+            // and -- **since T0143 turned the extended settings on, this went
+            // back to consulting the material**, exactly as the pre-T0143
+            // comment here said it must -- `extendedMaterialFlags(*material)`,
+            // which raises the ENABLE/USE bits only for the features whose
+            // data the drawn material actually carries.
             constexpr Diligent::PBR_Renderer::PSO_FLAGS kMaterialFlags =
                 static_cast<Diligent::PBR_Renderer::PSO_FLAGS>(
                     Diligent::PBR_Renderer::PSO_FLAG_USE_COLOR_MAP |
@@ -1369,7 +1519,9 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                     Diligent::PBR_Renderer::PSO_FLAG_USE_AO_MAP |
                     Diligent::PBR_Renderer::PSO_FLAG_USE_EMISSIVE_MAP);
             Diligent::PBR_Renderer::PSO_FLAGS flags =
-                (vertexFlags | kMaterialFlags | kEnabledFeatures | extraFlags) & kFeatureMask;
+                (vertexFlags | kMaterialFlags | extendedMaterialFlags(*material) |
+                 kEnabledFeatures | extraFlags) &
+                kFeatureMask;
             if ((flags & Diligent::PBR_Renderer::PSO_FLAG_USE_TEXCOORD0) == 0 &&
                 (flags & SurfacePipeline::kPsoFlagTriplanar) == 0) {
                 // UV-mapped parallax displaces texture coordinates, so a mesh
@@ -1433,7 +1585,8 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                     customModule = nullptr;
                     authored = nullptr;
                     customBinding = nullptr;
-                    flags = (vertexFlags | kMaterialFlags | kEnabledFeatures | extraFlags) &
+                    flags = (vertexFlags | kMaterialFlags | extendedMaterialFlags(*material) |
+                             kEnabledFeatures | extraFlags) &
                             kFeatureMask;
                     if ((flags & Diligent::PBR_Renderer::PSO_FLAG_USE_TEXCOORD0) == 0 &&
                         (flags & SurfacePipeline::kPsoFlagTriplanar) == 0) {

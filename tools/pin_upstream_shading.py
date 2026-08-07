@@ -55,13 +55,35 @@ SHADERS = REPO / "third_party" / "DiligentEngine" / "DiligentFX" / "Shaders"
 PIN = REPO / "tests" / "fixtures" / "upstream_shading.pinned"
 
 # (relative path under DiligentFX/Shaders, function, why it is pinned)
+#
+# T0143 widened the mirror: the sheen and clearcoat blocks of
+# `ApplyPunctualLight` and the layered `ResolveLighting` were already inside
+# functions pinned whole, and the surface-fill derivations
+# (`Read*Properties`, `GetSurfaceShadingInfo`'s iridescence F0 lerp and
+# transmission read) joined the copy in `HpSurface.slang`'s `evaluateSurface`,
+# so they are pinned beside them. `ApplyDirectionalLightSheen`,
+# `ApplyDirectionalLightGGX`, `GetSurfaceReflectanceClearCoat`,
+# `SchlickReflection` and `EvalIridescence` are *called*, not copied, so per
+# the rule above they stay unpinned. `SmithGGX_BRDF_Anisotropic` is published
+# the same way `SmithGGX_BRDF` is: it fills `HpLightResponse` when a material
+# carries anisotropy, so its `NdotL` is part of the documented contract.
 PINNED = [
     ("PBR/public/PBR_Shading.fxh", "ApplyPunctualLight", "copied"),
     ("PBR/public/PBR_Shading.fxh", "GetBaseLayerIBL", "copied"),
     ("PBR/public/PBR_Shading.fxh", "GetBaseLayerLighting", "copied"),
+    ("PBR/public/PBR_Shading.fxh", "GetSheenIBL", "copied"),
+    ("PBR/public/PBR_Shading.fxh", "GetSheenLighting", "copied"),
+    ("PBR/public/PBR_Shading.fxh", "GetClearcoatIBL", "copied"),
+    ("PBR/public/PBR_Shading.fxh", "GetClearcoatLighting", "copied"),
     ("PBR/public/PBR_Shading.fxh", "ResolveLighting", "copied"),
+    ("PBR/private/RenderPBR.psh", "ReadClearcoatLayerProperties", "copied"),
+    ("PBR/private/RenderPBR.psh", "ReadSheenLayerProperties", "copied"),
+    ("PBR/private/RenderPBR.psh", "ReadAnisotropyProperties", "copied"),
+    ("PBR/private/RenderPBR.psh", "ReadIridescenceProperties", "copied"),
+    ("PBR/private/RenderPBR.psh", "GetSurfaceShadingInfo", "copied"),
     ("Common/public/PBR_Common.fxh", "GetAngularInfo", "published"),
     ("Common/public/PBR_Common.fxh", "SmithGGX_BRDF", "published"),
+    ("Common/public/PBR_Common.fxh", "SmithGGX_BRDF_Anisotropic", "published"),
 ]
 
 MARKER = "### hp-pin:"

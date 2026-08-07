@@ -40,7 +40,7 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 
 | Page | Source | Declarations |
 |---|---|---|
-| [`Engine functions`](engine-functions.md) | `engine/shaders/HpSurface.slang` | 8 |
+| [`Engine functions`](engine-functions.md) | `engine/shaders/HpSurface.slang` | 9 |
 | [`HpMaterial`](HpMaterial.md) | `engine/shaders/HpMaterial.slang` | 25 |
 | [`IHpMaterial`](IHpMaterial.md) | `engine/shaders/HpSurface.slang` | 1 |
 
@@ -55,6 +55,7 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | `HpLightCount` | function | [`Engine functions`](engine-functions.md) |
 | `HpGetLight` | function | [`Engine functions`](engine-functions.md) |
 | `HpStandardLight` | function | [`Engine functions`](engine-functions.md) |
+| `HpResolveLighting` | function | [`Engine functions`](engine-functions.md) |
 | `HpResolveLighting` | function | [`Engine functions`](engine-functions.md) |
 | `HP_UNSHADED` | macro | [`HpMaterial`](HpMaterial.md) |
 | `HpRangeAttribute` | struct | [`HpMaterial`](HpMaterial.md) |
@@ -123,6 +124,17 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | `HpSurfaceOutput::Roughness` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceOutput::Emissive` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceOutput::Occlusion` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceOutput::Clearcoat` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceOutput::ClearcoatRoughness` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceOutput::ClearcoatNormal` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceOutput::SheenColor` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceOutput::SheenRoughness` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceOutput::Anisotropy` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceOutput::AnisotropyDirection` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceOutput::Iridescence` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceOutput::IridescenceThickness` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceOutput::Transmission` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceOutput::Thickness` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpLight` | struct | [`HpMaterial`](HpMaterial.md) |
 | `HpLight::Type` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpLight::Index` | field | [`HpMaterial`](HpMaterial.md) |
@@ -148,6 +160,21 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | `HpShadedSurface::Reflectance90` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpShadedSurface::Emissive` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpShadedSurface::Occlusion` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::Clearcoat` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::ClearcoatRoughness` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::ClearcoatNormal` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::ClearcoatReflectance0` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::SheenColor` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::SheenRoughness` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::Anisotropy` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::AnisotropyTangent` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::AnisotropyBitangent` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::AlphaRoughnessT` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::AlphaRoughnessB` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::Iridescence` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::IridescenceThickness` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::Transmission` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::Thickness` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpLightResponse` | struct | [`HpMaterial`](HpMaterial.md) |
 | `HpLightResponse::Diffuse` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpLightResponse::Specular` | field | [`HpMaterial`](HpMaterial.md) |
@@ -161,6 +188,16 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | `IHpMaterial::occlusion` | method | [`IHpMaterial`](IHpMaterial.md) |
 | `IHpMaterial::emissive` | method | [`IHpMaterial`](IHpMaterial.md) |
 | `IHpMaterial::shadingNormal` | method | [`IHpMaterial`](IHpMaterial.md) |
+| `IHpMaterial::clearcoat` | method | [`IHpMaterial`](IHpMaterial.md) |
+| `IHpMaterial::clearcoatRoughness` | method | [`IHpMaterial`](IHpMaterial.md) |
+| `IHpMaterial::clearcoatNormal` | method | [`IHpMaterial`](IHpMaterial.md) |
+| `IHpMaterial::sheenColor` | method | [`IHpMaterial`](IHpMaterial.md) |
+| `IHpMaterial::sheenRoughness` | method | [`IHpMaterial`](IHpMaterial.md) |
+| `IHpMaterial::anisotropy` | method | [`IHpMaterial`](IHpMaterial.md) |
+| `IHpMaterial::iridescence` | method | [`IHpMaterial`](IHpMaterial.md) |
+| `IHpMaterial::iridescenceThickness` | method | [`IHpMaterial`](IHpMaterial.md) |
+| `IHpMaterial::transmission` | method | [`IHpMaterial`](IHpMaterial.md) |
+| `IHpMaterial::thickness` | method | [`IHpMaterial`](IHpMaterial.md) |
 | `IHpMaterial::surface` | method | [`IHpMaterial`](IHpMaterial.md) |
 | `IHpMaterial::unshaded` | method | [`IHpMaterial`](IHpMaterial.md) |
 | `IHpMaterial::light` | method | [`IHpMaterial`](IHpMaterial.md) |

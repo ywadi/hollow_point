@@ -88,6 +88,17 @@ enum class SurfaceDebugView
 | `Roughness` | 8 |
 | `MeshNormal` | 12 |
 | `ShadingNormal` | 13 |
+| `ClearCoatFactor` | 21 |
+| `ClearCoatRoughness` | 22 |
+| `ClearCoatNormal` | 23 |
+| `SheenColor` | 25 |
+| `SheenRoughness` | 26 |
+| `AnisotropyStrength` | 27 |
+| `AnisotropyDirection` | 28 |
+| `IridescenceFactor` | 30 |
+| `IridescenceThickness` | 31 |
+| `Transmission` | 32 |
+| `Thickness` | 33 |
 
  What a view draws instead of the shaded image (T0141).
 

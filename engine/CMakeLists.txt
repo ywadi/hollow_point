@@ -103,6 +103,32 @@ add_custom_command(
 
 add_custom_target(hp_engine_shaders DEPENDS "${HP_ENGINE_SHADERS_HEADER}")
 
+# --- the sheen albedo-scaling LUT (T0143) ------------------------------------
+#
+# DiligentFX's `EnableSheen` binds `g_SheenAlbedoScalingLUT`, and upstream ships
+# the data only as a GLTFViewer sample asset loaded from a native file path.
+# The bytes are embedded from the pinned submodule instead -- same rationale
+# and same drift-proofing as `HLSLDefinitions.fxh` above. `SurfacePipeline`
+# decodes them with the same `CreateTextureLoaderFromMemory` the asset importer
+# uses, so no new decode path exists either.
+set(HP_SHEEN_LUT_HEADER "${CMAKE_BINARY_DIR}/generated/hp/SheenAlbedoScalingLut.h")
+set(_hp_sheen_lut_source
+    "${CMAKE_SOURCE_DIR}/third_party/DiligentEngine/DiligentSamples/Samples/GLTFViewer/assets/textures/sheen_albedo_scaling.jpg")
+
+add_custom_command(
+    OUTPUT "${HP_SHEEN_LUT_HEADER}"
+    COMMAND "${CMAKE_COMMAND}"
+            -DHP_BINARY_INPUT=${_hp_sheen_lut_source}
+            -DHP_BINARY_OUTPUT=${HP_SHEEN_LUT_HEADER}
+            -DHP_BINARY_SYMBOL=kSheenAlbedoScalingLutJpg
+            -P "${CMAKE_SOURCE_DIR}/cmake/hp_embed_binary.cmake"
+    DEPENDS "${_hp_sheen_lut_source}"
+            "${CMAKE_SOURCE_DIR}/cmake/hp_embed_binary.cmake"
+    COMMENT "Embedding the sheen albedo-scaling LUT (T0143)"
+    VERBATIM)
+
+add_custom_target(hp_sheen_lut DEPENDS "${HP_SHEEN_LUT_HEADER}")
+
 add_library(hp_engine SHARED
     src/Module.cpp
     src/ModuleHost.cpp
@@ -155,7 +181,7 @@ target_include_directories(hp_engine PUBLIC
 
 # The generated header is an input to compiling the engine, so say so rather
 # than relying on target ordering.
-add_dependencies(hp_engine hp_build_id hp_engine_shaders)
+add_dependencies(hp_engine hp_build_id hp_engine_shaders hp_sheen_lut)
 
 # PRIVATE: consumers must see the *import* side of HP_API, never the export
 # side. Making this PUBLIC would have every app and module claim to define the

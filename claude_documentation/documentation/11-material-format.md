@@ -205,6 +205,39 @@ neighbour's pixels across the seam.
 A mesh carrying only one UV set makes `uv1` inert: `SelectUV` falls back to
 whichever set exists rather than sampling garbage.
 
+## The extended features (T0143, amending D24)
+
+Everything DiligentFX's PBR can shade is authorable here — the glTF extension
+set, factors and textures both. **A feature is "in use" when its factor is
+non-zero or it names a texture**, and only then does the material pay a PSO
+permutation for it; every key below at its default costs nothing, which is why
+they exist on every material rather than behind a mode switch.
+
+| Key | Default | Meaning |
+|---|---|---|
+| `clearcoat` | `0` | Coat layer strength — `KHR_materials_clearcoat`. A second specular lobe over everything, dimming what is underneath by its Fresnel |
+| `clearcoatRoughness` | `0` | The coat's own roughness, multiplied into `clearcoatRoughnessTexture`'s green channel |
+| `clearcoatNormalScale` | `1` | How strongly `clearcoatNormalTexture` applies. The coat does **not** inherit the base normal map — a coat with no map of its own is smooth, per the extension |
+| `sheenColour` | `[0, 0, 0]` | Sheen colour, linear RGB — `KHR_materials_sheen`. Black is off |
+| `sheenRoughness` | `0` | Multiplied into `sheenRoughnessTexture`'s **alpha** |
+| `anisotropyStrength` | `0` | Highlight stretch — `KHR_materials_anisotropy`. Meshes using it should carry TANGENT attributes |
+| `anisotropyRotation` | `0` | Rotates the stretch direction, radians |
+| `iridescence` | `0` | Thin-film factor — `KHR_materials_iridescence`. Bends the base F0, so it is visible under a plain lamp |
+| `iridescenceIor` | `1.3` | The film's index of refraction — the extension's own default |
+| `iridescenceThicknessMin` / `Max` | `100` / `400` | Film thickness range in **nanometres**; the thickness texture's green channel lerps between them |
+| `transmission` | `0` | `KHR_materials_transmission`. Removes diffuse; on a `Blend` material the scene behind shows through at `1 - transmission` |
+| `ior` | `1.5` | `KHR_materials_ior`. Carried into the material buffer; its consumer is T0087's refraction |
+| `thickness` | `0` | `KHR_materials_volume`, metres. **Wired and debug-visible, shades nothing until T0087** — its consumer is image-based refraction |
+| `attenuationColour` | `[1, 1, 1]` | What colour survives the volume. T0087's consumer, like `thickness` |
+| `attenuationDistance` | `0` | Metres; **0 means unlimited**, the engine's convention, converted to the extension's +infinity on the way to the GPU |
+| `clearcoatTexture` … `thicknessTexture` | unset | The ten extension texture slots, GUIDs like every other slot; each has its `*Uv` selector |
+
+**What each shows without an environment differs, and the shader contract
+states it per field** (`docs/shaders/`): clearcoat, sheen, anisotropy and
+iridescence shape the response to punctual lights; transmission is a
+blend-pass composite; the volume family waits for T0087. The debug views
+(`SurfaceDebugView`, one per channel) are wired for all of them today.
+
 ## `params` and `textures`: the half of a material the engine did not name (T0160, T0161)
 
 Every parameter above is the **engine's**. Its name means the same thing on

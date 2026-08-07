@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 445 |
 | **Created** | 2026-08-06 |
-| **Refs** | [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — its Done-when requires "variant growth bounded by a decision that is written down", and this ticket is where that decision's mechanisms live; 141.3 (the cache) and [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md) 142.6 (the measured 2–4x) / 142.7 (cooking) are the near-term mitigations this composes with; [0143-extended-material-features.md](0143-extended-material-features.md) — 143.8's permutation count is the pressure gauge; [0153-surface-detiling.md](0153-surface-detiling.md) — **153.8 registers three de-tiling tiers as a further axis**, and it is the standing proof that the axis list is open: any bound written here must accommodate axes that do not exist yet; **D28**, **D30**, **D34** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) — **D34 bounds this ticket's output**: whatever mechanism it picks, a shipped game receives per-variant SPIR-V and links no compiler; [../completed/0160-material-declared-parameters.md](../completed/0160-material-declared-parameters.md) — **registers a non-axis** (160.7): declared parameters add no permutation bit, see the note below; **T0146** ([../completed/0146-vertex-stage-hook.md](../completed/0146-vertex-stage-hook.md)) — **two things land here.** (1) The **four fixed `float4` custom interpolators** are always-on for a custom material and their widening/dynamic-count question is this ticket's (D36 records the trigger); a *declared* varying is unreachable because reflection rides the compile. (2) 146.5's measured compile change: two compile requests per pipeline became one, worth 54.22 s → 51.60 s on a cold like-for-like gpu run and 8.12 → 7.46 s on the most-permutations case — a slice of 142.6's 2–4x, so the precompiled-modules question this ticket owns is still open |
+| **Refs** | [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — its Done-when requires "variant growth bounded by a decision that is written down", and this ticket is where that decision's mechanisms live; 141.3 (the cache) and [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md) 142.6 (the measured 2–4x) / 142.7 (cooking) are the near-term mitigations this composes with; [0143-extended-material-features.md](../completed/0143-extended-material-features.md) — 143.8's permutation count is the pressure gauge; [0153-surface-detiling.md](0153-surface-detiling.md) — **153.8 registers three de-tiling tiers as a further axis**, and it is the standing proof that the axis list is open: any bound written here must accommodate axes that do not exist yet; **D28**, **D30**, **D34** ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) — **D34 bounds this ticket's output**: whatever mechanism it picks, a shipped game receives per-variant SPIR-V and links no compiler; [../completed/0160-material-declared-parameters.md](../completed/0160-material-declared-parameters.md) — **registers a non-axis** (160.7): declared parameters add no permutation bit, see the note below; **T0146** ([../completed/0146-vertex-stage-hook.md](../completed/0146-vertex-stage-hook.md)) — **two things land here.** (1) The **four fixed `float4` custom interpolators** are always-on for a custom material and their widening/dynamic-count question is this ticket's (D36 records the trigger); a *declared* varying is unreachable because reflection rides the compile. (2) 146.5's measured compile change: two compile requests per pipeline became one, worth 54.22 s → 51.60 s on a cold like-for-like gpu run and 8.12 → 7.46 s on the most-permutations case — a slice of 142.6's 2–4x, so the precompiled-modules question this ticket owns is still open |
 
 ## Why
 
@@ -109,6 +109,30 @@ whose register pressure is the *maximum* over registered materials.
 - [ ] 151.6 Record the dynamic-dispatch trigger and its bindless prerequisite
 
 ## Notes / findings
+
+### Registered by T0143.8 (2026-08-07): the six feature bits landed, and the multiplier is per-material data, not a matrix
+
+The board's biggest named permutation risk arrived, measured. The six
+`ENABLE_*` bits (plus ten `USE_*_MAP` bits tied to them) are raised **only by
+a material whose data carries the feature** — `extendedMaterialFlags` in
+`SceneRenderer`, keyed off the glTF extension blocks' presence — so the ×64
+worst case exists only if one scene authors every combination. In practice:
+the whole gpu suite gained exactly **6 pixel-shader permutations**, one per
+feature exercised by `extended_material_test`, and a material using no
+feature keys its pre-T0143 pipeline unchanged (the frame-byte-identity guard
+held at 0 differing bytes).
+
+Two costs to carry into the audit:
+
+- **The always-paid SPIR-V growth**: the extended channel hooks compile into
+  *every* permutation as zero-valued calls slang does not fold, and the
+  standard `psMain` family grew from ~20.5–21.1 KB to ~24.5–25.2 KB of
+  SPIR-V. Frame output is pixel-identical — the growth is IR the driver
+  folds — but it is exactly the class of cost 151's link-time-constants
+  probe exists to make provably zero.
+- **The USE bits ride the ENABLE bits** (upstream's own policy, mirrored):
+  a feature's maps do not multiply separately, which keeps ten potential
+  axes down to six.
 
 ### Registered by T0160.7 (2026-08-06): declared material parameters add NO permutation axis
 

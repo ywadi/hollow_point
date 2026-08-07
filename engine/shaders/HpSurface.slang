@@ -265,6 +265,13 @@ float3 HpGetVertexPosition(VSInput VSIn)
 // never been evaluated.
 #include "PBR_Textures.fxh"
 
+// Thin-film interference (T0143). `RenderPBR.psh` includes it under the same
+// guard; `EvalIridescence` is what turns a thickness in nanometres into the
+// Fresnel the base layer's F0 is bent toward.
+#if ENABLE_IRIDESCENCE
+#include "Iridescence.fxh"
+#endif
+
 // ---------------------------------------------------------------------------
 // The engine's screen intermediates (T0147).
 //
@@ -720,10 +727,16 @@ void HpSurface(in HpSurfaceInput In, inout HpSurfaceOutput Out)
 // writes them.
 // ---------------------------------------------------------------------------
 
-#if ENABLE_SHEEN || ENABLE_CLEAR_COAT || ENABLE_ANISOTROPY || ENABLE_IRIDESCENCE || \
-    ENABLE_TRANSMISSION || ENABLE_VOLUME
-#   error "the engine's light loop mirrors only the base layer; T0143 adds the extended layers here (see HpStandardLight)"
-#endif
+// The extended layers (T0143, amending D24) live where T0145's `#error` said
+// they would: anisotropy and transmission inside `HpStandardLight` (they
+// reshape the *base* response), sheen and clearcoat as layer accumulators in
+// the default `lighting()` loop with their resolve in `HpResolveLighting` --
+// each block a mirror of `ApplyPunctualLight`'s / `ResolveLighting`'s, pinned
+// by the same drift guard as the base layer. Iridescence needs no lighting
+// block at all: it bends `Reflectance0` at surface-fill time, exactly as
+// upstream bends the base layer's F0. `ENABLE_VOLUME` deliberately has no
+// term here -- thickness's only consumer is the image-based refraction, so it
+// waits inside the `USE_IBL` seam below (T0087).
 
 #if USE_IBL
 #   error "the engine's lighting stage has no image-based path; T0087 fills the seam in HpResolveLighting"
@@ -907,7 +920,26 @@ HpLightResponse HpStandardLight(HpLight Light, HpShadedSurface Surface)
     float3 diffuse;
     float3 specular;
     float NdotL;
+#if ENABLE_ANISOTROPY
+    // ---- mirrored from `ApplyPunctualLight`, :674-687 (T0143) -------------
+    // The anisotropic GGX replaces the isotropic one for the *base* lobe;
+    // the frame and the two alphas were derived at surface-fill time, from
+    // whatever the surface stage finally said.
+    SmithGGX_BRDF_Anisotropic(Light.ToLight, Surface.Normal, Surface.View,
+                              Surface.AnisotropyTangent, Surface.AnisotropyBitangent, Srf,
+                              Surface.AlphaRoughnessT, Surface.AlphaRoughnessB, diffuse,
+                              specular, NdotL);
+#else
     SmithGGX_BRDF(Light.ToLight, Surface.Normal, Surface.View, Srf, diffuse, specular, NdotL);
+#endif
+
+#if ENABLE_TRANSMISSION
+    // ---- mirrored from :694-698 -------------------------------------------
+    // A transmissive surface's diffuse is what passes *through* rather than
+    // scattering back; the punctual path removes it here and the blend pass
+    // composites the scene behind at `alpha = 1 - Transmission`.
+    diffuse *= 1.0 - Surface.Transmission;
+#endif
 
     HpLightResponse R;
     R.Diffuse = diffuse;
@@ -918,14 +950,68 @@ HpLightResponse HpStandardLight(HpLight Light, HpShadedSurface Surface)
 }
 
 // hp-shader-doc: export
-/// Turns accumulated punctual light into the fragment's colour (T0145).
+/// Turns accumulated light into the fragment's colour (T0145, layers T0143).
 ///
-/// The mirror of `ResolveLighting` (`PBR_Shading.fxh:847`), which is four terms
-/// of which this engine enables one. **The seam T0087 fills is here**: the
-/// image-based diffuse and specular are added to `punctual` before the
-/// emissive, scaled by the frame's `IBLScale` and the surface's `Occlusion` --
-/// which is why `HpShadedSurface` carries `Occlusion` although no punctual term
-/// reads it.
+/// The mirror of `ResolveLighting` (`PBR_Shading.fxh:847-876`), layer for
+/// layer: base punctual plus emissive, sheen added on top, and the clearcoat
+/// applied **over everything** -- the coat's Fresnel dims base, emissive and
+/// sheen alike before its own lobe is added, which is what a lacquer layer
+/// physically does. **The seam T0087 fills is here**: each layer's
+/// image-based term joins its punctual one, scaled by the frame's `IBLScale`
+/// and the surface's `Occlusion` -- which is why `HpShadedSurface` carries
+/// `Occlusion` although no punctual term reads it, and why `Thickness` has no
+/// consumer until then.
+///
+/// @param Surface the shaded surface.
+/// @param punctual the sum of every light's base-layer contribution.
+/// @param sheenPunctual the sheen layer's sum. Ignored unless the permutation
+///        carries `ENABLE_SHEEN`.
+/// @param clearcoatPunctual the coat layer's sum, **before** the coat factor
+///        (mirroring `SurfaceLightingInfo`). Ignored unless the permutation
+///        carries `ENABLE_CLEAR_COAT`.
+/// @returns linear RGB, pre-tonemap.
+float3 HpResolveLighting(HpShadedSurface Surface, float3 punctual, float3 sheenPunctual,
+                         float3 clearcoatPunctual)
+{
+    float3 Color = punctual + Surface.Emissive;
+
+#if ENABLE_SHEEN
+    // `GetSheenLighting` (:826): the punctual sum plus an IBL term that is
+    // identically zero without an environment.
+    Color += sheenPunctual;
+#endif
+
+#if ENABLE_CLEAR_COAT
+    {
+        // ---- mirrored from `ResolveLighting`, :858-872 --------------------
+        float ccNdotV = dot(Surface.ClearcoatNormal, Surface.View);
+
+        // Do not allow the clear coat normal to face away from the view
+        // direction -- upstream's own guard against the artefacts of
+        // DiligentFX issue #27.
+        ccNdotV = max(ccNdotV, 0.1);
+
+        float ClearcoatFresnel = SchlickReflection(ccNdotV, Surface.ClearcoatReflectance0, 1.0);
+        // `GetClearcoatLighting` (:840) is the punctual sum times the coat
+        // factor; the (1 - F*factor) dim is what the coat takes *from*
+        // everything underneath.
+        Color = Color * (1.0 - Surface.Clearcoat * ClearcoatFresnel) +
+                clearcoatPunctual * Surface.Clearcoat;
+    }
+#endif
+
+    return Color;
+}
+
+// hp-shader-doc: export
+/// The base-layer-only resolve -- T0145's original two-argument contract,
+/// kept callable so a rung-4 override written before T0143 compiles and
+/// behaves exactly as it did.
+///
+/// A material whose permutation carries sheen or clearcoat and whose
+/// `lighting()` override calls *this* form gets no layer resolve -- the same
+/// "you own the whole stage now" trade every rung-4 override makes. The
+/// default `lighting()` calls the layered form above.
 ///
 /// @param Surface the shaded surface; only `Emissive` is read today.
 /// @param punctual the sum of every light's contribution.
@@ -1154,6 +1240,107 @@ interface IHpMaterial
 #endif
     }
 
+    // -----------------------------------------------------------------------
+    // The extended layers' channel hooks (T0143). Same shape as every channel
+    // above: the default is DiligentFX's getter -- map times factor, zero in a
+    // permutation without the feature -- and an override replaces exactly that
+    // channel. The engine derives what lighting needs (the anisotropy frame,
+    // the coat's F0, iridescence's bend of `Reflectance0`) *after* `surface()`
+    // has run, so a value written from any hook is the value lit.
+    // -----------------------------------------------------------------------
+
+    /// Clearcoat layer strength. Default: the map times the material factor.
+    [mutating] float clearcoat(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return GetClearcoatFactor(VSOut, g_Material, g_Frame.Renderer.MipBias);
+    }
+
+    /// The coat's own perceptual roughness.
+    [mutating] float clearcoatRoughness(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return GetClearcoatRoughness(VSOut, g_Material, g_Frame.Renderer.MipBias);
+    }
+
+    /// The coat's world-space normal. Default mirrors `RenderPBR.psh`'s rule
+    /// (`ReadClearcoatLayerProperties`): the *geometric* normal unless the
+    /// material carries a clearcoat normal map -- the base material's normal
+    /// map is deliberately **not** inherited by the coat, per upstream and per
+    /// the glTF extension.
+    ///
+    /// `isFrontFace` is glTF facing, exactly as `shadingNormal` receives it.
+    [mutating] float3 clearcoatNormal(VSOutput VSOut, HpSurfaceInput In, float3 geometricNormal,
+                                      bool isFrontFace)
+    {
+        PerturbNormalInfo normalInfo = GetPerturbNormalInfo(
+            In.WorldPos, geometricNormal, isFrontFace, g_Frame.Camera.fHandness);
+#if ENABLE_CLEAR_COAT && USE_CLEAR_COAT_NORMAL_MAP && (USE_TEXCOORD0 || USE_TEXCOORD1)
+        float selector = UnpackPBRMaterialTextureUVSelector(
+            g_Material.Textures[ClearCoatNormalTextureAttribId].PackedProps);
+        // "If clearcoatNormalTexture is not given, no normal mapping is
+        // applied to the clear coat layer, even if normal mapping is applied
+        // to the base material" -- upstream's comment, upstream's selector
+        // test (`RenderPBR.psh:203-215`).
+        if (selector >= 0.0)
+        {
+            float2 coatUv = SelectUV(VSOut, selector);
+            float3 coatNormal = GetClearcoatNormal(g_Material, coatUv, coatUv, ddx(coatUv),
+                                                   ddy(coatUv), g_Frame.Renderer.MipBias);
+            return PerturbNormal(normalInfo, ddx(coatUv), ddy(coatUv), coatNormal,
+                                 /*HasUV = */ true);
+        }
+#endif
+        return normalInfo.Normal;
+    }
+
+    /// Sheen colour, linear RGB. Black -- the default in a permutation
+    /// without sheen -- is "no sheen".
+    [mutating] float3 sheenColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return GetSheenColor(VSOut, g_Material, g_Frame.Renderer.MipBias);
+    }
+
+    /// Sheen roughness.
+    [mutating] float sheenRoughness(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return GetSheenRoughness(VSOut, g_Material, g_Frame.Renderer.MipBias);
+    }
+
+    /// Anisotropy, **packed as upstream's getter packs it**: `xy` the
+    /// tangent-space direction in [-1, 1] *before* the material's authored
+    /// rotation, `z` the strength times the material factor. The engine
+    /// applies the rotation and splits the pack into
+    /// `HpSurfaceOutput::Anisotropy` / `AnisotropyDirection`.
+    [mutating] float3 anisotropy(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return GetAnisotropy(VSOut, g_Material, g_Frame.Renderer.MipBias);
+    }
+
+    /// Thin-film iridescence factor.
+    [mutating] float iridescence(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return GetIridescence(VSOut, g_Material, g_Frame.Renderer.MipBias);
+    }
+
+    /// Thin-film thickness, nanometres -- the map lerps between the
+    /// material's authored minimum and maximum.
+    [mutating] float iridescenceThickness(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return GetIridescenceThickness(VSOut, g_Material, g_Frame.Renderer.MipBias);
+    }
+
+    /// Transmission factor.
+    [mutating] float transmission(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return GetTransmission(VSOut, g_Material, g_Frame.Renderer.MipBias);
+    }
+
+    /// Volume thickness, metres. Carried to `HpShadedSurface::Thickness`;
+    /// shades nothing until T0087's image-based refraction exists.
+    [mutating] float thickness(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return GetVolumeThickness(VSOut, g_Material, g_Frame.Renderer.MipBias);
+    }
+
     /// The whole-output hook, run after every channel above has been
     /// assembled -- everything above is the material's per-channel answers,
     /// this acts on the assembled result.
@@ -1238,6 +1425,12 @@ interface IHpMaterial
     [mutating] float3 lighting(HpShadedSurface Surface, HpSurfaceInput In)
     {
         float3 punctual = float3(0.0, 0.0, 0.0);
+        // The layer accumulators (T0143) -- `SurfaceLightingInfo`'s Sheen and
+        // Clearcoat layers, flattened. Dead locals the compiler removes in a
+        // permutation without the features; D31's shape rule is about contract
+        // *structs*, and these are neither.
+        float3 sheenPunctual = float3(0.0, 0.0, 0.0);
+        float3 clearcoatPunctual = float3(0.0, 0.0, 0.0);
 
         int lightCount = HpLightCount();
         for (int i = 0; i < lightCount; ++i)
@@ -1257,11 +1450,63 @@ interface IHpMaterial
             // (`:693`). `(D + S) * I * N` and not `D*I*N + S*I*N`: floating
             // point multiplication does not distribute, and the byte-identical
             // guard on the standard material is what caught the difference.
-            punctual += (Response.Diffuse + Response.Specular) * Response.Intensity *
-                        Response.NdotL;
+            float3 base = (Response.Diffuse + Response.Specular) * Response.Intensity *
+                          Response.NdotL;
+
+#if ENABLE_SHEEN
+            {
+                // ---- mirrored from `ApplyPunctualLight`, :702-711 (T0143) --
+                // The sheen lobe accumulates into its own layer, and the LUT's
+                // albedo scaling takes back from the base what the sheen layer
+                // now reflects -- energy conservation, precomputed. The base
+                // is scaled *after* the full `(D+S)*I*N` product, upstream's
+                // exact order.
+                sheenPunctual += ApplyDirectionalLightSheen(Light.Direction, Light.Radiance,
+                                                            Surface.SheenColor,
+                                                            Surface.SheenRoughness,
+                                                            Surface.Normal, Surface.View);
+
+                float MaxFactor = max(max(Surface.SheenColor.r, Surface.SheenColor.g),
+                                      Surface.SheenColor.b);
+                float SheenNdotL = dot_sat(Surface.Normal, Light.ToLight);
+                float AlbedoScaling =
+                    min(1.0 - MaxFactor * g_SheenAlbedoScalingLUT
+                                              .Sample(g_SheenAlbedoScalingLUT_sampler,
+                                                      float2(Surface.NdotV,
+                                                             Surface.SheenRoughness))
+                                              .r,
+                        1.0 - MaxFactor * g_SheenAlbedoScalingLUT
+                                              .Sample(g_SheenAlbedoScalingLUT_sampler,
+                                                      float2(SheenNdotL,
+                                                             Surface.SheenRoughness))
+                                              .r);
+                base *= AlbedoScaling;
+            }
+#endif
+
+            punctual += base;
+
+#if ENABLE_CLEAR_COAT
+            {
+                // ---- mirrored from :716-720 --------------------------------
+                // The coat is a second GGX evaluated with its own normal and
+                // reflectance; its factor is applied in the resolve, exactly
+                // where `GetClearcoatLighting` applies it.
+                SurfaceReflectanceInfo ccSrf;
+                ccSrf.PerceptualRoughness = Surface.ClearcoatRoughness;
+                ccSrf.DiffuseColor = float3(0.0, 0.0, 0.0);
+                ccSrf.Reflectance0 = float3(Surface.ClearcoatReflectance0,
+                                            Surface.ClearcoatReflectance0,
+                                            Surface.ClearcoatReflectance0);
+                ccSrf.Reflectance90 = float3(1.0, 1.0, 1.0);
+                clearcoatPunctual += ApplyDirectionalLightGGX(Light.Direction, Light.Radiance,
+                                                              ccSrf, Surface.ClearcoatNormal,
+                                                              Surface.View);
+            }
+#endif
         }
 
-        return HpResolveLighting(Surface, punctual);
+        return HpResolveLighting(Surface, punctual, sheenPunctual, clearcoatPunctual);
     }
 }
 
@@ -1477,6 +1722,39 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(inout TMaterial material, VSOu
     surfaceOut.Emissive = material.emissive(VSOut, surfaceIn);
     surfaceOut.Normal = material.shadingNormal(VSOut, surfaceIn, geometricNormal, gltfFrontFace);
 
+    // The extended layers' channels (T0143). In a permutation without a
+    // feature its getter-backed default is a literal zero, so these lines
+    // cost the standard material nothing and the fields still exist for
+    // `surface()` to write -- D31's shape rule, spent here.
+    surfaceOut.Clearcoat = material.clearcoat(VSOut, surfaceIn);
+    surfaceOut.ClearcoatRoughness = material.clearcoatRoughness(VSOut, surfaceIn);
+    surfaceOut.ClearcoatNormal =
+        material.clearcoatNormal(VSOut, surfaceIn, geometricNormal, gltfFrontFace);
+    surfaceOut.SheenColor = material.sheenColor(VSOut, surfaceIn);
+    surfaceOut.SheenRoughness = material.sheenRoughness(VSOut, surfaceIn);
+    {
+        // The pack is upstream's (`GetAnisotropy`): direction before the
+        // authored rotation in xy, strength in z. The rotation is applied
+        // here, mirroring `ReadAnisotropyProperties` (`RenderPBR.psh:262-266`),
+        // so `AnisotropyDirection` is final and an override of `surface()`
+        // writes a *final* direction too.
+        float3 packedAnisotropy = material.anisotropy(VSOut, surfaceIn);
+        surfaceOut.Anisotropy = packedAnisotropy.z;
+#if ENABLE_ANISOTROPY
+        float2 rotationCS =
+            float2(cos(g_Material.Anisotropy.Rotation), sin(g_Material.Anisotropy.Rotation));
+        surfaceOut.AnisotropyDirection =
+            float2(packedAnisotropy.x * rotationCS.x - packedAnisotropy.y * rotationCS.y,
+                   packedAnisotropy.x * rotationCS.y + packedAnisotropy.y * rotationCS.x);
+#else
+        surfaceOut.AnisotropyDirection = float2(1.0, 0.0);
+#endif
+    }
+    surfaceOut.Iridescence = material.iridescence(VSOut, surfaceIn);
+    surfaceOut.IridescenceThickness = material.iridescenceThickness(VSOut, surfaceIn);
+    surfaceOut.Transmission = material.transmission(VSOut, surfaceIn);
+    surfaceOut.Thickness = material.thickness(VSOut, surfaceIn);
+
     // **The surface stage's whole-output hook.** Everything above is the
     // material's per-channel answers; this is the point parallax, triplanar
     // and layer blending act on the assembled result (141.7, 141.8), and its
@@ -1555,6 +1833,64 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(inout TMaterial material, VSOu
         {
             debug.rgb = normalize(surfaceOut.Normal) * 0.5 + 0.5;
         }
+        // The extended layers (T0143), encodings matching upstream's
+        // `GetDebugColor` per view. **Every branch reads a field that exists
+        // in every permutation** (D31), so a feature that is off debugs as
+        // its zero rather than as a missing mode -- which is itself the
+        // diagnostic: a channel that should be non-zero and is not, is the
+        // occlusion bug this subtask exists to never repeat.
+        else if (g_Frame.Renderer.DebugView == 21) // ClearCoatFactor
+        {
+            debug.rgb = float3(surfaceOut.Clearcoat, surfaceOut.Clearcoat, surfaceOut.Clearcoat);
+        }
+        else if (g_Frame.Renderer.DebugView == 22) // ClearCoatRoughness
+        {
+            debug.rgb = float3(surfaceOut.ClearcoatRoughness, surfaceOut.ClearcoatRoughness,
+                               surfaceOut.ClearcoatRoughness);
+        }
+        else if (g_Frame.Renderer.DebugView == 23) // ClearCoatNormal
+        {
+            debug.rgb = normalize(surfaceOut.ClearcoatNormal) * 0.5 + 0.5;
+        }
+        else if (g_Frame.Renderer.DebugView == 25) // SheenColor
+        {
+            debug.rgb = surfaceOut.SheenColor;
+        }
+        else if (g_Frame.Renderer.DebugView == 26) // SheenRoughness
+        {
+            debug.rgb = float3(surfaceOut.SheenRoughness, surfaceOut.SheenRoughness,
+                               surfaceOut.SheenRoughness);
+        }
+        else if (g_Frame.Renderer.DebugView == 27) // AnisotropyStrength
+        {
+            debug.rgb = float3(surfaceOut.Anisotropy, surfaceOut.Anisotropy,
+                               surfaceOut.Anisotropy);
+        }
+        else if (g_Frame.Renderer.DebugView == 28) // AnisotropyDirection
+        {
+            debug.rgb = float3(surfaceOut.AnisotropyDirection * 0.5 + 0.5, 0.0);
+        }
+        else if (g_Frame.Renderer.DebugView == 30) // IridescenceFactor
+        {
+            debug.rgb = float3(surfaceOut.Iridescence, surfaceOut.Iridescence,
+                               surfaceOut.Iridescence);
+        }
+        else if (g_Frame.Renderer.DebugView == 31) // IridescenceThickness
+        {
+            // Upstream's own normalisation: full white at 1200 nm.
+            debug.rgb = float3(surfaceOut.IridescenceThickness, surfaceOut.IridescenceThickness,
+                               surfaceOut.IridescenceThickness) /
+                        1200.0;
+        }
+        else if (g_Frame.Renderer.DebugView == 32) // Transmission
+        {
+            debug.rgb = float3(surfaceOut.Transmission, surfaceOut.Transmission,
+                               surfaceOut.Transmission);
+        }
+        else if (g_Frame.Renderer.DebugView == 33) // Thickness
+        {
+            debug.rgb = float3(surfaceOut.Thickness, surfaceOut.Thickness, surfaceOut.Thickness);
+        }
         Out.Color = debug;
         return Out;
     }
@@ -1627,8 +1963,97 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(inout TMaterial material, VSOu
     shaded.Emissive = surfaceOut.Emissive;
     shaded.Occlusion = surfaceOut.Occlusion;
 
+    // -----------------------------------------------------------------------
+    // The extended layers (T0143): copies first, derivations after, each
+    // derivation the mirror of its `Read*Properties` in `RenderPBR.psh` --
+    // run *here*, after `surface()`, so an overridden channel flows into the
+    // derived frame exactly as an authored one does. Every field is written
+    // in every permutation (D31); the `#if`s guard only the derivations,
+    // whose inputs (`g_Material`'s extended blocks) exist only with the
+    // feature.
+    // -----------------------------------------------------------------------
+    shaded.Clearcoat = surfaceOut.Clearcoat;
+    shaded.ClearcoatRoughness = surfaceOut.ClearcoatRoughness;
+    shaded.ClearcoatNormal = surfaceOut.ClearcoatNormal;
+#if ENABLE_CLEAR_COAT
+    {
+        // `ReadClearcoatLayerProperties` (:199-200): the coat's reflectance
+        // from its roughness at the fixed IOR of 1.5. Flattened to the scalar
+        // F0 -- the coat is achromatic and its R90 is 1.
+        SurfaceReflectanceInfo ccSrf =
+            GetSurfaceReflectanceClearCoat(shaded.ClearcoatRoughness, 1.5);
+        shaded.ClearcoatReflectance0 = ccSrf.Reflectance0.x;
+    }
+#else
+    shaded.ClearcoatReflectance0 = 0.0;
+#endif
+    shaded.SheenColor = surfaceOut.SheenColor;
+    shaded.SheenRoughness = surfaceOut.SheenRoughness;
+    shaded.Anisotropy = surfaceOut.Anisotropy;
+#if ENABLE_ANISOTROPY
+    {
+        // ---- mirrored from `ReadAnisotropyProperties`, :268-293 -----------
+        // The tangent comes from the mesh when it has one; the glTF extension
+        // says meshes using anisotropy SHOULD carry TANGENT, and upstream's
+        // fallback -- deliberately not screen-space derivatives, which are
+        // discontinuous -- is the world X axis.
+        float3 anisoBasisTangent = float3(1.0, 0.0, 0.0);
+#if USE_VERTEX_TANGENTS
+        anisoBasisTangent = surfaceIn.Tangent;
+#endif
+        float3 anisoBasisBitangent = cross(anisoBasisTangent, shaded.Normal);
+
+        shaded.AnisotropyTangent =
+            normalize(mul(float3(surfaceOut.AnisotropyDirection, 0.0),
+                          MatrixFromRows(anisoBasisTangent, anisoBasisBitangent, shaded.Normal)));
+        shaded.AnisotropyBitangent = cross(shaded.Normal, shaded.AnisotropyTangent);
+
+        // Roughness along the bitangent is the material roughness; tangent
+        // roughness grows with the strength.
+        shaded.AlphaRoughnessT =
+            lerp(shaded.Roughness * shaded.Roughness, 1.0, shaded.Anisotropy * shaded.Anisotropy);
+        shaded.AlphaRoughnessB = shaded.Roughness * shaded.Roughness;
+    }
+#else
+    shaded.AnisotropyTangent = float3(1.0, 0.0, 0.0);
+    shaded.AnisotropyBitangent = float3(0.0, 1.0, 0.0);
+    shaded.AlphaRoughnessT = 0.0;
+    shaded.AlphaRoughnessB = 0.0;
+#endif
+    shaded.IridescenceThickness = surfaceOut.IridescenceThickness;
+#if ENABLE_IRIDESCENCE
+    {
+        // ---- mirrored from `ReadIridescenceProperties` (:236-251) and the
+        // F0 lerp in `GetSurfaceShadingInfo` (:339-343) --------------------
+        // The film's Fresnel is evaluated against the *unbent* base F0, then
+        // the base layer's `Reflectance0` is bent toward it by the factor.
+        // A zero-thickness film kills the factor, upstream's own rule.
+        float3 iridescenceFresnel =
+            EvalIridescence(1.0, g_Material.Iridescence.IOR, shaded.NdotV,
+                            shaded.IridescenceThickness, shaded.Reflectance0);
+        float3 iridescenceF0 = SchlickToF0(shaded.NdotV, iridescenceFresnel,
+                                           float3(1.0, 1.0, 1.0));
+        float iridescenceFactor =
+            shaded.IridescenceThickness == 0.0 ? 0.0 : surfaceOut.Iridescence;
+        shaded.Iridescence = iridescenceFactor;
+        shaded.Reflectance0 =
+            lerp(shaded.Reflectance0, iridescenceF0,
+                 float3(iridescenceFactor, iridescenceFactor, iridescenceFactor));
+    }
+#else
+    shaded.Iridescence = surfaceOut.Iridescence;
+#endif
+    shaded.Transmission = surfaceOut.Transmission;
+    shaded.Thickness = surfaceOut.Thickness;
+
     Out.Color.rgb = material.lighting(shaded, surfaceIn);
     Out.Color.a = surfaceOut.BaseColor.a;
+#if ENABLE_TRANSMISSION
+    // Mirrors `RenderPBR.psh:517`: a transmissive surface's coverage *is* its
+    // opacity -- what does not scatter back shows the scene behind. Meaningful
+    // on a blended material; ignored by an opaque target.
+    Out.Color.a = 1.0 - shaded.Transmission;
+#endif
 #endif
 
     // Premultiplied alpha for blended surfaces, mirroring `RenderPBR.psh`.

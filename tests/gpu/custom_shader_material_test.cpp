@@ -1524,22 +1524,27 @@ struct HpMaterial : IHpMaterial
     tearDown(device);
 }
 
-TEST_CASE("the base signature's descriptor budget dropped, and it is pinned (T0161.7)") {
+TEST_CASE("the base signature's descriptor budget is pinned (T0161.7, grown by T0143)") {
     // T0160 counted 10 sampled images and 11 immutable samplers in the shared
     // signature — four of each belonging to module slots every plain glTF
-    // material paid for without ever reading. The migration moved those into
-    // the per-module signature, so the base holds the engine's own vocabulary
-    // plus the sampler palette and nothing else:
+    // material paid for without ever reading. T0161 moved those into the
+    // per-module signature (8 images / 13 samplers), and **T0143 then bought
+    // the six extended material features with descriptors, on purpose**:
     //
-    //   8 sampled images   — 5 glTF maps + g_HeightMap + the two screen
-    //                        intermediates (was 10 under T0160, 6 after T0161)
-    //   13 immutable samplers — their 7 + the 6-entry palette (was 11)
+    //   19 sampled images — the 8 from T0161 (5 glTF maps + g_HeightMap + the
+    //                       two screen intermediates) + the ten extended maps
+    //                       (clearcoat ×3, sheen ×2, anisotropy,
+    //                       iridescence ×2, transmission, thickness) + the
+    //                       sheen albedo-scaling LUT
+    //   19 immutable samplers — the 13 from T0161 (their 7 + the 6-entry
+    //                       palette) + one per extended feature family
+    //                       (g_ClearCoat, g_Sheen, g_AnisotropyMap,
+    //                       g_Iridescence, g_TransmissionMap, g_ThicknessMap)
     //
-    // **T0147 put the two back up and no samplers with them**, which is the
-    // half of that design worth pinning: `g_SceneColour` and `g_SceneDepth`
-    // are sampled through the existing palette rather than through slot
-    // samplers of their own, so the count that was under pressure from T0143
-    // (samplers) did not move at all.
+    // The superset pattern is unchanged: a signature resource an SPIR-V
+    // module never names costs nothing at draw time, and a material using no
+    // extended feature compiles the same shader it did before T0143 — the
+    // byte-identity case beside this one is what proves it.
     //
     // Pinned from the renderer's own creation-time count, so the budget the
     // capability matrix quotes cannot drift from the code silently — the
@@ -1552,8 +1557,8 @@ TEST_CASE("the base signature's descriptor budget dropped, and it is pinned (T01
         return;
     }
 
-    MessageCatcher images("8 sampled images");
-    MessageCatcher samplers("13 immutable samplers");
+    MessageCatcher images("19 sampled images");
+    MessageCatcher samplers("19 immutable samplers");
     MessageCatcher line("base signature:");
     hp::logAddSink(&images);
     hp::logAddSink(&samplers);

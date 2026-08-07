@@ -145,6 +145,34 @@ float3 GetBaseLayerLighting(in SurfaceShadingInfo  Shading,
     return SrfLighting.Base.Punctual + GetBaseLayerIBL(Shading, SrfLighting);
 }
 
+### hp-pin: PBR/public/PBR_Shading.fxh GetSheenIBL copied
+float3 GetSheenIBL(in SurfaceShadingInfo  Shading,
+                   in SurfaceLightingInfo SrfLighting)
+{
+    return SrfLighting.Sheen.SpecularIBL * Shading.IBLScale * Shading.Occlusion;
+}
+
+### hp-pin: PBR/public/PBR_Shading.fxh GetSheenLighting copied
+float3 GetSheenLighting(in SurfaceShadingInfo  Shading,
+                        in SurfaceLightingInfo SrfLighting)
+{
+    return SrfLighting.Sheen.Punctual + GetSheenIBL(Shading, SrfLighting);
+}
+
+### hp-pin: PBR/public/PBR_Shading.fxh GetClearcoatIBL copied
+float3 GetClearcoatIBL(in SurfaceShadingInfo  Shading,
+                       in SurfaceLightingInfo SrfLighting)
+{
+    return SrfLighting.Clearcoat.SpecularIBL * Shading.IBLScale * Shading.Occlusion * Shading.Clearcoat.Factor;
+}
+
+### hp-pin: PBR/public/PBR_Shading.fxh GetClearcoatLighting copied
+float3 GetClearcoatLighting(in SurfaceShadingInfo  Shading,
+                            in SurfaceLightingInfo SrfLighting)
+{
+    return SrfLighting.Clearcoat.Punctual * Shading.Clearcoat.Factor + GetClearcoatIBL(Shading, SrfLighting);
+}
+
 ### hp-pin: PBR/public/PBR_Shading.fxh ResolveLighting copied
 float3 ResolveLighting(in SurfaceShadingInfo  Shading,
                        in SurfaceLightingInfo SrfLighting)
@@ -175,6 +203,178 @@ float3 ResolveLighting(in SurfaceShadingInfo  Shading,
 #endif
 
     return Color;
+}
+
+### hp-pin: PBR/private/RenderPBR.psh ReadClearcoatLayerProperties copied
+ClearcoatShadingInfo ReadClearcoatLayerProperties(in VSOutput              VSOut,
+                                                  in PBRMaterialShaderInfo Material,
+                                                  in PerturbNormalInfo     NormalInfo,
+                                                  in NormalMapUVInfo       NMUVInfo)
+{
+    ClearcoatShadingInfo Clearcoat;
+
+    Clearcoat.Factor  = GetClearcoatFactor(VSOut, Material, g_Frame.Renderer.MipBias);
+
+    float  ClearCoatRoughness = GetClearcoatRoughness(VSOut, Material, g_Frame.Renderer.MipBias);
+    float3 ClearCoatNormal    = GetClearcoatNormal(Material, NMUVInfo.UV, NMUVInfo.SmoothUV, NMUVInfo.dUV_dx, NMUVInfo.dUV_dy, g_Frame.Renderer.MipBias);
+
+    float IOR = 1.5;
+    Clearcoat.Srf = GetSurfaceReflectanceClearCoat(ClearCoatRoughness, IOR);
+
+    Clearcoat.Normal = NormalInfo.Normal;
+#   if USE_CLEAR_COAT_NORMAL_MAP
+    {
+        // If clearcoatNormalTexture is not given, no normal mapping is applied to the clear coat layer,
+        // even if normal mapping is applied to the base material.
+        if (NMUVInfo.Selector >= 0.0)
+        {
+            Clearcoat.Normal = PerturbNormal(NormalInfo,
+                                             NMUVInfo.dUV_dx,
+                                             NMUVInfo.dUV_dy,
+                                             ClearCoatNormal,
+                                             true);
+        }
+    }
+#   endif
+
+    return Clearcoat;
+}
+
+### hp-pin: PBR/private/RenderPBR.psh ReadSheenLayerProperties copied
+SheenShadingInfo ReadSheenLayerProperties(in VSOutput              VSOut,
+                                          in PBRMaterialShaderInfo Material)
+{
+    SheenShadingInfo Sheen;
+
+    Sheen.Color     = GetSheenColor(VSOut, Material, g_Frame.Renderer.MipBias);
+    Sheen.Roughness = GetSheenRoughness(VSOut, Material, g_Frame.Renderer.MipBias);
+
+    return Sheen;
+}
+
+### hp-pin: PBR/private/RenderPBR.psh ReadAnisotropyProperties copied
+AnisotropyShadingInfo ReadAnisotropyProperties(in VSOutput              VSOut,
+                                               in PBRMaterialShaderInfo Material,
+                                               in BaseLayerShadingInfo  BaseLayer)
+{
+    float3 PackedAnisotropy = GetAnisotropy(VSOut, Material, g_Frame.Renderer.MipBias);
+
+    float2 RotationCS = float2(cos(Material.Anisotropy.Rotation), sin(Material.Anisotropy.Rotation));
+
+    float2 Direction = float2(
+        PackedAnisotropy.x * RotationCS.x - PackedAnisotropy.y * RotationCS.y,
+        PackedAnisotropy.x * RotationCS.y + PackedAnisotropy.y * RotationCS.x);
+
+    AnisotropyShadingInfo Anisotropy;
+
+    Anisotropy.Direction = Direction;
+    Anisotropy.Strength  = PackedAnisotropy.z;
+
+    float3 Tangent = float3(1.0, 0.0, 0.0);
+#   if USE_VERTEX_TANGENTS
+    {
+        Tangent = VSOut.Tangent;
+    }
+#   else
+    {
+        // GLTF spec states that SamplerName all meshes with materials that use anisotropy SHOULD supply TANGENT vectors as a mesh attribute.
+        // https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_materials_anisotropy#anisotropy
+        // If tangent attribute is not supplied, tangents should be computed from screen-space derivatives.
+        // However, such tangents may be discontinuous (normals are always continuous), so we don't use them.
+    }
+#   endif
+    float3 Bitangent = cross(Tangent, BaseLayer.Normal);
+
+    Anisotropy.Tangent   = normalize(mul(float3(Direction, 0.0), MatrixFromRows(Tangent, Bitangent, BaseLayer.Normal)));
+    Anisotropy.Bitangent = cross(BaseLayer.Normal, Anisotropy.Tangent);
+
+    // Roughness along the anisotropy bitangent is the material roughness, while the tangent roughness increases with anisotropy.
+    Anisotropy.AlphaRoughnessT = lerp(BaseLayer.Srf.PerceptualRoughness * BaseLayer.Srf.PerceptualRoughness, 1.0, Anisotropy.Strength * Anisotropy.Strength);
+    Anisotropy.AlphaRoughnessB = BaseLayer.Srf.PerceptualRoughness * BaseLayer.Srf.PerceptualRoughness;
+
+    return Anisotropy;
+}
+
+### hp-pin: PBR/private/RenderPBR.psh ReadIridescenceProperties copied
+IridescenceShadingInfo ReadIridescenceProperties(in VSOutput              VSOut,
+                                                 in PBRMaterialShaderInfo Material,
+                                                 in BaseLayerShadingInfo  BaseLayer)
+{
+    IridescenceShadingInfo Iridescence;
+
+    Iridescence.Factor    = GetIridescence(VSOut, Material, g_Frame.Renderer.MipBias);
+    Iridescence.Thickness = GetIridescenceThickness(VSOut, Material, g_Frame.Renderer.MipBias);
+
+    Iridescence.Fresnel = EvalIridescence(1.0, Material.Iridescence.IOR, BaseLayer.NdotV, Iridescence.Thickness, BaseLayer.Srf.Reflectance0);
+    Iridescence.F0      = SchlickToF0(BaseLayer.NdotV, Iridescence.Fresnel, float3(1.0, 1.0, 1.0));
+
+    if (Iridescence.Thickness == 0.0)
+        Iridescence.Factor = 0.0;
+
+    return Iridescence;
+}
+
+### hp-pin: PBR/private/RenderPBR.psh GetSurfaceShadingInfo copied
+SurfaceShadingInfo GetSurfaceShadingInfo(in VSOutput              VSOut,
+                                         in PBRMaterialShaderInfo Material,
+                                         in float4                BaseColor,
+                                         in PerturbNormalInfo     NormalInfo,
+                                         in NormalMapUVInfo       NMUVInfo,
+                                         in NormalMapUVInfo       ClearCoatNMUVInfo)
+{
+    SurfaceShadingInfo Shading;
+
+    Shading.Pos       = VSOut.WorldPos.xyz;
+    Shading.View      = normalize(g_Frame.Camera.f4Position.xyz - VSOut.WorldPos.xyz); // Direction from surface point to camera
+    Shading.BaseLayer = ReadBaseLayerProperties(VSOut, Material, BaseColor, NormalInfo, NMUVInfo, Shading.View);
+    Shading.Occlusion = GetOcclusion(VSOut, Material, g_Frame.Renderer.MipBias);
+    Shading.Emissive  = GetEmissive(VSOut, Material, g_Frame.Renderer.MipBias);
+
+    Shading.IBLScale  = g_Frame.Renderer.IBLScale.rgb;
+    Shading.Occlusion = lerp(1.0, Shading.Occlusion, g_Frame.Renderer.OcclusionStrength);
+    Shading.Emissive *= g_Frame.Renderer.EmissionScale;
+
+#   if ENABLE_CLEAR_COAT
+    {
+        Shading.Clearcoat = ReadClearcoatLayerProperties(VSOut, Material, NormalInfo, ClearCoatNMUVInfo);
+    }
+#   endif
+
+#   if ENABLE_SHEEN
+    {
+        Shading.Sheen = ReadSheenLayerProperties(VSOut, Material);
+    }
+#   endif
+
+#   if ENABLE_ANISOTROPY
+    {
+        Shading.Anisotropy = ReadAnisotropyProperties(VSOut, Material, Shading.BaseLayer);
+    }
+#   endif
+
+#   if ENABLE_IRIDESCENCE
+    {
+        Shading.Iridescence = ReadIridescenceProperties(VSOut, Material, Shading.BaseLayer);
+
+        Shading.BaseLayer.Srf.Reflectance0 = lerp(Shading.BaseLayer.Srf.Reflectance0,
+                                                  Shading.Iridescence.F0,
+                                                  float3(Shading.Iridescence.Factor, Shading.Iridescence.Factor, Shading.Iridescence.Factor));
+    }
+#   endif
+
+#   if ENABLE_TRANSMISSION
+    {
+        Shading.Transmission = GetTransmission(VSOut, Material, g_Frame.Renderer.MipBias);
+    }
+#   endif
+
+#   if ENABLE_VOLUME
+    {
+        Shading.VolumeThickness = GetVolumeThickness(VSOut, Material, g_Frame.Renderer.MipBias);
+    }
+#   endif
+
+    return Shading;
 }
 
 ### hp-pin: Common/public/PBR_Common.fxh GetAngularInfo published
@@ -231,6 +431,57 @@ void SmithGGX_BRDF(in float3                 PointToLight,
         float  D   = NormalDistribution_GGX(angularInfo.NdotH, AlphaRoughness);
         float  Vis = SmithGGXVisibilityCorrelated(angularInfo.NdotL, angularInfo.NdotV, AlphaRoughness);
         float3 F   = SchlickReflection(angularInfo.VdotH, SrfInfo.Reflectance0, SrfInfo.Reflectance90);
+
+        DiffuseContrib = (1.0 - F) * LambertianDiffuse(SrfInfo.DiffuseColor);
+        SpecContrib    = F * Vis * D;
+    }
+}
+
+### hp-pin: Common/public/PBR_Common.fxh SmithGGX_BRDF_Anisotropic published
+void SmithGGX_BRDF_Anisotropic(in float3                 PointToLight,
+                               in float3                 Normal,
+                               in float3                 View,
+                               in float3                 Tangent,
+                               in float3                 Bitangent,
+                               in SurfaceReflectanceInfo SrfInfo,
+                               in float                  AlphaRoughnessT,
+                               in float                  AlphaRoughnessB,
+                               out float3                DiffuseContrib,
+                               out float3                SpecContrib,
+                               out float                 NdotL)
+{
+    AngularInfo angularInfo = GetAngularInfo(PointToLight, Normal, View);
+
+    DiffuseContrib = float3(0.0, 0.0, 0.0);
+    SpecContrib    = float3(0.0, 0.0, 0.0);
+    NdotL          = angularInfo.NdotL;
+    if (angularInfo.NdotL > 0.0 || angularInfo.NdotV > 0.0)
+    {
+        float TdotH = dot(Tangent, angularInfo.H);
+        float BdotH = dot(Bitangent, angularInfo.H);
+        float TdotL = dot(Tangent, angularInfo.L);
+        float TdotV = dot(Tangent, angularInfo.V);
+        float BdotL = dot(Bitangent, angularInfo.L);
+        float BdotV = dot(Bitangent, angularInfo.V);
+
+        float D = NormalDistribution_GGX_Anisotropic(
+            angularInfo.NdotH,
+            TdotH,
+            BdotH,
+            AlphaRoughnessT,
+            AlphaRoughnessB);
+
+        float Vis = SmithGGXVisibilityCorrelated_Anisotropic(
+            angularInfo.NdotL,
+            angularInfo.NdotV,
+            TdotL,
+            TdotV,
+            BdotL,
+            BdotV,
+            AlphaRoughnessT,
+            AlphaRoughnessB);
+
+        float3 F = SchlickReflection(angularInfo.VdotH, SrfInfo.Reflectance0, SrfInfo.Reflectance90);
 
         DiffuseContrib = (1.0 - F) * LambertianDiffuse(SrfInfo.DiffuseColor);
         SpecContrib    = F * Vis * D;

@@ -742,6 +742,71 @@ struct HpSurfaceOutput
 
     /// How much ambient light reaches this fragment, 0 to 1.
     float Occlusion;
+
+    // -----------------------------------------------------------------------
+    // The extended material layers (T0143, amending D24). **Every field below
+    // exists in every permutation** (D31): a feature that is off reads as its
+    // zero, never as a missing member, so a material module compiles against
+    // one struct shape everywhere. Writing one from `surface()` is the
+    // "modify for custom too" half of T0143 — the value written here is the
+    // value lit.
+    //
+    // What each *does* without an environment is uneven, and stated per
+    // field rather than implied: clearcoat, sheen, anisotropy and iridescence
+    // shape the punctual response and are visible under a lamp; transmission
+    // removes diffuse and drives blend-pass alpha; **thickness is carried but
+    // shades nothing until T0087's environment exists** — its refraction is
+    // an image-based term.
+    // -----------------------------------------------------------------------
+
+    /// Clearcoat layer strength, 0 = no coat, 1 = full lacquer layer. The
+    /// coat is a second specular lobe over everything, and it *dims* what is
+    /// underneath by its Fresnel — glTF's `KHR_materials_clearcoat`.
+    float Clearcoat;
+
+    /// The coat's own perceptual roughness, independent of the base layer's.
+    float ClearcoatRoughness;
+
+    /// World-space normal of the coat. Pre-filled with the surface's
+    /// geometric normal — and with the clearcoat normal map applied when the
+    /// material has one — so orange-peel lacquer is one map away.
+    float3 ClearcoatNormal;
+
+    /// Sheen colour, linear RGB. Black = no sheen. The retro-reflective rim
+    /// of velvet and cloth — `KHR_materials_sheen`.
+    float3 SheenColor;
+
+    /// Sheen roughness, 0..1.
+    float SheenRoughness;
+
+    /// Anisotropy strength, 0 = isotropic, 1 = maximally stretched highlight
+    /// — `KHR_materials_anisotropy`. Brushed metal is this.
+    float Anisotropy;
+
+    /// The direction the highlight stretches along, in tangent space,
+    /// **after** the material's authored rotation. (1, 0) = along the mesh
+    /// tangent. Meshes using anisotropy should carry TANGENT attributes, per
+    /// the glTF extension; without them the frame falls back to world X.
+    float2 AnisotropyDirection;
+
+    /// Thin-film iridescence factor, 0..1 — `KHR_materials_iridescence`.
+    /// Soap bubbles and oil slicks; it bends the base layer's F0, so it is
+    /// visible in the punctual specular even without an environment.
+    float Iridescence;
+
+    /// The thin film's thickness in **nanometres**. 0 disables the effect
+    /// (mirroring upstream: a zero-thickness film forces the factor to 0).
+    float IridescenceThickness;
+
+    /// Transmission factor, 0..1 — `KHR_materials_transmission`. Removes the
+    /// diffuse response and, on a blended material, drives how much of the
+    /// scene behind shows through (`alpha = 1 - Transmission`).
+    float Transmission;
+
+    /// Volume thickness in metres — `KHR_materials_volume`. **Carried and
+    /// debug-visible, but shades nothing yet**: its consumer is the
+    /// image-based refraction that arrives with T0087.
+    float Thickness;
 };
 
 // ---------------------------------------------------------------------------
@@ -975,6 +1040,69 @@ struct HpShadedSurface
     /// How much ambient light reaches this fragment, 0 to 1. Applies to the
     /// image-based term when T0087 lands; punctual light does not use it.
     float Occlusion;
+
+    // -----------------------------------------------------------------------
+    // The extended layers (T0143), flattened from `SurfaceShadingInfo`'s
+    // Clearcoat/Sheen/Anisotropy/Iridescence members exactly as the base
+    // layer above is flattened from `BaseLayerShadingInfo` — and, like every
+    // field here, **present and zeroed when the feature is off** (D31).
+    // Derived values (the anisotropy frame, the coat's F0, iridescence's
+    // effect on `Reflectance0`) are computed by the engine *after* the
+    // surface stage, from whatever `HpSurfaceOutput` finally said.
+    // -----------------------------------------------------------------------
+
+    /// Clearcoat strength — `HpSurfaceOutput::Clearcoat`.
+    float Clearcoat;
+
+    /// The coat's perceptual roughness.
+    float ClearcoatRoughness;
+
+    /// The coat's unit world-space normal.
+    float3 ClearcoatNormal;
+
+    /// The coat's specular reflectance at normal incidence — 0.04, from the
+    /// fixed IOR of 1.5 upstream uses; grazing reflectance is 1. Scalar
+    /// because the coat is achromatic.
+    float ClearcoatReflectance0;
+
+    /// Sheen colour, linear RGB.
+    float3 SheenColor;
+
+    /// Sheen roughness.
+    float SheenRoughness;
+
+    /// Anisotropy strength, 0 = isotropic.
+    float Anisotropy;
+
+    /// The anisotropy frame's world-space tangent — the direction the
+    /// highlight stretches along.
+    float3 AnisotropyTangent;
+
+    /// The anisotropy frame's world-space bitangent.
+    float3 AnisotropyBitangent;
+
+    /// GGX alpha along the tangent: `lerp(roughness², 1, strength²)`.
+    float AlphaRoughnessT;
+
+    /// GGX alpha along the bitangent: `roughness²`.
+    float AlphaRoughnessB;
+
+    /// Iridescence factor after upstream's zero-thickness kill switch. Its
+    /// *effect* is already folded into `Reflectance0` by the engine, exactly
+    /// as upstream folds it into the base layer's F0.
+    float Iridescence;
+
+    /// Thin-film thickness, nanometres.
+    float IridescenceThickness;
+
+    /// Transmission factor. The standard response multiplies diffuse by
+    /// `1 - Transmission`, mirroring `ApplyPunctualLight`.
+    float Transmission;
+
+    /// Volume thickness, metres. **Read by nothing in the punctual path** —
+    /// its consumer is T0087's image-based refraction; see
+    /// `HpSurfaceOutput::Thickness`.
+    float Thickness;
 };
 
 /// What a per-light method answers with (**rung 3**).

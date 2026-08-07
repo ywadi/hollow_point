@@ -20,8 +20,35 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-07 — twenty-fifth revision: `T0145` closed, and with it the
-sequence's own goal.** *Give game developers full power over shaders* was five
+**Set 2026-08-07 — twenty-sixth revision: `T0143` closed the same day it took
+the top, and the engine shades everything DiligentFX's PBR can.** The owner's
+requirement was *"what they have ++, not less"*, and D24's extended-materials
+rejection is amended by its own rule — a ticket asked by name. Clearcoat,
+sheen, anisotropy, iridescence, transmission and volume are authorable in a
+`.hpmat` (schema 3), readable *and writable* from a game's Slang material
+(ten channel hooks, D31-shaped fields on `HpSurfaceOutput` and
+`HpShadedSurface`), each with a debug view and a punctual pixel test.
+Iridescence is the flagship measurement: the thin film split the white lamp's
+achromatic specular to (248, 129, 93) where every other frame holds g == b —
+a real validation with no environment at all. **The environment-dependent
+half of every claim is qualified on the ticket, not asserted**: a coat
+reading as lacquer, a sheen reading as velvet and the whole volume family
+wait for T0087, whose Refs now carry the constraints (per-layer resolve,
+the Charlie-LUT embed pattern, the volume no-op assertion to flip).
+
+The costs were measured rather than feared: the permutation multiplier is
+**per-material data** — the whole gpu suite gained exactly 6 pixel-shader
+permutations, a featureless material keys its pre-T0143 pipeline and the
+frame-byte-identity guard held at 0 differing bytes — while the signature
+grew 8 → 19 sampled images / 13 → 19 immutable samplers (pinned), the
+standard `psMain` carries ~4 KB of unfolded zero-valued hook IR (registered
+at T0151 beside the 6-permutation count), and `EnableSheen`'s albedo-scaling
+LUT — which upstream ships only as a GLTFViewer sample asset — is embedded
+from the pinned submodule at build time. The mirror discipline followed the
+features: the drift fixture grew 6 → 16 pinned upstream functions.
+
+Previously — the twenty-fifth revision: `T0145` closed, and with it the
+sequence's own goal. *Give game developers full power over shaders* was five
 tickets; the last of them landed today. **No technique family in the capability
 matrix is blocked on a missing hook any more** — what remains blocked is
 blocked on a *system* nobody has built yet (shadows, ambient, motion vectors),
@@ -255,11 +282,10 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0143](open/0143-extended-material-features.md) | extended material features | The order behind T0145 was already set, and this was next in it. It is also the ticket T0145 pointed at most concretely: sheen, clearcoat, anisotropy, iridescence, transmission and volume each **`#error`** in the engine's lighting stage now, so this ticket has a named place to write and cannot turn a flag on whose path silently does nothing. D31 constrains the shape — its fields go on `HpShadedSurface`, present and zeroed, never behind an `#if` |
-| 2 | [T0152](inprogress/0152-winding-convention.md) | the winding remainder — **now only the owner's mirror decision** | 152.5 (the glTF determinant rule, both halves), 152.6 (the chirality probe) and 152.7 (docs) landed 2026-08-07 — *before* T0143's pixel tests, which is the order T0152's own Blocks line mandates even though this table listed T0143 first. The display mirror is now **measured, not derived**: world +X lands on screen right, +Y on top (`tests/gpu/chirality_test.cpp`). What remains is the owner's answer to the mirror question — accept the mirrored convention, or an import-time mirror with `kFrontFaceCounterClockwise` flipping alongside |
-| 3 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | The movable one — see below. It needs nothing from the surface or lighting stages, and T0147 gave it the opaque/blend pass split it would have had to build |
-| 4 | [T0086](open/0086-shadows.md) | shadows | Now unblocked in the way D30 sequenced it: the loop the shadow lookup goes inside is the engine's, the `ENABLE_SHADOWS` block's shape is waiting in `HpGetLight`, and T0145's Ref says where the factor goes and why it must not fold into `Attenuation` |
-| 5 | [T0158](inprogress/0158-parallax-depth-cues.md) | parallax depth cues, remainder | 158.2 closed with T0159 and **158.3 closed with T0145**; what is left is the reference/tuning subtasks and the geometrically-displaced ground-truth cube |
+| 1 | [T0152](inprogress/0152-winding-convention.md) | the winding remainder — **now only the owner's mirror decision** | 152.5 (the glTF determinant rule, both halves), 152.6 (the chirality probe) and 152.7 (docs) landed 2026-08-07 — *before* T0143's pixel tests, which is the order T0152's own Blocks line mandated. The display mirror is now **measured, not derived**: world +X lands on screen right, +Y on top (`tests/gpu/chirality_test.cpp`). What remains is the owner's answer to the mirror question — accept the mirrored convention, or an import-time mirror with `kFrontFaceCounterClockwise` flipping alongside |
+| 2 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | The movable one — see below. It needs nothing from the surface or lighting stages, and T0147 gave it the opaque/blend pass split it would have had to build. **T0152.5 adds one constraint**: facing is per-draw (the determinant rule), so any batching or sorting must keep the per-draw cull decision |
+| 3 | [T0086](open/0086-shadows.md) | shadows | Now unblocked in the way D30 sequenced it: the loop the shadow lookup goes inside is the engine's, the `ENABLE_SHADOWS` block's shape is waiting in `HpGetLight`, and T0145's Ref says where the factor goes and why it must not fold into `Attenuation`. Its Refs also carry T0152.5's shadow-pass determinant note |
+| 4 | [T0158](inprogress/0158-parallax-depth-cues.md) | parallax depth cues, remainder | 158.2 closed with T0159 and **158.3 closed with T0145**; what is left is the reference/tuning subtasks and the geometrically-displaced ground-truth cube |
 
 **Raised rather than reordered, because the order is the owner's call:**
 [T0162](open/0162-shader-authoring-docs.md) (the shader authoring guide) listed
@@ -404,7 +430,7 @@ wrong in the confident voice of a document that is normally right.
 | 450 | [T0060](completed/0060-material-system.md) | Material assets | 4 — Render layer | ✅ DONE | High | Moderate |
 | 412 | [T0144](completed/0144-remove-opengl-backend.md) | Remove the OpenGL backend; Vulkan only | 4 — Render layer | ✅ DONE | High | Moderate |
 | 415 | [T0142](completed/0142-slang-shader-language.md) | Slang as HollowPoint's shader language | 4 — Render layer | ✅ DONE | High | Large |
-| 425 | [T0143](open/0143-extended-material-features.md) | Everything DiligentFX's PBR has, and the ability to extend it | 4 — Render layer | 🔜 TODO | High | Moderate |
+| 425 | [T0143](completed/0143-extended-material-features.md) | Everything DiligentFX's PBR has, and the ability to extend it | 4 — Render layer | ✅ DONE | High | Moderate |
 | 455 | [T0141](completed/0141-custom-shader-materials.md) | The surface stage: standard and custom material shaders | 4 — Render layer | ✅ DONE | High | Complex |
 | 460 | [T0096](open/0096-hdr-pipeline-and-tonemapping.md) | HDR pipeline, tonemapping and the linear-workflow policy | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 445 | [T0151](open/0151-shader-variants-and-compile-cost.md) | Shader variants bounded: precompiled modules, link-time specialisation | 4 — Render layer | 🔜 TODO | Medium | Moderate |

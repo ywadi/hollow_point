@@ -61,7 +61,8 @@ owning ticket.
 | **De-tiling / macro variation** | the per-tap sampling seam (declared textures and parameters landed) | T0153.1 |
 | **Layered surfaces** — snow, wetness, moss, detail maps | nothing — declared textures and parameters landed 2026-08-06 (T0160) | *expressible today* |
 | **World-aligned masks, game triplanar** | nothing | *expressible today* |
-| **Anisotropy, sheen, clearcoat, skin** | the extended features themselves. **The shading half landed 2026-08-07 (T0145)**: a custom BRDF is `light()` writing `R.Diffuse`/`R.Specular`, and the real tangent has been in `HpSurfaceInput` since T0159. What is missing is the *material data* — a sheen colour, a clearcoat normal, an anisotropy direction — and the engine's loop `#error`s on `ENABLE_SHEEN`/`ENABLE_CLEAR_COAT`/`ENABLE_ANISOTROPY` rather than dropping them silently, so T0143 has a named place to write | T0143 |
+| **Anisotropy, sheen, clearcoat** | nothing — **T0143 landed 2026-08-07** (amending D24): the material data is authorable (`clearcoat:`, `sheenColour:`, `anisotropyStrength:` and their textures in a `.hpmat`), the loop's `#error`s were replaced by the mirrored layer blocks, every channel has an `IHpMaterial` hook and a debug view, and `extended_material_test` pins each one against a punctual control — clearcoat lifted the achromatic specular (25 → 136), iridescence split g from b (129 vs 93) with no environment at all. **What punctual light cannot show is stated on the ticket, not papered over**: a coat reading as lacquer and a sheen reading as velvet are environment claims that wait for T0087 | *expressible today; full look needs T0087* |
+| **Skin / subsurface** | a diffusion or transmittance model — none of the six extension blocks is one; the closest primitive is `light()` writing a wrap-diffuse `R.Diffuse`, expressible since T0145 | its own ticket, when asked for by name |
 | **Rim / Fresnel / unshaded** | nothing | *expressible today* |
 | **Vertex motion** — wind, sway, billboarding, displacement, morph | nothing — the vertex stage landed 2026-08-07 (T0146). Sway is the rock cube sample's worked example; billboarding has `In.CameraPos`; morph deltas need a buffer the mesh format does not carry (T0041's neighbourhood) | *five of six expressible today* |
 | **Vertex motion** — per-instance offsets | per-instance data, which is still undefined bytes in `PBRPrimitiveAttribs::CustomData` | **T0164** |
@@ -176,10 +177,10 @@ signature at creation (logged by the renderer, pinned by
 |---|---|---|
 | **T0160's count** (5 glTF + `g_HeightMap` + 4 module slots) | 10 | 11 |
 | **T0161** (5 glTF + `g_HeightMap`; palette samplers added) | 6 | 13 |
-| **today** (+ T0147's `g_SceneColour`, `g_SceneDepth`) | **8** | **13** |
-| + T0087's IBL | 11 | 13 — all reuse `g_LinearClampSampler` |
-| + T0086's shadow map | 12 | 14 |
-| + **T0143**'s extended materials (clearcoat ×3, sheen ×2 and two LUTs, anisotropy, iridescence ×2, transmission, thickness) | **~22** | **~20** |
+| T0147 (+ `g_SceneColour`, `g_SceneDepth`) | 8 | 13 |
+| **today** (**T0143 landed**: the ten extended maps + the sheen albedo-scaling LUT; one immutable sampler per feature family) | **19** | **19** |
+| + T0087's IBL | 22 + the Charlie LUT | 19–20 — the cubemaps reuse `g_LinearClampSampler` |
+| + T0086's shadow map | 24 | 20 |
 | + a module's own declarations | + what it declares, in **its** signature | palette, shared |
 
 **T0147 spent two images and no samplers, deliberately.** The screen
@@ -191,12 +192,12 @@ numbers off the renderer's own creation-time log line.
 
 Vulkan's *guaranteed* per-stage floor is 16 for both — **quoted from the spec
 and not queried on any device here**, and desktop hardware is far above it.
-T0143 still crosses the image floor on its own (~22 with the four module slots
-no longer contributing), and the answer there remains Diligent's
-`ShaderTexturesArrayMode` collapsing the seventeen material slots into one
-array — never trimming what a game may declare. The sampler count crossing 16
-under T0143 is new pressure from the palette's six; the palette is shared
-across every pipeline, so collapsing material samplers is the lever there too.
+**T0143 crossed both floors, measured rather than estimated: 19 and 19**, and
+nothing on the RTX 2080 or llvmpipe objected — a signature resource an SPIR-V
+module never names costs nothing at draw. If a floor-level device ever
+matters, the lever remains Diligent's `ShaderTexturesArrayMode` collapsing the
+seventeen material slots into one array — never trimming what a game may
+declare — and the shared sampler palette is the same lever for samplers.
 
 A signature occupies at most 2 Vulkan descriptor sets and everything here is
 `MUTABLE`, so base + module = **2 sets** against a spec floor of 4 (this

@@ -58,6 +58,40 @@ hp::Material populated() {
     material.textures = {
         hp::MaterialTexture{"HpTexture0", hp::Guid{0x1122334455667788ULL}},
     };
+    // The extended features (T0143), every one off its default — the whole
+    // point of this fixture is that a round trip dropping a field is visible.
+    material.clearcoat = 0.75F;
+    material.clearcoatRoughness = 0.3F;
+    material.clearcoatNormalScale = 0.5F;
+    material.sheenColour = hp::float3{0.9F, 0.8F, 0.7F};
+    material.sheenRoughness = 0.4F;
+    material.anisotropyStrength = 0.6F;
+    material.anisotropyRotation = 1.25F;
+    material.iridescence = 0.8F;
+    material.iridescenceIor = 1.6F;
+    material.iridescenceThicknessMin = 150.0F;
+    material.iridescenceThicknessMax = 350.0F;
+    material.transmission = 0.65F;
+    material.ior = 1.33F;
+    material.thickness = 0.2F;
+    material.attenuationColour = hp::float3{0.5F, 0.75F, 0.9F};
+    material.attenuationDistance = 3.0F;
+    material.clearcoatTexture = hp::Guid{0x2233445566778899ULL};
+    material.clearcoatRoughnessTexture = hp::Guid{0x33445566778899aaULL};
+    material.clearcoatNormalTexture = hp::Guid{0x445566778899aabbULL};
+    material.sheenColourTexture = hp::Guid{0x5566778899aabbccULL};
+    material.sheenRoughnessTexture = hp::Guid{0x66778899aabbccddULL};
+    material.anisotropyTexture = hp::Guid{0x778899aabbccddeeULL};
+    material.iridescenceTexture = hp::Guid{0x8899aabbccddeeffULL};
+    material.iridescenceThicknessTexture = hp::Guid{0x99aabbccddeeff00ULL};
+    material.transmissionTexture = hp::Guid{0xaabbccddeeff0011ULL};
+    material.thicknessTexture = hp::Guid{0xbbccddeeff001122ULL};
+    material.clearcoatUv = 1;
+    material.sheenColourUv = 1;
+    material.anisotropyUv = 1;
+    material.iridescenceUv = 1;
+    material.transmissionUv = 1;
+    material.thicknessUv = 1;
     return material;
 }
 
@@ -88,6 +122,41 @@ void checkSame(const hp::Material& actual, const hp::Material& expected) {
     CHECK(actual.baseColourUv == expected.baseColourUv);
     CHECK(actual.occlusionUv == expected.occlusionUv);
     CHECK(actual.emissiveUv == expected.emissiveUv);
+
+    // The extended features (T0143).
+    CHECK(actual.clearcoat == doctest::Approx(expected.clearcoat));
+    CHECK(actual.clearcoatRoughness == doctest::Approx(expected.clearcoatRoughness));
+    CHECK(actual.clearcoatNormalScale == doctest::Approx(expected.clearcoatNormalScale));
+    CHECK(actual.sheenColour.x == doctest::Approx(expected.sheenColour.x));
+    CHECK(actual.sheenColour.z == doctest::Approx(expected.sheenColour.z));
+    CHECK(actual.sheenRoughness == doctest::Approx(expected.sheenRoughness));
+    CHECK(actual.anisotropyStrength == doctest::Approx(expected.anisotropyStrength));
+    CHECK(actual.anisotropyRotation == doctest::Approx(expected.anisotropyRotation));
+    CHECK(actual.iridescence == doctest::Approx(expected.iridescence));
+    CHECK(actual.iridescenceIor == doctest::Approx(expected.iridescenceIor));
+    CHECK(actual.iridescenceThicknessMin == doctest::Approx(expected.iridescenceThicknessMin));
+    CHECK(actual.iridescenceThicknessMax == doctest::Approx(expected.iridescenceThicknessMax));
+    CHECK(actual.transmission == doctest::Approx(expected.transmission));
+    CHECK(actual.ior == doctest::Approx(expected.ior));
+    CHECK(actual.thickness == doctest::Approx(expected.thickness));
+    CHECK(actual.attenuationColour.y == doctest::Approx(expected.attenuationColour.y));
+    CHECK(actual.attenuationDistance == doctest::Approx(expected.attenuationDistance));
+    CHECK(actual.clearcoatTexture == expected.clearcoatTexture);
+    CHECK(actual.clearcoatRoughnessTexture == expected.clearcoatRoughnessTexture);
+    CHECK(actual.clearcoatNormalTexture == expected.clearcoatNormalTexture);
+    CHECK(actual.sheenColourTexture == expected.sheenColourTexture);
+    CHECK(actual.sheenRoughnessTexture == expected.sheenRoughnessTexture);
+    CHECK(actual.anisotropyTexture == expected.anisotropyTexture);
+    CHECK(actual.iridescenceTexture == expected.iridescenceTexture);
+    CHECK(actual.iridescenceThicknessTexture == expected.iridescenceThicknessTexture);
+    CHECK(actual.transmissionTexture == expected.transmissionTexture);
+    CHECK(actual.thicknessTexture == expected.thicknessTexture);
+    CHECK(actual.clearcoatUv == expected.clearcoatUv);
+    CHECK(actual.sheenColourUv == expected.sheenColourUv);
+    CHECK(actual.anisotropyUv == expected.anisotropyUv);
+    CHECK(actual.iridescenceUv == expected.iridescenceUv);
+    CHECK(actual.transmissionUv == expected.transmissionUv);
+    CHECK(actual.thicknessUv == expected.thicknessUv);
 
     // The declared-parameter store (T0160.3). **Order is part of the value**:
     // it is the order the shader declares them in, which is the order an

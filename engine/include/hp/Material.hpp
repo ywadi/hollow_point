@@ -30,13 +30,12 @@
 //
 // ## Which texture slots are here, and which are deliberately not
 //
-// Diligent defines **17** texture attributes. This carries **five**, and the
-// missing twelve are not an oversight:
+// Diligent defines **17** texture attributes. This carries **fifteen**:
 //
 // | Slot | Here | Why |
 // |---|---|---|
-// | base colour, metallic-roughness, normal, occlusion, emissive | **yes** | `DefaultTextureAttributes`' metallic-roughness set — the five the renderer binds with the engine's current `CreateInfo` |
-// | clearcoat ×3, sheen ×2, anisotropy, iridescence ×2, transmission, thickness | no | **Extended materials, off by D24.** Each one widens the PSO permutation space *and* the material attribs buffer whether or not a material uses it. Turning one on is a decision to argue on its own ticket |
+// | base colour, metallic-roughness, normal, occlusion, emissive | **yes** | `DefaultTextureAttributes`' metallic-roughness set — the five the renderer has bound since T0060 |
+// | clearcoat ×3, sheen ×2, anisotropy, iridescence ×2, transmission, thickness | **yes** | **T0143, amending D24**: the six extended features are on, and a material *using* one pays its PSO permutation — a material using none keys the exact pipeline it did before |
 // | diffuse, specular-glossiness | no | The legacy spec-gloss workflow. glTF 2.0 core is metallic-roughness; supporting both means two shading paths for one result |
 //
 // **The height slot is the engine's own, not one of Diligent's 17** (T0141.7).
@@ -301,6 +300,141 @@ struct Material {
     /// pattern, which is the trade triplanar makes everywhere it is used.
     float triplanarScale = 1.0F;
 
+    // -----------------------------------------------------------------------
+    // The extended material features (T0143, amending D24). Each maps onto the
+    // matching `GLTF::Material` extension block, and **a feature is "in use"
+    // when its factor is non-zero or it names a texture** — only then does the
+    // conversion allocate the block, raise the PSO bits and pay the
+    // permutation. A default-valued feature costs nothing, which is what
+    // keeps every pre-T0143 material byte-identical.
+    //
+    // What each shows without an environment differs, and the shader contract
+    // (`HpMaterial.slang`) states it per field: clearcoat, sheen, anisotropy
+    // and iridescence shape the punctual response; transmission removes
+    // diffuse and drives blend alpha; thickness and the volume attenuation
+    // pair are carried for T0087's refraction and shade nothing yet.
+    // -----------------------------------------------------------------------
+
+    /// Clearcoat layer strength, 0 = none — `KHR_materials_clearcoat`. A
+    /// second specular lobe over everything, dimming what is underneath by
+    /// its Fresnel; car paint and lacquered wood.
+    float clearcoat = 0.0F;
+
+    /// The coat's own roughness, multiplied into `clearcoatRoughnessTexture`'s
+    /// green channel when there is one.
+    float clearcoatRoughness = 0.0F;
+
+    /// Scales the clearcoat normal map's effect, exactly as `normalScale`
+    /// scales the base one. Ignored without a `clearcoatNormalTexture`.
+    float clearcoatNormalScale = 1.0F;
+
+    /// Sheen colour, linear RGB — `KHR_materials_sheen`. Black means no
+    /// sheen; velvet and cloth rims.
+    float3 sheenColour{0.0F, 0.0F, 0.0F};
+
+    /// Sheen roughness, multiplied into `sheenRoughnessTexture`'s alpha.
+    float sheenRoughness = 0.0F;
+
+    /// Anisotropy strength, 0 = isotropic — `KHR_materials_anisotropy`.
+    /// Brushed metal's stretched highlight. Meshes using this should carry
+    /// TANGENT attributes, per the extension.
+    float anisotropyStrength = 0.0F;
+
+    /// Rotates the anisotropy direction, radians, matching every other angle
+    /// here.
+    float anisotropyRotation = 0.0F;
+
+    /// Thin-film iridescence factor, 0..1 — `KHR_materials_iridescence`.
+    float iridescence = 0.0F;
+
+    /// The thin film's index of refraction.
+    ///
+    /// **1.3 is the extension's own default**, not a neutral value.
+    float iridescenceIor = 1.3F;
+
+    /// Film thickness where `iridescenceThicknessTexture` is black, in
+    /// nanometres. Without a texture the maximum alone is used, per the
+    /// extension.
+    float iridescenceThicknessMin = 100.0F;
+
+    /// Film thickness where the texture is white (or everywhere, without
+    /// one), in nanometres.
+    float iridescenceThicknessMax = 400.0F;
+
+    /// Transmission factor, 0..1 — `KHR_materials_transmission`. Removes the
+    /// diffuse response; on an `AlphaMode::Blend` material the scene behind
+    /// shows through at `1 - transmission`. The refractive version of this —
+    /// bending what shows through — is T0087's image-based path.
+    float transmission = 0.0F;
+
+    /// Index of refraction — `KHR_materials_ior`. Written into the material
+    /// buffer beside `transmission`; its consumer is T0087's refraction, and
+    /// 1.5 is glTF's default for it.
+    float ior = 1.5F;
+
+    /// Volume thickness in metres — `KHR_materials_volume`. **Carried and
+    /// debug-viewable, shades nothing yet**: its consumer is the image-based
+    /// refraction that arrives with T0087.
+    float thickness = 0.0F;
+
+    /// What colour survives passing through the volume, linear RGB.
+    /// White — no tint — is the default. T0087's consumer, like `thickness`.
+    float3 attenuationColour{1.0F, 1.0F, 1.0F};
+
+    /// The distance at which light inside the volume has attenuated to
+    /// `attenuationColour`, in metres. **0 means unlimited** — the engine's
+    /// convention for "no limit" (`Light::range`), converted to the
+    /// extension's +infinity on the way to the GPU.
+    float attenuationDistance = 0.0F;
+
+    /// Clearcoat strength map, red channel, multiplied by `clearcoat`.
+    /// Default means none and the factor alone is used — like every texture
+    /// slot here, per the base-colour slot's documentation.
+    Guid clearcoatTexture;
+
+    /// Clearcoat roughness map, green channel.
+    Guid clearcoatRoughnessTexture;
+
+    /// The coat's own tangent-space normal map. **Deliberately separate from
+    /// `normalTexture`**: per the glTF extension, a coat with no map of its
+    /// own is smooth even when the base material is normal-mapped.
+    Guid clearcoatNormalTexture;
+
+    /// Sheen colour map, RGB, sRGB-decoded like base colour.
+    Guid sheenColourTexture;
+
+    /// Sheen roughness map, alpha channel.
+    Guid sheenRoughnessTexture;
+
+    /// Anisotropy map: direction in red-green, strength in blue, the
+    /// extension's packing.
+    Guid anisotropyTexture;
+
+    /// Iridescence factor map, red channel.
+    Guid iridescenceTexture;
+
+    /// Film thickness map, green channel, lerping min to max thickness.
+    Guid iridescenceThicknessTexture;
+
+    /// Transmission factor map, red channel.
+    Guid transmissionTexture;
+
+    /// Volume thickness map, green channel.
+    Guid thicknessTexture;
+
+    /// Which UV channel each extended texture samples with, 0 or 1 — per
+    /// slot, for the same reason the five core selectors are.
+    std::uint8_t clearcoatUv = 0;
+    std::uint8_t clearcoatRoughnessUv = 0;
+    std::uint8_t clearcoatNormalUv = 0;
+    std::uint8_t sheenColourUv = 0;
+    std::uint8_t sheenRoughnessUv = 0;
+    std::uint8_t anisotropyUv = 0;
+    std::uint8_t iridescenceUv = 0;
+    std::uint8_t iridescenceThicknessUv = 0;
+    std::uint8_t transmissionUv = 0;
+    std::uint8_t thicknessUv = 0;
+
     /// The custom shader module this material is shaded by (T0142.15, D28).
     ///
     /// **Default means the standard material** — every other field below and
@@ -391,7 +525,13 @@ struct AssetTraits<Material> {
 /// absent from them — and the bump is the signal in the other direction: a
 /// build that predates this refuses a document that might carry parameters it
 /// would drop on the next save.
-inline constexpr std::uint32_t kMaterialSchemaVersion = 2;
+///
+/// **3 since T0143**, which added the extended material features — clearcoat,
+/// sheen, anisotropy, iridescence, transmission and volume, factors and
+/// textures both. Same shape as the 2 bump: version-2 documents load
+/// unchanged, and a pre-T0143 build refuses a document whose clearcoat it
+/// would silently drop on the next save.
+inline constexpr std::uint32_t kMaterialSchemaVersion = 3;
 
 /// The extension a material asset is stored under.
 ///

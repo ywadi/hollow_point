@@ -284,7 +284,7 @@ pass that writes it, and it gets its own row in the capability matrix first.
 still bind from a `.hpmat` that names them — see their declarations below —
 but they are **deprecated**: name your textures yourself.
 
-25 declaration(s), 72 member(s), all documented.
+25 declaration(s), 98 member(s), all documented.
 
 ## `HP_UNSHADED`
 
@@ -991,6 +991,110 @@ float Occlusion;
 
 How much ambient light reaches this fragment, 0 to 1.
 
+### `HpSurfaceOutput::Clearcoat`
+
+```hlsl
+float Clearcoat;
+```
+
+Clearcoat layer strength, 0 = no coat, 1 = full lacquer layer. The
+coat is a second specular lobe over everything, and it *dims* what is
+underneath by its Fresnel — glTF's `KHR_materials_clearcoat`.
+
+### `HpSurfaceOutput::ClearcoatRoughness`
+
+```hlsl
+float ClearcoatRoughness;
+```
+
+The coat's own perceptual roughness, independent of the base layer's.
+
+### `HpSurfaceOutput::ClearcoatNormal`
+
+```hlsl
+float3 ClearcoatNormal;
+```
+
+World-space normal of the coat. Pre-filled with the surface's
+geometric normal — and with the clearcoat normal map applied when the
+material has one — so orange-peel lacquer is one map away.
+
+### `HpSurfaceOutput::SheenColor`
+
+```hlsl
+float3 SheenColor;
+```
+
+Sheen colour, linear RGB. Black = no sheen. The retro-reflective rim
+of velvet and cloth — `KHR_materials_sheen`.
+
+### `HpSurfaceOutput::SheenRoughness`
+
+```hlsl
+float SheenRoughness;
+```
+
+Sheen roughness, 0..1.
+
+### `HpSurfaceOutput::Anisotropy`
+
+```hlsl
+float Anisotropy;
+```
+
+Anisotropy strength, 0 = isotropic, 1 = maximally stretched highlight
+— `KHR_materials_anisotropy`. Brushed metal is this.
+
+### `HpSurfaceOutput::AnisotropyDirection`
+
+```hlsl
+float2 AnisotropyDirection;
+```
+
+The direction the highlight stretches along, in tangent space,
+**after** the material's authored rotation. (1, 0) = along the mesh
+tangent. Meshes using anisotropy should carry TANGENT attributes, per
+the glTF extension; without them the frame falls back to world X.
+
+### `HpSurfaceOutput::Iridescence`
+
+```hlsl
+float Iridescence;
+```
+
+Thin-film iridescence factor, 0..1 — `KHR_materials_iridescence`.
+Soap bubbles and oil slicks; it bends the base layer's F0, so it is
+visible in the punctual specular even without an environment.
+
+### `HpSurfaceOutput::IridescenceThickness`
+
+```hlsl
+float IridescenceThickness;
+```
+
+The thin film's thickness in **nanometres**. 0 disables the effect
+(mirroring upstream: a zero-thickness film forces the factor to 0).
+
+### `HpSurfaceOutput::Transmission`
+
+```hlsl
+float Transmission;
+```
+
+Transmission factor, 0..1 — `KHR_materials_transmission`. Removes the
+diffuse response and, on a blended material, drives how much of the
+scene behind shows through (`alpha = 1 - Transmission`).
+
+### `HpSurfaceOutput::Thickness`
+
+```hlsl
+float Thickness;
+```
+
+Volume thickness in metres — `KHR_materials_volume`. **Carried and
+debug-visible, but shades nothing yet**: its consumer is the
+image-based refraction that arrives with T0087.
+
 ## `HpLight`
 
 ```hlsl
@@ -1230,6 +1334,134 @@ float Occlusion;
 
 How much ambient light reaches this fragment, 0 to 1. Applies to the
 image-based term when T0087 lands; punctual light does not use it.
+
+### `HpShadedSurface::Clearcoat`
+
+```hlsl
+float Clearcoat;
+```
+
+Clearcoat strength — `HpSurfaceOutput::Clearcoat`.
+
+### `HpShadedSurface::ClearcoatRoughness`
+
+```hlsl
+float ClearcoatRoughness;
+```
+
+The coat's perceptual roughness.
+
+### `HpShadedSurface::ClearcoatNormal`
+
+```hlsl
+float3 ClearcoatNormal;
+```
+
+The coat's unit world-space normal.
+
+### `HpShadedSurface::ClearcoatReflectance0`
+
+```hlsl
+float ClearcoatReflectance0;
+```
+
+The coat's specular reflectance at normal incidence — 0.04, from the
+fixed IOR of 1.5 upstream uses; grazing reflectance is 1. Scalar
+because the coat is achromatic.
+
+### `HpShadedSurface::SheenColor`
+
+```hlsl
+float3 SheenColor;
+```
+
+Sheen colour, linear RGB.
+
+### `HpShadedSurface::SheenRoughness`
+
+```hlsl
+float SheenRoughness;
+```
+
+Sheen roughness.
+
+### `HpShadedSurface::Anisotropy`
+
+```hlsl
+float Anisotropy;
+```
+
+Anisotropy strength, 0 = isotropic.
+
+### `HpShadedSurface::AnisotropyTangent`
+
+```hlsl
+float3 AnisotropyTangent;
+```
+
+The anisotropy frame's world-space tangent — the direction the
+highlight stretches along.
+
+### `HpShadedSurface::AnisotropyBitangent`
+
+```hlsl
+float3 AnisotropyBitangent;
+```
+
+The anisotropy frame's world-space bitangent.
+
+### `HpShadedSurface::AlphaRoughnessT`
+
+```hlsl
+float AlphaRoughnessT;
+```
+
+GGX alpha along the tangent: `lerp(roughness², 1, strength²)`.
+
+### `HpShadedSurface::AlphaRoughnessB`
+
+```hlsl
+float AlphaRoughnessB;
+```
+
+GGX alpha along the bitangent: `roughness²`.
+
+### `HpShadedSurface::Iridescence`
+
+```hlsl
+float Iridescence;
+```
+
+Iridescence factor after upstream's zero-thickness kill switch. Its
+*effect* is already folded into `Reflectance0` by the engine, exactly
+as upstream folds it into the base layer's F0.
+
+### `HpShadedSurface::IridescenceThickness`
+
+```hlsl
+float IridescenceThickness;
+```
+
+Thin-film thickness, nanometres.
+
+### `HpShadedSurface::Transmission`
+
+```hlsl
+float Transmission;
+```
+
+Transmission factor. The standard response multiplies diffuse by
+`1 - Transmission`, mirroring `ApplyPunctualLight`.
+
+### `HpShadedSurface::Thickness`
+
+```hlsl
+float Thickness;
+```
+
+Volume thickness, metres. **Read by nothing in the punctual path** —
+its consumer is T0087's image-based refraction; see
+`HpSurfaceOutput::Thickness`.
 
 ## `HpLightResponse`
 

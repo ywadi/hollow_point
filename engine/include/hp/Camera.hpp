@@ -178,6 +178,49 @@ enum class SurfaceDebugView : std::uint8_t {
     /// being applied — which is exactly the failure that is invisible in a
     /// shaded frame.
     ShadingNormal = 13,
+
+    // The extended material layers (T0143). One view per channel, because a
+    // wrong extended input is even more invisible than a wrong core one —
+    // clearcoat on a rough surface under one lamp reads as "slightly
+    // different", and occlusion sat silently unread for a whole ticket until
+    // the first minute its view existed. A feature the material does not use
+    // shows its zero: flat black.
+
+    /// Clearcoat layer strength, greyscale.
+    ClearCoatFactor = 21,
+
+    /// The coat's own roughness, greyscale.
+    ClearCoatRoughness = 22,
+
+    /// The coat's normal, encoded like `ShadingNormal`. Differs from
+    /// `MeshNormal` only when the material carries a clearcoat normal map.
+    ClearCoatNormal = 23,
+
+    /// Sheen colour, as-is.
+    SheenColor = 25,
+
+    /// Sheen roughness, greyscale.
+    SheenRoughness = 26,
+
+    /// Anisotropy strength, greyscale.
+    AnisotropyStrength = 27,
+
+    /// The anisotropy direction after the authored rotation, tangent space,
+    /// `xy * 0.5 + 0.5` in red and green.
+    AnisotropyDirection = 28,
+
+    /// Thin-film iridescence factor, greyscale.
+    IridescenceFactor = 30,
+
+    /// Thin-film thickness; white at 1200 nm, upstream's own normalisation.
+    IridescenceThickness = 31,
+
+    /// Transmission factor, greyscale.
+    Transmission = 32,
+
+    /// Volume thickness in metres, unnormalised — a thickness above 1 m
+    /// clips to white.
+    Thickness = 33,
 };
 
 /// A point of view. Which camera renders, and into what viewport, is not

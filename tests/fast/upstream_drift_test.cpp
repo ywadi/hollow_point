@@ -233,8 +233,10 @@ TEST_CASE("the mirrored light loop still matches DiligentFX, line for line") {
     const std::vector<Pinned> pinned = parsePin(pinText);
     // The count is asserted so that a pin file emptied by a bad edit fails here
     // rather than passing vacuously -- the classic way a guard stops guarding.
-    REQUIRE_MESSAGE(pinned.size() == 6,
-                    "expected 6 pinned functions, parsed " << pinned.size());
+    // 6 through T0145; **16 since T0143** widened the mirror to the extended
+    // layers' surface-fill derivations and layer resolves.
+    REQUIRE_MESSAGE(pinned.size() == 16,
+                    "expected 16 pinned functions, parsed " << pinned.size());
 
     const std::filesystem::path shaders =
         root / "third_party" / "DiligentEngine" / "DiligentFX" / "Shaders";
