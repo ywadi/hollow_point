@@ -271,6 +271,15 @@ modes, composed effects and decals. Two things are still outside:
   chain. The half of this item that remains open is ribbons/trails (T0080's
   buffer-layout constraint), unchanged.*
 
+  *Update 2026-08-07: **the read landed** (T0147, D37). Scene colour and scene
+  depth are copied between the opaque and blend passes at 10.9b and sampled by
+  any material whose alpha mode is `Blend`, so screen distortion is a
+  **material** today and needs no pass of its own -- a shockwave is a blended
+  quad whose `baseColor` samples `HpSceneColour(In.ScreenUV + offset)`. What a
+  distortion* pass *would still buy is applying it to the whole frame rather
+  than to a surface, which is T0148's chain and is a different thing wanting
+  the same word. The ribbons/trails half of this item is still open.*
+
 ## 9. Screenshot capture -- [mentioned, unowned]
 
 T0083.3 requires save-slot metadata including a "screenshot". No ticket

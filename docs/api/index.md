@@ -41,7 +41,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Engine.hpp>`](Engine.md) | 4 | 4 |
 | [`<hp/EntryPoint.hpp>`](EntryPoint.md) | 1 | 0 |
 | [`<hp/Event.hpp>`](Event.md) | 80 | 23 |
-| [`<hp/FrameTargets.hpp>`](FrameTargets.md) | 25 | 25 |
+| [`<hp/FrameTargets.hpp>`](FrameTargets.md) | 27 | 27 |
 | [`<hp/Guid.hpp>`](Guid.md) | 13 | 5 |
 | [`<hp/Input.hpp>`](Input.md) | 39 | 39 |
 | [`<hp/Layer.hpp>`](Layer.md) | 28 | 16 |
@@ -58,10 +58,10 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Render.hpp>`](Render.md) | 25 | 25 |
 | [`<hp/RenderStack.hpp>`](RenderStack.md) | 21 | 21 |
 | [`<hp/Scene.hpp>`](Scene.md) | 58 | 58 |
-| [`<hp/SceneRenderLayer.hpp>`](SceneRenderLayer.md) | 10 | 10 |
-| [`<hp/SceneRenderer.hpp>`](SceneRenderer.md) | 11 | 11 |
+| [`<hp/SceneRenderLayer.hpp>`](SceneRenderLayer.md) | 11 | 11 |
+| [`<hp/SceneRenderer.hpp>`](SceneRenderer.md) | 14 | 14 |
 | [`<hp/SceneSerialize.hpp>`](SceneSerialize.md) | 10 | 10 |
-| [`<hp/SceneView.hpp>`](SceneView.md) | 18 | 18 |
+| [`<hp/SceneView.hpp>`](SceneView.md) | 19 | 19 |
 | [`<hp/Serialize.hpp>`](Serialize.md) | 6 | 6 |
 | [`<hp/Settings.hpp>`](Settings.md) | 28 | 28 |
 | [`<hp/ShaderCook.hpp>`](ShaderCook.md) | 12 | 12 |
@@ -73,7 +73,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 47 | 47 |
 
-**765 public declarations across 42 headers, 648 documented.**
+**772 public declarations across 42 headers, 655 documented.**
 
 ## Every symbol
 
@@ -300,6 +300,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `MouseScrolledEvent::name` | [`Event.hpp`](Event.md) |
 | `dispatchEvent` | [`Event.hpp`](Event.md) |
 | `TargetFormat` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `kSceneColourSnapshotTarget` | [`FrameTargets.hpp`](FrameTargets.md) |
+| `kSceneDepthSnapshotTarget` | [`FrameTargets.hpp`](FrameTargets.md) |
 | `FrameTargetDesc` | [`FrameTargets.hpp`](FrameTargets.md) |
 | `FrameTargets` | [`FrameTargets.hpp`](FrameTargets.md) |
 | `FrameTargets::FrameTargets` | [`FrameTargets.hpp`](FrameTargets.md) |
@@ -628,9 +630,11 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `SceneRenderLayer::valid` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
 | `SceneRenderLayer::setScene` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
 | `SceneRenderLayer::scene` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
+| `SceneRenderLayer::setGameTexture` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
 | `SceneRenderLayer::onRenderLayer` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
 | `SceneRenderLayer::name` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
 | `configureAsHud` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
+| `SceneScreenInputs` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `DrawSubmitStats` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `SceneRenderer` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `SceneRenderer::SceneRenderer` | [`SceneRenderer.hpp`](SceneRenderer.md) |
@@ -641,6 +645,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `SceneRenderer::create` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `SceneRenderer::release` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `SceneRenderer::valid` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `SceneRenderer::setGameTexture` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `SceneRenderer::clearGameTextures` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `SceneRenderer::render` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `UnknownComponent` | [`SceneSerialize.hpp`](SceneSerialize.md) |
 | `UnknownComponents` | [`SceneSerialize.hpp`](SceneSerialize.md) |
@@ -664,6 +670,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `SceneView::release` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::valid` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::render` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::setGameTexture` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::colour` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::colourTexture` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::readback` | [`SceneView.hpp`](SceneView.md) |

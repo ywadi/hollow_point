@@ -6,7 +6,7 @@
 #include <hp/FrameTargets.hpp>
 ```
 
-25 public declaration(s), 25 documented.
+27 public declaration(s), 27 documented.
 
 ## `TargetFormat`
 
@@ -25,6 +25,33 @@ enum class TargetFormat
  A role rather than a format, so formats are chosen in **one** place
  (`FrameTargets.cpp`) rather than being spelled out at each declaration and
  drifting apart. That is 46.4's requirement stated as a type.
+
+## `kSceneColourSnapshotTarget`
+
+```cpp
+inline constexpr const char * kSceneColourSnapshotTarget = "scene.colour.snapshot"
+```
+
+ The conventional name of the scene-colour snapshot (T0147).
+
+ **A name rather than a type**, because a snapshot is an ordinary target: it
+ is declared, created, resized and released like any other, and what makes it
+ a snapshot is that `SceneRenderer` is told to copy into it. Naming the
+ convention here is what lets a `RenderStack`-driven frame opt in — declare a
+ pair under these names on the stack's targets and `SceneRenderLayer` finds
+ them — without either class inventing its own string.
+
+ Must be the same format and scale as the target it snapshots, which
+ `SceneRenderer` checks before it issues the copy.
+
+## `kSceneDepthSnapshotTarget`
+
+```cpp
+inline constexpr const char * kSceneDepthSnapshotTarget = "scene.depth.snapshot"
+```
+
+ The conventional name of the scene-depth snapshot (T0147). See
+ `kSceneColourSnapshotTarget`.
 
 ## `FrameTargetDesc`
 

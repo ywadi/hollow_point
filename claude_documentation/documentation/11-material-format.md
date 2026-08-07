@@ -121,7 +121,7 @@ per-field code in `Material.cpp` at all.
 | `roughness` | `1` | Multiplied into the **green** channel of the same texture |
 | `normalScale` | `1` | How strongly `normalTexture` applies. 0 flattens it |
 | `occlusionStrength` | `1` | How strongly `occlusionTexture` darkens ambient light |
-| `alphaMode` | `Opaque` | `Opaque`, `Mask` or `Blend` — **by name** |
+| `alphaMode` | `Opaque` | `Opaque`, `Mask` or `Blend` — **by name**. Also decides which half of the frame the surface is submitted in, and whether its shader may read the screen (T0147) |
 | `alphaCutoff` | `0.5` | The threshold `Mask` compares against; ignored otherwise |
 | `doubleSided` | `false` | Whether back faces are drawn |
 | `unlit` | `false` | Whether lighting is skipped and `baseColour` shown directly |
@@ -336,6 +336,23 @@ current value and says so.
 
 This is the general rule for every reflected enum — see the scene format
 document, which has the same section and the defect that motivated it.
+
+### `alphaMode` decides more than blending (T0147, D37)
+
+Since the frame gained its opaque/blend split, this field also decides **when**
+a surface is drawn and **what its shader may reach**:
+
+- `Opaque` and `Mask` are submitted at **10.9a**, before the scene snapshot.
+- `Blend` is submitted at **10.9c**, after it — and is therefore the **only**
+  alpha mode whose shader may sample `g_SceneColour` or `g_SceneDepth`. A module
+  that reads either from an `Opaque` or `Mask` material does not get a pipeline
+  at all: the console names the module and the rule, and the surface renders the
+  missing-material checkerboard.
+
+So a refraction, a heat haze, a frosted pane or a soft particle is
+`alphaMode: Blend` in this file *and* a screen read in its `.slang` — neither
+alone. Setting one and not the other is the mistake the loud refusal exists to
+name.
 
 ## Reading is lenient; writing is exact
 

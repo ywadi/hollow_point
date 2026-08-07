@@ -2400,3 +2400,138 @@ wanted more than three.
 up on dense geometry. Both are additive, and both belong with T0151's variant
 work, which is the ticket that already owns "what may become a permutation
 axis".
+
+---
+
+## D37 — Screen intermediates are **snapshots taken between two passes**, readable only by blended materials, and there is no normal-roughness read
+
+**Decided 2026-08-07 on T0147**, against Godot's hint-uniforms, and it settles
+three questions that would otherwise each have been answered by whichever
+technique arrived first.
+
+A game's shader may sample **`g_SceneColour`** and **`g_SceneDepth`** — what the
+frame looks like behind this fragment. They are engine-fed, so they carry engine
+names in the engine's **base** signature, which is the other side of D35's line:
+resources a game *declares* are reflected into its own signature under its own
+names, and resources the engine *feeds* are the engine's. Neither namespace has
+to know about the other, and `buildModuleSignatureDesc`'s subtraction keeps them
+apart for free.
+
+### The frame gained a seam, and it was overdue for a second reason
+
+`SceneRenderer::render` submitted the draw list in one walk, in list order. That
+meant a blended surface could be drawn **before** the opaque geometry behind it
+— blending against the clear colour, and worse, writing depth that then rejected
+the geometry it should have been in front of. It also meant there was no instant
+in the frame at which "the opaque image" existed.
+
+So phase 10.9 is three steps: **10.9a** opaque and masked, **10.9b** the
+snapshot, **10.9c** blended. The transparent-ordering fix would have been worth
+it on its own; the snapshot point is what this ticket needed.
+
+### Copy, not alias — and the alternative was cheaper
+
+The depth buffer could have been bound through a
+`TEXTURE_VIEW_READ_ONLY_DEPTH_STENCIL` view for the blend pass and sampled live:
+`VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL` permits exactly that, and it
+costs no copy and no second target. **Rejected**, for three reasons that
+compound:
+
+- it has **no counterpart for colour**, which cannot be both attachment and
+  sampled image, so the engine would carry two mechanisms with two validity
+  rules for one feature;
+- the depth a shader read would then depend on **how many blended surfaces had
+  already drawn into it**, which is a different answer per draw order and
+  therefore not a contract;
+- it moves the decision into the caller, which would have to bind a different
+  DSV for one of the two passes.
+
+One copy mechanism, one validity rule, every backend. Diligent asks to be told
+explicitly — *"Texture 'scene.colour' is currently bound as render target … To
+silence this message, explicitly unbind"* — so the renderer unbinds, copies, and
+re-binds **exactly the views it was handed**. It still chooses no target.
+
+### **Only a blended material may read them, and that is enforced**
+
+The snapshot happens after the opaque pass, so an opaque read sees the *previous*
+frame — which works perfectly from the second frame of a static scene and is
+therefore precisely the bug that ships. A module naming either resource from a
+pipeline whose alpha mode is not `Blend` **does not get a pipeline**: one log
+line names the module and the rule, and the surface renders the missing-material
+checkerboard. The alpha mode is already in the `PSOKey`, so the check costs
+nothing and fires where both facts are in scope.
+
+**Documented-and-hoped-for was the alternative, and this project has measured
+what that is worth.** T0141's "custom shaders receive engine intermediates"
+stood in a Done-when for months while no shader could sample anything.
+
+### What they contain, and the recursion that is not solved
+
+The frame **as of the end of the opaque pass**: `Opaque` and `Mask` surfaces, and
+the clear colour elsewhere. **No blended geometry at all**, including blended
+surfaces drawn earlier in the same frame — a pane of glass behind another does
+not appear in the second one's refraction. Godot's screen texture has the same
+limitation and so does every engine that does not snapshot per transparent draw.
+It is documented, not solved.
+
+Scene colour is **pre-tonemap linear** by construction (T0096's sidedness rule),
+because the copy is of the world target before anything post-processes it. A
+shader author porting an LDR trick will meet values above 1 once the HDR chain
+lands, and the contract says so.
+
+### Full resolution, not half
+
+Half was the obvious saving and is wrong for both consumers: a depth fade against
+half-resolution depth haloes along every silhouette, and a refraction through
+half-resolution colour is soft exactly where the eye is looking through it. The
+saving is bandwidth in a copy that only happens when something reads it; the cost
+is an artefact in the technique the copy exists for. A material that wants a
+blurred read can bias its own mip or march its own taps.
+
+### The copy costs nothing when nothing reads it — and one frame when something might
+
+Demand is a fact about a module's *compiled bytecode*, so it is unknown until a
+pipeline exists for that module, and **unknown counts as wanting**. The opaque
+walk scans the primitives it skips and learns both facts — is there blend work,
+and does any of it read the screen — before the snapshot point. Measured over two
+frames: a blended **standard** material 0 copies ever, a blended module that
+ignores the screen **1** (the speculative first frame), a module that reads it
+**2**.
+
+Letting demand lag by a frame instead would cost zero and render the first frame
+of every refraction against an uninitialised texture. One speculative copy per
+module is the cheaper mistake.
+
+### A game's own texture is the same declaration with a second feed
+
+A texture a game *layer* produced — a fog-of-war field (T0093), a flow
+simulation, a minimap — is **not** a new mechanism. The module declares
+`Texture2DArray visibility;` exactly as T0161 already allows, and
+`setGameTexture("visibility", view)` supplies the bytes. Resolution order is
+`.hpmat` first (authored content is the more specific statement), then the game
+feed, then white. Nothing is refused and nothing warns, so a module may declare a
+slot the game has not started feeding.
+
+The view is **not** kept alive, matching `FrameTargets`' rule; a game re-feeds
+after a resize, and a generation counter is what tells a cached SRB it is holding
+a dead view.
+
+### **No normal-roughness read, and that is a decision rather than a gap**
+
+Godot's `hint_normal_roughness_texture` is Forward+-only there for the same
+reason it is absent here: it is a **deferred** resource. This engine is
+forward-only (D24), with no G-buffer and no depth prepass, so producing one means
+adding a pass that writes normals and roughness for every opaque surface — real
+bandwidth, paid by every game, for a technique none has asked for.
+
+The honest forward answer is that **a shader already has its own** normal and
+roughness. What a screen-space read adds is the *other* surface's, and that is
+what the prepass would exist to produce. So it is rejected, with the trigger
+written down: if something wants it, it arrives with the pass that writes it, and
+it gets a row in the capability matrix before it is built (D35).
+
+**Revisit if** a transparent surface needs to see other transparents (that is a
+per-draw snapshot, or an OIT path, and belongs with T0045), if T0096's HDR chain
+changes what "the world target" means at 10.9b, or if a technique arrives that
+genuinely needs the deferred normal-roughness pair — in which case the pass that
+produces it is the ticket, not this contract.

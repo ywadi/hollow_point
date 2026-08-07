@@ -46,8 +46,9 @@ owning ticket.
 | Light access | **P** — readable since D27's amendment (2026-08-06, T0159): `g_Frame.Lights[]` is in scope, **but its order is unspecified for directional lights** (unstable sort on equal keys — pick by intensity, never index). Replacing the loop is T0145 | T0145 |
 | Vertex hook | **Y** — `IHpMaterial.vertex()`, object space in and out (2026-08-07, T0146, D36). The engine owns the vertex `main`; `HpVertexInput` carries the mesh's own position, normal, tangent, UVs and colour plus the **rest world position**, the object-to-world matrix, the camera position and `Time`. `HpVertexOutput` takes displaced geometry, rewritten UVs and vertex colour. Godot's `skip_vertex_transform` is refused, and D36 says why | — |
 | Custom interpolators | **P** — four fixed `float4` slots, `HpVertexOutput::Custom0` … `Custom3` in and `HpSurfaceInput::Custom0` … `Custom3` out (2026-08-07, T0146.4). **Not a declaration**: `VSOutput` is generated per permutation and reflection rides the compile, so the count cannot depend on the module — D36 records the circularity. Present only in custom-material permutations; unwritten slots read zero | (widening: T0151) |
-| Screen resources (depth, scene colour, fed textures) | **–** | T0147 |
+| Screen resources (depth, scene colour, fed textures) | **Y** — `HpSceneColour(uv)`, `HpSceneDepth(uv)`, `HpSceneViewDepth(uv)` and `HpViewDepth(z)` over the engine-fed `g_SceneColour`/`g_SceneDepth`, addressed by `HpSurfaceInput::ScreenUV` (2026-08-07, T0147, D37). Snapshots taken between the opaque and blend passes, so **only a material with `alphaMode: Blend` may read them** — enforced at pipeline build, by name, with the checkerboard. A texture a *game layer* produced rides T0161's declaration unchanged: `setGameTexture(name, view)` feeds it, after the `.hpmat` and before white. **No normal-roughness read** — forward-only, see the row below | — |
 | Time / frame counter | **P** — `HpSurfaceInput::Time` landed 2026-08-06 (T0159): the caller's clock reaches shaders through every render path. The *frame counter* (`uiFrameIndex`) is still only zeroed, never written | (frame counter: unowned) |
+| Deferred normal-roughness read | **–**, and **decided** rather than owed (2026-08-07, D37): this engine is forward-only (D24), so there is no G-buffer to read and synthesising one is a prepass every game pays for. A shader already has *its own* normal and roughness; the screen-space read is the *other* surface's, which is what the prepass would produce. Arrives with the pass that writes it, or not at all | (rejected — reopen with a pass, per D35) |
 | Per-instance data | **–** — layout exists, bytes undefined. Explicitly *not in scope* on T0160, which recorded the trigger: `PBRPrimitiveAttribs::CustomData` is the place, the write is skipped when null and the engine passes null | (unowned) |
 | Pass and pipeline control | **–** | T0148 / T0150 / T0094 |
 
@@ -64,8 +65,10 @@ owning ticket.
 | **Vertex motion** — wind, sway, billboarding, displacement, morph | nothing — the vertex stage landed 2026-08-07 (T0146). Sway is the rock cube sample's worked example; billboarding has `In.CameraPos`; morph deltas need a buffer the mesh format does not carry (T0041's neighbourhood) | *five of six expressible today* |
 | **Vertex motion** — per-instance offsets | per-instance data, which is still undefined bytes in `PBRPrimitiveAttribs::CustomData` | (unowned — see the per-instance row above) |
 | **Transparency** — dissolve, fade | nothing — a dissolve threshold and a fade factor are declared parameters (T0160), and `In.Time` drives them | *expressible today* |
-| **Transparency** — refraction, decals, dithered LOD | scene colour, per-instance data, a LOD system | T0147, T0039/T0040 |
-| **Screen-space** — soft particles, heat haze, frosted glass, fog-of-war | bound screen resources | **T0147** |
+| **Transparency** — refraction | nothing — scene colour landed 2026-08-07 (T0147). `screen_inputs_test` asserts the refracted image is the scene *pixel for pixel* at the displaced coordinate | *expressible today* |
+| **Transparency** — decals, dithered LOD | per-instance data, a LOD system | T0039/T0040 |
+| **Screen-space** — soft particles, heat haze, frosted glass | nothing — bound screen resources landed 2026-08-07 (T0147, D37). The soft-particle read is the ticket's own depth-fade example, proved before T0106 needs it; heat haze and frosted glass are the refraction with a different offset | *expressible today* |
+| **Screen-space** — fog-of-war | nothing *mechanically* — a game layer renders the visibility field and feeds it by name (T0147.4); what is still absent is the engine **computing** one, and a `HpSurfaceInput::Visibility` field waits on that rather than on this | T0093 (the field; the mechanism is done) |
 | **Time-driven** — scrolling, flowmaps, pulsing emissive | nothing — `In.Time` landed on T0159 and a flowmap's texture is a declared slot (T0160) | *expressible today* |
 | **NPR** — cel, hatching, custom BRDF | the light loop | **T0145** |
 | **NPR** — ramp lighting | the light loop (the ramp texture itself is a declared slot since T0160) | **T0145** |
@@ -100,9 +103,17 @@ thing the audit produced:
 
 ### (c) It does not exist — real work
 
-A D27-clean light (T0145), screen resources (T0147), an instancing path, a LOD
-fade factor, motion vectors, `ShadowFactor` / `Visibility` /
-`AmbientOcclusionIBL` (T0086 / T0093 / T0087).
+A D27-clean light (T0145), an instancing path, a LOD fade factor, motion
+vectors, `ShadowFactor` / `Visibility` / `AmbientOcclusionIBL` (T0086 / T0093 /
+T0087).
+
+~~Screen resources~~ — **landed 2026-08-07 (T0147, D37)**, and they were the
+only entry in this table whose whole technique *family* was blocked: six
+techniques, none of them expressible, for the single reason that a shader cannot
+sample a buffer that is not bound to the pipeline. The work was not the contract
+— four helper functions and one `ScreenUV` field — it was the frame gaining a
+seam to take the snapshot at, which turned out to also be the fix for blended
+geometry being submitted before the opaque geometry behind it.
 
 ~~A vertex hook and custom interpolators~~ — **landed 2026-08-07 (T0146,
 D36)**, and it was the largest remaining item after declared parameters: the
@@ -154,11 +165,19 @@ signature at creation (logged by the renderer, pinned by
 | | sampled images | immutable samplers |
 |---|---|---|
 | **T0160's count** (5 glTF + `g_HeightMap` + 4 module slots) | 10 | 11 |
-| **today** (5 glTF + `g_HeightMap`; palette samplers added) | **6** | **13** |
-| + T0087's IBL | 9 | 13 — all reuse `g_LinearClampSampler` |
-| + T0086's shadow map | 10 | 14 |
+| **T0161** (5 glTF + `g_HeightMap`; palette samplers added) | 6 | 13 |
+| **today** (+ T0147's `g_SceneColour`, `g_SceneDepth`) | **8** | **13** |
+| + T0087's IBL | 11 | 13 — all reuse `g_LinearClampSampler` |
+| + T0086's shadow map | 12 | 14 |
 | + **T0143**'s extended materials (clearcoat ×3, sheen ×2 and two LUTs, anisotropy, iridescence ×2, transmission, thickness) | **~22** | **~20** |
 | + a module's own declarations | + what it declares, in **its** signature | palette, shared |
+
+**T0147 spent two images and no samplers, deliberately.** The screen
+intermediates are sampled through the palette that already exists
+(`HpSamplerLinearClamp` for colour, `HpSamplerPointClamp` for depth) rather than
+through slot samplers of their own — so the count that was *already* under
+pressure from T0143 did not move at all. `custom_shader_material_test` pins both
+numbers off the renderer's own creation-time log line.
 
 Vulkan's *guaranteed* per-stage floor is 16 for both — **quoted from the spec
 and not queried on any device here**, and desktop hardware is far above it.

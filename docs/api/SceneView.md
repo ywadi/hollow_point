@@ -6,7 +6,7 @@
 #include <hp/SceneView.hpp>
 ```
 
-18 public declaration(s), 18 documented.
+19 public declaration(s), 19 documented.
 
 ## `SceneViewStats`
 
@@ -75,7 +75,7 @@ SceneView & operator=(SceneView && other)
 ## `SceneView::create`
 
 ```cpp
-bool create(Diligent::IRenderDevice * device, Diligent::IDeviceContext * context, int width, int height, TargetFormat colour)
+bool create(Diligent::IRenderDevice * device, Diligent::IDeviceContext * context, int width, int height, TargetFormat colour, bool screenInputs)
 ```
 
  Creates the targets and the renderer.
@@ -85,6 +85,18 @@ bool create(Diligent::IRenderDevice * device, Diligent::IDeviceContext * context
  @param height initial height in pixels. Clamped to at least 1.
  @param colour the colour target's format. `ColourHDR` is what T0096 will
         want; `Colour` is what composites directly to a swap chain today.
+ @param screenInputs whether to declare the two snapshot targets a
+        material shader samples as `g_SceneColour` and `g_SceneDepth`
+        (T0147).
+
+        **On by default, and it costs memory rather than time**: two more
+        full-resolution targets, one per format, so about 16 MB at 1080p
+        with an 8-bit colour target. No copy is issued unless a blended
+        material actually reads them, so the per-frame cost of leaving
+        this on in a scene that never refracts is zero. Turn it off for a
+        view that is certain not to want it — a thumbnail render, a
+        shadow-only view — and the intermediates then read the engine's
+        stand-ins with one warning.
  @returns whether everything came up. False leaves this empty, never
           half-created.
 
@@ -139,6 +151,19 @@ Diligent::ITextureView * render(Diligent::IDeviceContext * context, Scene & scen
  @returns the colour target to display, or **nullptr when nothing was
           published** — no camera, or the view could not be built. A null
           return is the signal not to emit a `FrameRenderedEvent`.
+
+## `SceneView::setGameTexture`
+
+```cpp
+void setGameTexture(std::string_view name, Diligent::ITextureView * view)
+```
+
+ Feeds a texture a game layer produced to this view's material shaders,
+ by name (T0147.4). See `SceneRenderer::setGameTexture`, which this
+ forwards to unchanged.
+ @param name the shader-side declaration name.
+ @param view the view to bind, or null to remove the entry.
+ @returns nothing.
 
 ## `SceneView::colour`
 

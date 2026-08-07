@@ -105,6 +105,14 @@ line and additive by construction:
 `Time` sat in that table — the field existed in `PBRFrameAttribs` and was
 never written — until T0159.5 connected the clock and added it below.
 
+**T0147 added `ScreenUV` and did *not* add `Visibility`, and the restraint is
+the point.** A game can build the fog-of-war dim today, out of a texture its
+own layer renders and feeds by name (see the game-fed section below) — that
+is a *mechanism*, and it is honest about what produces the bytes. A
+`Visibility` field would be the engine promising a number no engine system
+computes, which is exactly the failure this table exists to prevent. It
+arrives when T0093's system does, and then it is one line.
+
 #### The struct is a contract, not a wire format
 
 A field here does **not** imply an interpolator. Vertex-to-pixel interpolators
@@ -172,22 +180,111 @@ trusting:
 - **Values are data, not permutations.** Changing a `.hpmat` value rebuilds
   no pipeline and invalidates no cook.
 - **Two namespaces, one line between them.** Resources you *declare* are
-  yours, fed by the `.hpmat`. Resources the *engine* feeds — the frame,
-  the lights, the height map, and later the screen and shadow resources
-  (T0147, T0086) — are the engine's names, reached as documented above.
-  A texture the `.hpmat` does not name samples **white**; a GUID that does
-  not resolve samples the missing-asset checkerboard.
+  yours, fed by the `.hpmat` or by the game (see below). Resources the
+  *engine* feeds — the frame, the lights, the height map, the screen
+  intermediates (T0147) and later the shadow resources (T0086) — are the
+  engine's names, reached as documented above. A texture neither the
+  `.hpmat` nor the game names samples **white**; a GUID that does not
+  resolve samples the missing-asset checkerboard.
 - **Buffers are declared the same way but no material stage can feed one
   yet** — a structured buffer in a surface module is refused by name until
-  the stages whose point they are (T0147 screen resources, T0150 compute)
-  land. The mechanism is already stage-neutral; the data paths are not
-  built.
+  the stage whose point they are (T0150 compute) lands. The mechanism is
+  already stage-neutral; that data path is not built.
+
+##### A texture the *game* produced, not the `.hpmat` (T0147.4, T0094)
+
+**Same declaration, second source.** A `.hpmat` binds a texture *asset*; a
+game layer binds a texture it *rendered* — a fog-of-war visibility field, a
+flow simulation, a minimap — through the engine, by the same name your
+module declares:
+
+    // gameplay C++, once the layer has drawn into its own target
+    layer.setGameTexture("visibility", myTarget);
+
+    // the module, unchanged from any other declared texture
+    Texture2DArray visibility;
+    ...
+    float seen = visibility.SampleLevel(HpSamplerLinearClamp,
+                                        float3(In.ScreenUV, 0.0), 0.0).r;
+
+The resolution order is **`.hpmat` first, then the game feed, then white**:
+a material that names an asset for that slot keeps it, because authored
+content is the more specific statement. Nothing is refused and nothing
+warns — a name no one feeds is white, exactly as it was before, so a module
+can declare a slot the game has not started feeding yet.
+
+
+#### Screen resources: what the frame looks like behind this fragment (T0147)
+
+**Two engine-fed textures, and one rule that governs both.** They are what
+refraction, glass, heat haze, frosted glass, soft particles and fog-of-war
+are made of, and Godot's `hint_screen_texture` / `hint_depth_texture` are
+the same thing under other names.
+
+    float4 behind = HpSceneColour(In.ScreenUV + offset);  // linear RGB
+    float  sceneZ = HpSceneViewDepth(In.ScreenUV);        // metres
+    float  fade   = saturate((sceneZ - HpViewDepth(In.ScreenPos.z)) / 0.5);
+
+| Helper | What it returns |
+|---|---|
+| `HpSceneColour(uv)` | the scene's colour, **linear**, pre-tonemap (T0096) |
+| `HpSceneDepth(uv)` | raw device depth — near is **1**, far is **0** (reverse-Z, T0130) |
+| `HpSceneViewDepth(uv)` | that depth as a distance along the view axis, in metres |
+| `HpViewDepth(z)` | the same conversion for any device depth, including your own `In.ScreenPos.z` |
+
+The textures themselves are `g_SceneColour` and `g_SceneDepth`, sampled
+through the palette (`HpSamplerLinearClamp`, `HpSamplerPointClamp`); the
+helpers exist so that a shader author never has to remember which sampler
+or which depth convention.
+
+##### The rule: **only a material with `alphaMode: Blend` may read them**
+
+**And that is enforced, not documented.** These are *snapshots*, copied out
+of the frame between the opaque pass and the blend pass — so an opaque
+material reading them would read the previous frame, or an uninitialised
+texture on the first one, which is the exact class of bug that works on one
+driver and not the next. A module that samples either from a pipeline whose
+alpha mode is not `Blend` **fails to build**: the engine logs one line
+naming the module and the rule, and the surface renders the
+missing-material checkerboard.
+
+##### What they contain, stated precisely
+
+The frame **as of the end of the opaque pass**: every `Opaque` and `Mask`
+surface, and the clear colour where nothing was drawn. In particular:
+
+- **No blended geometry at all** — including blended surfaces drawn *before*
+  yours. A pane of glass behind another pane does not appear in the second
+  one's refraction. That is the limitation every engine ships (Godot's
+  screen texture has it too); it is documented, not solved, because solving
+  it means a snapshot per transparent draw.
+- **`HpSceneDepth` is 0 where nothing was drawn**, because reverse-Z clears
+  the far plane to 0. `HpSceneViewDepth` therefore returns the far plane's
+  distance there, which is usually what a fade wants and is occasionally a
+  surprise; mask it with `HpSceneDepth(uv) > 0.0` when it matters.
+- **The snapshot costs nothing when nothing reads it.** The copy is issued
+  only when the frame has blended geometry *and* one of its modules reads
+  the screen, so a scene of opaque materials never pays for it.
+
+##### What is deliberately **not** offered
+
+**There is no normal-roughness read, and there will not be one until
+something produces it.** Godot's `hint_normal_roughness_texture` is
+Forward+-only there for the same reason it is absent here: it is a *deferred*
+resource, and this engine is forward-only (D24) with no G-buffer and no depth
+prepass. Synthesising one would mean adding a pass that writes normals and
+roughness for every opaque surface — real bandwidth, paid by every game, for
+a technique none has asked for. **A shader already has its own** surface
+normal and roughness (`HpSurfaceOutput`, and `In.Normal` before the map);
+what a screen-space read adds is the *other* surface's, which is what a
+prepass would have to produce. If one is ever wanted, it arrives with the
+pass that writes it, and it gets its own row in the capability matrix first.
 
 `HpTexture0` … `HpTexture3`, T0160's engine-named slots, still compile and
 still bind from a `.hpmat` that names them — see their declarations below —
 but they are **deprecated**: name your textures yourself.
 
-22 declaration(s), 44 member(s), all documented.
+22 declaration(s), 45 member(s), all documented.
 
 ## `HP_UNSHADED`
 
@@ -748,6 +845,27 @@ float4 ScreenPos;
 
 Position in the render target, in pixels, with depth in `z` and `1/w`
 in `w` — the raw `SV_POSITION` a pixel shader receives.
+
+### `HpSurfaceInput::ScreenUV`
+
+```hlsl
+float2 ScreenUV;
+```
+
+`ScreenPos.xy` normalised to 0..1 across the **render target** (T0147).
+
+The coordinate the engine's screen intermediates are addressed by —
+`HpSceneColour(In.ScreenUV)` and `HpSceneDepth(In.ScreenUV)` — and the
+one Godot calls `SCREEN_UV`. Origin is the top-left texel, matching the
+textures it indexes.
+
+**The target's size, not the viewport's**, and the two differ under a
+letterboxing aspect policy (T0081). That is deliberate: the snapshots
+are target-sized, so this samples the right texel in the letterboxed
+case, where dividing by the viewport would not. A shader wanting a
+*viewport*-relative coordinate — a vignette, a screen-space gradient
+that should ignore the bars — should build it from
+`g_Frame.Camera.f4ViewportSize` instead.
 
 ### `HpSurfaceInput::CameraPos`
 

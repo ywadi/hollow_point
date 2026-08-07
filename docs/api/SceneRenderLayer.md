@@ -6,7 +6,7 @@
 #include <hp/SceneRenderLayer.hpp>
 ```
 
-10 public declaration(s), 10 documented.
+11 public declaration(s), 11 documented.
 
 ## `SceneRenderLayer`
 
@@ -100,6 +100,27 @@ Scene * scene() const
 ```
 
  @returns the scene this layer draws, or nullptr.
+
+## `SceneRenderLayer::setGameTexture`
+
+```cpp
+void setGameTexture(std::string_view name, Diligent::ITextureView * view)
+```
+
+ Feeds a texture this layer produced to material shaders, by name
+ (T0147.4, T0094.5).
+
+ **This is where the game-fed half is meant to be called from.** A
+ gameplay-authored layer (T0094) renders its fog-of-war field, its flow
+ map or its minimap into a target it owns, then hands the view here; a
+ material module that declared a texture of that name samples it. The
+ engine never learns what the bytes mean, which is the point.
+
+ **Feed it again after a resize** — the view is not kept alive by this
+ call, matching `FrameTargets`' rule.
+ @param name the shader-side declaration name.
+ @param view the view to bind, or null to remove the entry.
+ @returns nothing.
 
 ## `SceneRenderLayer::onRenderLayer`
 

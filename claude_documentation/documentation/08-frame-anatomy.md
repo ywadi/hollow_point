@@ -79,13 +79,15 @@ the next few slot into gaps between these steps rather than after them.
 | 10.6 | `gatherLights` — resolve placement, cap, warn | T0079 |
 | 10.7 | *(gap)* per-object light selection | **T0079.3** |
 | 10.8 | Write frame attribs — camera, renderer params, light array | T0079, T0134 |
-| 10.9 | Submit draws through `PBR_Renderer` | T0028, D24 |
+| 10.9a | Submit **opaque and masked** draws through `PBR_Renderer` | T0028, D24, T0147 |
+| 10.9b | **Scene snapshot** — copy colour and depth for material shaders | **T0147**, D37 |
+| 10.9c | Submit **blended** draws; these may sample 10.9b | T0147, D37 |
 | 10.10 | *(gap)* tonemap / upscale / composite pass | **T0096, T0111** |
 
-Repeated per `RenderStack` layer for 10.1–10.9, into **one shared colour
+Repeated per `RenderStack` layer for 10.1–10.9c, into **one shared colour
 target** (T0027.5).
 
-**Three things about this order are load-bearing:**
+**Four things about this order are load-bearing:**
 
 - **The layer mask test is first in 10.4, before the mesh check.** An object the
   camera does not render must cost nothing further — no GUID lookup, no list
@@ -98,6 +100,26 @@ target** (T0027.5).
   render-scale upscale and UI-at-native resolution (T0111/D25) all belong
   between the world layers and the UI layers. D25 records that they must share
   it rather than each inventing one.
+- **10.9 became three steps on T0147, and the split is not only for the
+  snapshot.** Until then submission was one walk in draw-list order, so a
+  blended surface could be drawn *before* the opaque geometry behind it — it
+  blended against the clear colour and, worse, wrote depth that then rejected
+  the geometry it should have been in front of. 10.9a/10.9c fix that, and 10.9b
+  exists only because it is the one instant at which "the opaque image" is a
+  thing that exists.
+
+  **10.9b is a copy, and copies nothing unless something reads it.** The
+  scan happens inside 10.9a: the opaque walk records, from the primitives it
+  skips, whether the blend pass has work and whether any of its modules samples
+  `g_SceneColour` or `g_SceneDepth` — a module never compiled counting as "might".
+  So a scene of opaque geometry pays nothing, and a refraction is correct on the
+  frame it first appears. D37 carries the full argument, including why the read
+  is a copy rather than an alias of the live attachments, and why only a
+  material with `alphaMode: Blend` may perform it.
+
+  **Ordering *within* 10.9c is still submission order.** The back-to-front sort
+  a correct transparent pass needs is T0045's, at 10.5, and T0147 deliberately
+  did not build half of it.
 
 **Lights are frame-wide today.** 10.6 gathers every enabled light and 10.8 writes
 them all; nothing selects per object, so every light lights everything and

@@ -100,6 +100,7 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | `HpSurfaceInput::ViewDir` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::VertexColor` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::ScreenPos` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpSurfaceInput::ScreenUV` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::CameraPos` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::Time` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpSurfaceInput::Custom0` | field | [`HpMaterial`](HpMaterial.md) |
