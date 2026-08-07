@@ -8,7 +8,7 @@
 | **Phase** | 9 — Physics |
 | **Order** | 800 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0116 |
+| **Refs** | T0100, [../../documentation/08-frame-anatomy.md](../../documentation/08-frame-anatomy.md), T0116; **T0165** — the engine is right-handed and the camera looks down its own −Z (D33 as amended). **Jolt is right-handed too, so there is nothing to convert — and that is the point rather than a coincidence**: the whole reason the import mirror was rejected is that a boundary conversion makes every future attribute type owe one, and physics is exactly such a boundary. If a conversion ever appears at this seam, it is a bug, and `kChainMirrorCount` in `WindingConvention.hpp` is the count that must move with it. |
 
 > **Placeholder epic.** Recorded now so the architecture accounts for it, not
 > because it is ready to start. Break into real tickets when Phase 9 is reached —

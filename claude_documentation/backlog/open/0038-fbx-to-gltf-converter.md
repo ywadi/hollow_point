@@ -8,6 +8,7 @@
 | **Phase** | 7 — Content pipeline |
 | **Order** | 700 |
 | **Created** | 2026-08-02 |
+| **Refs** | **T0165** — the engine is right-handed and the camera looks down its own −Z, matching glTF (D33 as amended). **A converter must not introduce a coordinate mirror**: `hp::kImportMirrorsContent` is `false` as a decision, and the reason the Unity-style import mirror was rejected is that a boundary conversion makes every future attribute type owe one. FBX is authored Y-up or Z-up depending on the exporter, so the converter's job is a *rotation* (determinant +1), never a negation — a negation flips apparent winding once and `kChainMirrorCount` in `WindingConvention.hpp` would have to move with it. `tests/gpu/chirality_test.cpp` is the probe that catches it. |
 | **Supersedes** | T0009 |
 
 ## Why

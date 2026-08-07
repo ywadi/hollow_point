@@ -20,7 +20,26 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-07 — twenty-sixth revision: `T0143` closed the same day it took
+**Set 2026-08-07 — twenty-seventh revision: `T0152` closed, the owner answered
+its one open question, and `T0165` swept the answer through the engine.** The
+engine is **right-handed, matching glTF** — Godot's convention, not Unity's
+(D33 as amended). The camera looks down its own **−Z**, so *in front of the
+camera is negative Z*, and `kFrontFaceCounterClockwise` is **`true`**: the
+invariant D33 is named for did not move, the mirror count the flag is the parity
+of did. The rejected alternative was Unity's import mirror, which leaves the
+*boundary* permanently converted so every future attribute type owes a
+conversion — D35's silent-failure class, and one this codebase hit three times
+in two days.
+
+Two things worth carrying forward. **Every π-yaw light compensation in the tree
+is deleted**: a lamp travels down its local −Z and the camera now looks down its
+own −Z, so an identity lamp beside an identity camera lights what the camera
+sees. And **the tangent-frame sign a game shader cannot discover is now
+measured**, after a well-argued correction for it turned out to be wrong —
+`13-shader-capability-matrix.md` gained the `HpTangentFrame` row that closes the
+gap, unowned.
+
+Previously — the twenty-sixth revision: `T0143` closed the same day it took
 the top, and the engine shades everything DiligentFX's PBR can.** The owner's
 requirement was *"what they have ++, not less"*, and D24's extended-materials
 rejection is amended by its own rule — a ticket asked by name. Clearcoat,
@@ -282,10 +301,9 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0152](inprogress/0152-winding-convention.md) | the winding remainder — **now only the owner's mirror decision** | 152.5 (the glTF determinant rule, both halves), 152.6 (the chirality probe) and 152.7 (docs) landed 2026-08-07 — *before* T0143's pixel tests, which is the order T0152's own Blocks line mandated. The display mirror is now **measured, not derived**: world +X lands on screen right, +Y on top (`tests/gpu/chirality_test.cpp`). What remains is the owner's answer to the mirror question — accept the mirrored convention, or an import-time mirror with `kFrontFaceCounterClockwise` flipping alongside |
-| 2 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | The movable one — see below. It needs nothing from the surface or lighting stages, and T0147 gave it the opaque/blend pass split it would have had to build. **T0152.5 adds one constraint**: facing is per-draw (the determinant rule), so any batching or sorting must keep the per-draw cull decision |
-| 3 | [T0086](open/0086-shadows.md) | shadows | Now unblocked in the way D30 sequenced it: the loop the shadow lookup goes inside is the engine's, the `ENABLE_SHADOWS` block's shape is waiting in `HpGetLight`, and T0145's Ref says where the factor goes and why it must not fold into `Attenuation`. Its Refs also carry T0152.5's shadow-pass determinant note |
-| 4 | [T0158](inprogress/0158-parallax-depth-cues.md) | parallax depth cues, remainder | 158.2 closed with T0159 and **158.3 closed with T0145**; what is left is the reference/tuning subtasks and the geometrically-displaced ground-truth cube |
+| 1 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | The movable one — see below. It needs nothing from the surface or lighting stages, and T0147 gave it the opaque/blend pass split it would have had to build. **T0152.5 adds one constraint**: facing is per-draw (the determinant rule), so any batching or sorting must keep the per-draw cull decision |
+| 2 | [T0086](open/0086-shadows.md) | shadows | Now unblocked in the way D30 sequenced it: the loop the shadow lookup goes inside is the engine's, the `ENABLE_SHADOWS` block's shape is waiting in `HpGetLight`, and T0145's Ref says where the factor goes and why it must not fold into `Attenuation`. Its Refs carry T0152.5's shadow-pass determinant note — and its bias tuning is now made against a **settled** convention (T0165), which is the whole reason T0152 blocked it |
+| 3 | [T0158](inprogress/0158-parallax-depth-cues.md) | parallax depth cues, remainder | 158.2 closed with T0159 and **158.3 closed with T0145**; what is left is the reference/tuning subtasks and the geometrically-displaced ground-truth cube. **T0165 re-posed its self-shadow probe** (yaw −0.45, the mirror of the old +0.45 onto the same object face at the same 11.5° grazing incidence) — any further tuning starts from there |
 
 **Raised rather than reordered, because the order is the owner's call:**
 [T0162](open/0162-shader-authoring-docs.md) (the shader authoring guide) listed
@@ -436,13 +454,14 @@ wrong in the confident voice of a document that is normally right.
 | 445 | [T0151](open/0151-shader-variants-and-compile-cost.md) | Shader variants bounded: precompiled modules, link-time specialisation | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 456 | [T0146](completed/0146-vertex-stage-hook.md) | The vertex stage: own the vertex main, and a game vertex hook | 4 — Render layer | ✅ DONE | High | Moderate |
 | 458 | [T0147](completed/0147-engine-intermediates-for-shaders.md) | Engine intermediates: scene depth, scene colour, game-fed inputs | 4 — Render layer | ✅ DONE | High | Moderate |
-| 459 | [T0152](inprogress/0152-winding-convention.md) | The winding convention: hardware facing equals glTF facing | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
+| 459 | [T0152](completed/0152-winding-convention.md) | The winding convention: hardware facing equals glTF facing | 4 — Render layer | ✅ DONE | High | Moderate |
 | 460 | [T0153](open/0153-surface-detiling.md) | Surface de-tiling: breaking texture repetition, exposed to the game | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 461 | [T0156](completed/0156-parallax-under-triplanar.md) | Parallax under triplanar, and the silhouette question | 4 — Render layer | ✅ DONE | High | Moderate |
 | 462 | [T0154](open/0154-noise-generation.md) | Noise: CPU generator, Slang functions, and the bake-to-texture bridge | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 463 | [T0157](completed/0157-rock-cube-sample.md) | The rock cube sample: the authoring path's first real test | 4 — Render layer | ✅ DONE | Medium | Moderate |
 | 464 | [T0158](inprogress/0158-parallax-depth-cues.md) | Making parallax read as relief: the reference plane and self-shadowing | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
 | 465 | [T0159](completed/0159-open-the-material-contract.md) | Open the material contract: DiligentFX exposed, state across hooks | 4 — Render layer | ✅ DONE | High | Moderate |
+| 466 | [T0165](completed/0165-right-handed-engine.md) | The engine becomes right-handed, matching glTF | 4 — Render layer | ✅ DONE | High | Moderate |
 | 466 | [T0160](completed/0160-material-declared-parameters.md) | Material-declared parameters and resources | 4 — Render layer | ✅ DONE | High | Moderate |
 | 464 | [T0161](completed/0161-game-resource-model.md) | The game resource model: a module declares its own resources, by name, at every stage | 4 — Render layer | ✅ DONE | High | Moderate |
 | 467 | [T0162](open/0162-shader-authoring-docs.md) | The shader authoring guide: what a game author reads | 4 — Render layer | 🔜 TODO | High | Moderate |

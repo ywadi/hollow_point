@@ -8,7 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 620 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0120 |
+| **Refs** | T0120; **T0165** — the engine is right-handed and the camera looks down its own −Z. An editor camera's forward, its orbit maths and `screenToWorldRay`'s output all follow from that; `worldToScreen` refuses a point at **positive** view-space z, not negative. Nothing here may reintroduce a mirror (a negative camera-parent scale is `WindingConvention.hpp`'s item 5, still unhandled). |
 
 ## Why
 

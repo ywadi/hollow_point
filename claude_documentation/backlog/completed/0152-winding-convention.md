@@ -2,14 +2,14 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
 | **Order** | 459 |
 | **Created** | 2026-08-06 |
 | **Blocks** | **T0086** — shadow bias and the shadow-pass cull mode must be chosen against a declared convention, or the tuned bias bakes the inversion in permanently; **T0087** — IBL baselines are view-dependent and multiply the re-baseline cost; **T0143** — every extended-material pixel test added before this lands is calibrated against inconsistent assets |
-| **Refs** | [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — 141.12 found the symptom and recorded the (mis)diagnosis this ticket corrects; [0086-shadows.md](../open/0086-shadows.md) — its Refs carry 141.12's warning, which this ticket re-states correctly; [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) **D33** (this ticket's decision), D26 (why the engine subclasses `PBR_Renderer` and therefore configures its own rasterizer state), D29 (Vulkan-only, which makes Diligent's internal viewport flip a constant rather than a variable); `engine/include/hp/DepthConvention.hpp` / T0130.3 — the precedent this ticket's header is modelled on |
+| **Refs** | [0165-right-handed-engine.md](0165-right-handed-engine.md) — **the ticket this handed its last open question to, and which answered it.** 152.6 measured the display mirror; T0165 is the owner's decision to remove it, the amendment to D33 and the engine-wide sweep. **T0165 must keep — and did keep — this ticket's determinant rule (152.5) intact: it is per-draw and deliberately outside the compile-time mirror count**; [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — 141.12 found the symptom and recorded the (mis)diagnosis this ticket corrects; [0086-shadows.md](../open/0086-shadows.md) — its Refs carry 141.12's warning, which this ticket re-states correctly; [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) **D33** (this ticket's decision), D26 (why the engine subclasses `PBR_Renderer` and therefore configures its own rasterizer state), D29 (Vulkan-only, which makes Diligent's internal viewport flip a constant rather than a variable); `engine/include/hp/DepthConvention.hpp` / T0130.3 — the precedent this ticket's header is modelled on |
 
 ## Why
 
@@ -185,11 +185,14 @@ cannot move separately.
 - [x] Negative-determinant node transforms flip facing per the glTF spec, or
       the decision not to support mirrored-scale nodes is written down with a
       trigger *(2026-08-07 — both halves, cull and shading; measured below)*
-- [ ] The display-handedness question is put to the owner with 152.6's probe
-      rendered, and the answer recorded — **open, deliberately; it is not
-      this ticket's to decide.** *The probe now exists and has measured the
-      mirror on hardware (2026-08-07, below); what remains open is only the
-      owner's answer*
+- [x] The display-handedness question is put to the owner with 152.6's probe
+      rendered, and the answer recorded — **it was not this ticket's to decide,
+      and it was not decided here.** *The probe measured the mirror on hardware
+      (2026-08-07, below), the question was put, and the owner's answer is
+      **remove it**: the engine becomes right-handed, matching glTF. The
+      decision, its argument and the sweep are **T0165**, which also amends D33.
+      This ticket closes on what it achieved rather than staying open across
+      someone else's work*
 - [x] T0086's Refs stop pointing at the inverted diagnosis and point here —
       staged as an exact edit (INTEGRATION-WINDING.md §3) being applied by the
       coordinating session; *verified landed 2026-08-07: `0086-shadows.md`'s
@@ -506,3 +509,39 @@ code was right for other reasons and stays; the comment now says so. The
 `shadingNormal` hook's contract now states its `isFrontFace` is **glTF
 facing**, not raw `SV_IsFrontFace`, which the generated shader reference
 picks up.
+
+## Closed 2026-08-07 — the owner answered, and the answer is T0165
+
+**Everything this ticket owned is done and verified.** The one Done-when it
+deliberately could not close — the display-handedness question — was put to the
+owner with the probe rendered, and answered: **the engine becomes right-handed,
+matching glTF**, which is [T0165](0165-right-handed-engine.md).
+
+**Do not read this ticket's constants as current.** `kFrontFaceCounterClockwise`
+is **`true`** now, and the header quoted verbatim above is the T0152 version,
+kept because the argument in it is what T0165 amended rather than replaced. The
+invariant this ticket established — *hardware facing equals glTF facing*, and
+`CULL_MODE_BACK` means what the spec means by it — did not move at all. What
+moved is the **mirror count** the flag is the parity of, and T0165 rewrote the
+`static_assert` to say so: this ticket's form
+(`kFrontFaceCounterClockwise == kImportMirrorsContent`) models the importer as
+the only possible mirror source, and a projection handedness change is one it
+cannot see. That is worth recording as a *finding of this ticket*, not just of
+its successor: the coupling was right about the danger and wrong about the
+mechanism, and it would have forced T0165 to declare an import mirror that does
+not exist in order to compile.
+
+**What survived T0165 untouched**: 152.5's per-node determinant rule, both
+halves, including the shader deriving the sign from the node matrix rather than
+a CPU flag. It is deliberately *outside* the new `kChainMirrorCount`, because it
+varies per draw and a compile-time constant cannot honestly describe it.
+
+**What T0165 changed about 152.6's probe, and why it matters here**: the probe's
+conclusion was right and its *measurement* was weaker than it read. "World +X
+lands on screen right" is true under **both** handednesses — the projection's
+`_11` stays positive through the change — so the assertions would not have
+flipped, and the probe as written could not have distinguished the two
+conventions. T0165 made the glyph single-sided and authored as a readable face,
+so that "am I looking at the front of this asset" became part of the
+measurement. The mirror this ticket derived was real; the pixel pattern it cited
+was not the thing that proved it.
