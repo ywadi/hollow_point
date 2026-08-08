@@ -161,6 +161,72 @@ stronger: **5.06** where a mean-of-means saw 0.3%. Lowering the old threshold
 would have kept a check that can no longer fail for the right reason. A second
 assertion pins the outcome directly — mean luma > 40, against the 10.4 it was.
 
+### 170.2 — seeding the shader caches is **blocked**, and not by the risk that was flagged
+
+**Stopped and reported rather than worked around, per the brief.** The
+investigation's mechanism is real: `m_VertexShaders` / `m_PixelShaders` are
+protected (`PBR_Renderer.hpp:1012-1013`), `CreatePSO` genuinely does skip
+compilation for a populated entry (`:1973`, `:2020`), and `PSOKey::UserValue`
+would carry the module path so two materials on different Slang modules key
+different entries. None of that is the problem.
+
+**The problem is the resource signatures.** `CreatePSO` assembles the PSO's
+signature list at `PBR_Renderer.cpp:2050-2063`:
+
+```cpp
+for (size_t i = 0; i < m_ResourceSignatures.size(); ++i)
+    ppSignatures[i] = m_ResourceSignatures[i];
+PSOCreateInfo.ResourceSignaturesCount = static_cast<Uint32>(m_ResourceSignatures.size());
+if (Key.GetType() == RenderPassType::OITLayers) { /* + m_RWOITLayersSignature */ }
+```
+
+`m_ResourceSignatures` is **one global list** shared by every pipeline. T0161's
+per-module signature is **per module** — a different object per declared
+resource set — and it is added to the PSO by `SurfacePipeline::build` and read
+back by `SceneRenderer::ensureModuleSrb` as `pso->GetResourceSignature(1)`
+(`SceneRenderer.cpp:1207-1212`). A seeded PSO would carry only the global list,
+so **every game-declared resource would silently vanish** and every custom
+material's SRB would bind nothing.
+
+There is no hook. `PBR_Renderer` has exactly two virtual functions —
+`~PBR_Renderer` (`:464`) and `CreateCustomSignature` (`:906`) — and the second
+feeds the *global* list. `CreatePSO` is private and non-virtual; `GetPSO`, its
+sole caller, is protected and non-virtual.
+
+**And the trade is negative even ignoring that.** Measured on this file: the
+block `CreatePSO` would replace is **58 lines** of pipeline assembly
+(`SurfacePipeline.cpp:1126-1183` — cull mode, winding, blend state, the
+signature loop, the create call). The **246-line** Slang compile path above it
+is untouched by seeding, because seeding is what feeds it *in*. So the refactor
+deletes 58 lines, adds the seeding wrapper, a `UserValue` hash and a
+`GetPsoCacheAccessor` per graphics description, and buys upstream policy we
+have deliberately diverged from anyway: the depth state is the engine's
+(reverse-Z, **T0130**, and now 170.4's `GREATER` blend pass), the blend state is
+already identical, the OIT branch is unreachable (170.3), and the GL
+combined-sampler branch died with **D29**.
+
+**One workaround exists and is recorded so it is not rediscovered as a good
+idea.** `m_ResourceSignatures` is protected, so a subclass could push the module
+signature on, call `GetPSO`, and pop it. It would work today. It is a temporal
+coupling to the internals of a private function — any upstream change that
+caches the signature count, reorders the copy, or defers PSO creation
+(`GET_FLAG_ASYNC_COMPILE` already exists) breaks it with no diagnostic. That is
+a worse bargain than 58 lines.
+
+**What would unblock it**, for whoever takes this upstream: a `CreateInfo` field
+or a `virtual` returning extra per-PSO signatures, keyed on `PSOKey::UserValue`.
+That is the same shape as the hook **D30** records this project owing DiligentFX
+for the lighting stage, and it should be offered in the same PR.
+
+**170.6, the deletion pass, is therefore not done and is not ticked.** With
+seeding out, the code that would have been deleted is code we still need. The
+one remaining route to a real deletion is `InitMaterialSRB` and
+`GetMaterialPSOFlags`, both inlined here (~110 lines across `ensureBindings`
+and `drawModel`) because they are `GLTF_PBR_Renderer` methods — and reaching
+them needs a base-class change whose own blocker is recorded below. It is worth
+doing and it was not attempted in this session; it belongs on **T0171** with
+this note as its brief.
+
 ### 170.4 — the interior comes back, and the fix is two changes not one
 
 **The defect, precisely.** The Aston Martin has **one material for the whole
