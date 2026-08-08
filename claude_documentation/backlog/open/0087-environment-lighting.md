@@ -130,3 +130,49 @@ engine does not get to assume that, because the next game is the one that needs
 the other half. **This ticket owns both**, and the live question is scheduling:
 which half is built first, and whether the transition between them is designed
 in now -- cheap -- or retrofitted later, which is not.
+
+### 2026-08-08 — moved to #2 in the sequence, on measurement rather than intuition
+
+**T0167 put a real asset on screen and it is dark, and this ticket is why.** The
+Aston Martin's paint colour is authored into its **specular** map — `texture_1`
+is bright cyan while the diffuse `texture_0` is navy-black — which is the
+spec-gloss workflow doing exactly what it is for. Sketchfab's teal preview *is*
+that map reflecting **their** environment. We have none, so the paint reads black
+except where the two punctual lamps raise a specular lobe, which is why the rims
+and wheel arch are the only bright things in the frame.
+
+**The defect that was also suspected turned out to be real and is already
+fixed** — the shader read spec-gloss through the metallic-roughness
+interpretation, closed in T0168.2 with a test that fails on the old code. So what
+remains is not a bug at all. **It is this ticket, and nothing else.**
+
+**Three reasons it moved ahead of shadows:**
+
+1. **It is not asset-specific.** A metal with nothing to reflect is black by
+   definition, and every PBR export from every DCC tool assumes an environment.
+   The engine currently cannot show a metal correctly at all.
+2. **A shipped family is invisible until it lands.** T0143 qualifies
+   clearcoat-as-lacquer and sheen-as-velvet as **punctual-only** on its own
+   ticket, and the volume family — `thickness`, `attenuationColour`,
+   `attenuationDistance`, `ior` — is authored, packed and debug-visible while
+   **shading nothing**, with `extended_material_test` pinning "changes no shaded
+   pixel" for this ticket to flip. Those features are built and cannot be seen.
+3. **Shadow bias must not be tuned against pure black.** With no ambient term a
+   shadowed pixel has no floor, so every bias value T0086 picks would be
+   calibrated against a baseline this ticket then moves. Re-baselining against a
+   wrong baseline is the trap T0152 recorded in this backlog, twice, and
+   sequencing is the cheap way to avoid it a third time.
+
+**Cheaper than "Moderate" suggests, and both reasons are already scouted.**
+`HpResolveLighting` is a **named, guarded seam** — `#if USE_IBL` `#error`s there
+today, so enabling the flag without writing the term is a build failure rather
+than a silent zero. And 143.9's blocker has a worked pattern: the sheen
+albedo-scaling LUT is embedded from the pinned submodule via
+`cmake/hp_embed_binary.cmake` and decoded in `SurfacePipeline`'s constructor, so
+`PreintegratedCharlieBRDFPath` is the same problem already solved once.
+
+**The open question this ticket must answer first is in its Refs and has not got
+easier:** whether it *configures* DiligentFX's existing IBL path or supersedes
+it. On the evidence of T0166 and T0168 — four separate cases where Diligent
+already had the answer and the engine was not asking — **the burden of proof is
+on superseding**, and the answer must be written down either way.
