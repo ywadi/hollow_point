@@ -121,10 +121,38 @@ zig build test -Dtest=all      # both targets -- see "which runner", below
 zig build test -Dtest=gpu      # needs a real GPU -- `all` builds it, never runs it
 zig build docs                 # regenerate + CHECK the API reference
 zig build dist                 # stage runnable output
+
+zig build test -Dtest=gpu -Dtest-filter="*tangent*"   # ONE case: 2.3s, not 100.7s
+zig build test -Dtest=gpu -Dtest-headless=false       # let the windows show
 ```
 
 Everything is pinned in `.harness/` — zig, cmake, ninja. Nothing on `PATH` is
 required, and the build says so loudly if it falls back to something there.
+
+**Do not re-run the whole gpu bucket for a one-line change.** `-Dtest-filter`
+takes a doctest glob and has existed since the harness was written; it went
+unused for months, which is the only reason the habit formed. Measured: the whole
+bucket is **100.7 s and opens 114 windows**, `-Dtest-filter="*tangent*"` is
+**2.3 s and opens 2**. Filter while iterating, run the bucket once before you
+commit.
+
+**The gpu bucket runs headless by default and you should leave it that way.**
+Every gpu case opens a real window and *none of them present to one* — nothing in
+`tests/gpu/` calls `Present`, they render offscreen and read back — so the
+windows are pure cost to whoever is using the machine. They now go to a
+throwaway X server via `xvfb-run`, which was measured not to cost the real
+device: 70/70 cases, 1700 assertions, all 137 device lines `NVIDIA GeForce RTX
+2080`, **zero** software fallbacks. It engages only on a Linux host with a
+display and `xvfb-run` present, so CI is untouched, and the runner line says so.
+Use `-Dtest-headless=false` when you actually want to *watch* something —
+that is how the rock cube's black top face got noticed, and no assertion in the
+suite had anything to say about it.
+
+**A window-manager "not responding" dialog during the gpu suite is cosmetic** —
+a case is blocking in a cold shader compile without pumping the event queue, and
+it finishes. **Never click "Force quit"**: it kills the run mid-case, and since a
+gpu case tears its device down in the test body, the result looks exactly like
+T0163's crash in the *next* case. Click Wait, or run headless and never see it.
 
 ### Which runner executes the Windows suite — read the line, do not assume
 

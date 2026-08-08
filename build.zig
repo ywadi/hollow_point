@@ -116,6 +116,72 @@ const Runner = struct {
     how: []const u8,
 };
 
+/// Whether the gpu bucket should be run on a throwaway X server instead of the
+/// developer's own desktop.
+///
+/// **Every gpu case opens a real window, and no gpu case ever presents to one.**
+/// Nothing in `tests/gpu/` calls `Present` -- they render to an offscreen target
+/// and read it back -- so the window exists only because Diligent's swapchain
+/// needs a native handle. What the developer gets for it is **114 windows
+/// flashing across their desktop** for a full run, and a window manager
+/// "application not responding" dialog whenever a case blocks for a few seconds
+/// in a cold shader compile without pumping the event queue.
+///
+/// `xvfb-run` gives those windows somewhere else to be. **Measured 2026-08-08,
+/// because a virtual display could plausibly have cost the real device and did
+/// not**: the whole bucket under `xvfb-run` is 70/70 cases and 1700 assertions
+/// in 100.2s, with all 137 device lines reading `NVIDIA GeForce RTX 2080` and
+/// **zero** software-rasteriser fallbacks. Vulkan picks its physical device
+/// independently of the X display, so the only thing that changes is where the
+/// windows land.
+///
+/// Auto by default rather than opt-in, because the thing it fixes is an
+/// interruption and nobody remembers a flag while being interrupted. It engages
+/// only where all of it is true: a Linux host, the gpu bucket, a display that
+/// would otherwise be used, and `xvfb-run` actually present. `-Dtest-headless`
+/// forces it either way -- `=false` when you want to *watch* a test, which is a
+/// real thing to want and is how the black top face got noticed.
+fn headlessPrefix(b: *Build, bucket: []const u8, want: ?bool) ?[]const []const u8 {
+    if (want != null and !want.?) return null;
+    if (!std.mem.eql(u8, bucket, "gpu")) return null;
+    if (b.graph.host.result.os.tag != .linux) return null;
+
+    // No display means nothing to protect: CI's runners are already headless,
+    // and wrapping there would add a dependency for no benefit.
+    //
+    // `b.graph.environ_map`, not a `std.process` helper: zig 0.16 moved the
+    // environment behind `std.process.Environ` and the build graph's copy is
+    // the one the build is actually running with.
+    const has_display = b.graph.environ_map.get("DISPLAY") != null or
+        b.graph.environ_map.get("WAYLAND_DISPLAY") != null;
+    if (!has_display and want == null) return null;
+
+    const xvfb = b.findProgram(&.{"xvfb-run"}, &.{}) catch {
+        if (want != null) std.debug.print(
+            "warning: -Dtest-headless was asked for but xvfb-run is not on PATH -- " ++
+                "the gpu bucket will open windows on this display\n",
+            .{},
+        );
+        return null;
+    };
+
+    const argv = b.allocator.alloc([]const u8, 4) catch @panic("OOM");
+    argv[0] = xvfb;
+    // `-a` picks a free display number rather than failing when :99 is taken,
+    // which matters the moment two suites run at once.
+    argv[1] = "-a";
+    // The screen must be at least as large as the largest window a case opens,
+    // or creation fails on a surface it cannot fit. 1920x1080x24 clears every
+    // size in the bucket with room to spare; depth 24 because a 16-bit visual
+    // is not something the drivers here are exercised against.
+    argv[2] = "--server-args=-screen 0 1920x1080x24";
+    // Everything after this is the command, including any cross-target runner
+    // prefix such as wine -- which needs an X display of its own and gets this
+    // one.
+    argv[3] = "--";
+    return argv;
+}
+
 fn runnerFor(b: *Build, target_os: std.Target.Os.Tag) ?Runner {
     const host = b.graph.host.result.os.tag;
     if (host == target_os) return .{ .argv = &.{}, .how = "natively" };
@@ -232,6 +298,7 @@ pub fn build(b: *Build) void {
     const only = b.option([]const u8, "target", "Restrict 'all'/'dist' to one target key");
     const test_sel = b.option([]const u8, "test", "Test bucket: fast|integration|gpu|perf|all (default: fast). 'all' builds the gpu bucket but runs it only when named explicitly, because it needs a real graphics device.") orelse "fast";
     const test_filter = b.option([]const u8, "test-filter", "Run only tests whose name matches this pattern");
+    const test_headless = b.option(bool, "test-headless", "Run the gpu bucket on a throwaway X server via xvfb-run, so its windows never touch your desktop. Default: on when there is a display to protect and xvfb-run is installed. Use =false to watch a test render.");
     // T0135. Both only affect the gpu bucket's run step.
     const gpu_adapter = b.option([]const u8, "gpu-adapter", "Substring naming which GPU the gpu bucket should use (e.g. NVIDIA). Only meaningful on the WSL D3D12 path, where the default is whichever adapter Mesa picks first -- on a two-GPU laptop that is the integrated one.");
     const gpu_require_hardware = b.option(bool, "gpu-require-hardware", "Fail the gpu bucket if a backend comes up on a software rasteriser (default: report it and pass)") orelse false;
@@ -411,7 +478,17 @@ pub fn build(b: *Build) void {
                 continue;
             };
 
-            const run = if (runner.argv.len == 0)
+            // `xvfb-run … -- <runner> <exe>`: the wrapper goes outermost so a
+            // cross-target runner (wine) inherits the throwaway display rather
+            // than reaching for the developer's.
+            const headless = headlessPrefix(b, bucket, test_headless);
+
+            const run = if (headless) |hp| blk: {
+                const r = b.addSystemCommand(hp);
+                for (runner.argv) |a| r.addArg(a);
+                r.addArg(exe);
+                break :blk r;
+            } else if (runner.argv.len == 0)
                 b.addSystemCommand(&.{exe})
             else blk: {
                 const r = b.addSystemCommand(runner.argv);
@@ -447,7 +524,14 @@ pub fn build(b: *Build) void {
             // The name carries the runner, so `--summary all` says how a suite
             // was executed. Inferring it from an incidental wine warning is how
             // T0125 went unnoticed.
-            run.setName(b.fmt("test ({s}, {s}) {s}", .{ spec.key, bucket, runner.how }));
+            // The runner line exists because this has been guessed wrong twice
+            // (T0125), and headless belongs in it for the same reason: "no
+            // windows appeared" should be a thing the build *said*, not a thing
+            // you conclude.
+            run.setName(b.fmt("test ({s}, {s}) {s}{s}", .{
+                spec.key, bucket, runner.how,
+                if (headless != null) ", headless via xvfb-run" else "",
+            }));
             run.stdio = .inherit;
             // Tests must re-run every time; a cached "pass" is not a pass.
             run.has_side_effects = true;

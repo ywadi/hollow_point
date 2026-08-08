@@ -126,6 +126,68 @@ between them never invalidates the other. `zig build all` runs targets serially 
 `has_side_effects = true` takes a global lock, and each target already saturates
 the machine.
 
+## Running one gpu case, and running none of them on your desktop
+
+Two flags that already paid for themselves, both measured 2026-08-08 on the
+RTX 2080 box.
+
+### `-Dtest-filter` — you almost never need all seventy cases
+
+It has existed since the harness was written and went unused for months, which
+is the only reason a "rerun everything for a one-line change" habit ever formed.
+It is passed straight through to doctest as `--test-case=`, so the pattern is
+doctest's glob, not a regex:
+
+```sh
+zig build test -Dtest=gpu -Dtest-filter="*tangent*"
+```
+
+| | wall clock | cases | windows opened |
+|---|---|---|---|
+| whole bucket | **100.7 s** | 70 | **114** |
+| `-Dtest-filter="*tangent*"` | **2.3 s** | 2 | **2** |
+
+Run the filtered case while iterating and the whole bucket once before you
+commit. **43× is the difference between checking a change and putting it off.**
+
+### `-Dtest-headless` — on by default, because nobody remembers a flag while being interrupted
+
+**Every gpu case opens a real window and no gpu case ever presents to one.**
+Nothing in `tests/gpu/` calls `Present`; they render to an offscreen target and
+read it back, so the window exists purely because Diligent's swapchain wants a
+native handle. The cost is borne entirely by whoever is using the machine: 114
+windows across the desktop for a full run, plus a window-manager *"application is
+not responding"* dialog whenever a case blocks for a few seconds in a cold shader
+compile without pumping the event queue. **That dialog is cosmetic — the process
+is working, not hung — but never click "Force quit"**: it kills the suite
+mid-case, and because a gpu case tears its device down in the test body, the
+result looks exactly like T0163's crash in the *next* case.
+
+The runs now go to a throwaway X server. It engages only where every part is
+true — a Linux host, the gpu bucket, a display that would otherwise be used, and
+`xvfb-run` present — so CI, which is already headless, is untouched.
+
+**The thing worth measuring was whether a virtual display costs the real device.
+It does not.** The whole bucket under `xvfb-run`: 70/70 cases, 1700 assertions,
+100.2 s, all 137 device lines reading `NVIDIA GeForce RTX 2080`, and **zero**
+software-rasteriser fallbacks. Vulkan selects its physical device independently
+of the X display; only the windows move.
+
+The build says so, in the same line that names the runner (T0125's rule — a
+thing the build did should be *stated*, not inferred):
+
+```
++- test (linux-x86_64, gpu) natively, headless via xvfb-run success
++- test (windows-x86_64, gpu) under wine, headless via xvfb-run success
+```
+
+The wrapper is outermost, so the Windows target's `wine` inherits the throwaway
+display rather than reaching for yours — measured, not assumed.
+
+**`-Dtest-headless=false` when you want to watch a test render.** That is a real
+thing to want: the rock cube's black top face was noticed by a person looking at
+a window, and no assertion in the suite had anything to say about it.
+
 ## Measured incremental behaviour
 
 | Change | Steps rebuilt (of ~1100) |
