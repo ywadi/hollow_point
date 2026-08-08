@@ -40,7 +40,7 @@ owning ticket.
 | Per-channel hooks (`baseColor`, `occlusion`, …) | **Y** | — |
 | Whole-output hook (`surface`) | **Y** | — |
 | Per-tap sampling seam | **–** | T0153.1 |
-| Tangent frame (`HpTangentFrame`) | **–** — a game rebuilds it by hand, and the chirality sign it needs is **not discoverable from the contract**; T0165 measured the sign and recorded the hazard (see "The engine computes it and throws it away") | *(unowned)* |
+| Tangent frame (`HpTangentFrame`) | **–** — a game rebuilds it by hand. T0166.2 fixed the *engine's* construction (DiligentFX's signed-determinant solve, proven by `tangent_frame_test`'s mirrored shell) and left the duplication: `rock_pom.slang` still carries its own copy, which had to be corrected in two places at once | **T0168** |
 | Cross-hook state | **Y** — hooks are `[mutating]`, members zero-initialised (2026-08-06, T0159) | — |
 | Game-declared parameters | **Y** — `cbuffer HpMaterialParams` with author-named fields, valued by `.hpmat`, hinted by `[HpRange]`/`[HpColor]`/`[HpTooltip]` (2026-08-06, T0160). float/2/3/4, int, bool; 256 bytes | — |
 | Game-declared textures | **Y** — author-named `Texture2DArray` globals at any count, reflected into a per-module resource signature and bound by `.hpmat` under the author's names (2026-08-07, T0161, D35). Cost measured before commitment: 34 ns/draw (161.1). **The one deliberate limit is sampler *state***: modules sample through the engine's six-name immutable palette (`HpSamplerLinearWrap` …), and a module's own `SamplerState` is refused by name. `HpTexture0`…`3` remain as deprecated declarations | — |
@@ -91,25 +91,45 @@ thing the audit produced:
   rock cube sample computes it a **third** time — and since T0159 it can at
   least *keep* its copy across hooks rather than rebuilding per hook.
 
-  **T0165 turned this from a cost into a hazard, and it is the strongest case
-  in the audit for closing a gap.** A frame rebuilt from `ddx`/`ddy` is only
-  correct up to the sign of `dot(cross(ddx(P), ddy(P)), N)` — Schüler's
-  construction is odd in the normal — and that sign is set by which way `ddy`
-  runs in framebuffer coordinates, which Diligent's Vulkan backend decides by
-  flipping the viewport internally. **A game shader cannot discover it.** The
-  engine knows the answer (measured: negative on a camera-facing surface,
-  pinned by `custom_shader_material_test`) and has no way to say it.
+  **T0165 called this a hazard about *chirality*, and T0166 measured it and
+  found the hazard was a plain defect.** The construction both copies used —
+  Schüler's cotangent frame, normalised by a positive `rsqrt` — expands to
+  `(det · h) · dP/du`, where `det` is the UV parameterisation's determinant and
+  `h` the chart's own chirality. `det · h` *is* `dot(cross(ddx(P), ddy(P)), N)`,
+  and in a framebuffer whose `y` runs down that is negative on every
+  front-facing fragment. So the frame came back **rotated 180° on every asset**,
+  and the march ran backwards everywhere — not only on mirrored shells.
 
-  During T0165 a compensating sign was added to *both* copies on the strength
-  of a plausible derivation, and it collapsed the rock cube's parallax
-  self-shadow from a max drop of 124.6 luminance to **exactly 0** — caught only
-  because that sample happens to have a directional assertion. A game with the
-  same mistake would ship relief carved inside-out.
+  **The fix is not a sign; it is a different construction** (T0166.2), and it is
+  DiligentFX's own: `ShaderUtilities.fxh:51-55` solves `dp = T·du + B·dv`
+  directly, divides by the **signed** determinant with a `d != 0` guard, and has
+  no cross product to be chirally dependent. `HpParallaxUv` now matches it, so
+  parallax and normal mapping construct the same frame from the same algebra.
+  `tests/gpu/tangent_frame_test.cpp` is the two-shell case that proves it,
+  including the absolute direction — parallax samples further along the view
+  ray, so a feature moves toward the *near* side of an oblique plane.
 
-  The row this argues for is **`HpTangentFrame(worldPos, uv, N, out T, out B)`**
-  as an engine function: one implementation, one place the sign lives, and the
-  duplication in `rock_pom.slang` becomes a call. Unowned — **add the row
-  before building it**, per D35.
+  The compensating sign T0165 wrote and reverted was groping at the same defect
+  from the wrong end. Reverting it looked right because the rock cube's
+  self-shadow measured 0 with it — but that sample's key light sits nearly on
+  the view axis, and a light at the eye casts no self-shadow, so a *correct*
+  frame measures 0 there too (T0166 swept 25 yaws: best 3 pixels; 90 once the
+  key is yawed 0.6 rad off the axis).
+
+  **The gap that remains is the duplication, not the sign.** A game shader still
+  rebuilds this by hand, and `rock_pom.slang` still carries a copy of the
+  engine's construction that had to be corrected in two places at once. The row
+  is **`HpTangentFrame(worldPos, uv, N, out T, out B)`** as an engine function:
+  one implementation, and `rock_pom.slang`'s copy becomes a call.
+
+  **Owner: T0168**, which also owns the two things next to it — the normal
+  map's bitangent on a mirrored shell (measured wrong: the same tangent-space
+  normal shades the two shells of `tangent_frame_test`'s asset 0 against 130.2)
+  and `Tangent.w`, which cannot carry the handedness because
+  `PBR_Renderer.cpp:1660` generates the vertex struct from a `constexpr`
+  three-component tangent. All three are the same question — *what does the
+  engine know about the tangent frame that it will not say* — and splitting them
+  across tickets is how the first one got missed.
 - ~~The undisplaced UV0~~ — **landed 2026-08-06** as
   `HpSurfaceInput::UV0Base` (T0159.3).
 - **Camera matrices, viewport size, mip bias, the previous camera.** All written
@@ -119,7 +139,13 @@ thing the audit produced:
 
 - ~~The vertex tangent~~ — **landed 2026-08-06** (T0159.4):
   `HpSurfaceInput::Tangent` is the mesh's world-space tangent when it has one,
-  zero when it does not, `w` always +1 because their wire format is `float3`.
+  zero when it does not. **`w` is always +1 and is not data**, and the reason
+  recorded here until T0166.4 was wrong: it is not that "their wire format is
+  `float3`". `ModelCreateInfo::VertexAttributes` is settable and this engine
+  passes null; the real constraint is `PBR_Renderer.cpp:1660`, which generates
+  the `VSInput` struct from a `constexpr` three-component tangent and checks the
+  input layout matches it. Real assets do use the field — the first production
+  model imported here carries `w = -1` on 1,316 vertices. **T0168.**
 - **Front-facing.** Enters `main`, reaches only `shadingNormal`.
 - **Per-primitive `CustomData`.** In the layout; the write is skipped when null
   and the engine passes null, so those sixteen bytes are **undefined memory**.
