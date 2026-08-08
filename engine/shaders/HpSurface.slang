@@ -480,32 +480,76 @@ float2 HpParallaxUv(float2 uv, HpSurfaceInput In)
         N = -N;
     }
 
-    float3 dp2perp = cross(dp2, N);
-    float3 dp1perp = cross(N, dp1);
-    float3 T = dp2perp * duv1.x + dp1perp * duv2.x;
-    float3 B = dp2perp * duv1.y + dp1perp * duv2.y;
-
-    // **Left exactly as it was through T0165's handedness change, and that was
-    // measured rather than assumed.** Schueler's construction is odd in `N` --
-    // flip the normal and both T and B come back negated -- so a handedness
-    // change that moves which side of a surface faces the camera looks like it
-    // must need a compensating sign. A `sign(dot(cross(ddx, ddy), N))` factor
-    // was written, and it **broke** the one directional consumer in the tree:
-    // the rock cube's parallax self-shadow, which marches toward the light and
-    // darkens what is occluded, went from a max drop of 124.6 luminance to
-    // exactly 0. Reverted, and recorded here because the argument for adding it
-    // is convincing and wrong.
+    // **The UV parameterisation's determinant, and this construction is
+    // DiligentFX's rather than Schueler's** (T0166.2). It is the honest
+    // solution of `dp = T*du + B*dv` for `T` and `B`:
     //
-    // What the sign actually is, is now pinned on device rather than reasoned
-    // about: `custom_shader_material_test`'s screen-chirality case measures
-    // `dot(cross(ddx(P), ddy(P)), N)` **negative** on a camera-facing surface
-    // (it was positive before T0165). That is the quantity anything rebuilding
-    // this frame depends on, and it is the one a driver or a Diligent viewport
-    // change could move underneath us.
+    //     T * det = duv2.y * dp1 - duv1.y * dp2
+    //     B * det = duv1.x * dp2 - duv2.x * dp1
+    //
+    // with `det = duv1.x*duv2.y - duv2.x*duv1.y` -- exactly `d` and exactly the
+    // numerator of `t` in `TransformTangentSpaceNormalGrad`
+    // (`DiligentFX/Shaders/Common/public/ShaderUtilities.fxh:51-55`), including
+    // the `d != 0` guard. Their function cannot be called from here -- it
+    // *applies* a tangent-space normal and returns a world one, where the march
+    // needs the frame itself -- so the algebra is borrowed rather than the code,
+    // and it is theirs so that normal mapping and parallax provably agree about
+    // the same pixel's frame instead of agreeing by inspection.
+    //
+    // ## What was wrong, which is more than the ticket that found it thought
+    //
+    // This replaced Schueler's cotangent frame, normalised by `rsqrt` -- always
+    // positive. Substituting the same expansion into *that* construction
+    // collapses it to
+    //
+    //     T_schueler = det * cross(B, N) = (det * h) * T,  h = sign(cross(T,B).N)
+    //
+    // so it carries the **chart's own chirality `h`** as well as `det`. And
+    // `det * h` is `dot(cross(dp1, dp2), N)`, which in a framebuffer whose `y`
+    // runs **down** is negative on *every* front-facing fragment -- so a
+    // positive normalisation returned `-dP/du` and `-dP/dv` **on every asset in
+    // the tree**, mirrored or not. Not a mirrored-shell bug: a global
+    // 180-degree rotation of the parallax frame, which a differential parallax
+    // test cannot see and which nothing here asserted the direction of.
+    //
+    // Dividing Schueler's output by the signed `det` would have fixed the
+    // mirrored charts and left the plain ones inverted, because the `h` would
+    // still be in there. Measured both ways on `tangent_frame_test`'s two-shell
+    // asset before this was written.
+    //
+    // **It is still not the `sign(dot(cross(ddx, ddy), N))` factor T0165 wrote
+    // and reverted**, and the difference is the point rather than a technicality:
+    // that factor is a *pseudo-scalar*, and multiplying by it patches the
+    // symptom while leaving a chirality dependence in a frame that has none.
+    // The construction above has no cross product in it at all, so there is
+    // nothing to be chirally dependent -- the `h` is gone rather than cancelled.
+    const float det = duv1.x * duv2.y - duv2.x * duv1.y;
+    if (det == 0.0)
+    {
+        // Upstream's guard, and the same answer: with no invertible
+        // parameterisation there is no frame, and flat is the stable result.
+        return uv;
+    }
+    float3 T = duv2.y * dp1 - duv1.y * dp2;
+    float3 B = duv1.x * dp2 - duv2.x * dp1;
 
+    // Confined to the tangent plane, as upstream confines `t`. `dp1` and `dp2`
+    // lie in the *geometric* plane while `N` is interpolated, so on a
+    // smooth-shaded mesh they are not quite perpendicular; on the flat-shaded
+    // assets in this tree these two lines are exactly zero-valued.
+    T -= N * dot(N, T);
+    B -= N * dot(N, B);
+
+    // **`sign(det)` folded into the shared normalisation rather than a literal
+    // `1/det`.** Dividing by `det` and then rescaling by a positive factor is
+    // the same frame, and doing it in that order would overflow to infinity on
+    // a near-degenerate chart and come back through `rsqrt` as a NaN. One
+    // factor for both, so the ratio `|dP/du| : |dP/dv|` -- the chart's
+    // anisotropy, which the march's offset depends on -- survives.
     float invMax = rsqrt(max(max(dot(T, T), dot(B, B)), 1e-12));
-    T *= invMax;
-    B *= invMax;
+    const float scale = det < 0.0 ? -invMax : invMax;
+    T *= scale;
+    B *= scale;
 
     float3 viewTS = float3(dot(T, In.ViewDir), dot(B, In.ViewDir), dot(N, In.ViewDir));
     return HpParallaxMarch(uv, viewTS, duv1, duv2);
@@ -1671,11 +1715,33 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(inout TMaterial material, VSOu
 #if USE_VERTEX_TANGENTS
     // **The mesh's tangent, at last** (T0159.4). `RenderPBR.vsh` rotates the
     // vertex tangent into world space and normalizes per vertex; interpolation
-    // denormalizes slightly, so it is renormalized here. `w` is **always +1**,
-    // a decision rather than data: Diligent's vertex path carries `float3`
-    // (`VSTangentAttrib` is `VT_FLOAT32, 3`), so glTF's handedness never
-    // survives the loader -- see the contract's field comment for what that
-    // means to a shader.
+    // denormalizes slightly, so it is renormalized here.
+    //
+    // **`w` is always +1, and it is not data.** glTF ships the bitangent's
+    // handedness in `TANGENT.w` -- the format's own answer to the mirrored-shell
+    // problem, and it is really there: the first production asset read here
+    // (T0167) carries `w = -1` on 1,316 of its 577,749 tangent vertices.
+    //
+    // **This comment used to blame Diligent's loader, and that was wrong**
+    // (T0166.4). `ModelCreateInfo::VertexAttributes` is a *settable* array and
+    // `DefaultVertexAttributes` is only what you get for passing null, which is
+    // what `AssetImport.cpp` does -- so the three-component tangent in the
+    // vertex *buffer* is this engine's omission, not upstream's limit.
+    //
+    // The real constraint is one layer further in and it is upstream:
+    // `PBR_Renderer::GetVSInputStructAndLayout` generates the `VSInput` struct
+    // this shader is compiled against from a `constexpr VSTangentAttrib`
+    // hardcoded to `VT_FLOAT32, 3` (`PBR_Renderer.cpp:1660`) -- unlike the
+    // vertex *colour* beside it, whose component count is read from the input
+    // layout -- and a `DEV_CHECK_ERR` in the same function requires the layout
+    // element to match the struct exactly. Widening the buffer alone therefore
+    // produces a four-component stream feeding a `float3` declaration, which is
+    // the shape of change that appears to land and does not.
+    //
+    // **T0168 owns it**, with that line named. Until then a shader must treat
+    // `w` as a constant and derive handedness from the UV parameterisation --
+    // which is what `HpParallaxUv` now does, and the contract's field comment
+    // says so.
     surfaceIn.Tangent = float4(normalize(VSOut.Tangent), 1.0);
 #else
     // Zero when the mesh carries no tangents -- the documented fallback a

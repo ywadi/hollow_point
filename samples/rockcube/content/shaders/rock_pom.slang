@@ -285,11 +285,11 @@ struct HpMaterial : IHpMaterial
     /// facing "disagree in this engine" -- that was T0141.12's inverted
     /// diagnosis, corrected by T0152.)
     ///
-    /// **Including the chirality correction, which a game shader has to know
-    /// about and currently cannot discover** -- see the comment on it below,
-    /// and `13-shader-capability-matrix.md`, where the missing engine-provided
-    /// `HpTangentFrame` is recorded as the gap this duplication is evidence
-    /// of.
+    /// **This is a duplicate of engine code, and that is the gap rather than the
+    /// design** -- `13-shader-capability-matrix.md` records the missing
+    /// engine-provided `HpTangentFrame` against exactly this. Until it exists,
+    /// this file has to carry the whole of `HpParallaxUv`'s reasoning, and a
+    /// game author copying the sample copies whichever version of it is here.
     void tangentFrame(HpSurfaceInput In, float2 uv, out float3 T, out float3 B, out float3 N,
                       out float2 duv1, out float2 duv2)
     {
@@ -304,22 +304,42 @@ struct HpMaterial : IHpMaterial
             N = -N;
         }
 
-        float3 dp2perp = cross(dp2, N);
-        float3 dp1perp = cross(N, dp1);
-        T = dp2perp * duv1.x + dp1perp * duv2.x;
-        B = dp2perp * duv1.y + dp1perp * duv2.y;
-
-        // **Unchanged by T0165's handedness change** -- see `HpParallaxUv`, and
-        // note that this file is the *reason* that is known: a chirality sign
-        // was added to both copies and this shader's self-shadow is what
-        // measured it wrong (max drop 0 against 124.6). A game shader rebuilding
-        // this frame has no way to discover that from the contract, which is the
-        // gap `13-shader-capability-matrix.md` records against an engine-provided
-        // `HpTangentFrame`.
+        // **Solved, not Schueler** (T0166.2), matching
+        // `HpParallaxUv` and, through it, DiligentFX's
+        // `TransformTangentSpaceNormalGrad` -- signed determinant, `d != 0`
+        // guard, no cross products. The construction that used to be here
+        // returned `(det * h) * dP/du`, where `h` is the UV chart's own
+        // chirality, and `det * h` is negative on every front-facing fragment
+        // in a `y`-down framebuffer: so the frame was rotated 180 degrees on
+        // **every** asset, and the march ran backwards everywhere.
+        //
+        // That is what the `sign(dot(cross(ddx, ddy), N))` factor T0165 wrote
+        // was groping at, and why reverting it on this shader's evidence looked
+        // right: the self-shadow below is posed, its pose was tuned against the
+        // rotated frame, and a correct frame therefore measured nothing at that
+        // pose. Both the factor and the revert treated a construction defect as
+        // a chirality question. There is no cross product left to be chiral.
+        const float det = duv1.x * duv2.y - duv2.x * duv1.y;
+        if (det == 0.0)
+        {
+            // No invertible parameterisation, no frame. A zero frame is the
+            // stable answer rather than a special case downstream: the view
+            // march's offset is zero so the UV does not move, and the shadow
+            // march's ray starts half a bias *below* a field that never
+            // changes under it, so it accumulates no occlusion either.
+            T = float3(0.0, 0.0, 0.0);
+            B = float3(0.0, 0.0, 0.0);
+            return;
+        }
+        T = duv2.y * dp1 - duv1.y * dp2;
+        B = duv1.x * dp2 - duv2.x * dp1;
+        T -= N * dot(N, T);
+        B -= N * dot(N, B);
 
         float invMax = rsqrt(max(max(dot(T, T), dot(B, B)), 1e-12));
-        T *= invMax;
-        B *= invMax;
+        const float scale = det < 0.0 ? -invMax : invMax;
+        T *= scale;
+        B *= scale;
     }
 
     [mutating] override VSOutput surfaceCoordinates(VSOutput VSOut, HpSurfaceInput In)

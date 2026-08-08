@@ -495,10 +495,16 @@ struct HpVertexInput
     /// The vertex's tangent, in **object space**. Zero when the mesh carries
     /// none.
     ///
-    /// `float3` rather than `float4`, and that is the wire format rather than a
-    /// choice: Diligent's vertex path carries three components, so glTF's
-    /// handedness `w` never reaches this engine (T0159.4 records the same fact
-    /// on the pixel side, where the field is a `float4` whose `w` is always +1).
+    /// `float3` rather than `float4`: glTF's handedness `w` does not reach this
+    /// engine. **Not because Diligent's loader cannot carry it** — that claim
+    /// was here and was wrong (T0166.4). `ModelCreateInfo::VertexAttributes` is
+    /// settable and the three-component tangent is the *default* this engine
+    /// takes by passing null. What actually stops it is one layer in:
+    /// `PBR_Renderer::GetVSInputStructAndLayout` generates the `VSInput` struct
+    /// from a `constexpr` tangent attribute hardcoded to three components
+    /// (`PBR_Renderer.cpp:1660`), and checks the input layout matches it.
+    /// **T0168 owns closing it**; see `HpSurfaceInput::Tangent` for what a
+    /// shader should do meanwhile.
     float3 Tangent;
 
     /// The first texture coordinate set, as the mesh holds it. Zero when the
@@ -645,15 +651,26 @@ struct HpSurfaceInput
     /// and DiligentFX's `PerturbNormal` build their frames from) are the
     /// fallback that needs no vertex data.
     ///
-    /// **`w` is always +1, by decision rather than measurement** (T0159.4):
-    /// glTF authors handedness as ±1 in the tangent's fourth component, and
-    /// Diligent's vertex path carries `float3` — the loader drops `w` before
-    /// the engine ever sees it. So `bitangent = cross(Normal, Tangent.xyz)`
-    /// here, and a mesh whose UVs are mirrored (authored `w = -1`) will have
-    /// its bitangent flipped. If that ever matters in practice, the fix is
-    /// widening the wire format upstream, not guessing here — recorded so the
-    /// symptom (normal-mapped lighting inverted on mirrored islands, from
-    /// vertex tangents only) finds its cause.
+    /// **`w` is always +1, and it is not data — do not read it** (T0166.4).
+    /// glTF authors the bitangent's handedness as ±1 in the tangent's fourth
+    /// component, and it is genuinely used: the first production asset this
+    /// project imported carries `w = -1` on 1,316 vertices. This engine drops
+    /// it, and the reason is `PBR_Renderer.cpp:1660` rather than anything
+    /// about the format — **T0168** owns widening it, with that line named.
+    ///
+    /// **What a shader should do instead**, and it is not a workaround:
+    /// reconstruct the frame from the UV parameterisation, dividing by the
+    /// *signed* determinant of `(ddx(uv), ddy(uv))`. That determinant is where
+    /// a mirrored shell actually announces itself — `w` is a per-vertex copy of
+    /// the same fact — and it needs no vertex attribute at all. `HpParallaxUv`
+    /// does exactly that (T0166.2), and `tests/gpu/tangent_frame_test.cpp` is
+    /// the two-shell case that proves it on a mirrored chart.
+    ///
+    /// Until then `bitangent = cross(Normal, Tangent.xyz)` here, so a mesh
+    /// whose UVs are mirrored gets that bitangent flipped **if a shader builds
+    /// its frame from this field** — recorded so the symptom (normal-mapped
+    /// lighting inverted on mirrored islands, from vertex tangents only) finds
+    /// its cause.
     float4 Tangent;
 
     /// Normalised direction from the fragment **to the camera**. Computed here

@@ -495,6 +495,10 @@ TEST_CASE("parallax self-shadowing darkens the frame, measured against itself wi
         return;
     }
 
+    // How far the scene's key is yawed off its committed aim for this case
+    // alone. See the block inside `renderVariant` for the measurement.
+    constexpr float kKeyYaw = 0.6F;
+
     const auto renderVariant = [&](bool shadowOff, float yaw, std::vector<std::uint8_t>& pixels,
                                    const char* frameName) -> bool {
         if (!mountContent(root)) {
@@ -572,6 +576,44 @@ TEST_CASE("parallax self-shadowing darkens the frame, measured against itself wi
         posed.rotation = hp::Quaternion::RotationFromAxisAngle(hp::float3{0.0F, 1.0F, 0.0F}, yaw);
         scene.setLocalTransform(*cube, posed);
         scene.propagateTransforms();
+        // **The key is re-aimed, and T0166.2 is why.** The committed scene's
+        // key travels `(0.15, -0.62, -0.77)` -- down and *away from the
+        // camera*, which now looks down its own -Z. A light that close to the
+        // view axis casts no self-shadow anyone can see, because the shadow
+        // ray retraces the path the view ray has just proved clear; that is
+        // physics, not a defect, and it is what a headlamp looks like.
+        //
+        // The march used to measure a large effect at this pose anyway,
+        // because the reconstructed frame was rotated 180 degrees and the
+        // shadow ray therefore marched *away* from the retraced path. Fixing
+        // the frame (T0166.2) removed the artefact and left the scene's own
+        // lighting as the limit: swept across 25 cube yaws with the corrected
+        // frame, the best any of them managed was 3 darkened pixels.
+        //
+        // So the light moves, per the rule in `CLAUDE.md` -- re-aim the light
+        // rather than re-baseline against it. A +0.6 rad yaw takes the key off
+        // the view axis and onto the side of the graze, and the effect returns
+        // at **90 pixels darkened beyond 10 luminance, max drop 116.5**. Swept
+        // as well: +2.4 rad reaches 101 and 212, -1.8 reaches 29 and 126.7, and
+        // the yaws that leave the key near the view axis (-0.6, +1.8, pi) all
+        // return exactly zero -- which is the same physics, measured.
+        //
+        // **What this does not do is change the sample.** Whether the shipped
+        // scene should light the cube from somewhere a viewer can see relief
+        // is a question about the sample's look, and T0158 owns that.
+        {
+            const auto sunGuid = hp::Guid::parse("1570000000000102");
+            const auto sun = scene.find(*sunGuid);
+            if (!sun.has_value()) {
+                return false;
+            }
+            hp::Entity sunEntity = *sun;
+            hp::Transform key = sunEntity.get<hp::Transform>();
+            key.rotation = key.rotation * hp::Quaternion::RotationFromAxisAngle(
+                                              hp::float3{0.0F, 1.0F, 0.0F}, kKeyYaw);
+            scene.setLocalTransform(*sun, key);
+            scene.propagateTransforms();
+        }
 
         hp::SceneView view;
         if (!view.create(device.render->device(), device.render->context(), kSize, kSize)) {
@@ -697,15 +739,26 @@ TEST_CASE("parallax self-shadowing darkens the frame, measured against itself wi
     CHECK(darkened > 30);
     CHECK(maxDrop > 20.0);
 
-    // **Self-shadowing adds no black pixels.** The black speckle visible on
-    // the cube under POM predates the shadow march — it is the documented
-    // N-dot-L clamp with a normal map and no ambient (T0087, and the scene
-    // file's own comment) — and this pins that the march does not add to it:
-    // the count is bit-identical with the march on and off, measured at
-    // 431/431 here (and 10000/10000 at yaw 0.9, where the artefact peaks) —
-    // still 431/431 after 158.3 moved the march onto the per-light method,
-    // which is the check that the per-light multiply did not start clipping.
-    CHECK(blackOn == blackOff);
+    // **Self-shadowing may reach black, but only as the tail of the darkened
+    // population** — and this assertion used to be an equality, which is worth
+    // recording rather than quietly relaxing.
+    //
+    // The black speckle on the cube under POM predates the shadow march (the
+    // N-dot-L clamp with a normal map and no ambient, T0087 and the scene
+    // file's own comment), and the count used to be bit-identical with the
+    // march on and off: 431/431, then 15/15. That was never a law. It held
+    // because the march was reaching almost nothing: with the tangent frame
+    // rotated 180 degrees (T0166.2) the shadow ray marched away from the
+    // graze, so no texel was ever *fully* occluded. `kShadowStrength = 1.0`
+    // is documented as letting a full occluder reach black, and with the
+    // frame corrected and the key off the view axis, some do — 35 against 26,
+    // nine pixels, against a darkened population of 90.
+    //
+    // What the check is for survives: the march must only ever darken, and the
+    // fully-black tail must stay a *tail* rather than becoming the effect,
+    // which is what a per-light multiply that started clipping would look like.
+    CHECK(blackOn >= blackOff);
+    CHECK(blackOn - blackOff < darkened);
 
     hp::Vfs::shutdown();
     tearDown(device);
