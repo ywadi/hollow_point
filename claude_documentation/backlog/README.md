@@ -20,7 +20,35 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-08 — twenty-eighth revision: the owner put `T0166` and `T0167` at
+**Set 2026-08-08 — twenty-ninth revision: `T0166` closed on a third of what it
+set out to do, because the rest of it turned out to be re-deriving what
+DiligentEngine already ships.** The one thing it was opened for is fixed and
+proven: the reconstructed parallax tangent frame. The diagnosis it carried was
+half right — the ticket said a *mirrored* UV shell marched backwards, and the
+measurement says **every** asset did. Schüler's cotangent frame, which the
+engine hand-copied, expands to `(det · h) · dP/du`, carrying the UV chart's own
+chirality as well as its determinant; and `det · h` is negative on every
+front-facing fragment in a `y`-down framebuffer. So the frame came back rotated
+180°, everywhere, and the march ran the wrong way on every parallax surface this
+engine has ever drawn. Dividing by the signed determinant — the obvious reading
+— fixes the mirrored charts and leaves the plain ones inverted.
+
+**The fix was sitting in `third_party/`.** `ShaderUtilities.fxh:51-55` solves it
+correctly, with the signed determinant, the zero guard and no cross product to
+be chiral. `tests/gpu/tangent_frame_test.cpp` is the asset that proves it — one
+mesh, two shells, one mirrored, the mirror asserted on the emitted bytes — and
+it pins the **absolute** direction from first principles, because "both shells
+agree" passes for a consistently rotated frame, which is exactly what was wrong.
+
+`T0168` takes the rest by name: the normal map's bitangent on a mirrored shell
+(measured wrong — the same map shades the two shells 0 against 130.2), the green
+channel that follows from it, `Tangent.w`, the conformance assets and the first
+unfamiliar model. That is not a tidy-up. **It is the fifth instance in one
+evening of the same failure**, and the sharpest: this was not a gap we filled
+in, it was correct upstream code in a file our own shader already includes,
+while we ran a wrong snippet from a 2013 blog post beside it.
+
+Previously — the twenty-eighth revision: the owner put `T0166` and `T0167` at
 the top, and the engine goes and looks at an asset it did not help make.**
 Every mesh this engine has ever rendered was written by the people who wrote the
 code that consumes it — `make_cube_gltf.py` generates the sample cube, the gpu
@@ -335,12 +363,11 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0166](inprogress/0166-tangent-frames-and-real-assets.md) | tangent frames, the conventions underneath them, and the first unfamiliar asset | **Its first subtask is to scan the findings already on disk**, because the one defect it fixes was found by reading and the rest probably can be too. `HpParallaxUv`'s positive `invMax` drops the UV determinant's sign, so a **mirrored UV shell** — standard game art — marches parallax backwards while DiligentFX's normal-mapping frame, which divides by the *signed* determinant, does not. Predates T0165; nothing in CI can catch it, because every test asset has consistent UV winding |
-| 2 | [T0168](open/0168-asset-import-coverage.md) | asset import coverage — the paper half, built by reading | **Four gaps in one evening, and every one was a case where Diligent already had the answer and we were not asking**: spec-gloss (their loader *and* their shader), `TANGENT.w` (a default we inherited by passing null, not a constraint), the tangent-frame determinant (they ship it correct; we hand-rolled it wrong), and Draco (opt-in behind a CMake target nobody supplied — the built lib has **zero** draco symbols). `CLAUDE.md`'s *"does DiligentEngine already do this?"* check exists for exactly this and did not happen. **D35's rule stops at the loader boundary and this extends it.** Cheap, because it is read rather than built |
-| 3 | [T0167](open/0167-sketchfab-asset-validation.md) | a Sketchfab model, rendered and measured | The owner supplies the asset. Judged **by eye and by number** — a screenshot alone has misled this project twice. **Blocked by T0166 and not softly**: a production model has several things wrong at once, so it says *something* is wrong rather than *which*. It is also the observation **D33's amendment was argued from and never made** — that a Blender artist's model arrives as authored is currently derived, not observed |
-| 4 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | The movable one — see below. It needs nothing from the surface or lighting stages, and T0147 gave it the opaque/blend pass split it would have had to build. **T0152.5 adds one constraint**: facing is per-draw (the determinant rule), so any batching or sorting must keep the per-draw cull decision |
-| 5 | [T0086](open/0086-shadows.md) | shadows | Now unblocked in the way D30 sequenced it: the loop the shadow lookup goes inside is the engine's, the `ENABLE_SHADOWS` block's shape is waiting in `HpGetLight`, and T0145's Ref says where the factor goes and why it must not fold into `Attenuation`. Its Refs carry T0152.5's shadow-pass determinant note — and its bias tuning is now made against a **settled** convention (T0165), which is the whole reason T0152 blocked it |
-| 6 | [T0158](inprogress/0158-parallax-depth-cues.md) | parallax depth cues, remainder | 158.2 closed with T0159 and **158.3 closed with T0145**; what is left is the reference/tuning subtasks and the geometrically-displaced ground-truth cube. **T0165 re-posed its self-shadow probe** (yaw −0.45, the mirror of the old +0.45 onto the same object face at the same 11.5° grazing incidence) — any further tuning starts from there |
+| 1 | [T0168](open/0168-asset-import-coverage.md) | asset import coverage — the paper half, built by reading | **Four gaps in one evening, and every one was a case where Diligent already had the answer and we were not asking**: spec-gloss (their loader *and* their shader), `TANGENT.w` (a default we inherited by passing null, not a constraint), the tangent-frame determinant (they ship it correct; we hand-rolled it wrong), and Draco (opt-in behind a CMake target nobody supplied — the built lib has **zero** draco symbols). `CLAUDE.md`'s *"does DiligentEngine already do this?"* check exists for exactly this and did not happen. **D35's rule stops at the loader boundary and this extends it.** Cheap, because it is read rather than built |
+| 2 | [T0167](open/0167-sketchfab-asset-validation.md) | a Sketchfab model, rendered and measured | The owner supplies the asset. Judged **by eye and by number** — a screenshot alone has misled this project twice. **Blocked by T0166 and not softly**: a production model has several things wrong at once, so it says *something* is wrong rather than *which*. It is also the observation **D33's amendment was argued from and never made** — that a Blender artist's model arrives as authored is currently derived, not observed |
+| 3 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | The movable one — see below. It needs nothing from the surface or lighting stages, and T0147 gave it the opaque/blend pass split it would have had to build. **T0152.5 adds one constraint**: facing is per-draw (the determinant rule), so any batching or sorting must keep the per-draw cull decision |
+| 4 | [T0086](open/0086-shadows.md) | shadows | Now unblocked in the way D30 sequenced it: the loop the shadow lookup goes inside is the engine's, the `ENABLE_SHADOWS` block's shape is waiting in `HpGetLight`, and T0145's Ref says where the factor goes and why it must not fold into `Attenuation`. Its Refs carry T0152.5's shadow-pass determinant note — and its bias tuning is now made against a **settled** convention (T0165), which is the whole reason T0152 blocked it |
+| 5 | [T0158](inprogress/0158-parallax-depth-cues.md) | parallax depth cues, remainder | 158.2 closed with T0159 and **158.3 closed with T0145**; what is left is the reference/tuning subtasks and the geometrically-displaced ground-truth cube. **T0165 re-posed its self-shadow probe** (yaw −0.45, the mirror of the old +0.45 onto the same object face at the same 11.5° grazing incidence) — any further tuning starts from there |
 
 **Raised rather than reordered, because the order is the owner's call:**
 [T0162](open/0162-shader-authoring-docs.md) (the shader authoring guide) listed
@@ -504,7 +531,7 @@ wrong in the confident voice of a document that is normally right.
 | 467 | [T0162](open/0162-shader-authoring-docs.md) | The shader authoring guide: what a game author reads | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 468 | [T0163](open/0163-gpu-suite-teardown-and-cook-skip.md) | A fatal assertion in a gpu case takes the next case with it | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | 469 | [T0164](open/0164-per-instance-data.md) | Per-instance data: the last empty cell in the capability matrix | 4 — Render layer | 🔜 TODO | Medium | Moderate |
-| 462 | [T0166](inprogress/0166-tangent-frames-and-real-assets.md) | Tangent frames, the conventions underneath them, and the first real asset this engine has ever rendered | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
+| 462 | [T0166](completed/0166-tangent-frames-and-real-assets.md) | Tangent frames, the conventions underneath them, and the first real asset this engine has ever rendered | 4 — Render layer | ✅ DONE | High | Moderate |
 | 463 | [T0167](open/0167-sketchfab-asset-validation.md) | A model from Sketchfab, rendered and measured: the first asset chosen by somebody other than us | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 461 | [T0168](open/0168-asset-import-coverage.md) | Asset import coverage: what does DiligentEngine already do, and are we asking it to? | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 464 | [T0155](open/0155-terrain-rendering.md) | Terrain rendering: their reference implementation is the floor, not the ceiling | 4 — Render layer | 🔜 TODO | Medium | Very Complex |

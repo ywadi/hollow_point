@@ -11,7 +11,7 @@
 > `5f20700`, *before* the right-handed conversion, so it states the old
 > convention as current throughout. That is exactly what makes it useful: it is
 > an independent inventory of everything that assumed the old convention, and
-> it is [T0166](../inprogress/0166-tangent-frames-and-real-assets.md).1's input —
+> it is [T0166](../completed/0166-tangent-frames-and-real-assets.md).1's input —
 > **read it as "what was claimed", then check each item against what landed.**
 > Absolute paths have been rewritten repo-relative; nothing else was touched.
 
