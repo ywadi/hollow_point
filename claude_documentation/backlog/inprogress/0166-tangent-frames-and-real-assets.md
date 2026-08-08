@@ -2,14 +2,14 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
 | **Order** | 462 |
 | **Created** | 2026-08-08 |
 | **Blocked by** | nothing |
-| **Refs** | [../completed/0165-right-handed-engine.md](../completed/0165-right-handed-engine.md) — left `HpTangentFrame` as the capability matrix's unowned row and `fHandness` in a stated disagreement; **this ticket owns both**; [../completed/0152-winding-convention.md](../completed/0152-winding-convention.md) — the convention this is measured against; [../completed/0157-rock-cube-sample.md](../completed/0157-rock-cube-sample.md) — lost a session to a tangent basis nobody could see was wrong; [../completed/0159-open-the-material-contract.md](../completed/0159-open-the-material-contract.md) 159.4 — gave `Tangent` real data and recorded that `w` does not survive the loader; [../inprogress/0158-parallax-depth-cues.md](../inprogress/0158-parallax-depth-cues.md) — the self-shadow is the only directional consumer, and the thing a wrong fix breaks first; [0167-sketchfab-asset-validation.md](0167-sketchfab-asset-validation.md) — **runs after this**, and will find what a controlled case cannot; [0162-shader-authoring-docs.md](0162-shader-authoring-docs.md) — must document whatever `Tangent.w` ends up meaning; [../../documentation/13-shader-capability-matrix.md](../../documentation/13-shader-capability-matrix.md); **D26**, **D33** (as amended), **D35** |
+| **Refs** | [../completed/0165-right-handed-engine.md](../completed/0165-right-handed-engine.md) — left `HpTangentFrame` as the capability matrix's unowned row and `fHandness` in a stated disagreement; **this ticket owns both**; [../completed/0152-winding-convention.md](../completed/0152-winding-convention.md) — the convention this is measured against; [../completed/0157-rock-cube-sample.md](../completed/0157-rock-cube-sample.md) — lost a session to a tangent basis nobody could see was wrong; [../completed/0159-open-the-material-contract.md](../completed/0159-open-the-material-contract.md) 159.4 — gave `Tangent` real data and recorded that `w` does not survive the loader; [../inprogress/0158-parallax-depth-cues.md](../inprogress/0158-parallax-depth-cues.md) — the self-shadow is the only directional consumer, and the thing a wrong fix breaks first; [0167-sketchfab-asset-validation.md](../open/0167-sketchfab-asset-validation.md) — **runs after this**, and will find what a controlled case cannot; [0162-shader-authoring-docs.md](../open/0162-shader-authoring-docs.md) — must document whatever `Tangent.w` ends up meaning; [../../documentation/13-shader-capability-matrix.md](../../documentation/13-shader-capability-matrix.md); **D26**, **D33** (as amended), **D35** |
 
 ## Why
 
@@ -69,7 +69,7 @@ so the true tangent is `T_computed / det`. Dividing by `invMax` — **always pos
 
 ## Not in scope
 
-- **A Sketchfab model, or any asset chosen for how it looks.** [T0167](0167-sketchfab-asset-validation.md) owns that, deliberately second: a production model has several things wrong at once, so it says *something* is wrong rather than *which*. Land a clean signal here first — reversed, the first real asset renders wrong for two reasons and the wrong one gets debugged. That is the trap that cost T0157 a day.
+- **A Sketchfab model, or any asset chosen for how it looks.** [T0167](../open/0167-sketchfab-asset-validation.md) owns that, deliberately second: a production model has several things wrong at once, so it says *something* is wrong rather than *which*. Land a clean signal here first — reversed, the first real asset renders wrong for two reasons and the wrong one gets debugged. That is the trap that cost T0157 a day.
 - **Per-vertex tangent generation** (MikkTSpace or otherwise) for meshes that ship without `TANGENT`. Real, larger, and only worth deciding once 166.4 has settled what the engine does with the tangents it is *given*.
 - **Re-tuning parallax.** T0158 owns the look; this ticket owns whether the frame it marches in is correct.
 
