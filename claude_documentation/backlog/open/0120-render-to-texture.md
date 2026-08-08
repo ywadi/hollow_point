@@ -174,7 +174,7 @@ editor code it does not need to touch to be complete.
 
 ### 2026-08-08 — considered for merge into T0094, and **declined** on this ticket's own evidence
 
-The proposal was to fold this into [T0094](0094-gameplay-extensible-rendering.md)
+The proposal was to fold this into [T0094](../inprogress/0094-gameplay-extensible-rendering.md)
 on the grounds that T0094's `## Why` names *"portal and mirror views,
 security-camera monitors"* — which is this ticket's content. The condition set
 for the merge was: *"if camera render-to-texture has engine-side API beyond the

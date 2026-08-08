@@ -168,7 +168,7 @@ another ticket's existence any more.
 
 ### 2026-08-08 — considered for merge into T0094, and **declined**
 
-The proposal was to fold this into [T0094](0094-gameplay-extensible-rendering.md)
+The proposal was to fold this into [T0094](../inprogress/0094-gameplay-extensible-rendering.md)
 as its acceptance test, on the grounds that this ticket's title is literally
 *"prove a vision mechanic needs no engine changes"* and that it builds nothing.
 The second half of that is true and the conclusion does not follow.

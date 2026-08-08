@@ -9,7 +9,7 @@
 | **Order** | 530 |
 | **Created** | 2026-08-02 |
 | **Closed** | 2026-08-08 — **answered "no", as [D41](../../documentation/02-decision-log.md)**, on T0171's sweep |
-| **Refs** | [0094-gameplay-extensible-rendering.md](../open/0094-gameplay-extensible-rendering.md) — **this ticket was sequenced ahead of it on the belief that it decides T0094's shape. It does not**, and that is the useful part of the answer: the pass seam is already expressible and what is missing is three pieces of plumbing, all T0094's. The finding is on that ticket too; [0171-expose-not-replace-sweep.md](0171-expose-not-replace-sweep.md); [../../documentation/12-vendored-capabilities.md](../../documentation/12-vendored-capabilities.md) — the pass-orchestration and render-target-pooling rows are this ticket's evidence, kept where a revisit will find them; **D26**, **D29**, **D40**, **D41** |
+| **Refs** | [0094-gameplay-extensible-rendering.md](../inprogress/0094-gameplay-extensible-rendering.md) — **this ticket was sequenced ahead of it on the belief that it decides T0094's shape. It does not**, and that is the useful part of the answer: the pass seam is already expressible and what is missing is three pieces of plumbing, all T0094's. The finding is on that ticket too; [0171-expose-not-replace-sweep.md](0171-expose-not-replace-sweep.md); [../../documentation/12-vendored-capabilities.md](../../documentation/12-vendored-capabilities.md) — the pass-orchestration and render-target-pooling rows are this ticket's evidence, kept where a revisit will find them; **D26**, **D29**, **D40**, **D41** |
 
 ## Why
 
