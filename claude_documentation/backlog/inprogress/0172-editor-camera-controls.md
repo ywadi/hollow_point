@@ -262,6 +262,14 @@ message sink is contained and is what `Diligent-SampleBase` itself does.
   strafe directions *feel* right (the signs are measured, the *sensitivity* is
   not), whether the orbit pivot behaves under a long drag, and whether the pan
   scale is comfortable.
+- **A camera entity with a *parent* would be driven wrongly.** The camera writes
+  through `Scene::setLocalTransform`, which is parent-relative, while the pose it
+  computes is a world pose. Nothing in the tree parents a camera today — the rock
+  cube's is a root and `openModel` creates a root — so this is a latent limit
+  rather than a live bug, but it is exactly the kind that surfaces as "the camera
+  is in the wrong place" on somebody else's scene. The fix is to convert through
+  the parent's world inverse, and the place to do it is wherever the editor camera
+  lands once T0033 exists.
 - **The viewport is still the whole window.** T0033's panel does not exist, so
   there is no panel-space mapping and the camera takes input whenever the window
   has focus. T0173 needs that mapping and must not invent its own.
