@@ -87,7 +87,7 @@ would express, it is wrong.**
 | **IBL — irradiance + prefiltered specular** | `PBR_Renderer::{EnableIBL, PrecomputeCubemaps, SetIBLResourceViews, CreateIrradianceCube, CreatePrefilteredEnvMap}`; **all `PBR_Renderer`'s, not `GLTF_PBR_Renderer`'s** | ✅ wired (T0170.5) | — |
 | **Sheen, clearcoat, anisotropy, iridescence, transmission** | `PBR_Shading.fxh`, per-layer IBL (`GetSheenIBL`, `GetClearcoatIBL`) | ✅ wired (T0143 + T0170.5) | — |
 | **Skybox as a visible background** | `DiligentFX/Components/interface/EnvMapRenderer.hpp` — **complete, and this engine never constructs it.** `grep EnvMapRenderer engine/` → nothing. The environment is integrated into cubemaps and never drawn | 🔧 switch off | **T0088** |
-| **Tone mapping — 12 operators** | `Shaders/PostProcess/ToneMapping/public/ToneMapping.fxh:87`; `TONE_MAPPING_MODE_*` 0–11 in `ToneMappingStructures.fxh:11-22` (`NONE`, Exp, Reinhard, Reinhard-mod, Uncharted2, Filmic ALU, Logarithmic, Adaptive-log, AgX, AgX Custom, PBR Neutral, Commerce). UI in `Components::ToneMappingUpdateUI` | 🔌 construct and drive | **T0096** |
+| **Tone mapping — 12 operators** | `Shaders/PostProcess/ToneMapping/public/ToneMapping.fxh:87`; `TONE_MAPPING_MODE_*` 0–11 in `ToneMappingStructures.fxh:11-22` (`NONE`, Exp, Reinhard, Reinhard-mod, Uncharted2, Filmic ALU, Logarithmic, Adaptive-log, AgX, AgX Custom, PBR Neutral, Commerce). UI in `Components::ToneMappingUpdateUI` | 🔌 construct and drive | **T0148** |
 | **Cascaded shadow *shading*** | `Shaders/Common/public/Shadows.fxh` — `FindCascade:65`, `FilterShadowMap:219` **incl. cross-cascade blend :238**, `SampleFilterableShadowMap:350`; four modes at `BasicStructures.fxh:19-22` | 🔌 construct and drive | **T0086** |
 | **Cascade textures and placement** | `DiligentFX/Components/interface/ShadowMapManager.hpp` — `DistributeCascades:165`, `SnapCascades:108`, `StabilizeExtents:112`, `ConvertToFilterable:169`, `GetCascadeDSV:88`. **Directional only** (`pLightDir:106`) | 🔌 construct and drive | **T0086** |
 | **Point / spot shadows** | nothing. No cube, no dual-paraboloid, anywhere in DiligentFX | ⬆️ upstream absent | **T0086.8** — build or decline |
@@ -97,6 +97,7 @@ would express, it is wrong.**
 
 | Capability | What upstream has, and where | State | Who owns the gap |
 |---|---|---|---|
+| **Distance and height fog** | nothing — an analytic term over the depth buffer, which `HpSceneViewDepth` already supplies (T0147/D37) | ⬆️ upstream absent | **T0088.14–88.18** |
 | **Bloom** (6 settings) | `DiligentFX/PostProcess/Bloom/` | 🔌 construct and drive | **T0148** |
 | **Depth of Field** (7) | `DiligentFX/PostProcess/DepthOfField/` | 🔌 | **T0148** |
 | **SSAO** (11) | `DiligentFX/PostProcess/ScreenSpaceAmbientOcclusion/` | 🔌 | **T0148** |
@@ -104,8 +105,8 @@ would express, it is wrong.**
 | **TAA** (6) | `DiligentFX/PostProcess/TemporalAntiAliasing/` | 🔌 | **T0148**, gated by T0111 |
 | **`PostFXContext`** — shared inputs the five components need | `DiligentFX/PostProcess/Common/interface/PostFXContext.hpp`; 12 named slots at `:190-206` | 🔌 | infrastructure for **T0148** |
 | **`GBuffer`** | `DiligentFX/Components/interface/GBuffer.hpp` — **not** `PostProcess/Common/`, which this table said until 2026-08-08. `Bind` is a plain `SetRenderTargets` (`GBuffer.cpp:166`) | 🔌 | **T0148** |
-| **Atmospheric scattering / sun shafts** | `DiligentFX/PostProcess/EpipolarLightScattering/`. **41 fields**, 6 technique enum families (`EpipolarLightScatteringStructures.fxh:43-90`). **One directional light** (`FrameAttribs::pLightAttribs`, `.hpp:73`) | 🔌 construct and drive | **T0088**; the sun-shaft half of **T0091** |
-| **Froxel volumetrics** — beams from *point and spot* lights | nothing | ⬆️ upstream absent | **T0091** — the expensive half, to be argued |
+| **Atmospheric scattering / sun shafts** | `DiligentFX/PostProcess/EpipolarLightScattering/`. **41 fields**, 6 technique enum families (`EpipolarLightScatteringStructures.fxh:43-90`). **One directional light** (`FrameAttribs::pLightAttribs`, `.hpp:73`) — so it is **sun shafts, not volumetrics** | 🔌 construct and drive | **T0088** |
+| **Froxel volumetrics** — beams from *point and spot* lights | nothing | ⬆️ upstream absent | **T0088.20** — deferred with a written trigger; a recorded decline is a valid close, because ⬆️ has to be argued (D40) |
 | **`DepthRangeCalculator`** | `DiligentFX/Components/interface/DepthRangeCalculator.hpp` — **not** `PostProcess/Common/`. **Compute-only, no PS fallback** | 🔧 blocked | **T0150** |
 
 ### Submission, passes and resources
