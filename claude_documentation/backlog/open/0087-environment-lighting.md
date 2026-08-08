@@ -176,3 +176,36 @@ easier:** whether it *configures* DiligentFX's existing IBL path or supersedes
 it. On the evidence of T0166 and T0168 — four separate cases where Diligent
 already had the answer and the engine was not asking — **the burden of proof is
 on superseding**, and the answer must be written down either way.
+
+### 2026-08-08 — folded into T0170 by the owner
+
+**This ticket's core is absorbed by [T0170](../inprogress/0170-diligent-owns-the-render-loop.md).**
+Once the engine is a `GLTF_PBR_Renderer` subclass, `PBR_Renderer`'s IBL comes
+with it — so the question this ticket opened with, *"does it configure DiligentFX's
+IBL path or supersede it"*, answers itself: **it configures it.** Turning it on is
+T0170.5, and it is what makes T0167's car read as it does in Blender, Godot and
+Unity, because the paint colour is authored into the specular map and there is
+currently nothing to reflect.
+
+Folded rather than merely reordered, on the owner's instruction: *"expose
+capabilities to game devs, not replace"*. Building an IBL path beside one we
+already ship would be the exact failure D26's amendment records.
+
+**What is NOT absorbed, and stays here or moves to [T0171](0171-expose-not-replace-sweep.md):**
+
+- **The skybox** as a visible background, and its authoring — an environment map
+  the renderer samples is not the same thing as a sky a player sees.
+- **The seam.** T0171.3 says the attachment pattern is designed **once** for all
+  of these, not nine times; whatever a game overrides about ambient belongs to
+  that design, not to a hook invented here.
+- **87.8's local ambient control**, and its interaction with D38's rejected
+  `ambient_light_disabled` render mode — a material that wants no ambient
+  overrides `lighting()`, and that reopen trigger is recorded on D38.
+- The T0143 constraints this ticket carried: the **per-layer** resolve
+  (`GetSheenIBL`, `GetClearcoatIBL` join their own layers, not the base's), the
+  **Charlie-LUT** embed that 143.9 blocked on, and
+  `extended_material_test`'s volume assertion to flip. **T0170.5 must not tick
+  those off silently** — they are checkable claims and they belong to whoever
+  turns IBL on.
+
+Removed from the Current ticket sequence in the same change.
