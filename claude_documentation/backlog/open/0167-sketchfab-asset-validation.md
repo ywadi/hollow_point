@@ -8,12 +8,32 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 463 |
 | **Created** | 2026-08-08 |
-| **Blocked by** | [0166-tangent-frames-and-real-assets.md](0166-tangent-frames-and-real-assets.md) — **not a soft ordering.** A production model has several things wrong at once; run it against a known-clean frame or the wrong cause gets debugged |
-| **Refs** | [0166-tangent-frames-and-real-assets.md](0166-tangent-frames-and-real-assets.md) — supplies the controlled cases this ticket deliberately is not; [../completed/0165-right-handed-engine.md](../completed/0165-right-handed-engine.md) — **this is the observation D33's amendment was argued from and never made**; [../completed/0157-rock-cube-sample.md](../completed/0157-rock-cube-sample.md) — the authoring path a real asset re-walks; [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md), [../completed/0143-extended-material-features.md](../completed/0143-extended-material-features.md) — the features a real material will actually exercise; [0087-environment-lighting.md](0087-environment-lighting.md) — a real PBR asset will look wrong without IBL, and that is **not** a defect this ticket may report; [../../documentation/11-material-format.md](../../documentation/11-material-format.md); **D13**, **D33** |
+| **Blocked by** | [0166-tangent-frames-and-real-assets.md](../inprogress/0166-tangent-frames-and-real-assets.md) — **not a soft ordering.** A production model has several things wrong at once; run it against a known-clean frame or the wrong cause gets debugged |
+| **Refs** | [0166-tangent-frames-and-real-assets.md](../inprogress/0166-tangent-frames-and-real-assets.md) — supplies the controlled cases this ticket deliberately is not; [../completed/0165-right-handed-engine.md](../completed/0165-right-handed-engine.md) — **this is the observation D33's amendment was argued from and never made**; [../completed/0157-rock-cube-sample.md](../completed/0157-rock-cube-sample.md) — the authoring path a real asset re-walks; [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md), [../completed/0143-extended-material-features.md](../completed/0143-extended-material-features.md) — the features a real material will actually exercise; [0087-environment-lighting.md](0087-environment-lighting.md) — a real PBR asset will look wrong without IBL, and that is **not** a defect this ticket may report; [../../documentation/11-material-format.md](../../documentation/11-material-format.md); **D13**, **D33** |
+
+## The asset
+
+**`aston_martin.glb`** — supplied by the owner 2026-08-08, currently at `~/Downloads/aston_martin.glb` (**not** in the repository; see 167.7).
+
+| | |
+|---|---|
+| Title / author | *Aston Martin*, Francesco Coldesina ([topfrank2013](https://sketchfab.com/topfrank2013)) |
+| Source | https://sketchfab.com/3d-models/aston-martin-1633d1972aa84b7891dc50cd6e83cd18 |
+| Licence | **CC-BY-4.0** — redistributable **with attribution**, which 167.7 must carry |
+| Generator | `Sketchfab-12.65.0`, glTF 2.0 binary |
+| Size | 82.3 MiB (JSON chunk 0.03 MiB, BIN chunk 82.23 MiB) |
+
+Measured by parsing the container directly, not inferred:
+
+- **1 scene, 33 nodes, 31 meshes, 31 primitives, 642,553 triangles**, every primitive `mode: 4` (TRIANGLES) and indexed
+- **Attributes, all 31/31**: `POSITION`, `NORMAL`, **`TANGENT`**, `TEXCOORD_0`. No second UV set, no vertex colours, no skinning, no animations, no cameras
+- **One material for the entire car** — `alphaMode: BLEND`, `doubleSided: true`
+- **4 embedded PNGs**: 16.54 MiB diffuse, 21.40 MiB specular-glossiness, 4.32 MiB normal, 6.17 MiB occlusion. One sampler, trilinear, `REPEAT`
+- **Root node `Sketchfab_model` carries a Z-up → Y-up rotation** (maps `y → −z`, `z → +y`). **Determinant +1 — a rotation, not a mirror.** No node in the file carries a negative scale or a mirrored matrix
 
 ## Why
 
-**The engine has never been shown an asset it did not help make.** The owner is supplying one from Sketchfab — chosen for what it is, not for what it tests — and that is the point: it carries whatever a real artist's export carries, including the things nobody here would think to write.
+**The engine has never been shown an asset it did not help make.** The owner is supplying one from Sketchfab — chosen for what it is, not for what it tests — and that is the point: it carries whatever a real artist's export carries, including the things nobody here would think to write. This one carried three inside ten minutes of reading, before a single frame was rendered.
 
 **It is also the observation D33's amendment was argued from.** T0165 made the engine right-handed on the reasoning that *a Blender artist's model arrives as authored*. That claim is currently **derived, not observed**. One model settles it.
 
@@ -32,7 +52,9 @@
 - [ ] 167.4 **Measure, do not only look.** A gpu case that renders it offscreen and asserts something falsifiable — coverage, the magenta and checkerboard guards, luminance response to a moved light, and orientation against the source. **A screenshot alone has misled this project twice**: a magenta checkerboard was read as a working render because the summary statistics passed
 - [ ] 167.5 **Test the handedness claim explicitly.** Front is front, left is left, up is up, one unit is one unit — against the source in Blender, which is available in this session over MCP
 - [ ] 167.6 **Separate defects from absences.** A real PBR asset will look flat and dark without IBL, and that is T0087's, not a bug. So will anything expecting shadows (T0086). **Say which bucket each finding is in** — a missing system reported as a defect is how a clean engine gets "fixed" into a broken one
-- [ ] 167.7 **Decide whether the asset joins the repository**, and on what terms. Licence, size, and whether it becomes a CI fixture or a one-off measurement. Sketchfab licences vary and a redistributable one is a requirement, not a detail — **if it cannot be committed, the measurement still counts and the ticket says so**
+- [ ] 167.7 **Decide whether the asset joins the repository**, and on what terms. **CC-BY-4.0 permits it and 82.3 MiB argues against it** — 48 MiB of that is four embedded PNGs, two of them over 16 MiB. A decimated or texture-reduced copy is a different asset and stops being this test. Whatever is decided, **the attribution travels with any copy that lands**: *Aston Martin, Francesco Coldesina, CC-BY-4.0*, with the Sketchfab URL. If it cannot be committed, the measurement still counts and the ticket says so
+- [ ] 167.8 **State plainly how far it gets without spec-gloss**, and stop there. `KHR_materials_pbrSpecularGlossiness` is in `extensionsRequired` and this engine implements metallic-roughness only, by a decision already recorded in `11-material-format.md`. **Whether to adopt it is a separate ticket** — Khronos archived the workflow, Sketchfab still exports it by the million, and that trade is not this ticket's to make. Open the ticket, do not take the decision
+- [ ] 167.9 **Test `TANGENT.w` against real data.** 1,316 vertices in this file carry `w = −1` and the loader discards every one of them (Diligent's vertex path is `float3`). That is the first evidence in this project of the sign actually differing, and it is [T0166](../inprogress/0166-tangent-frames-and-real-assets.md).4's missing input — **report it there whichever way T0166 resolves**
 
 ## Not in scope
 
@@ -41,6 +63,49 @@
 - **Anything about how good it looks.** Missing IBL, missing shadows and untuned exposure are systems that do not exist yet, and 167.6 exists to stop them being reported as regressions.
 
 ## Notes / findings
+
+### What the file contains, measured 2026-08-08 before any render
+
+Three things were found by parsing the container, and the first is the headline.
+
+#### 1. It **requires** an extension this engine deliberately does not implement
+
+`KHR_materials_pbrSpecularGlossiness` appears in **`extensionsRequired`**, not merely `extensionsUsed`. The glTF spec is explicit that a loader which does not support a *required* extension **must refuse the asset** rather than render it approximately.
+
+The support picture is layered, and the gap is ours:
+
+| Layer | Supports spec-gloss? |
+|---|---|
+| Diligent's loader | **Yes** — `GLTFLoader.cpp:1510-1516` sets `PBR_WORKFLOW_SPEC_GLOSS` and loads the texture |
+| DiligentFX's shader | **Yes** — `SpecularFactor` is read under that workflow (`RenderPBR.psh:159`) |
+| **HollowPoint** | **No.** `SceneRenderer.cpp:329-330` hardcodes `material.unlit ? PBR_WORKFLOW_UNLIT : PBR_WORKFLOW_METALL_ROUGH`, and `hp::Material` has no `diffuseTexture`, no `specularGlossinessTexture` and no workflow field at all |
+
+**This was a decision, not an oversight**, and it is already written down — `11-material-format.md:456-458` lists `SpecularFactor` as *"read only under `PBR_WORKFLOW_SPECULAR_GLOSSINESS`, which this engine does not use. Absent on purpose, not forgotten."*
+
+So the likely first observation is **not** a rendering bug: it is the car importing with its diffuse and specular-glossiness textures unmapped and rendering as a default surface. **Do not "fix" that by widening the material in passing.** Whether the engine adopts the deprecated spec-gloss workflow — Khronos archived it in favour of metallic-roughness, and Sketchfab still exports it by the million — is a real decision with a real cost, and it earns its own ticket. What this ticket owes is the finding, stated precisely, plus how far the asset gets without it.
+
+#### 2. It carries mirrored UVs — genuinely, but **weakly**, and this is a correction
+
+Per-triangle UV signed area across all 642,553 triangles:
+
+| | |
+|---|---|
+| Negative (mirrored) | **594 — 0.1%**, spread over 24 of 31 primitives, at most 1.5% within any one |
+| Positive | 641,959 — 99.9% |
+
+And the handedness the loader throws away is present in the file: **`TANGENT.w` is `−1` on 1,316 vertices** and `+1` on 576,433.
+
+**This confirms the mechanism occurs in production output, and it is not the stress case.** [T0166](../inprogress/0166-tangent-frames-and-real-assets.md)'s framing — relief reading inside-out across half a symmetric model — needs a large contiguous mirrored shell, and this asset does not have one; a scattered ≤1.5% is as consistent with seam and near-degenerate triangles as with deliberate mirroring. **This asset is corroboration, not a substitute for T0166.3's controlled two-shell case.** Anyone reading "a real asset has mirrored UVs" as "T0166.3 is covered" would be drawing the wrong conclusion from a true sentence.
+
+The 1,316 `w = −1` vertices are, separately, a real population to test **166.4** against — the first evidence in this project of the discarded sign actually differing.
+
+#### 3. The whole car is one blended, double-sided material
+
+`alphaMode: BLEND` and `doubleSided: true` on the single material means all 642K triangles go down [T0147](../completed/0147-engine-intermediates-for-shaders.md)'s **blend** pass and nothing culls. That is Sketchfab's exporter default rather than an authoring intent, and it is exactly the kind of thing a synthetic asset would never have produced. Worth observing rather than correcting — 167.1 says take it as it comes.
+
+### The one thing that is now a direct experiment
+
+The root node's Z-up → Y-up rotation (determinant **+1**, verified — a rotation, not a mirror) is **167.5's test made concrete**: if the engine composes node transforms correctly under D33 as amended, the car stands upright and faces the way the artist left it. If the handedness sweep missed something, this is the asset that shows it, because the correction is in the file rather than in our code.
 
 ### Two traps that have already cost this project time, and both apply here
 
