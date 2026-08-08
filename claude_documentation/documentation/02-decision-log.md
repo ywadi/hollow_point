@@ -3004,3 +3004,71 @@ unconverted with one warning — the faithful texel-space conversion is
 T0097-class work, recorded there. Assigning an extracted material over an SG
 import is therefore a *migration* off the dead workflow, not a re-skin, and
 the log says so at extraction time.
+
+---
+
+## D40 — **We add, we do not rebuild.** DiligentEngine is the renderer; this engine is the seam a game reaches it through
+
+**Decided 2026-08-08 by the owner**, in their words, after a day in which the
+same failure was found six times: *"we want our shader and the POM and the
+triplanar, but we don't want to reinvent everything… **we add, not rebuild**."*
+And earlier the same evening: *"**EXPOSE** capabilities to game devs, not
+**replace** — we already did that with Slang, and we can do that for others in
+the same method of attachment and not rewriting."*
+
+### What this decides
+
+**Anything DiligentEngine or DiligentFX already implements is theirs**, and this
+engine's job is the **seam** a game reaches it through — nothing else. Shadows,
+IBL, tone mapping, bloom, DoF, SSAO, SSR, TAA, atmospheric scattering, terrain,
+order-independent transparency, frustum culling, the PSO cache and the draw loop
+are all already in the tree. **Building any of them is a defect, not a task.**
+
+**What this engine adds, and the list is deliberately short:**
+
+- the **surface shader** and its contract — `IHpMaterial`, POM, triplanar, the
+  vertex hook, the light and lighting hooks, screen intermediates, declared
+  parameters and resources. This is the reason the engine exists (**D26** as
+  amended) and it is *added* to Diligent's pipeline rather than replacing it:
+  the shader is seeded into `m_PixelShaders`/`m_VertexShaders` so
+  `RenderPBR.psh` is simply never compiled;
+- everything Diligent has no opinion about — the scene and ECS, the VFS (**D13**),
+  gameplay modules (**D12**), assets and import, the editor.
+
+### The measurement that produced it
+
+**Six capabilities in three days were already vendored with the switch off** —
+spec-gloss, glTF's `TANGENT.w`, the cotangent-frame determinant, Draco,
+the normal-map green channel, and **order-independent transparency**. Every one
+found by a person reading; **none by a test**.
+
+Then the owner wrote a **333-line** Diligent sample
+(`dillegent_tests/AstonMartinScene/`) that renders the T0167 car correctly —
+environment-lit, glass right, interior visible — against **3,469 lines** of
+`SceneRenderer.cpp` + `SurfacePipeline.cpp` that did it worse. That comparison is
+this entry's evidence, and it is not close.
+
+### The rule that follows, and it is checkable
+
+**Before building anything in the render layer, the first written note is what
+Diligent already does about it.** Not a habit — a required artefact, on the
+ticket, before the code. `12-vendored-capabilities.md` and T0171's matrix are
+where the answer lives, and **D35 extends here**: a render feature gets a matrix
+row *before* it is built, exactly as a shader technique and a format feature
+already must.
+
+### Rejected
+
+- **"Ours will be better."** Sometimes true and it is still an argument that must
+  be *made and recorded*, not assumed. T0155 already says it correctly for
+  terrain: *their reference implementation is the floor, not the ceiling.* The
+  verdict **genuinely ours** stays reachable; what is rejected is reaching it by
+  default.
+- **Adopting by default.** The opposite failure, and the same shape facing the
+  other way. Diligent's answer can be wrong for us — the wrong quality bar, an
+  extension shape that fights a recorded decision. **The rule is: check first,
+  decide deliberately, write down which and why.**
+- **Forking or modifying Diligent's source.** Unchanged from D26, and untouched
+  by this entry. The seam is attachment — a subclass, a virtual, a seeded cache,
+  an upstream PR (**D30** records one we owe and never made) — never a patch to
+  their tree.

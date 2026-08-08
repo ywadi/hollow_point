@@ -30,12 +30,18 @@ you in the first ten minutes.
 | Building anything a game's shader will touch? | **D35** — a game-facing mechanism is designed **stage-agnostically or not at all**, and a technique gets a row in the capability matrix *before* it is built. Written after the same silent failure happened twice |
 | What can a game's shader **not** do yet? | [`claude_documentation/documentation/13-shader-capability-matrix.md`](claude_documentation/documentation/13-shader-capability-matrix.md) — the capability audit. **Add a row before building a technique, not after**; an empty cell is the next gap, found in advance rather than after a day of silent debugging |
 | **Will this model import?** | [`claude_documentation/documentation/14-asset-import-matrix.md`](claude_documentation/documentation/14-asset-import-matrix.md) — one row per glTF feature and extension, with who owns each gap. **A format feature gets a row before anything relies on it** (D35, extended on T0168) — the loader-side twin of the shader matrix, written after four import gaps accumulated in one evening with the discipline stopping one boundary short |
+| **We add, we do not rebuild** | **D40** — anything Diligent already implements is theirs; this engine adds the *seam*. Shadows, IBL, tone mapping, bloom, DoF, SSAO, SSR, TAA, atmosphere, terrain, **OIT**, frustum culling, the PSO cache and the draw loop are all vendored. **Building one of them is a defect, not a task.** What the engine adds is the surface shader and its contract, plus everything Diligent has no opinion about. Evidence: the owner's **333-line** Diligent sample renders T0167's car correctly against **3,469 lines** here that did it worse |
 | **Does DiligentEngine already do this?** | [`claude_documentation/documentation/12-vendored-capabilities.md`](claude_documentation/documentation/12-vendored-capabilities.md) — **check before building anything in the render layer.** Tone mapping, bloom, DoF, SSAO, SSR, TAA, atmospheric scattering, four shadow-filter modes and a whole terrain implementation are already vendored. The check has failed twice here |
 
-**The decision log is binding.** Entries D1–D38 record what was rejected and
-why, usually against a specific failure. If you are about to do something one of
-them forbids, read the entry first and change the decision deliberately — do not
-quietly diverge.
+**The decision log is binding — and every entry can be changed after a
+discussion with the owner.** Entries D1–D40 record what was rejected and why,
+usually against a specific failure. If you are about to do something one of them
+forbids, read the entry first and change the decision deliberately — do not
+quietly diverge, and do not treat an entry as untouchable either. **D26 is the
+worked example of the second failure**: a true finding about DiligentFX's
+material shader was left unexamined until its scope had grown to cover the whole
+submission loop, and six vendored capabilities were rebuilt or missed because of
+it. The log's own preamble says how to change one.
 
 **Writing gameplay code?** The generated API reference is
 [`docs/api/index.md`](docs/api/index.md) — every public symbol, with the rules
