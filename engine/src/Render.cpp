@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 #include <unordered_map>
 #include <utility>
 
@@ -28,6 +29,12 @@
 #include <MapHelper.hpp>
 #include <RefCntAutoPtr.hpp>
 #include <Texture.h>
+
+// Dear ImGui, for `RenderConfig::ui` (T0032.2). `ImGuiImplSDL3` is the vendored
+// backend for the windowing library this engine already uses (T0015), so the
+// platform half of an editor's UI is a link rather than a file -- **D40**.
+#include <ImGuiImplSDL3.hpp>
+#include <imgui.h>
 
 namespace hp {
 namespace {
@@ -240,6 +247,23 @@ struct RenderLayer::Impl {
 
     /// So a failure is reported once rather than every frame.
     bool presentMismatchReported = false;
+
+    // --- Dear ImGui (T0032.2) ---------------------------------------------
+    /// Null unless `RenderConfig::ui` asked for one and the device came up.
+    std::unique_ptr<Diligent::ImGuiImplSDL3> ui;
+
+    /// Whether `NewFrame` has run and `Render` has not.
+    ///
+    /// **Tracked rather than assumed, because the two do not sit in the same
+    /// frame phase.** `NewFrame` runs at late update so that every layer's
+    /// `onRender` draws into an open frame; `Render` runs here, between the
+    /// present blit and `Present`. A frame in which the swap chain went away
+    /// between the two would otherwise leave ImGui half-open and assert on the
+    /// next `NewFrame`.
+    bool uiFrameOpen = false;
+
+    /// ImGui keeps the pointer, not the characters. See `setUiLayoutPath`.
+    std::string uiLayoutPath;
 
     // --- fullscreen blit (T0137) -----------------------------------------
     //
@@ -613,6 +637,8 @@ void RenderLayer::onAttach() {
         HP_LOG_INFO(kLog, "swap chain buffer count {} requested, {} granted by the surface",
                     impl_->config.bufferCount, created.BufferCount);
     }
+
+    createUi();
 }
 
 void RenderLayer::onDetach() {
@@ -620,6 +646,17 @@ void RenderLayer::onDetach() {
     if (!impl_->device) {
         return;
     }
+
+    // **Before the device, and before the flush below.** ImGui's Diligent
+    // renderer owns buffers and a pipeline state; releasing the device with
+    // those still alive is the ordering complaint 25.4 exists to prevent. The
+    // event sink goes first because it points at an object about to die, and
+    // the window outlives this layer.
+    if (impl_->window != nullptr) {
+        impl_->window->setPlatformEventSink({});
+    }
+    impl_->uiFrameOpen = false;
+    impl_->ui.reset();
 
     // Ordering is the whole of 25.4, and it is not arbitrary. Every command
     // still in flight must retire before anything it references is released;
@@ -674,12 +711,129 @@ void RenderLayer::onRender() {
         impl_->blitTo(impl_->presentSource, rtv);
     }
 
+    // The UI, over the finished frame and under nothing (T0032.2).
+    //
+    // **Between the blit and `Present`, and there is no other choice.** Before
+    // the blit and it is painted over; after `Present` and it lands in a buffer
+    // already handed to the compositor -- which shows up as a UI that flickers
+    // or trails by a frame rather than as an error. Every layer's `onRender`
+    // has already run by now, so whatever they drew is in this frame's draw
+    // data.
+    if (impl_->ui && impl_->uiFrameOpen) {
+        HP_PROFILE_ZONE_NAMED("ui");
+        impl_->ui->Render(impl_->context);
+        impl_->uiFrameOpen = false;
+    }
+
     // Phase 11. The sync interval is state rather than a literal, which is what
     // makes T0110's runtime toggle a one-liner instead of a rewrite.
     {
         HP_PROFILE_ZONE_NAMED("present");
         impl_->swapChain->Present(impl_->config.vsync ? 1U : 0U);
     }
+}
+
+void RenderLayer::createUi() {
+    if (!impl_->config.ui || !impl_->swapChain || impl_->window == nullptr) {
+        return;
+    }
+    auto* sdlWindow = static_cast<SDL_Window*>(impl_->window->platformWindow());
+    if (sdlWindow == nullptr) {
+        HP_LOG_WARN(kLog, "ui was requested but the window has no platform handle");
+        return;
+    }
+
+    const Diligent::SwapChainDesc& desc = impl_->swapChain->GetDesc();
+    impl_->ui = Diligent::ImGuiImplSDL3::Create(
+        Diligent::ImGuiDiligentCreateInfo{impl_->device, desc}, sdlWindow);
+    if (!impl_->ui) {
+        HP_LOG_ERROR(kLog, "could not create the ui context");
+        return;
+    }
+
+    ImGuiIO& io = ImGui::GetIO();
+
+    // **Docking on, and viewports deliberately off.** Docking is the reason the
+    // build points `DILIGENT_DEAR_IMGUI_PATH` at the upstream `docking` branch
+    // rather than at Diligent's vendored 1.92.1, which has none (**D6**).
+    // Viewports -- panels torn off into real OS windows -- need
+    // `UpdatePlatformWindows`/`RenderPlatformWindowsDefault` driven around the
+    // present, and `ImGuiImplDiligent` does not do it; turning the flag on
+    // without that gives a blank second window, which reads as a renderer bug.
+    // Additive later, at the cost of a swap chain per window.
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+
+    // A dragged panel that has not been dropped yet should not become an OS
+    // window, for the same reason.
+    io.ConfigDockingWithShift = false;
+
+    // `ImGuiImplDiligent`'s constructor sets this to null, so a context created
+    // through it persists nothing until told where to. `setUiLayoutPath` is how
+    // an app decides; until it does, nothing is written -- which is the right
+    // default for a shipped runtime that turned the UI on for a debug panel.
+    io.IniFilename = nullptr;
+
+    // Every platform event, before translation. The backend wants SDL's own
+    // event type and re-synthesising one from `hp::Event` would be a second
+    // translation to keep in step with the first (see `Window::setPlatformEventSink`).
+    impl_->window->setPlatformEventSink([this](const void* event) {
+        if (impl_->ui) {
+            impl_->ui->HandleSDLEvent(static_cast<const SDL_Event*>(event));
+        }
+    });
+
+    HP_LOG_INFO(kLog, "ui context up: Dear ImGui {}, docking {}", ImGui::GetVersion(),
+                (io.ConfigFlags & ImGuiConfigFlags_DockingEnable) != 0 ? "on" : "off");
+}
+
+void RenderLayer::onLateUpdate(double deltaSeconds) {
+    (void)deltaSeconds;
+    if (!impl_->ui || !impl_->swapChain || impl_->uiFrameOpen) {
+        return;
+    }
+    // **Late update rather than render, and that is what makes the layer
+    // ordering work.** Layers render in push order and this one is pushed last
+    // so it can present; if the frame were opened in `onRender` it would open
+    // *after* every panel had already tried to draw into it. Late update runs
+    // before any layer's render (frame phase 8 against phase 10), so opening it
+    // here means a panel can simply call ImGui and be inside a frame.
+    HP_PROFILE_ZONE_NAMED("ui new frame");
+    const Diligent::SwapChainDesc& desc = impl_->swapChain->GetDesc();
+    impl_->ui->NewFrame(desc.Width, desc.Height, desc.PreTransform);
+    impl_->uiFrameOpen = true;
+}
+
+bool RenderLayer::uiReady() const {
+    return impl_ && impl_->ui != nullptr;
+}
+
+UiBinding RenderLayer::uiBinding() const {
+    UiBinding binding;
+    if (!uiReady()) {
+        return binding;
+    }
+    binding.context = ImGui::GetCurrentContext();
+    ImGui::GetAllocatorFunctions(&binding.alloc, &binding.release, &binding.userData);
+    return binding;
+}
+
+void RenderLayer::setUiLayoutPath(std::string path) {
+    impl_->uiLayoutPath = std::move(path);
+    if (!uiReady()) {
+        return;
+    }
+    // The pointer, not the characters -- so the storage above is the contract,
+    // not a convenience.
+    ImGui::GetIO().IniFilename =
+        impl_->uiLayoutPath.empty() ? nullptr : impl_->uiLayoutPath.c_str();
+}
+
+bool RenderLayer::uiWantsInput() const {
+    if (!uiReady()) {
+        return false;
+    }
+    const ImGuiIO& io = ImGui::GetIO();
+    return io.WantCaptureMouse || io.WantCaptureKeyboard;
 }
 
 bool RenderLayer::blitTexture(Diligent::ITexture* source, Diligent::ITextureView* destination) {

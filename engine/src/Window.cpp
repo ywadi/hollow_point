@@ -37,6 +37,8 @@ void releaseSdl() {
 
 struct Window::Impl {
     SDL_Window* window = nullptr;
+    /// See `Window::setPlatformEventSink`. At most one, deliberately.
+    std::function<void(const void*)> platformSink;
 };
 
 std::unique_ptr<Window> Window::create(const WindowConfig& config) {
@@ -205,6 +207,15 @@ WindowEvents Window::pumpEvents(const std::function<void(Event&)>& onEvent) {
 
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
+        // **Before translation, and it cannot consume** (T0032.2). A vendored
+        // UI backend that speaks SDL's own event type sees the event as SDL
+        // produced it; everything downstream still gets the translated form.
+        // Whether the UI *takes* an input is answered afterwards, by asking the
+        // UI, rather than by letting this sink swallow events the layer stack
+        // is supposed to order.
+        if (impl_->platformSink) {
+            impl_->platformSink(&event);
+        }
         switch (event.type) {
         case SDL_EVENT_QUIT:
             events.closeRequested = true;
@@ -402,6 +413,14 @@ std::vector<DisplayInfo> Window::displays() {
     }
     releaseSdl();
     return out;
+}
+
+void* Window::platformWindow() const {
+    return impl_->window;
+}
+
+void Window::setPlatformEventSink(std::function<void(const void*)> sink) {
+    impl_->platformSink = std::move(sink);
 }
 
 NativeWindowHandles Window::nativeHandles() const {

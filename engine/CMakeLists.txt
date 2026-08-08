@@ -160,6 +160,7 @@ add_custom_target(hp_charlie_lut DEPENDS "${HP_CHARLIE_LUT_HEADER}")
 add_library(hp_engine SHARED
     src/Module.cpp
     src/ModuleHost.cpp
+    src/ModuleOwner.cpp
     src/Reflect.cpp
     src/Application.cpp
     src/AssetImport.cpp
@@ -178,7 +179,9 @@ add_library(hp_engine SHARED
     src/Paths.cpp
     src/FrameTargets.cpp
     src/Render.cpp
+    src/RenderExtensions.cpp
     src/RenderStack.cpp
+    src/RenderTexture.cpp
     src/Scene.cpp
     src/ShaderCook.cpp
     src/ShaderParams.cpp
@@ -416,6 +419,22 @@ target_link_libraries(hp_engine PRIVATE
 # would otherwise break -- ImGui is linked into the *runtime* binary too, not
 # only the editor. So this spends a decision already made rather than a new one.
 target_link_libraries(hp_engine PRIVATE DiligentFX)
+
+# Dear ImGui's SDL3 platform backend (T0032.2).
+#
+# **Compiled here because Diligent's CMake does not compile it.** `Diligent-Imgui`
+# builds `ImGuiImplSDL3.cpp` -- its own thin wrapper -- but the ImGui backend that
+# wrapper calls into is only added to the build on Win32
+# (`DiligentTools/Imgui/CMakeLists.txt`: `imgui_impl_win32.cpp`, and nothing for
+# SDL). So the wrapper's object file exists, links against nothing, and the
+# failure is four undefined `ImGui_ImplSDL3_*` symbols at the first binary that
+# uses it -- which is why this is a source file rather than a link line.
+#
+# It belongs to the engine and not to an app for the reason `Window::platformWindow`
+# gives: SDL3 is static and PRIVATE here, so a second binary linking SDL3 to
+# drive this backend would drive its own copy of SDL, with its own event queue.
+target_sources(hp_engine PRIVATE
+    "${CMAKE_SOURCE_DIR}/third_party/imgui/backends/imgui_impl_sdl3.cpp")
 
 # --- shader sources (T0141, D26) ---------------------------------------------
 #

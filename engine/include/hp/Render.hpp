@@ -40,6 +40,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <cstddef>
 #include <string>
 
 namespace Diligent {
@@ -100,6 +101,61 @@ struct RenderConfig {
 #else
         true;
 #endif
+
+    /// Create a Dear ImGui context and draw it over the presented frame
+    /// (T0032.2).
+    ///
+    /// **Off by default, and the default is the interesting half.** ImGui is
+    /// linked into every binary here whether anyone asked or not — `DiligentFX`
+    /// links `Diligent-Imgui` PUBLIC and its post-process components call
+    /// `ImGui::` for their own settings panels (**D6**) — so "is ImGui
+    /// available" was never the question. What this decides is whether a
+    /// *context* exists and whether the platform backend eats the mouse, and a
+    /// shipped game that never draws a debug panel should pay neither.
+    ///
+    /// It lives on the render layer rather than in an app because the two things
+    /// the vendored backend needs — the `SDL_Window*` and the device — are both
+    /// here, and because the UI has to draw between the present blit and
+    /// `Present`, which is a sequence only this layer can order.
+    bool ui = false;
+};
+
+/// What a second binary needs in order to draw into the engine's ImGui context
+/// (T0032.2).
+///
+/// **This exists because Dear ImGui is statically linked into more than one
+/// module in this process, and that is not an accident to be fixed.** The engine
+/// is a shared library (**D12**) linking ImGui privately; an app that wants to
+/// draw panels needs the ImGui *API*, so it links ImGui too and ends up with a
+/// second copy of `GImGui` and of the allocator globals. Sharing the context is
+/// Dear ImGui's own documented answer to exactly this (`SetCurrentContext` plus
+/// `SetAllocatorFunctions`), and it is sound here because both copies are
+/// compiled from the same source with the same `IMGUI_USER_CONFIG`, so the
+/// structures they disagree about are none.
+///
+/// The alternative — the app owning the context — is not available: the platform
+/// backend is SDL's, SDL3 is linked statically and privately into the engine,
+/// and a second copy of SDL in one process has its own event queue and has never
+/// heard of this window. See `Window::platformWindow`.
+///
+/// Deliberately untyped. Naming `ImGuiContext` here would put ImGui on the
+/// include path of every consumer of this header, including gameplay modules,
+/// to describe four values.
+struct UiBinding {
+    /// The `ImGuiContext*`. Null when no context exists.
+    void* context = nullptr;
+
+    /// ImGui's allocation function, as `SetAllocatorFunctions` wants it.
+    void* (*alloc)(std::size_t, void*) = nullptr;
+
+    /// ImGui's deallocation function.
+    void (*release)(void*, void*) = nullptr;
+
+    /// The user data both were registered with.
+    void* userData = nullptr;
+
+    /// @returns whether this describes a usable context.
+    [[nodiscard]] bool valid() const { return context != nullptr && alloc != nullptr; }
 };
 
 /// Owns the graphics device, the immediate context and the swap chain.
@@ -143,6 +199,15 @@ public:
     /// Clears the back buffer and presents (frame phases 10 and 11).
     void onRender() override;
 
+    /// Opens the UI frame, when there is one (T0032.2).
+    ///
+    /// Late update rather than render, because layers render in push order and
+    /// this one is pushed last: a frame opened in `onRender` would open after
+    /// every panel had already tried to draw into it.
+    /// @param deltaSeconds the frame delta. Unused; ImGui takes its own from the
+    ///        platform backend.
+    void onLateUpdate(double deltaSeconds) override;
+
     /// Resizes the swap chain when the window resizes (25.3).
     ///
     /// Taken from the event rather than polled, so the swap chain follows the
@@ -179,6 +244,35 @@ public:
 
     /// @returns the swap chain's current height in pixels, or 0 when inert.
     [[nodiscard]] int swapChainHeight() const;
+
+    /// @returns whether a Dear ImGui context exists — `RenderConfig::ui` was set
+    ///          and the device came up.
+    [[nodiscard]] bool uiReady() const;
+
+    /// @returns what another module needs to draw into this context, or an
+    ///          empty binding when there is none. See `UiBinding`.
+    [[nodiscard]] UiBinding uiBinding() const;
+
+    /// Points ImGui's layout file at `path` (T0032.5).
+    ///
+    /// **Someone has to**: `ImGuiImplDiligent` sets `io.IniFilename = nullptr`
+    /// in its constructor, so a context created through it never persists
+    /// anything until told where to. The string is stored here because ImGui
+    /// keeps the pointer rather than the characters, and a caller's temporary
+    /// is exactly the kind of dangling that shows up as a layout that saves to
+    /// a garbage path once in a while.
+    ///
+    /// @param path a host filesystem path, or empty to stop persisting. The
+    ///        directory must already exist; ImGui does not create one.
+    /// @returns nothing.
+    void setUiLayoutPath(std::string path);
+
+    /// Feeds a platform event to the UI backend and reports what the UI wants.
+    ///
+    /// @returns whether the UI is currently capturing the mouse or the keyboard,
+    ///          which a layer below should treat as "this input was not for me".
+    ///          Always false when there is no context.
+    [[nodiscard]] bool uiWantsInput() const;
 
     /// @returns whether presents currently wait for vertical blank.
     [[nodiscard]] bool vsync() const;
@@ -272,6 +366,10 @@ public:
     bool blitTexture(Diligent::ITexture* source, Diligent::ITextureView* destination);
 
 private:
+    /// Builds the ImGui context once the device and swap chain exist.
+    /// @returns nothing.
+    void createUi();
+
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };

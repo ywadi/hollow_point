@@ -132,6 +132,53 @@ public:
 
     NativeWindowHandles nativeHandles() const;
 
+    /// The window as the platform library sees it — an `SDL_Window*` (T0032.2).
+    ///
+    /// **Deliberately opaque and deliberately narrow.** `NativeWindowHandles`
+    /// above hands out the *operating system's* handle, which is what Diligent
+    /// attaches a swap chain to; this hands out **SDL's** object, which is what
+    /// a vendored UI backend written against SDL needs. They are different
+    /// things and neither substitutes for the other.
+    ///
+    /// It exists because of a link constraint rather than a preference. SDL3 is
+    /// linked **statically and privately** into the engine, so a second binary
+    /// in the same process that linked SDL3 to reach this pointer would get its
+    /// own copy of SDL's globals — a second event queue and a second video
+    /// subsystem — and every call it made about *this* window would be made to
+    /// a library that has never heard of it. So anything needing SDL runs
+    /// engine-side, and this is how it gets the window.
+    ///
+    /// `void*` rather than `SDL_Window*` because naming SDL's type here would
+    /// put SDL on every consumer's include path, which is the whole reason this
+    /// header exposes less than SDL does.
+    /// @returns the `SDL_Window*`, or null when the window failed to open.
+    [[nodiscard]] void* platformWindow() const;
+
+    /// Installs a sink that sees every platform event **before** it is
+    /// translated (T0032.2).
+    ///
+    /// **This is not a second event system and must not become one.** T0018's
+    /// events are the engine's interface and everything in the engine, every
+    /// app and every gameplay module uses them. This exists for one case the
+    /// translated form structurally cannot serve: a vendored backend that
+    /// consumes the platform library's own event type — Dear ImGui's SDL3
+    /// backend is the case, and it takes an `SDL_Event*`. Re-synthesising one
+    /// from an `hp::Event` would be a second translation to keep in step with
+    /// the first, in the direction that loses information.
+    ///
+    /// The sink runs first and cannot consume: a UI wanting the keyboard says so
+    /// through `ImGuiIO::WantCaptureKeyboard`, which is a question the layer
+    /// stack asks, not a decision made here. Ordering between layers stays the
+    /// layer stack's job (T0017).
+    ///
+    /// @param sink called with an `SDL_Event*` for every event polled, or an
+    ///        empty function to remove the current sink. Only one sink exists;
+    ///        installing a second replaces the first, because two would make
+    ///        "who saw it first" incidental — the ordering problem the layer
+    ///        stack exists to answer.
+    /// @returns nothing.
+    void setPlatformEventSink(std::function<void(const void*)> sink);
+
     /// @returns the current display mode.
     [[nodiscard]] DisplayMode displayMode() const;
 
