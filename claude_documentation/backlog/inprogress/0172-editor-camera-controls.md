@@ -53,8 +53,18 @@ records the full argument.
       reference does the whole thing in ~20 lines:
       `/media/ywadi/second/dillegent_tests/AstonMartinScene/src/AstonMartinScene.cpp`
       — read it, never edit it, it is the owner's
-- [x] 172.1 Editor camera state, held outside the scene (see notes)
-- [x] 172.2 Orbit / pan / zoom, bound through the input context (T0068)
+- [x] 172.1 Editor camera state, held outside the scene — it lives on the
+      editor's `SceneLayer`, is not an entity, and is not serialized. It does
+      *drive* the scene's camera entity each frame; see the notes for why that
+      is the right shape until T0033 and T0024 exist, and for the obligation
+      it leaves on whatever saves a scene
+- [~] 172.2 Orbit / pan / zoom — **built, but not through the input context.**
+      The camera reads raw events, so the bindings are not rebindable and do
+      not participate in context consumption. **T0068 cannot express them
+      yet**: `bindAxis2D` composes an axis from four `KeyCode`s, so mouse
+      motion and the wheel cannot reach an `InputMap` at all, and
+      `hp::KeyCode` has no modifier entries, so Alt cannot be bound either.
+      **T0133** unblocks this
 - [x] 172.3 Fly mode with configurable speed
 - [x] 172.4 Open a model from the command line (or a drop target — whichever is
       smaller), imported through the VFS like everything else (**D13**)
