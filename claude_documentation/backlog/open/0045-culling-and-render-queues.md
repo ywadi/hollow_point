@@ -212,3 +212,24 @@ expensive to retrofit.
   approach "when the transparent queue is built (T0045), not afterwards" —
   when 45.4 defines the queue interfaces, record how a per-pixel fog term will
   reach the transparent path.
+
+### 2026-08-08 — observed on a real asset, not predicted: the missing sort is visible
+
+**T0167's Aston Martin renders its own interior through its own glass**, and the pieces you can see change with the camera. This is the frame:
+
+![The Aston Martin's interior seen through its windscreen: the dashboard is largely absent and the seat backs are cut, because the blend pass draws in submission order](../findings/t0045-blend-order-aston.png)
+
+Every element in the shot — windscreen, seats, dashboard, steering wheel — is on the **blend** path, and `SceneRenderer.cpp:2298` says why the result is arbitrary:
+
+> Ordering inside it is submission order: the back-to-front sort a correct transparent pass needs is T0045's, and this ticket deliberately does not invent half of it.
+
+**Two things have to be true at once for it to look like this, and the second one is ours.**
+
+1. **The asset puts everything on the blend path.** `aston_martin.glb` has **one material for all 31 meshes**, `alphaMode: BLEND` and `doubleSided: true` — Sketchfab's exporter default rather than an authoring intent (measured on T0167). A properly authored car, opaque body with `BLEND` only on the glass, **renders correctly today**, because the opaque pass depth-tests for free.
+2. **The blend pass has no back-to-front sort**, so whatever was submitted last wins. Interior submitted before the windscreen is overwritten by it; submitted after, it punches through.
+
+**Why this belongs on this ticket and is worth writing down rather than just fixing later.** T0147 split 10.9 deliberately and refused to invent half a sort; that refusal was right and this note is what it was refused *into*. The value here is that **the failure is now observed rather than reasoned about** — and the shape of it is the argument for 45.4's queue design: a per-object sort key would still get this wrong, because the interior and the glass are primitives of the *same* draw item under one material. **The sort has to reach primitives, not just objects**, or this exact frame survives the fix.
+
+**It is also the third absence one real model surfaced in an afternoon** — after spec-gloss read as metallic-roughness and no IBL for a metal to reflect (T0167, T0087). All three were on paper as known gaps and all three showed up on the first asset nobody here authored, which is the argument for this ticket sitting where it does in the sequence.
+
+**Not a defect, and T0167 must not report it as one.** Its 167.6 exists to keep absences and defects in separate buckets; this is an absence with a named owner.

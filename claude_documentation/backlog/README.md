@@ -20,7 +20,29 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-08 — thirty-first revision: `T0169` closed same-day, and an
+**Set 2026-08-08 — thirty-second revision: `T0167` closed, and the engine has
+now been looked at rendering an asset it did not help make.** The Aston
+Martin's frames sit at `test-frames/aston/` beside their numbers (gitignored;
+produced by the env-gated `aston_martin_test.cpp`, magenta-guarded, RTX 2080):
+the car stands **upright, wheels down, un-mirrored**, through the file's own
+Z-up→Y-up root rotation — D33's amendment observed at last, not derived. The
+owner's darkness question was answered by **measurement**: the paint's colour
+is authored into the *specular* map (`texture_1`, bright cyan; the diffuse is
+navy-black), so with no environment to reflect (T0087) the body reads dark and
+the teal appears exactly where the punctual lamps raise a lobe — an authored
+split plus an absence, no defect. Every T0168 prediction held; the asset
+corrected zero matrix rows. Two hand-offs landed where their owners will find
+them: the rock cube's top face is **no longer black** and its remaining
+speckle is diagnosed (the **view march** at grazing incidence — the shadow
+march was exonerated by a strength-zero rebuild) on T0158's notes; and the
+capture harness itself paid a lesson — a coverage metric compared against the
+linear clear colour while the readback is display-encoded, and five frames of
+pure background *passed*, so the clear reference is measured from an empty
+frame now. Scale finding, taken as it comes: the car is authored ~2.15× life
+size. The asset stays out of the repository (recommendation on 167.7; the
+owner decides), attribution recorded: *Aston Martin*, Francesco Coldesina.
+
+Previously — the thirty-first revision: `T0169` closed same-day, and an
 import produces engine assets now — the owner's Godot-model requirement,
 landed on D39's identity design.** Importing a glTF writes a `.hpmat` per
 material and every embedded image, bytes verbatim, under `<source>.assets/`,
@@ -394,10 +416,9 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0167](inprogress/0167-sketchfab-asset-validation.md) | a Sketchfab model, rendered and measured | The owner supplies the asset. Judged **by eye and by number** — a screenshot alone has misled this project twice. It is also the observation **D33's amendment was argued from and never made** — that a Blender artist's model arrives as authored is currently derived, not observed. **T0168 rewrote its predictions** (the car should render through the genuine SG path) and **T0169 produced its material** (`AM_01.hpmat`, guid on the ticket) — the notes on 167.8/167.9/167.9b say what closed under them |
-| 2 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | The movable one — see below. It needs nothing from the surface or lighting stages, and T0147 gave it the opaque/blend pass split it would have had to build. **T0152.5 adds one constraint**: facing is per-draw (the determinant rule), so any batching or sorting must keep the per-draw cull decision |
-| 3 | [T0086](open/0086-shadows.md) | shadows | Now unblocked in the way D30 sequenced it: the loop the shadow lookup goes inside is the engine's, the `ENABLE_SHADOWS` block's shape is waiting in `HpGetLight`, and T0145's Ref says where the factor goes and why it must not fold into `Attenuation`. Its Refs carry T0152.5's shadow-pass determinant note — and its bias tuning is now made against a **settled** convention (T0165), which is the whole reason T0152 blocked it |
-| 4 | [T0158](inprogress/0158-parallax-depth-cues.md) | parallax depth cues, remainder | 158.2 closed with T0159 and **158.3 closed with T0145**; what is left is the reference/tuning subtasks and the geometrically-displaced ground-truth cube. **T0165 re-posed its self-shadow probe** (yaw −0.45, the mirror of the old +0.45 onto the same object face at the same 11.5° grazing incidence) — any further tuning starts from there |
+| 1 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | **No longer the movable one — a real asset made the missing sort visible.** T0167's Aston Martin renders its own interior through its own glass, and which pieces survive changes with the camera ([frame](findings/t0045-blend-order-aston.png), and the ticket's 2026-08-08 note). The blend pass draws in submission order because T0147 split 10.9 and deliberately refused to invent half a sort. **The frame also constrains 45.4**: the glass and the interior are primitives of the *same* draw item under one material, so a per-object sort key still gets it wrong — the sort has to reach primitives. It still needs nothing from the surface or lighting stages, and **T0152.5 adds one constraint**: facing is per-draw (the determinant rule), so any batching or sorting must keep the per-draw cull decision |
+| 2 | [T0086](open/0086-shadows.md) | shadows | Now unblocked in the way D30 sequenced it: the loop the shadow lookup goes inside is the engine's, the `ENABLE_SHADOWS` block's shape is waiting in `HpGetLight`, and T0145's Ref says where the factor goes and why it must not fold into `Attenuation`. Its Refs carry T0152.5's shadow-pass determinant note — and its bias tuning is now made against a **settled** convention (T0165), which is the whole reason T0152 blocked it |
+| 3 | [T0158](inprogress/0158-parallax-depth-cues.md) | parallax depth cues, remainder | 158.2 closed with T0159 and **158.3 closed with T0145**; what is left is the reference/tuning subtasks and the geometrically-displaced ground-truth cube. **T0165 re-posed its self-shadow probe** (yaw −0.45, the mirror of the old +0.45 onto the same object face at the same 11.5° grazing incidence) — any further tuning starts from there. **T0167 handed it the rock cube's speckle, diagnosed**: the view march at grazing incidence, shadow march exonerated by measurement — the note with the mechanism and the mitigations is on the ticket |
 
 **Raised rather than reordered, because the order is the owner's call:**
 [T0162](open/0162-shader-authoring-docs.md) (the shader authoring guide) listed
@@ -562,7 +583,7 @@ wrong in the confident voice of a document that is normally right.
 | 468 | [T0163](open/0163-gpu-suite-teardown-and-cook-skip.md) | A fatal assertion in a gpu case takes the next case with it | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | 469 | [T0164](open/0164-per-instance-data.md) | Per-instance data: the last empty cell in the capability matrix | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 462 | [T0166](completed/0166-tangent-frames-and-real-assets.md) | Tangent frames, the conventions underneath them, and the first real asset this engine has ever rendered | 4 — Render layer | ✅ DONE | High | Moderate |
-| 463 | [T0167](inprogress/0167-sketchfab-asset-validation.md) | A model from Sketchfab, rendered and measured: the first asset chosen by somebody other than us | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
+| 463 | [T0167](completed/0167-sketchfab-asset-validation.md) | A model from Sketchfab, rendered and measured: the first asset chosen by somebody other than us | 4 — Render layer | ✅ DONE | High | Moderate |
 | 461 | [T0168](completed/0168-asset-import-coverage.md) | Asset import coverage: what does DiligentEngine already do, and are we asking it to? | 4 — Render layer | ✅ DONE | High | Moderate |
 | 460 | [T0169](completed/0169-import-produces-engine-assets.md) | An import produces engine assets: every type a DCC tool exports becomes an `hp::` type on disk | 7 — Content pipeline | ✅ DONE | High | Complex |
 | 464 | [T0155](open/0155-terrain-rendering.md) | Terrain rendering: their reference implementation is the floor, not the ceiling | 4 — Render layer | 🔜 TODO | Medium | Very Complex |
