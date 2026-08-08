@@ -25,6 +25,7 @@
 #include <GLTF_PBR_Renderer.hpp>
 #include <PBR_Renderer.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cfloat>
 #include <cstdint>
@@ -173,6 +174,44 @@ Diligent::PBR_Renderer::PSO_FLAGS extendedMaterialFlags(const Diligent::GLTF::Ma
         flags |= Diligent::PBR_Renderer::PSO_FLAG_ENABLE_VOLUME |
                  Diligent::PBR_Renderer::PSO_FLAG_USE_THICKNESS_MAP;
     }
+    return flags;
+}
+
+/// **What the drawn material itself asks of the permutation** (T0168.2) --
+/// the two bits that, before this existed, only the *authored*-material path
+/// could raise, which left an imported glTF's `KHR_materials_unlit` shaded lit
+/// and its `KHR_texture_transform` silently untransformed. The loader had
+/// parsed both correctly all along; the flag never followed the data.
+///
+/// Reading them off the material rather than off the import path keeps the
+/// rule uniform: an authored binding's converted material answers the same
+/// questions (its `extraFlags` already carry the same bits, and OR is
+/// idempotent), and the missing-material fallback answers `NONE`.
+///
+/// The transform check mirrors `isIdentity` below, which decides the same
+/// flag per authored material and documents the trade: the flag is
+/// per-pipeline shader math, and paying it on every material because one
+/// tiles differently would be wrong. Upstream raises it unconditionally for
+/// every model draw (`GLTF_PBR_Renderer.cpp:621`) and filters later; this
+/// engine keys permutations off it, so it must be honest per material.
+Diligent::PBR_Renderer::PSO_FLAGS importedMaterialFlags(const Diligent::GLTF::Material& mat) {
+    Diligent::PBR_Renderer::PSO_FLAGS flags = Diligent::PBR_Renderer::PSO_FLAG_NONE;
+    if (mat.Attribs.Workflow == Diligent::GLTF::Material::PBR_WORKFLOW_UNLIT) {
+        // The same permutation bit `Material::unlit` rides (T0141.15), so an
+        // imported unlit material and an authored one compile the same shader.
+        flags |= SurfacePipeline::kPsoFlagUnshaded;
+    }
+    mat.ProcessActiveTextureAttibs(
+        [&flags](Diligent::Uint32 /*attribId*/,
+                 const Diligent::GLTF::Material::TextureShaderAttribs& tex,
+                 int /*textureId*/) {
+            if (tex.UBias != 0.0F || tex.VBias != 0.0F ||
+                !(tex.UVScaleAndRotation == Diligent::float2x2::Identity())) {
+                flags |= Diligent::PBR_Renderer::PSO_FLAG_ENABLE_TEXCOORD_TRANSFORM;
+                return false; // one non-identity transform decides the flag
+            }
+            return true;
+        });
     return flags;
 }
 
@@ -1312,7 +1351,13 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                                     PassScan& scan) {
     HP_PROFILE_ZONE();
 
-    constexpr Diligent::Uint32 kSceneIndex = 0;
+    // The file's **default** scene, not the first one (T0168.2). The loader
+    // builds every scene (`ModelCreateInfo::SceneId` stays -1) and records
+    // which one the file nominates; a multi-scene export drew `Scenes[0]`
+    // before this, which is right for every single-scene file and silently
+    // wrong for the rest. Clamped because `DefaultSceneId` is 0 even when the
+    // file has no scenes at all.
+    const auto kSceneIndex = static_cast<Diligent::Uint32>(std::max(model.DefaultSceneId, 0));
     if (kSceneIndex >= model.Scenes.size()) {
         return false;
     }
@@ -1521,7 +1566,7 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                     Diligent::PBR_Renderer::PSO_FLAG_USE_EMISSIVE_MAP);
             Diligent::PBR_Renderer::PSO_FLAGS flags =
                 (vertexFlags | kMaterialFlags | extendedMaterialFlags(*material) |
-                 kEnabledFeatures | extraFlags) &
+                 importedMaterialFlags(*material) | kEnabledFeatures | extraFlags) &
                 kFeatureMask;
             if ((flags & Diligent::PBR_Renderer::PSO_FLAG_USE_TEXCOORD0) == 0 &&
                 (flags & SurfacePipeline::kPsoFlagTriplanar) == 0) {
@@ -1587,7 +1632,7 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                     authored = nullptr;
                     customBinding = nullptr;
                     flags = (vertexFlags | kMaterialFlags | extendedMaterialFlags(*material) |
-                             kEnabledFeatures | extraFlags) &
+                             importedMaterialFlags(*material) | kEnabledFeatures | extraFlags) &
                             kFeatureMask;
                     if ((flags & Diligent::PBR_Renderer::PSO_FLAG_USE_TEXCOORD0) == 0 &&
                         (flags & SurfacePipeline::kPsoFlagTriplanar) == 0) {

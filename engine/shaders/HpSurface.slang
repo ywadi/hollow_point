@@ -2054,8 +2054,51 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(inout TMaterial material, VSOu
         // (`GetSurfaceReflectanceMR`), and copying its four fields out is what
         // keeps `HpShadedSurface` free of a Diligent struct without
         // reimplementing one.
-        SurfaceReflectanceInfo srf = GetSurfaceReflectanceMR(
-            surfaceOut.BaseColor.rgb, surfaceOut.Metallic, surfaceOut.Roughness);
+        SurfaceReflectanceInfo srf;
+        if (g_Material.Basic.Workflow == PBR_WORKFLOW_SPECULAR_GLOSSINESS)
+        {
+            // **The specular-glossiness workflow, for imported models only**
+            // (T0168.2). A `KHR_materials_pbrSpecularGlossiness` asset arrives
+            // with `Workflow` set by Diligent's loader, its diffuse texture
+            // aliased into the base-colour slot and its specular-glossiness
+            // texture into the phys-desc slot (`GLTFLoader.hpp:112-113`) --
+            // so `surfaceOut.BaseColor` is already the diffuse read, and the
+            // one thing the MR path got wrong was interpreting the phys-desc
+            // texel as (occlusion, roughness, metallic). It is re-read raw
+            // here: specular colour in rgb, glossiness in alpha.
+            //
+            // A **runtime** branch on buffer data, not a permutation --
+            // upstream's own design (`RenderPBR.psh:151-173`), uniform per
+            // draw, and it is what keeps the permutation space untouched.
+            // The sRGB conversion is unconditional per upstream's comment:
+            // the extension defines the texture as sRGB, and the slot is
+            // sampled through a UNORM view like every other material slot.
+            //
+            // The *authored* path cannot reach this: a `.hpmat` has no
+            // workflow field, by the decision `11-material-format.md` records
+            // -- spec-gloss is import fidelity, not authoring surface. The
+            // channel hooks keep their MR meaning; on an imported model no
+            // custom module can be bound, so the hook values this overrides
+            // are always the defaults.
+            float4 specGloss = GetPhysicalDesc(VSOut, g_Material, g_Frame.Renderer.MipBias);
+            specGloss.rgb = FastSRGBToLinear(specGloss.rgb);
+            specGloss.r *= g_Material.Basic.SpecularFactorR;
+            specGloss.g *= g_Material.Basic.SpecularFactorG;
+            specGloss.b *= g_Material.Basic.SpecularFactorB;
+            float metallic = 0.0;
+            srf = GetSurfaceReflectance(PBR_WORKFLOW_SPECULAR_GLOSSINESS,
+                                        surfaceOut.BaseColor, specGloss, metallic);
+            // The solved equivalents (`SolveMetallic`, roughness = 1 - gloss)
+            // replace the MR-misread values, so `light()` overrides and any
+            // inspector read the numbers the surface is actually lit with.
+            shaded.Metallic = metallic;
+            shaded.Roughness = srf.PerceptualRoughness;
+        }
+        else
+        {
+            srf = GetSurfaceReflectanceMR(surfaceOut.BaseColor.rgb, surfaceOut.Metallic,
+                                          surfaceOut.Roughness);
+        }
         shaded.DiffuseColor = srf.DiffuseColor;
         shaded.Reflectance0 = srf.Reflectance0;
         shaded.Reflectance90 = srf.Reflectance90;

@@ -83,7 +83,7 @@ what the model carries; the shader reads what its permutation compiled in.
 | morph targets / weights | ⬆️ | `Primitive.targets` never read | named gap in `07-design-gaps.md`; T0169 gives it a mapping row | 
 | animations | 🔌 | fully loaded (`Model::Animations`) and upstream *evaluates* them — `ComputeTransforms(scene, transforms, root, AnimationIndex, Time)` — the engine always passes the default `-1` | runtime is **T0041/T0049**; the loader half is already done |
 | node hierarchy / TRS / matrix | ✅ | `ComputeTransforms`; negative-determinant nodes get the glTF facing rule (D33, T0152.5) | — |
-| multiple scenes | 🔌 | all scenes load (`SceneId = -1`) and `Model::DefaultSceneId` is set; `drawModel` draws `Scenes[0]` regardless | one line (`kSceneIndex` → `DefaultSceneId`) · T0168.2 |
+| multiple scenes | ✅ | **closed 2026-08-08 (T0168.2)**: `drawModel` draws `Model::DefaultSceneId`; a two-scene file with a nominated default renders it, asserted in `import_coverage_test.cpp` | — |
 | cameras | 🔌 | loaded into `Model::Cameras` (perspective + ortho, all attribs); nothing reads them | `hp::Camera` exists — mapping decision is **T0169**'s table |
 | material: factors, alphaMode/cutoff, doubleSided | ✅ | loader → attribs buffer → shader; MASK is a compile-time cutout, BLEND routes to the blend pass (T0147) | — |
 | `normalTexture.scale` | ✅ | `NormalScale`, multiplied in `GetMicroNormal` | — |
@@ -93,7 +93,7 @@ what the model carries; the shader reads what its permutation compiled in.
 | images: PNG, JPEG | ✅ | decoded by Diligent's TextureLoader (tinygltf's stb decode is compiled out) | — |
 | images: TGA/TIFF/HDR/SGI/DDS/KTX1 payloads | ✅ | same loader, if an asset ever carries them | — |
 | sRGB → linear | ✅ | in-shader `SRGB_TO_LINEAR` on the colour slots, the mode DiligentFX documents for UNORM views over sRGB data (T0141.12) | — |
-| `extensionsRequired` honoured | ⬆️ | **nothing in the stack reads the field** — tinygltf stores it, Diligent never looks (`Model::Extensions` mirrors `extensionsUsed` only), so an unsupported *required* extension degrades silently — D35's failure class | a log line naming the extension · **T0168.6, in flight** |
+| `extensionsRequired` honoured | ✅ | **closed 2026-08-08 (T0168.6)**: the import warns, once per model, naming each required extension outside `AssetImport.cpp`'s `kEndToEndExtensions` list — reached through the load callbacks' `pSrcModel`, since `Model::Extensions` mirrors the wrong field. Advice, not refusal (T0167.9b's argument): the model still loads and renders. Asserted both ways in `import_coverage_test.cpp` — a fake required extension warns by name, a supported one stays silent | keep `kEndToEndExtensions` in step with this table |
 
 ## Extensions
 
@@ -103,9 +103,9 @@ parser interprets it (raw extension JSON survives regardless); "Diligent" means
 
 | Extension | tinygltf | Diligent | HollowPoint | State · owner |
 |---|---|---|---|---|
-| `KHR_materials_pbrSpecularGlossiness` | raw | ✅ full — workflow, factors, diffuse→base-colour slot, SG→phys-desc slot (`GLTFLoader.cpp:1510`, slot aliases `GLTFLoader.hpp:112-113`) | **the workflow value reaches the constant buffer and dies in our shader**: `HpSurface.slang` shades `GetSurfaceReflectanceMR` unconditionally, never reading `Workflow` or `SpecularFactor` — the SG texture's specular RGB is misread as occlusion/roughness/metallic and glossiness (alpha) is ignored. (`SceneRenderer.cpp:329`'s hardcode is the *authored*-material path; the imported path fails one stage later) | 🔌 · **T0168.2 judges it** |
-| `KHR_materials_unlit` | raw | ✅ `Workflow = UNLIT` | imported models never raise the engine's `HP_UNSHADED` permutation (only authored `.hpmat` does) — unlit materials get lit shading | 🔌 one condition in `drawModel` · **T0168.2** |
-| `KHR_texture_transform` | raw | ✅ per-texture scale/rotation/offset | the transform *data* is written to the buffer, but `drawModel` never raises `PSO_FLAG_ENABLE_TEXCOORD_TRANSFORM` for imported materials (the authored path does, per material) — transforms silently ignored | 🔌 one detection helper · **T0168.2** |
+| `KHR_materials_pbrSpecularGlossiness` | raw | ✅ full — workflow, factors, diffuse→base-colour slot, SG→phys-desc slot (`GLTFLoader.cpp:1510`, slot aliases `GLTFLoader.hpp:112-113`) | ✅ **closed 2026-08-08 (T0168.2), judged on merit and adopted for imported models only**: `HpSurface.slang` branches on `Workflow` at runtime — upstream's own design, no new permutation — and shades `GetSurfaceReflectance` with the raw spec-gloss texel and `SpecularFactor`. The judgement: both upstream halves exist and are maintained, Sketchfab exports it by the million, and rule 2 says the engine opens the corpus that exists — while **authoring stays metallic-roughness** (`11-material-format.md`'s "absent on purpose" stands; a `.hpmat` has no workflow field, deliberately, so no new asset adopts an archived workflow). Asserted in `import_coverage_test.cpp`: `specularFactor` 0 vs 1 shades (2,82,196) vs (0.8,0.8,0.8) — the two files rendered identically before. **Upstream caveat, ours to know**: the loader never reads `glossinessFactor` and `RenderPBR.psh:163` hardcodes it to 1.0, so a factor-only SG material shades at roughness 0; per-pixel glossiness from the SG texture's alpha works | — |
+| `KHR_materials_unlit` | raw | ✅ `Workflow = UNLIT` | ✅ **closed 2026-08-08 (T0168.2)**: `importedMaterialFlags` raises the same `HP_UNSHADED` permutation `Material::unlit` rides. Asserted: full base colour under zero lamps, (186,0,0) against the lit twin's (0,0,0) | — |
+| `KHR_texture_transform` | raw | ✅ per-texture scale/rotation/offset | ✅ **closed 2026-08-08 (T0168.2)**: `importedMaterialFlags` raises `ENABLE_TEXCOORD_TRANSFORM` when any texture attrib carries a non-identity transform — per material, mirroring the authored path's `isIdentity` trade rather than upstream's raise-always. Asserted: a 0.5 UV offset flips the read from (255,0) to (0,255) | — |
 | `KHR_materials_emissive_strength` | raw | ✅ folded into `EmissiveFactor` at load | flows through | ✅ |
 | `KHR_materials_clearcoat` | raw | ✅ | ✅ authorable and imported (T0143); IBL half waits on T0087 | ✅ |
 | `KHR_materials_sheen` | raw | ✅ | ✅ (same qualifier) | ✅ |
@@ -132,9 +132,12 @@ parser interprets it (raw extension JSON survives regardless); "Diligent" means
 Predictions this table makes that one real asset can correct. **Where the asset
 disagrees, the asset wins and the table is wrong** — record the correction here.
 
-1. **Spec-gloss failure mode**: the Aston Martin should render *textured* —
-   diffuse lands in the base-colour slot — but with wrong roughness/metallic
-   (the SG texture's G/B misread) and no specular colour. Not a grey default.
+1. **Spec-gloss**, revised after T0168.2 closed it: the Aston Martin should now
+   render through the genuine SG path — diffuse texture, specular colour and
+   per-pixel glossiness all honoured — dark and flat only for what IBL (T0087)
+   and shadows (T0086) have not built yet. The synthetic test covers factors
+   and the diffuse slot alias; the car is the first asset to exercise the SG
+   *texture* in the phys-desc slot.
 2. **Quantization**: unverified-by-construction claim above.
 3. **Z-up → Y-up root rotation** (det +1): composes through `ComputeTransforms`
    under D33 as amended — the car should stand upright, unmirrored.

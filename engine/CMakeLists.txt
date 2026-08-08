@@ -405,6 +405,15 @@ target_link_libraries(hp_engine PRIVATE Diligent-GraphicsTools)
 target_include_directories(hp_engine PRIVATE
     "${CMAKE_SOURCE_DIR}/third_party/DiligentEngine/DiligentFX/Utilities/interface")
 
+# tinygltf, declarations only, for `AssetImport.cpp`'s read of
+# `extensionsRequired` (T0168.6) -- the one glTF field Diligent's loader does
+# not surface (`GLTF::Model::Extensions` is `extensionsUsed`). Diligent keeps
+# the header in AssetLoader's *private* ThirdParty tree, so the path is named
+# here; SYSTEM because its warnings are not this project's to fix. The
+# implementation stays where it always was, in Diligent's GLTFDocument.cpp.
+target_include_directories(hp_engine SYSTEM PRIVATE
+    "${CMAKE_SOURCE_DIR}/third_party/DiligentEngine/DiligentTools/ThirdParty/tinygltf")
+
 # --- slang (T0142, D28) ------------------------------------------------------
 #
 # Headers only, PRIVATE, SYSTEM. The library itself is loaded at RUN time by

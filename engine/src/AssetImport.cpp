@@ -28,6 +28,14 @@
 #include <Texture.h>
 #include <TextureLoader.h>
 
+// Declarations only -- `TINYGLTF_IMPLEMENTATION` lives in Diligent's
+// GLTFDocument.cpp, and without it this header needs nothing beyond the
+// standard library. Included because the loader's callbacks hand the parsed
+// source model back as `const void*`, and `extensionsRequired` -- the one
+// field read here (T0168.6) -- exists nowhere else: `GLTF::Model::Extensions`
+// mirrors `extensionsUsed`, which is the wrong field.
+#include <tiny_gltf.h>
+
 namespace hp {
 namespace {
 
@@ -71,6 +79,31 @@ constexpr std::string_view kMaterialExtensionBody{kMaterialExtension + 1};
 /// The shader-module extension (T0142.15). D28 makes `.slang` the only
 /// authoring language, so it is the only shader extension the importer knows.
 constexpr std::string_view kShaderExtensionBody{"slang"};
+
+/// The glTF extensions this engine consumes **end to end** -- loader through
+/// pixel (T0168.6). The authority is `14-asset-import-matrix.md`: a row flips
+/// there first, and then here, in the same commit.
+///
+/// Everything else the parser accepts is either dropped at the draw seam or
+/// absent upstream, and a file that **requires** one of those renders wrong
+/// *silently* -- D35's failure class. `KHR_materials_ior` is here with a
+/// caveat the matrix records: it is honoured inside the transmission path,
+/// which is where the extension travels in practice, and ignored standalone.
+/// `KHR_mesh_quantization` is deliberately absent until an asset verifies the
+/// believed-to-work conversion path.
+constexpr std::array<std::string_view, 11> kEndToEndExtensions{
+    "KHR_materials_pbrSpecularGlossiness",
+    "KHR_materials_unlit",
+    "KHR_texture_transform",
+    "KHR_materials_emissive_strength",
+    "KHR_materials_clearcoat",
+    "KHR_materials_sheen",
+    "KHR_materials_anisotropy",
+    "KHR_materials_iridescence",
+    "KHR_materials_transmission",
+    "KHR_materials_volume",
+    "KHR_materials_ior",
+};
 
 } // namespace
 
@@ -390,6 +423,41 @@ std::shared_ptr<MeshAsset> loadMesh(Diligent::IRenderDevice* device,
             std::memcpy(data.data(), bytes->data(), bytes->size());
         }
         return true;
+    };
+
+    // **The one read of `extensionsRequired` in the whole stack** (T0168.6).
+    // Neither tinygltf nor Diligent consults the field -- verified, and not a
+    // spec violation: the glTF spec puts its MUSTs on the asset, never on the
+    // client. But the alternative to reading it is a material that quietly
+    // resolves to defaults, which is exactly D35's silent-failure class, so
+    // the import names the gap once, out loud, and carries on. A hard refusal
+    // was considered and rejected on T0167.9b's argument: it would reject
+    // assets that render acceptably.
+    //
+    // The node callback is the earliest per-model hook that receives the
+    // parsed source document; the mutable flag keeps it to one pass per
+    // import.
+    createInfo.NodeLoadCallback = [path, warned = false](const void* srcModel, int /*srcNodeIndex*/,
+                                                         const void* /*srcNode*/,
+                                                         Diligent::GLTF::Node& /*node*/) mutable {
+        if (warned || srcModel == nullptr) {
+            return;
+        }
+        warned = true;
+        const auto* gltf = static_cast<const tinygltf::Model*>(srcModel);
+        for (const std::string& required : gltf->extensionsRequired) {
+            const bool supported =
+                std::find(kEndToEndExtensions.begin(), kEndToEndExtensions.end(), required) !=
+                kEndToEndExtensions.end();
+            if (!supported) {
+                HP_LOG_WARN(kLog,
+                            "'{}' requires the glTF extension '{}', which this engine does not "
+                            "support end to end; the model will load, but whatever the extension "
+                            "carries will be missing or wrong (14-asset-import-matrix.md has the "
+                            "row)",
+                            path, required);
+            }
+        }
     };
 
     auto asset = std::make_shared<MeshAsset>();
