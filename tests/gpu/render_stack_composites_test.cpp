@@ -336,6 +336,13 @@ void exerciseComposite(hp::RenderBackend backend, const char* backendName) {
     world.clearColour[2] = 1.0F;
     world.clearColour[3] = 1.0F;
     REQUIRE(world.create(device.render->device(), device.render->context()));
+    // **The environment off** (T0170.5). This case measures one lamp against
+    // one material and asserts exact channel values; the engine's default sky
+    // (`SceneRenderer::setEnvironmentIntensity`) is a second light source it
+    // never asked for. Turned off rather than re-baselined, so the assertions
+    // keep meaning what they were written to mean and stop depending on the
+    // sky's exact colour.
+    world.setEnvironmentIntensity(0.0F);
     world.setScene(&scene, &pool);
 
     hp::SceneRenderLayer hud("hud");
@@ -346,6 +353,8 @@ void exerciseComposite(hp::RenderBackend backend, const char* backendName) {
     hp::configureAsHud(hud);
     REQUIRE_FALSE(hud.useDepth);
     REQUIRE(hud.create(device.render->device(), device.render->context()));
+    // The environment off, for the reason recorded above.
+    hud.setEnvironmentIntensity(0.0F);
     hud.setScene(&scene, &pool);
 
     hp::RenderStack stack;

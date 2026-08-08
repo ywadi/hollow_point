@@ -132,6 +132,12 @@ void SceneView::setGameTexture(std::string_view name, Diligent::ITextureView* vi
     }
 }
 
+void SceneView::setEnvironmentIntensity(float intensity) {
+    if (impl_ != nullptr) {
+        impl_->renderer.setEnvironmentIntensity(intensity);
+    }
+}
+
 Diligent::ITextureView* SceneView::colour() const {
     return impl_ == nullptr ? nullptr : impl_->targets.shaderResource(kColourTarget);
 }

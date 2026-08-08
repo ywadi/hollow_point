@@ -249,6 +249,13 @@ struct Fixture {
                               kSize)) {
             return pixels;
         }
+        // **The environment off** (T0170.5). Each case here isolates one
+        // extended feature by differencing against a control render; the
+        // engine's default sky adds an image-based term to *both* sides, and
+        // for the layers that have one (sheen, clearcoat) it adds a different
+        // one to each. Turned off so the difference measured is the punctual
+        // response the case is named for.
+        sceneView.setEnvironmentIntensity(0.0F);
         // Blue, so "nothing drew" and "everything transmitted" are both
         // distinguishable from every shading outcome.
         sceneView.setClearColour(0.0F, 0.0F, 1.0F, 1.0F);

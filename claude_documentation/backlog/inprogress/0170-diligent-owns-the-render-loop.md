@@ -45,7 +45,7 @@ What that buys immediately, none of it written here: **OIT**, opaque→mask→bl
 
 - [ ] 170.1 **Settle the shader question first — it is the only real unknown.** Shader sources resolve through `CreateCompoundShaderSourceFactory({DiligentFXShaderSourceStreamFactory, pMemorySourceFactory})` — a **chain**. A factory that shadows the surface-evaluation include could substitute our material code while keeping everything else. DiligentFX's factory is listed *first*, so this is not a supported extension point today. **Determine whether it can be made one — by ordering, by an upstream PR, or not at all.** D30 already records an upstream hook offer we owe and never made
 - [ ] 170.2 **Subclass, do not fork.** `class HpRenderer : public GLTF_PBR_Renderer`, following `USD_Renderer` as the worked precedent. Override `CreateCustomSignature` for T0161
-- [ ] 170.3 **Turn OIT on** — `OITLayerCount`, `CreateOITResources`, `CreateClearOITLayersSRB`, `SetOITResources`, and the `OITLayers` pass. Read how **Hydrogent** sequences it (`HnRenderRprimsTask`, `HnEndOITPassTask`) and copy that sequence
+- [x] 170.3 **OIT — evaluated and rejected; it is not reachable from here.** — `OITLayerCount`, `CreateOITResources`, `CreateClearOITLayersSRB`, `SetOITResources`, and the `OITLayers` pass. Read how **Hydrogent** sequences it (`HnRenderRprimsTask`, `HnEndOITPassTask`) and copy that sequence
 - [ ] 170.4 **D37's snapshot via `RenderInfo::AlphaModes`**, deleting the hand-rolled 10.9a/c split
 - [x] 170.5 **Turn IBL on** and give the car an environment. This is what makes it look like the DCC preview — its paint colour is authored into the *specular* map and there is currently nothing to reflect
 - [ ] 170.6 **Delete what is now upstream's.** Measure the line count before and after; a refactor that adds code has gone wrong
@@ -135,6 +135,78 @@ from lit to shaded. So the instrument was replaced by a **mean per-pixel
 stronger: **5.06** where a mean-of-means saw 0.3%. Lowering the old threshold
 would have kept a check that can no longer fail for the right reason. A second
 assertion pins the outcome directly — mean luma > 40, against the 10.4 it was.
+
+### 170.3 — OIT is not reachable from `GLTF_PBR_Renderer`, and the switch in the header is a trap
+
+**Evaluated and rejected, with the line.** `PBR_Renderer::CreateInfo::OITLayerCount`
+(`PBR_Renderer.hpp:252`) reads like a switch and is not one from this entry
+point. Populating the layer buffer requires PSOs keyed
+`RenderPassType::OITLayers`, and **`GLTF_PBR_Renderer.cpp:638` hardcodes
+`RenderPassType::Main`** in the only `PSOKey` it builds — the only
+`RenderPassType` reference in that whole file — with no `RenderInfo` field to
+override it. The population pass lives in `HnRenderPass.cpp`,
+`HnBeginOITPassTask` and `HnEndOITPassTask`, i.e. **behind the Hydrogent/USD
+entry point only**. Reaching it from here means patching vendored source, which
+**D26** forbids and **D40** restates.
+
+Two further requirements, recorded so the next evaluation starts further along:
+`OITLayerCount > 0` is silently forced back to 0 unless
+`Features.ComputeShaders` is enabled (`PBR_Renderer.cpp:513-526`), and
+`UpdateOITLayers.psh` needs `Features.PixelUAVWritesAndAtomics`, which DiligentFX
+**does not check** — Tutorial29_OIT enables both explicitly.
+
+**What replaces it is better and needs no new machinery**: the owner's two-pass
+alpha-mode reclassification (their `AstonMartinScene::Render`). Pass 1 renders
+every `BLEND` material as `MASK`, so its opaque texels draw with depth write and
+depth test and occlude each other **by z-buffer — order-independent, no sort**;
+its sub-cutoff texels are `discard`ed and leave no depth. Pass 2 restores
+`BLEND` and resubmits: the opaque texels now fail the depth test against what
+pass 1 wrote, so only the glass blends, over a finished image.
+
+**Three things it does not do, said plainly rather than claimed away:**
+
+- It **depends on the material's own `AlphaCutoff` separating the two
+  populations.** On this asset it does — 97.8% of the diffuse map is alpha 255
+  and the transparent texels cluster at 76 and 96 (≈0.30/0.38) against a 0.5
+  cutoff. An asset whose glass sat at 0.6 would render its windows solid. The
+  cutoff must be read from the material, never hardcoded.
+- It **does not sort transparent surfaces against each other.** Two overlapping
+  glass panes stay order-dependent. Much smaller than the whole car; not
+  "transparency solved".
+- The sample **mutates `Model::Materials[i].Attribs.AlphaMode` between passes**,
+  which in the engine is loaded asset state touched every frame. Whether the
+  material constant buffer must be re-uploaded between passes, or the PSO key
+  alone carries the alpha mode, is the thing to check first: if the shader reads
+  `AlphaMode`/`AlphaCutoff` out of the material cbuffer, a stale buffer means
+  pass 1 silently does not alpha-test and the whole mechanism is a no-op that
+  looks like it worked.
+
+### 170.5's second half — the environment is a setting, not a constant
+
+Turning a default sky on changed **12 of the 70 gpu cases**, and every one was
+the same thing: a case that measures one lamp against one material and asserts
+exact channel values, now reading a second light source it never asked for.
+`lit.g == lit.b` fails under a blue-tinted sky; `dark.r < 20` fails because
+nothing is black any more; a cel-shading case that pins the palette to ≤4
+colours fails because an ambient term is continuous.
+
+**None of those assertions was wrong, and none was re-baselined.**
+`SceneRenderer::setEnvironmentIntensity` (forwarded by `SceneView` and
+`SceneRenderLayer`) scales `IBLScale`, so `0` gives exactly the pre-environment
+image at no per-draw cost and no pipeline rebuild. The affected cases turn it
+off and keep testing what they were written to test — which also decouples them
+from the sky's exact colour, so tuning the default sky later cannot break
+thirteen unrelated files.
+
+One case *was* re-baselined, deliberately, because it pins a number rather than
+an image: the base signature's descriptor budget (T0161.7) goes **19 → 23
+sampled images** — `g_PreintegratedGGX`, `g_IrradianceMap`,
+`g_PrefilteredEnvMap`, `g_PreintegratedCharlie` — and **19 immutable samplers,
+unchanged**, because all four share `g_LinearClampSampler` and upstream dedupes
+immutable samplers by name (`PBR_Renderer.cpp:1262-1266`); the one entry they
+want was already there from T0143's sheen LUT. That last number was written as
+20 first and the suite said 19, which is the argument for pinning it rather than
+reasoning about it.
 
 ### 170.2 — `GLTF_PBR_Renderer` **cannot** be the base class, and its `Render` cannot be the draw path
 

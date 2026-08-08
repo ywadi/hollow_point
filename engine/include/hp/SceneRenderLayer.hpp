@@ -113,6 +113,13 @@ public:
     /// @returns nothing.
     void setGameTexture(std::string_view name, Diligent::ITextureView* view);
 
+    /// Scales the environment's contribution for this layer (T0170.5). See
+    /// `SceneRenderer::setEnvironmentIntensity`, which this forwards to
+    /// unchanged; `0` turns the default sky off.
+    /// @param intensity the multiplier. Clamped at 0 from below.
+    /// @returns nothing.
+    void setEnvironmentIntensity(float intensity);
+
     /// Draws the scene. See the class comment for what it deliberately does not
     /// do.
     /// @param pass the bound targets and context, from `RenderStack`.

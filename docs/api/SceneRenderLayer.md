@@ -6,7 +6,7 @@
 #include <hp/SceneRenderLayer.hpp>
 ```
 
-11 public declaration(s), 11 documented.
+12 public declaration(s), 12 documented.
 
 ## `SceneRenderLayer`
 
@@ -120,6 +120,18 @@ void setGameTexture(std::string_view name, Diligent::ITextureView * view)
  call, matching `FrameTargets`' rule.
  @param name the shader-side declaration name.
  @param view the view to bind, or null to remove the entry.
+ @returns nothing.
+
+## `SceneRenderLayer::setEnvironmentIntensity`
+
+```cpp
+void setEnvironmentIntensity(float intensity)
+```
+
+ Scales the environment's contribution for this layer (T0170.5). See
+ `SceneRenderer::setEnvironmentIntensity`, which this forwards to
+ unchanged; `0` turns the default sky off.
+ @param intensity the multiplier. Clamped at 0 from below.
  @returns nothing.
 
 ## `SceneRenderLayer::onRenderLayer`

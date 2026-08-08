@@ -175,6 +175,34 @@ public:
     /// @returns nothing.
     void clearGameTextures();
 
+    /// Scales the environment's contribution to every surface (T0170.5).
+    ///
+    /// **The engine lights every scene from a default sky**, which is what
+    /// makes metal look like metal and a surface facing away from a lamp
+    /// something other than black. This is the dial on it: `1` is the default,
+    /// `0` turns it off entirely and gives exactly the pre-environment image.
+    ///
+    /// **Why it exists rather than being a constant.** A test that asserts an
+    /// exact lit colour is measuring one lamp against one material, and an
+    /// ambient term it did not ask for is noise in that measurement — so the
+    /// gpu suite turns it off and keeps testing what it tests. A game wants the
+    /// opposite. Both are legitimate, so it is a setting.
+    ///
+    /// Feeds `PBRRendererShaderParameters::IBLScale`, so it costs nothing per
+    /// draw and needs no pipeline rebuild — the permutation is unchanged and
+    /// only the multiplier moves. Values above 1 over-brighten deliberately;
+    /// negative values are clamped to 0.
+    ///
+    /// **This is not the environment itself.** Choosing *which* sky, and a
+    /// per-scene ambient, are T0087's remaining scope.
+    ///
+    /// @param intensity the multiplier. Clamped at 0 from below.
+    /// @returns nothing.
+    void setEnvironmentIntensity(float intensity);
+
+    /// @returns the current environment intensity. `1` unless set.
+    [[nodiscard]] float environmentIntensity() const;
+
     /// Draws a list through a view.
     ///
     /// Targets must already be bound by the caller -- this issues draws and does

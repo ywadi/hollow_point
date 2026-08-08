@@ -734,6 +734,11 @@ struct SceneRenderer::Impl {
 
     // --- the environment (T0170.5) -----------------------------------------
 
+    /// How much of the environment reaches a surface (T0170.5). Rides
+    /// `IBLScale`, so changing it is a per-frame constant and never a
+    /// pipeline rebuild.
+    float environmentIntensity = 1.0F;
+
     /// The diffuse irradiance cube, integrated from the environment once at
     /// `create()`. Bound on every SRB as `g_IrradianceMap`.
     Diligent::RefCntAutoPtr<Diligent::ITextureView> irradianceCube;
@@ -2092,6 +2097,16 @@ void SceneRenderer::setGameTexture(std::string_view name, Diligent::ITextureView
     ++impl_->gameGeneration;
 }
 
+void SceneRenderer::setEnvironmentIntensity(float intensity) {
+    if (impl_ != nullptr) {
+        impl_->environmentIntensity = std::max(intensity, 0.0F);
+    }
+}
+
+float SceneRenderer::environmentIntensity() const {
+    return impl_ == nullptr ? 1.0F : impl_->environmentIntensity;
+}
+
 void SceneRenderer::clearGameTextures() {
     if (impl_ == nullptr || impl_->gameTextures.empty()) {
         return;
@@ -2264,7 +2279,12 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
 
                 params.OcclusionStrength = 1.0F;
                 params.EmissionScale = 1.0F;
-                params.IBLScale = float4(1.0F, 1.0F, 1.0F, 1.0F);
+                // **The environment's dial** (T0170.5). Uniform across
+                // channels: a per-channel tint would be an environment
+                // *colour* control, which belongs with the environment itself
+                // (T0087) rather than beside the exposure knobs.
+                params.IBLScale = float4(impl.environmentIntensity, impl.environmentIntensity,
+                                         impl.environmentIntensity, 1.0F);
                 params.PointSize = 1.0F;
                 // Zero: no mip bias. A negative value sharpens and a positive one
                 // blurs, and T0111's render-scale decision is where a non-zero one

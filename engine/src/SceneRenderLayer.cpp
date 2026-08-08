@@ -57,6 +57,10 @@ void SceneRenderLayer::setGameTexture(std::string_view name, Diligent::ITextureV
     renderer_.setGameTexture(name, view);
 }
 
+void SceneRenderLayer::setEnvironmentIntensity(float intensity) {
+    renderer_.setEnvironmentIntensity(intensity);
+}
+
 const char* SceneRenderLayer::name() const {
     return name_;
 }

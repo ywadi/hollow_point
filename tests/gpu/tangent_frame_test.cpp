@@ -524,6 +524,13 @@ bool renderShells(Device& device, const std::filesystem::path& scratch, const Op
     if (!view.create(device.render->device(), device.render->context(), kSize, kSize)) {
         return false;
     }
+    // **The environment off** (T0170.5). This case measures one lamp against
+    // one material and asserts exact channel values; the engine's default sky
+    // (`SceneRenderer::setEnvironmentIntensity`) is a second light source it
+    // never asked for. Turned off rather than re-baselined, so the assertions
+    // keep meaning what they were written to mean and stop depending on the
+    // sky's exact colour.
+    view.setEnvironmentIntensity(0.0F);
     // Blue, so "nothing drew" is distinguishable from every shading outcome.
     view.setClearColour(0.0F, 0.0F, 1.0F, 1.0F);
 

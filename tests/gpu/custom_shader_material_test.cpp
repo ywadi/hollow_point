@@ -313,6 +313,13 @@ bool renderCustom(Device& device, const std::string& moduleSource, bool shaderIn
     if (!view.create(device.render->device(), device.render->context(), kSize, kSize)) {
         return false;
     }
+    // **The environment off** (T0170.5). This case measures one lamp against
+    // one material and asserts exact channel values; the engine's default sky
+    // (`SceneRenderer::setEnvironmentIntensity`) is a second light source it
+    // never asked for. Turned off rather than re-baselined, so the assertions
+    // keep meaning what they were written to mean and stop depending on the
+    // sky's exact colour.
+    view.setEnvironmentIntensity(0.0F);
     view.setClearColour(0.0F, 0.0F, 1.0F, 1.0F);
 
     hp::SceneViewStats stats;
@@ -1628,6 +1635,29 @@ TEST_CASE("the base signature's descriptor budget is pinned (T0161.7, grown by T
     //                       (g_ClearCoat, g_Sheen, g_AnisotropyMap,
     //                       g_Iridescence, g_TransmissionMap, g_ThicknessMap)
     //
+    // **T0170.5 bought the environment the same way, and the price is four
+    // images and — measured, not predicted — no samplers at all:**
+    //
+    //   23 sampled images — the 19 above + g_PreintegratedGGX (the BRDF LUT,
+    //                       a *static* the base class binds once),
+    //                       g_IrradianceMap and g_PrefilteredEnvMap (mutable,
+    //                       so per SRB), and g_PreintegratedCharlie — which
+    //                       exists only because sheen and IBL are both on
+    //   19 immutable samplers — **unchanged**. All four IBL resources share
+    //                       g_LinearClampSampler, and upstream dedupes
+    //                       immutable samplers by name
+    //                       (`PBR_Renderer.cpp:1262-1266`) — so the one entry
+    //                       they want was already there, added by
+    //                       g_SheenAlbedoScalingLUT on T0143.
+    //
+    // That last line was written as 20 first and the suite said 19, which is
+    // the argument for pinning the number instead of reasoning about it.
+    //
+    // Four of the four images are bound on **every** material SRB whether the
+    // material reflects anything or not, which is the same superset trade the
+    // paragraph above describes and the reason this number is pinned rather
+    // than assumed.
+    //
     // The superset pattern is unchanged: a signature resource an SPIR-V
     // module never names costs nothing at draw time, and a material using no
     // extended feature compiles the same shader it did before T0143 — the
@@ -1644,7 +1674,7 @@ TEST_CASE("the base signature's descriptor budget is pinned (T0161.7, grown by T
         return;
     }
 
-    MessageCatcher images("19 sampled images");
+    MessageCatcher images("23 sampled images");
     MessageCatcher samplers("19 immutable samplers");
     MessageCatcher line("base signature:");
     hp::logAddSink(&images);

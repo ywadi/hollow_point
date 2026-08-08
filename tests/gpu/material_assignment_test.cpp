@@ -223,6 +223,13 @@ Frame renderWithMaterials(Device& device, hp::AssetPool& pool, const std::vector
     if (!view.create(device.render->device(), device.render->context(), kSize, kSize)) {
         return frame;
     }
+    // **The environment off** (T0170.5). This case measures one lamp against
+    // one material and asserts exact channel values; the engine's default sky
+    // (`SceneRenderer::setEnvironmentIntensity`) is a second light source it
+    // never asked for. Turned off rather than re-baselined, so the assertions
+    // keep meaning what they were written to mean and stop depending on the
+    // sky's exact colour.
+    view.setEnvironmentIntensity(0.0F);
     // Blue, so "nothing drew" stays distinguishable from every material state.
     view.setClearColour(0.0F, 0.0F, 1.0F, 1.0F);
 

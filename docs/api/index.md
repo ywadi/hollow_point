@@ -60,10 +60,10 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Render.hpp>`](Render.md) | 25 | 25 |
 | [`<hp/RenderStack.hpp>`](RenderStack.md) | 21 | 21 |
 | [`<hp/Scene.hpp>`](Scene.md) | 58 | 58 |
-| [`<hp/SceneRenderLayer.hpp>`](SceneRenderLayer.md) | 11 | 11 |
-| [`<hp/SceneRenderer.hpp>`](SceneRenderer.md) | 14 | 14 |
+| [`<hp/SceneRenderLayer.hpp>`](SceneRenderLayer.md) | 12 | 12 |
+| [`<hp/SceneRenderer.hpp>`](SceneRenderer.md) | 16 | 16 |
 | [`<hp/SceneSerialize.hpp>`](SceneSerialize.md) | 10 | 10 |
-| [`<hp/SceneView.hpp>`](SceneView.md) | 19 | 19 |
+| [`<hp/SceneView.hpp>`](SceneView.md) | 20 | 20 |
 | [`<hp/Serialize.hpp>`](Serialize.md) | 6 | 6 |
 | [`<hp/Settings.hpp>`](Settings.md) | 28 | 28 |
 | [`<hp/ShaderCook.hpp>`](ShaderCook.md) | 12 | 12 |
@@ -75,7 +75,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 47 | 47 |
 
-**779 public declarations across 44 headers, 662 documented.**
+**783 public declarations across 44 headers, 666 documented.**
 
 ## Every symbol
 
@@ -639,6 +639,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `SceneRenderLayer::setScene` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
 | `SceneRenderLayer::scene` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
 | `SceneRenderLayer::setGameTexture` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
+| `SceneRenderLayer::setEnvironmentIntensity` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
 | `SceneRenderLayer::onRenderLayer` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
 | `SceneRenderLayer::name` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
 | `configureAsHud` | [`SceneRenderLayer.hpp`](SceneRenderLayer.md) |
@@ -655,6 +656,8 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `SceneRenderer::valid` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `SceneRenderer::setGameTexture` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `SceneRenderer::clearGameTextures` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `SceneRenderer::setEnvironmentIntensity` | [`SceneRenderer.hpp`](SceneRenderer.md) |
+| `SceneRenderer::environmentIntensity` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `SceneRenderer::render` | [`SceneRenderer.hpp`](SceneRenderer.md) |
 | `UnknownComponent` | [`SceneSerialize.hpp`](SceneSerialize.md) |
 | `UnknownComponents` | [`SceneSerialize.hpp`](SceneSerialize.md) |
@@ -679,6 +682,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `SceneView::valid` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::render` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::setGameTexture` | [`SceneView.hpp`](SceneView.md) |
+| `SceneView::setEnvironmentIntensity` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::colour` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::colourTexture` | [`SceneView.hpp`](SceneView.md) |
 | `SceneView::readback` | [`SceneView.hpp`](SceneView.md) |
