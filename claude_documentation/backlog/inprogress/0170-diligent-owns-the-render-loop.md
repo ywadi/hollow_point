@@ -60,6 +60,32 @@ What that buys immediately, none of it written here: **OIT**, opaque→mask→bl
 
 ## Notes / findings
 
+### Where this stands — read this first
+
+**Done and verified: 170.5 (the environment), and 170.3 as a rejection.** The
+Aston Martin is environment-lit and the colour it is in Blender; the frames are
+at `test-frames/aston/`. `zig build all`, `docs`, `test -Dtest=all` and
+`test -Dtest=gpu` are clean on **both targets** — fast 324/324, integration
+101/101, gpu **70/70** (1702 assertions, up 2 from the 1700 baseline: the
+aston case gained a per-pixel-difference check and an absolute-luma check and
+lost a mean-ratio one).
+
+**Not done, and not claimed:** the draw path is still the engine's walk.
+`GLTF_PBR_Renderer::Render` is **not** it and cannot become it — that is
+measured below, and the route that does work (170.1's shader-cache seeding) is
+not built. The Done-when boxes for the draw path, D26's amendment and the
+boundary document are unticked for that reason.
+
+**The first Done-when box is ticked in part only, and here is the honest
+split.** *Environment-lit* and *correct colour* are done and measured.
+*Interior visible through the glass* is visible on this asset from all four
+captured angles — but on this asset the glass is a windscreen on a
+top-down convertible, and it is drawn by the existing 10.9a/c split, not by
+anything this ticket added. **General correct transparency is not solved**; the
+mechanism for it is the two-pass alpha-mask reclassification described under
+170.3, and it is not built.
+
+
 ### 170.5 — the environment is on, and the car is the colour it is in Blender
 
 **What Diligent does about it, first** (the rule this ticket sets): all of it.
