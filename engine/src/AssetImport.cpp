@@ -96,7 +96,8 @@ constexpr std::string_view kShaderExtensionBody{"slang"};
 /// which is where the extension travels in practice, and ignored standalone.
 /// `KHR_mesh_quantization` is deliberately absent until an asset verifies the
 /// believed-to-work conversion path.
-constexpr std::array<std::string_view, 11> kEndToEndExtensions{
+constexpr std::array<std::string_view, 12> kEndToEndExtensions{
+    "KHR_draco_mesh_compression",
     "KHR_materials_pbrSpecularGlossiness",
     "KHR_materials_unlit",
     "KHR_texture_transform",

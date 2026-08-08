@@ -35,6 +35,17 @@
 #include <string>
 #include <vector>
 
+#if HP_TESTS_HAVE_DRACO
+// The encoder half of the same library the engine decodes with, so the
+// `KHR_draco_mesh_compression` case can synthesise its asset here instead of
+// checking in an opaque binary fixture (T0168.3). Linked in
+// `tests/CMakeLists.txt`, guarded so a build without draco still compiles the
+// rest of this file.
+#include "draco/compression/decode.h"
+#include "draco/compression/encode.h"
+#include "draco/mesh/triangle_soup_mesh_builder.h"
+#endif
+
 namespace {
 
 struct Device {
@@ -603,6 +614,113 @@ TEST_CASE("imported glTF material features reach the pixels they were parsed for
             CHECK(frame.mean.r < 100.0);
         }
     }
+
+#if HP_TESTS_HAVE_DRACO
+    SUBCASE("a KHR_draco_mesh_compression mesh decodes, renders, and does not warn (168.3)") {
+        // **The Done-when's "Draco loads", measured end to end**: encode the
+        // same camera-facing quad with draco's own encoder, write a glTF that
+        // *requires* the extension, and import it through the engine — the
+        // decode happens inside tinygltf behind `TINYGLTF_ENABLE_DRACO`,
+        // which existed all along and was never compiled in until the
+        // `draco` submodule supplied the target (T0168.3).
+        //
+        // The JSON's counts come from a **decode round-trip here**, not from
+        // the input mesh: the encoder is free to reorder and weld points, and
+        // an accessor count that disagrees with the decoded point count is a
+        // malformed file, not a test.
+        draco::TriangleSoupMeshBuilder builder;
+        builder.Start(2);
+        const int posAttrib =
+            builder.AddAttribute(draco::GeometryAttribute::POSITION, 3, draco::DT_FLOAT32);
+        const float bl[3] = {-4.0F, -4.0F, -3.0F};
+        const float br[3] = {4.0F, -4.0F, -3.0F};
+        const float tr[3] = {4.0F, 4.0F, -3.0F};
+        const float tl[3] = {-4.0F, 4.0F, -3.0F};
+        builder.SetAttributeValuesForFace(posAttrib, draco::FaceIndex(0), bl, br, tr);
+        builder.SetAttributeValuesForFace(posAttrib, draco::FaceIndex(1), bl, tr, tl);
+        std::unique_ptr<draco::Mesh> soup = builder.Finalize();
+        REQUIRE(soup != nullptr);
+
+        draco::Encoder encoder;
+        draco::EncoderBuffer encoded;
+        REQUIRE(encoder.EncodeMeshToBuffer(*soup, &encoded).ok());
+
+        draco::DecoderBuffer decoderBuffer;
+        decoderBuffer.Init(encoded.data(), encoded.size());
+        draco::Decoder decoder;
+        auto roundTrip = decoder.DecodeMeshFromBuffer(&decoderBuffer);
+        REQUIRE(roundTrip.ok());
+        const draco::Mesh& decoded = *roundTrip.value();
+        const auto* decodedPosition =
+            decoded.GetNamedAttribute(draco::GeometryAttribute::POSITION);
+        REQUIRE(decodedPosition != nullptr);
+        MESSAGE("draco round trip: " << encoded.size() << " bytes, "
+                                     << decoded.num_points() << " points, "
+                                     << decoded.num_faces() << " faces");
+
+        {
+            std::ofstream file(models / "quad_draco.bin", std::ios::binary);
+            file.write(encoded.data(), static_cast<std::streamsize>(encoded.size()));
+        }
+        const std::string json = R"({
+  "asset": { "version": "2.0" },
+  "extensionsUsed": [ "KHR_draco_mesh_compression", "KHR_materials_unlit" ],
+  "extensionsRequired": [ "KHR_draco_mesh_compression" ],
+  "scene": 0,
+  "scenes": [ { "nodes": [ 0 ] } ],
+  "nodes": [ { "mesh": 0 } ],
+  "meshes": [ { "primitives": [ {
+      "attributes": { "POSITION": 0 },
+      "indices": 1,
+      "material": 0,
+      "extensions": { "KHR_draco_mesh_compression": {
+          "bufferView": 0,
+          "attributes": { "POSITION": )" +
+                                 std::to_string(decodedPosition->unique_id()) + R"( } } }
+  } ] } ],
+  "materials": [ { "doubleSided": true,
+      "extensions": { "KHR_materials_unlit": {} },
+      "pbrMetallicRoughness": { "baseColorFactor": [ 0.8, 0.05, 0.05, 1.0 ] } } ],
+  "buffers": [ { "uri": "quad_draco.bin", "byteLength": )" +
+                                 std::to_string(encoded.size()) + R"( } ],
+  "bufferViews": [ { "buffer": 0, "byteOffset": 0, "byteLength": )" +
+                                 std::to_string(encoded.size()) + R"( } ],
+  "accessors": [
+    { "componentType": 5126, "count": )" +
+                                 std::to_string(decoded.num_points()) + R"(, "type": "VEC3",
+      "min": [-4.0, -4.0, -3.0], "max": [4.0, 4.0, -3.0] },
+    { "componentType": 5125, "count": )" +
+                                 std::to_string(decoded.num_faces() * 3) + R"(, "type": "SCALAR" }
+  ]
+})";
+        {
+            std::ofstream file(models / "quad_draco.gltf", std::ios::binary);
+            file << json;
+        }
+
+        sink.entries.clear();
+        const Frame frame = renderModel(device, "models/quad_draco.gltf", /*lit=*/false);
+        CHECK(frame.ok);
+        if (frame.ok) {
+            CHECK(magentaShareOfCovered(frame.pixels) < 0.05);
+            MESSAGE("draco quad mean " << frame.mean.r << "," << frame.mean.g << ","
+                                       << frame.mean.b << " over " << frame.covered
+                                       << " covered pixels");
+            // The unlit red quad, decoded from a compressed stream: bright,
+            // red-dominant, and covering a real share of the frame.
+            CHECK(frame.mean.r > 150.0);
+            CHECK(frame.mean.g < 100.0);
+            CHECK(frame.covered > 1000);
+        }
+        // Draco is end-to-end now, so a file *requiring* it must not warn.
+        for (const auto& entry : sink.entries) {
+            const bool dracoWarning =
+                entry.level == hp::LogLevel::Warning &&
+                entry.message.find("KHR_draco_mesh_compression") != std::string::npos;
+            CHECK_FALSE(dracoWarning);
+        }
+    }
+#endif
 
     SUBCASE("pirate.glb, genuine DCC output, fails loudly rather than silently (166.7)") {
         // `third_party/meshoptimizer/demo/pirate.glb` was T0166.7's "render

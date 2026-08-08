@@ -64,6 +64,7 @@ verification runs produced at the time.)*
 | EnTT | 3.16.0 | `EnTT::EnTT` (via DiligentFX) |
 | enkiTS | e3329cc | `enkiTS` |
 | meshoptimizer | 300f7d3 | `meshoptimizer` |
+| draco | 1.5.7 | `draco` / `draco_static` (via `FETCHCONTENT_SOURCE_DIR_DRACO` + `DILIGENT_ENABLE_DRACO`, T0168.3) — glTF `KHR_draco_mesh_compression` decode, proven end to end by `import_coverage_test.cpp` |
 | ozz-animation | 0.17.0 | `ozz_base`, `ozz_animation`, `ozz_geometry`, `ozz_animation_offline` |
 
 ### Continuous integration ✅

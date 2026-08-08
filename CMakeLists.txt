@@ -154,6 +154,25 @@ set(FETCHCONTENT_SOURCE_DIR_RAPIDJSON
     "${CMAKE_CURRENT_SOURCE_DIR}/third_party/rapidjson"
     CACHE PATH "Vendored rapidjson (inactive: DILIGENT_USE_RAPIDJSON is OFF)" FORCE)
 
+# --- draco (T0168.3) ---------------------------------------------------------
+#
+# Draco decompression for glTF: `KHR_draco_mesh_compression` is the default
+# compression on a Sketchfab download, so without this the engine's answer to
+# a large class of real models is "cannot open" -- the loader is fully wired
+# upstream (`TINYGLTF_ENABLE_DRACO`) and merely gated on the target existing.
+# Vendored at exactly the 1.5.7 ref DiligentTools' FetchContent declares, and
+# redirected the same way as EnTT and abseil above, so offline configure holds.
+# The submodule cost and the pin-bump cold CI build were weighed on T0168.3;
+# the decision and the measurements are on that ticket.
+set(FETCHCONTENT_SOURCE_DIR_DRACO
+    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/draco"
+    CACHE PATH "Vendored draco (DiligentTools GLTF loader)" FORCE)
+set(DILIGENT_ENABLE_DRACO ON CACHE BOOL "Draco decode in the glTF loader" FORCE)
+# Draco's own extras stay off: the engine needs the decoder library, not
+# command-line tools in every cross-compiled build tree.
+set(DRACO_TESTS OFF CACHE BOOL "" FORCE)
+set(DRACO_TOOLS OFF CACHE BOOL "" FORCE)
+
 add_subdirectory(third_party/DiligentEngine)
 
 # ImGui renamed the modifier keys in 1.89 (ImGuiKey_ModCtrl -> ImGuiMod_Ctrl)

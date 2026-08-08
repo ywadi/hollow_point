@@ -54,6 +54,27 @@ function(hp_add_test_bucket bucket)
     # -- handled below, the same way the apps do it.
     target_link_libraries(${_target} PRIVATE enkiTS meshoptimizer hp_engine)
 
+    # draco's encoder, so the gpu bucket can *synthesise* its
+    # `KHR_draco_mesh_compression` asset instead of checking in an opaque
+    # binary fixture nobody reviews (T0168.3). The engine links the same
+    # library for decode, through Diligent's loader; the test proving the
+    # decode path needs the encode half, which lives in the same archive.
+    # Which target name exists depends on draco's own MSVC branch, so both
+    # spellings are handled, exactly as Diligent's AssetLoader does.
+    if(TARGET draco OR TARGET draco_static)
+        if(TARGET draco)
+            target_link_libraries(${_target} PRIVATE draco)
+        else()
+            target_link_libraries(${_target} PRIVATE draco_static)
+        endif()
+        # draco_features.h is generated into the top-level binary dir --
+        # draco's CMake sets `draco_build` to CMAKE_BINARY_DIR -- which is the
+        # same pair of paths Diligent's AssetLoader adds for its own draco use.
+        target_include_directories(${_target} SYSTEM PRIVATE
+            "${CMAKE_SOURCE_DIR}/third_party/draco/src" "${CMAKE_BINARY_DIR}")
+        target_compile_definitions(${_target} PRIVATE HP_TESTS_HAVE_DRACO=1)
+    endif()
+
     # --- the engine copy that has to be fresh on EVERY build ------------------
     #
     # **This was a POST_BUILD on the test binary, and it silently ran the wrong
