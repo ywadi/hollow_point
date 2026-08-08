@@ -883,6 +883,13 @@ function ciTitle(wf) {
     : null;
   if (wf.running) lines.push(run(wf.running, 'In flight'));
   if (wf.verdict) lines.push(run(wf.verdict, 'Last verdict'));
+  // A run GitHub still calls queued long after any real queue would have
+  // cleared. Named here rather than dropped: the header stops claiming it is in
+  // flight, but the wedge is real and hiding it entirely is its own lie.
+  if (wf.stalled) {
+    lines.push(run(wf.stalled, 'Stalled queue'));
+    lines.push('  ^ stuck on GitHub, not counted as in flight');
+  }
   if (wf.latest && (!wf.verdict || wf.latest.id !== wf.verdict.id) && (!wf.running || wf.latest.id !== wf.running.id)) {
     lines.push(run(wf.latest, 'Newest run'));
   }

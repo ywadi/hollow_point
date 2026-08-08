@@ -501,11 +501,44 @@ function runState(run) {
 // to overwrite the last run that did reach a verdict.
 const VERDICT_STATES = new Set(['success', 'failure', 'action_required']);
 
+// How long a run may sit in `queued` before the header stops calling it "in
+// flight". GitHub's hosted runners normally pick a job up in seconds, so an
+// hour is far outside the legitimate range even when the queue is busy.
+//
+// **This exists because a run wedged for 38 hours.** Run 31122445705 --
+// `run_attempt: 3` of a re-run, with **zero jobs** -- has reported `queued`
+// since 2026-08-06 and GitHub refuses to clear it: `gh run cancel` says the run
+// is completed, and force-cancel says it "has not yet queued". The two guards
+// disagree about which end of the lifecycle it is stuck at, so there is no
+// supported way to resolve it from this side. Meanwhile it was the only
+// non-completed run on `main`, so `runs.find(...)` selected it every refresh
+// and the header said "queued" for two days while six later runs went green.
+//
+// **`in_progress` is deliberately exempt, at any age.** A run in that state is
+// demonstrably executing, and `full-build.yml` is ~1100 targets — timing it out
+// would report a healthy nightly build as wedged, which is the same class of
+// error in the other direction.
+const CI_QUEUE_STALE_MS = Number(process.env.HP_BOARD_CI_QUEUE_STALE_MS) || 3600000;
+
+// A run GitHub still calls `queued` long after any real queue would have
+// cleared. Not a verdict and not in flight -- it is a stuck record, and the
+// header must not treat it as the thing happening now.
+function isStalledQueue(run) {
+  if (!run || run.status === 'completed' || run.status === 'in_progress') return false;
+  const started = Date.parse(run.run_started_at || run.created_at || '');
+  return Number.isFinite(started) && (Date.now() - started) > CI_QUEUE_STALE_MS;
+}
+
 function summarizeRuns(wf, runs) {
   const latest = runs[0] || null;
   // "In flight" is the newest run that has not completed. There can be more
-  // than one queued at once; the newest is the one the header is about.
-  const running = runs.find((r) => r.status !== 'completed') || null;
+  // than one queued at once; the newest is the one the header is about --
+  // except for a queue that has stalled, which is a stuck record rather than
+  // work in progress and is reported separately below.
+  const running = runs.find((r) => r.status !== 'completed' && !isStalledQueue(r)) || null;
+  // Surfaced rather than hidden: something is genuinely wrong on GitHub's side
+  // and silently dropping it would trade a wrong header for an incomplete one.
+  const stalled = runs.find(isStalledQueue) || null;
   // The pass/fail signal comes from the newest run that actually reached a
   // verdict, skipping past any cancellations. With cancel-in-progress this is
   // frequently not the newest run, and using the newest is the bug.
@@ -533,6 +566,9 @@ function summarizeRuns(wf, runs) {
     verdictIsStale: !!(verdictRun && latest && verdictRun.id !== latest.id),
     latest: brief(latest),
     running: brief(running),
+    // A run stuck in `queued` past CI_QUEUE_STALE_MS. Shown in the tooltip so
+    // the wedge is visible without letting it claim the header.
+    stalled: brief(stalled),
     verdict: brief(verdictRun),
     runsUrl: `https://github.com/${GH_REPO}/actions/workflows/${wf.file}`,
   };
