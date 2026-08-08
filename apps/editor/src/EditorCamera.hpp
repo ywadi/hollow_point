@@ -45,8 +45,9 @@
 //     forward (`-Z` of the entity's world rotation) equal Diligent's
 //     `GetWorldAhead()` **exactly**, for every yaw and pitch — so "W" moves
 //     toward what the viewport shows. The resulting basis has determinant
-//     **+1**: this is a rotation, not a reflection, and `assertNoMirror` pins
-//     that at run time.
+//     **+1**: this is a rotation, not a reflection, and `isProperRotation` pins
+//     that at run time, because a reflection here renders as backwards geometry
+//     rather than as an error and nobody can see it by looking.
 //  2. Diligent's `MoveRight` travels along its own camera-right, whose dot
 //     product with hp's screen-right is **−1** at every yaw. So `D` binds to
 //     `InputKeys::MoveLeft` and `A` to `MoveRight`. Reading that as a typo is
