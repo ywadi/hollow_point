@@ -90,3 +90,32 @@ two caps should be aware of each other.
 **Sound is listed but Phase 10 is a placeholder epic** (T0052, library
 undecided). Design the asset so a sound reference *can* exist without blocking
 on the audio engine; do not wait for it.
+
+### 2026-08-08 — considered for merge into T0080, and **declined** (T0106 was merged; this was not)
+
+[T0106](../completed/0106-vfx-sprites-and-flipbooks.md) **was** merged into
+[T0080](0080-particles.md) the same day, because it existed only to supply a half
+that T0080.4 had under-specified — and it carried `Blocks: T0080`, a ticket
+blocking the ticket it was half of. **This ticket is not that shape.**
+
+**It spans four subsystems T0080 does not touch**: lights (T0079), decals
+(T0108), audio (T0052) and prefabs (T0059). Merging it would make the particle
+system blocked on the audio ticket, which is the same failure the merge pass was
+run to remove.
+
+**And its central question is not a particle question.** 107.1 asks whether a
+composed effect is *a prefab (T0059) with VFX components* rather than a new asset
+type — and if the answer is yes, most of this ticket dissolves into T0059, not
+into T0080.
+
+**What the review did fix — a real overlap, now assigned rather than duplicated:**
+
+- **T0080 owns the *particle* budget and self-retirement** (80.6, 80.8) — a
+  fixed-size GPU buffer and one-shot emitters cleaning themselves up.
+- **This ticket owns the *effect* budget and lifetime** (107.4, 107.5) — how many
+  composed effects may be live at once, what happens at the cap, and the
+  detached lifetime that lets an explosion outlive the entity that exploded,
+  which is *always*, because the thing that exploded stops existing.
+
+Those are two different budgets over two different units, and the tickets now say
+so.

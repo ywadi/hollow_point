@@ -171,3 +171,35 @@ editor-tooling change to a Phase-4 rendering ticket for no immediate benefit;
 120.10 exists so the relationship is on record for whoever picks either of
 those tickets up next, without expanding this ticket's Done-when to cover
 editor code it does not need to touch to be complete.
+
+### 2026-08-08 — considered for merge into T0094, and **declined** on this ticket's own evidence
+
+The proposal was to fold this into [T0094](0094-gameplay-extensible-rendering.md)
+on the grounds that T0094's `## Why` names *"portal and mirror views,
+security-camera monitors"* — which is this ticket's content. The condition set
+for the merge was: *"if camera render-to-texture has engine-side API beyond the
+seam, it survives separately."*
+
+**It does, and this ticket already argued it:**
+
+> **T0094 is a prerequisite, not a duplicate.** … What T0094 does not provide is
+> the thing that fills the texture with an actual rendered view — that is this
+> ticket's entire content.
+
+Concretely, the engine-side API beyond T0094's seam is **120.2** (make scene draw
+submission callable per-camera against an arbitrary target, instead of hardwired
+to one implicit camera and one viewport-sized target), plus per-camera culling
+(120.3), the update policy (120.4), the recursion guard (120.5), the frame-anatomy
+phase (120.7) and memory reporting (120.8). None of that is expressible as an
+`IRenderLayer`.
+
+**And it has two consumers outside gameplay extensibility entirely** — T0036's
+mesh and texture thumbnails, and T0063's editor-picking ID buffer, both of which
+already built narrower one-off offscreen renders because no shared primitive
+existed. Merging this into a gameplay-seam ticket would leave those two with no
+owner again.
+
+**What the merge review did change**: the relationship is now stated on both
+tickets rather than only on this one. T0094 owns the seam and the `RenderTexture`
+resource; this ticket owns re-invoking submission against a second camera, and
+reuses that resource type rather than inventing a second.

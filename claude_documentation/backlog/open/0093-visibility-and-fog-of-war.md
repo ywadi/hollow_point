@@ -165,3 +165,33 @@ hypothesised game. T0098's first scope item now decides navigation on its own
 engineering grounds (cost of recastnavigation against what else assumes a
 navmesh), and T0044 is off its Refs. Nothing here is cited as evidence for
 another ticket's existence any more.
+
+### 2026-08-08 — considered for merge into T0094, and **declined**
+
+The proposal was to fold this into [T0094](0094-gameplay-extensible-rendering.md)
+as its acceptance test, on the grounds that this ticket's title is literally
+*"prove a vision mechanic needs no engine changes"* and that it builds nothing.
+The second half of that is true and the conclusion does not follow.
+
+**Two reasons, and the first is the decisive one.**
+
+1. **It would block T0094 behind six unstarted tickets.** T0094 is now **#2 in
+   the current sequence** — the frame seam that four other tickets ride. This
+   ticket validates **nine** owners (T0147, T0086, T0079, T0085, T0045, T0094,
+   T0120, T0061, T0083), of which T0094 is *one row of the table*. Merged, T0094
+   could not close until shadows, lights, culling, render-to-texture, debug draw
+   and the save system had all landed. Its own note says it is ordered at 540
+   **deliberately**: *"this is a generality test, and generality tests belong
+   late… running it earlier would produce gaps against tickets nobody has
+   started."*
+2. **The overlap is one subtask, not the ticket.** T0094.9's worked example
+   (accumulate visibility into a persistent texture, from a module) proves
+   *T0094*; 93.2 extends the same artefact into the full mechanic — cone,
+   peripheral radius, wall occlusion, dithered edges, remembered explored areas —
+   to prove *the render layer*. **They are the same artefact at two stages**, and
+   that is now said on both tickets rather than resolved by merging.
+
+**The precedent this follows is T0167**, which was exactly this shape: point the
+engine at something it did not help make, and file what breaks against the owner
+rather than patching it in place. That ticket was one of the most productive on
+the board.

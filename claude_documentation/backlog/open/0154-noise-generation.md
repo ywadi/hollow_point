@@ -8,7 +8,7 @@
 | **Phase** | 4 — Render layer |
 | **Order** | 462 |
 | **Created** | 2026-08-06 |
-| **Refs** | [0153-surface-detiling.md](0153-surface-detiling.md) — **its tier 1 and tier 2 depend on this and it was written before this existed**; [0091-volumetric-fog.md](0091-volumetric-fog.md), [0092-wet-surfaces.md](0092-wet-surfaces.md), [0080-particles.md](0080-particles.md) — consumers; [0093-visibility-and-fog-of-war.md](0093-visibility-and-fog-of-war.md) — **the case where CPU and GPU must agree about a field**, which is what 154.5 exists for; [0097-texture-import-pipeline.md](0097-texture-import-pipeline.md) — a baked noise texture is content and travels its path; **D12** (gameplay in lockstep, so determinism is not optional), **D13** (VFS), **D21** (only a math subset is exported to consumers) ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) |
+| **Refs** | [0153-surface-detiling.md](0153-surface-detiling.md) — **its tier 1 and tier 2 depend on this and it was written before this existed**; [../completed/0091-volumetric-fog.md](../completed/0091-volumetric-fog.md), [0092-wet-surfaces.md](0092-wet-surfaces.md), [0080-particles.md](0080-particles.md) — consumers; [0093-visibility-and-fog-of-war.md](0093-visibility-and-fog-of-war.md) — **the case where CPU and GPU must agree about a field**, which is what 154.5 exists for; [0097-texture-import-pipeline.md](0097-texture-import-pipeline.md) — a baked noise texture is content and travels its path; **D12** (gameplay in lockstep, so determinism is not optional), **D13** (VFS), **D21** (only a math subset is exported to consumers) ([../../documentation/02-decision-log.md](../../documentation/02-decision-log.md)) |
 
 ## Why
 
@@ -135,3 +135,29 @@ than a caveat to write down and hope about.
 ### Measured 2026-08-06 — the gap, and what the vendored tree actually has
 
 `grep -rniE 'perlin|simplex|worley|cellular|fbm|value.?noise|FastNoise|opensimplex'` over `engine/`, `tests/`, `samples/`: **no matches**. `third_party/` contains no noise library. The only noise in DiligentEngine is a sample-local simplex implementation (Asteroids) and a private blue-noise generator for post-process dithering — recorded above with paths, so the next person does not repeat the search.
+
+### 2026-08-08 — considered for merge into T0153, and **declined**
+
+The proposal was to merge this with
+[T0153](0153-surface-detiling.md) on the grounds that de-tiling *uses* noise and
+both are Slang functions exposed to the game.
+
+**The first half is true — T0153's tier 1 is literally "multiply by low-frequency
+noise" and its tier 2 needs a per-cell hash — and the second half is only true of
+half this ticket.**
+
+**This ticket's CPU half is a different domain entirely**: deterministic,
+seedable, callable from **gameplay**, and reproducible **across targets**. Its
+consumers are procedural generation and world building — *"the one that matters
+most for a studio building several games"* — and none of it is a Slang function.
+Folding that into a surface-shading ticket would bury a gameplay-facing
+determinism API inside the material path.
+
+**And T0153 is one of five consumers**, alongside T0091's froxel volumetrics
+(now T0088.20), T0092's wet surfaces, T0080's turbulence, and T0093's
+CPU-and-GPU-must-agree case — which is what 154.5's bridge exists for. A ticket
+with five consumers is not a half of one of them.
+
+**What the review did fix**: T0153's dependency on this ticket was only a `Refs`
+mention. It is a **blocker**, and both tickets now say which primitives T0153's
+tiers 1 and 2 actually need.

@@ -1,14 +1,15 @@
-# T0088 — Sky, atmosphere and time of day
+# T0088 — The atmosphere: sky, fog, light shafts and time of day
 
 | | |
 |---|---|
 | **Status** | 🔜 TODO |
 | **Priority** | Medium |
 | **Complexity** | Complex |
-| **Phase** | 11 — World & environment |
-| **Order** | 830 |
+| **Phase** | 4 — Render layer |
+| **Order** | 466 |
 | **Created** | 2026-08-03 |
-| **Refs** | [../completed/0087-environment-lighting.md](../completed/0087-environment-lighting.md) — **this ticket inherited T0087's remainder when it closed 2026-08-08**: the visible skybox (87.2), the per-scene environment asset (87.1/87.5) and 87.8's local ambient control. T0170.5 delivered the IBL half and shipped a *procedural default* sky specifically so that a real one is the game's to supply; [0091-volumetric-fog.md](0091-volumetric-fog.md) — **evaluates against this ticket rather than beside it**: `EpipolarLightScattering` is one directional light, so sun shafts are this ticket's configuration and only point/spot beams are T0091's; [0150-compute-pipelines.md](0150-compute-pipelines.md) — gates the high-quality techniques only, see the compute note; [0094-gameplay-extensible-rendering.md](0094-gameplay-extensible-rendering.md) — **a game's own sky is a pass on that seam**, which is how D32's promise is discharged here; [0171-expose-not-replace-sweep.md](../completed/0171-expose-not-replace-sweep.md); **D32**, **D40** |
+| **Merged** | 2026-08-08 — **absorbed [T0089](../completed/../completed/0089-fog-and-atmospherics.md) (fog and atmospherics) and [T0091](../completed/../completed/0091-volumetric-fog.md) (volumetric fog and light shafts)**, both ❌ SUPERSEDED, and **moved from phase 11 to phase 4**: this is a render component, not a world system, and the misfiling was itself a symptom of the split. See *Why these were three tickets and are now one* |
+| **Refs** | [../completed/0087-environment-lighting.md](../completed/0087-environment-lighting.md) — **this ticket inherited T0087's remainder when it closed 2026-08-08**: the visible skybox (87.2), the per-scene environment asset (87.1/87.5) and 87.8's local ambient control. T0170.5 delivered the IBL half and shipped a *procedural default* sky specifically so that a real one is the game's to supply; [../completed/../completed/0089-fog-and-atmospherics.md](../completed/../completed/0089-fog-and-atmospherics.md) and [../completed/../completed/0091-volumetric-fog.md](../completed/../completed/0091-volumetric-fog.md) — **absorbed here**; [0150-compute-pipelines.md](0150-compute-pipelines.md) — gates the high-quality techniques only, see the compute note; [0094-gameplay-extensible-rendering.md](0094-gameplay-extensible-rendering.md) — **a game's own sky is a pass on that seam**, which is how D32's promise is discharged here; [0171-expose-not-replace-sweep.md](../completed/0171-expose-not-replace-sweep.md); **D32**, **D40** |
 
 ## Why
 
@@ -34,7 +35,45 @@ and integrating it into irradiance and prefiltered cubes, so the environment
 samples is not the same thing as a sky a player sees**, and T0087 closed having
 delivered only the first.
 
-### The decision this ticket must take first: sky-as-background or sky-as-source
+### Why these were three tickets and are now one
+
+**Sky, fog and volumetric fog are one subject split by *feature variant*, and two
+of the three were filed in the wrong phase.** The evidence is on the tickets
+themselves rather than in an opinion about them:
+
+- **T0089's 89.4 was "derive fog colour from the sky/sun direction (T0088)" and
+  its 89.7 was "keep parameters shared with volumetric fog (T0091), not
+  duplicated".** Two of seven subtasks existed **only to keep three tickets in
+  sync with each other** — which is the signature of one thing split into three,
+  not of three things that happen to be adjacent.
+- **T0091's sun case was never its own.** `EpipolarLightScattering::FrameAttribs`
+  takes a single `const LightAttribs*` (`EpipolarLightScattering.hpp:73`) — one
+  **directional** light — so light shafts from the sun are a configuration of the
+  component *this* ticket owns. T0091's own note said to *"evaluate it before
+  building froxel volumetrics… this is genuinely worth an afternoon"*, which is
+  an evaluation that can only be run from inside this ticket.
+- **T0088 and T0089 carried the same D32 note verbatim**, about authoring the
+  sky/fog shader against a game-implementable interface. One design constraint,
+  written twice, in two tickets, for one component.
+- **T0088, T0089 and T0091 were all phase 11, "World & environment".** They are a
+  DiligentFX render component and two things that read its output; the misfiling
+  is what let them drift apart from T0148's chain, which they belong beside.
+
+**And the split's original justification expired with D40.** These were separated
+by *implementation stage* and *feature variant* — cheap fog now, expensive fog
+later, sky separately — which is a sound way to divide work that is **ours to
+build**. The implementation is Diligent's, so the "variants" are enum values and
+settings on one component, and three tickets could only produce three partial
+designs of it.
+
+**What is genuinely a separate concern is kept separate *inside* this ticket, not
+outside it.** Froxel volumetrics for point and spot lights is a Very Complex
+subsystem that upstream does not have, whose honest likely outcome is a recorded
+decline. It is **88.20, deferred with a written trigger** — the shape T0146.7
+established for tessellation, which is the worked precedent for a large deferred
+capability living inside its natural owner rather than in a ticket of its own.
+
+## The decision this ticket must take first: sky-as-background or sky-as-source
 
 They are not the same and the engine currently does one of them. Three
 configurations, and the ticket picks deliberately rather than accreting:
@@ -94,6 +133,30 @@ changes shape rather than lapsing:
       scene-global environment. "Rejected, scenes will be lit to tolerate it" is
       an acceptable answer; silence is not
 - [ ] Cost is bounded — sky and probe updates must not spike the frame
+
+### Fog — absorbed from T0089
+- [ ] **Distance fog** with controllable colour, density and falloff — linear and
+      exponential
+- [ ] **Height fog**, so low-lying mist is possible
+- [ ] **Fog colour derives from the sky** rather than being set independently — a
+      fixed grey fog under a sunset sky looks immediately wrong, and this is now
+      a read within one ticket rather than a cross-ticket obligation
+- [ ] Fog is applied correctly relative to **transparency and to the skybox** —
+      the approach decided when the transparent queue is built (T0045), not
+      afterwards
+- [ ] Fog parameters are **scene-authored, serialized and animatable at runtime**,
+      for weather transitions (T0090)
+- [ ] **One parameter set**, shared by distance, height and any volumetric tier —
+      not three that must be kept in sync
+
+### Light shafts and volumetrics — absorbed from T0091
+- [ ] **The sun-shaft case is delivered through `EpipolarLightScattering`**, and
+      what it does *not* cover is stated in terms of what a scene actually looks
+      like — not in terms of what is theoretically missing
+- [ ] **Froxel volumetrics are dispositioned** — built, or **declined with the
+      trigger recorded**. A decline is a legitimate outcome (88.20)
+
+### And the record
 - [ ] **The matrix rows flip** — `EnvMapRenderer` (🔧) and atmospheric
       scattering (🔌) in
       [`12-vendored-capabilities.md`](../../documentation/12-vendored-capabilities.md)
@@ -122,6 +185,47 @@ changes shape rather than lapsing:
 - [ ] 88.11 Editor: scrub time of day and see it update live
 - [ ] 88.12 Profiling zones — sky and probe updates are easy to make expensive
 - [ ] 88.13 **Add the rows before building** — D40
+
+**Fog — absorbed from T0089. Cheap, high-value, and it does not wait for the
+atmosphere.**
+
+- [ ] 88.14 **Distance and height fog** in the shading path, linear and
+      exponential. The depth read it wants **already exists**:
+      `HpSceneViewDepth(In.ScreenUV)` gives view-space distance in metres from
+      the opaque pass, and `HpViewDepth` linearises any device depth without this
+      ticket knowing the projection's convention (T0147/D37)
+- [ ] 88.15 **Fog parameters as one scene-authored, serialized set** (T0078),
+      animatable at runtime for T0090's weather transitions — **shared** by every
+      tier rather than duplicated per tier
+- [ ] 88.16 **Fog colour from the sky/sun direction** — now an internal read
+- [ ] 88.17 **Correct interaction with transparents and the skybox.** Fog on
+      opaque geometry is straightforward; transparent surfaces need it applied
+      consistently or they visibly float outside the fog. **Decide when T0045's
+      transparent queue is built, not afterwards**
+- [ ] 88.18 **A frame-wide fog is a full-screen pass and belongs in T0148's
+      chain**, reading the same `scene.colour.snapshot` / `scene.depth.snapshot`
+      targets rather than declaring its own — **the two must not each copy the
+      frame**. A *per-material* fog is a blended surface today and needs nothing
+
+**Light shafts and volumetrics — absorbed from T0091.**
+
+- [ ] 88.19 **Deliver the sun-shaft case through `EpipolarLightScattering`**, and
+      then measure what is still missing with the component actually running.
+      This was T0091's 91.8 and it is now reachable
+- [ ] 88.20 **Froxel volumetrics: deferred, with a trigger.** Upstream has
+      nothing for beams from **point and spot** lights — a torch in mist, a
+      spotlight in a smoky room — and epipolar scattering cannot do them at all.
+      **The trigger is a game the studio intends to make needing a visible
+      spotlight beam badly enough to pay froxel prices**, and the answer is a
+      *decision*, not an assumption in either direction: ⬆️ genuinely ours has to
+      be argued (D40), and **a recorded decline closes this cleanly**. If it is
+      built, it is: a view-aligned froxel grid; light injection sampling shadow
+      maps (**T0086 must expose sampling without the shading pass** — its notes
+      already record this as one of three such consumers); ray integration;
+      application to opaque then transparents; **temporal reprojection with
+      jitter, which is not optional**; local density volumes; and quality tiers.
+      It is **Very Complex** and it is the only part of this ticket that is not
+      configuration
 
 ## Notes / findings
 
@@ -172,3 +276,66 @@ tracking their own notion of time.
 Do not let night go fully black. Physically it nearly does; visually it makes the
 game unplayable. A moonlight floor and raised ambient are deliberate art
 decisions, not bugs to fix.
+
+---
+
+## Absorbed from T0089 — its findings, kept verbatim
+
+*The `89.x` numbers refer to its old subtask list; the mapping is in its
+`## Descoped` table.*
+
+**From D32 (2026-08-06):** when the fog shader is built, it is authored
+against an interface a game can implement — the same default-methods shape as
+`IHpMaterial` — not as a sealed engine file. One design constraint now; the
+retrofit D27 exists to prevent, later.
+
+**Transparency plus fog is where this goes wrong.** Fog applied per-pixel on
+opaque geometry is straightforward; transparent surfaces need it applied
+consistently or they visibly float out of the fog. Decide the approach when the
+transparent queue is built (T0045), not afterwards.
+
+**Fog colour should usually follow the sky.** A fixed grey fog under a sunset sky
+looks immediately wrong. Sampling the sky in the view direction is a cheap and
+large improvement, and it is what makes T0088's time of day feel cohesive.
+
+**Volumetric fog is wanted and is now T0091** — froxel grids, light injection and
+temporal reprojection are a large enough job to be their own ticket. This one
+stays deliberately cheap: distance and height fog cost almost nothing and cover
+the common case, and they remain the fallback on lower quality settings where
+volumetrics are disabled. The two should share parameters (colour, density,
+height falloff) rather than each having their own.
+
+Fog also usefully hides LOD transitions (T0040) and the far plane, which makes it
+a performance tool as much as an aesthetic one.
+
+---
+
+## Absorbed from T0091 — its findings, kept verbatim
+
+*The `91.x` numbers refer to its old subtask list; the mapping is in its
+`## Descoped` table. These are the notes that make 88.20 buildable if its trigger
+ever fires.*
+
+**Diligent already ships `EpipolarLightScattering`**, which produces sun shafts
+specifically and is what the old `terrain_lab` used. If the sun is the only light
+that needs shafts, that may cover the visually important case at a fraction of the
+cost. **Evaluate it before building froxel volumetrics** — this is genuinely worth
+an afternoon, because the two solve overlapping problems with very different price
+tags.
+
+Froxel volumetrics earn their cost when *point and spot* lights need to produce
+beams — a torch in mist, a spotlight in a smoky room — which epipolar scattering
+does not do.
+
+**Temporal reprojection is not optional.** A froxel grid dense enough to look
+smooth without it is far too expensive. Jitter the sample position per frame and
+blend with the reprojected previous frame. The consequence is the usual temporal
+artefact set: ghosting behind moving lights, and instability on camera cuts, both
+of which need handling rather than discovering.
+
+**Resolution is the main cost lever.** Typical grids are ~160×90×64 — far below
+screen resolution, because fog is low frequency. Do not be tempted to raise it to
+fix an artefact that is actually temporal.
+
+Transparent surfaces need the fog integral evaluated at their depth, not the
+opaque depth behind them, or glass and particles sit visibly outside the fog.
