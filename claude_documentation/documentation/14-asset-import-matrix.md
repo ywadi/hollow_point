@@ -158,6 +158,14 @@ row's behaviour devicelessly.
 Predictions this table makes that one real asset can correct. **Where the asset
 disagrees, the asset wins and the table is wrong** — record the correction here.
 
+**T0167 ran (2026-08-08) and corrected nothing**: the car rendered through the
+genuine SG path (textured, specular colour responding to punctual lamps — the
+teal highlights are the cyan specular map), stood upright and un-mirrored
+through the Z-up→Y-up root rotation, loaded blend/double-sided as one item,
+and raised no required-extension warning. Item 2 (quantization) remains the
+one believed-not-verified row — `pirate.glb` cannot verify it because meshopt
+refuses at parse before quantization is ever reached.
+
 1. **Spec-gloss**, revised after T0168.2 closed it: the Aston Martin should now
    render through the genuine SG path — diffuse texture, specular colour and
    per-pixel glossiness all honoured — dark and flat only for what IBL (T0087)

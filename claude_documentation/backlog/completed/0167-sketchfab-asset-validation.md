@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
@@ -39,23 +39,23 @@ Measured by parsing the container directly, not inferred:
 
 ## Done when
 
-- [ ] A Sketchfab model renders in the editor, and the result is judged **both by eye and by number** — a screenshot alongside measurements, not one standing in for the other
-- [ ] Orientation, scale and handedness are confirmed against the source: **what the artist authored is what appears**, with the axis and units stated
-- [ ] Every defect found is either fixed, ticketed, or written down as accepted — with which of the three, and why
-- [ ] What the asset **did not** exercise is listed, because that is the next asset's brief
+- [x] A Sketchfab model renders in the editor, and the result is judged **both by eye and by number** — a screenshot alongside measurements, not one standing in for the other
+- [x] Orientation, scale and handedness are confirmed against the source: **what the artist authored is what appears**, with the axis and units stated
+- [x] Every defect found is either fixed, ticketed, or written down as accepted — with which of the three, and why
+- [x] What the asset **did not** exercise is listed, because that is the next asset's brief
 
 ## Subtasks
 
-- [ ] 167.1 **Take the asset as it comes.** No re-export, no axis fix-up, no re-bake, no hand-edited glTF. The moment it is adjusted to suit the engine it stops being the test — and "we had to fix the asset first" is itself the finding
-- [ ] 167.2 **Import and report what the loader saw**: meshes, primitives, materials, attributes present and absent (`TANGENT` especially), texture count and colour spaces, extensions, units and bounds. Much of this is already logged; what is missing is reading it deliberately
-- [ ] 167.3 **Render and look**, in the editor, from several angles, with the light moved. Capture frames. **The rock cube's black top face is unexplained and this is where a second data point comes from**
-- [ ] 167.4 **Measure, do not only look.** A gpu case that renders it offscreen and asserts something falsifiable — coverage, the magenta and checkerboard guards, luminance response to a moved light, and orientation against the source. **A screenshot alone has misled this project twice**: a magenta checkerboard was read as a working render because the summary statistics passed
-- [ ] 167.5 **Test the handedness claim explicitly.** Front is front, left is left, up is up, one unit is one unit — against the source in Blender, which is available in this session over MCP
-- [ ] 167.6 **Separate defects from absences.** A real PBR asset will look flat and dark without IBL, and that is T0087's, not a bug. So will anything expecting shadows (T0086). **Say which bucket each finding is in** — a missing system reported as a defect is how a clean engine gets "fixed" into a broken one
-- [ ] 167.7 **Decide whether the asset joins the repository**, and on what terms. **CC-BY-4.0 permits it and 82.3 MiB argues against it** — 48 MiB of that is four embedded PNGs, two of them over 16 MiB. A decimated or texture-reduced copy is a different asset and stops being this test. Whatever is decided, **the attribution travels with any copy that lands**: *Aston Martin, Francesco Coldesina, CC-BY-4.0*, with the Sketchfab URL. If it cannot be committed, the measurement still counts and the ticket says so
-- [ ] 167.8 **State plainly how far it gets without spec-gloss**, and stop there. `KHR_materials_pbrSpecularGlossiness` is in `extensionsRequired` and this engine implements metallic-roughness only, by a decision already recorded in `11-material-format.md`. Nothing in our loader stack refuses on that basis, so it will load and render **wrongly rather than not at all** — say what that looks like. **Whether to adopt it is a separate ticket** — Khronos archived the workflow, Sketchfab still exports it by the million, and that trade is not this ticket's to make. Open the ticket, do not take the decision
-- [ ] 167.9b **Decide whether the engine should warn on an unsupported required extension**, since neither `tinygltf` nor Diligent looks at the field. This is a genuinely open call rather than an obvious yes: it is not spec-mandated, and a hard refusal would reject assets that render acceptably. A **log line naming the extension** is the cheap middle, and the argument for it is that the alternative failure is silent — a material that quietly resolves to defaults, which is exactly the class D35 exists to prevent
-- [ ] 167.9 **Test `TANGENT.w` against real data.** 1,316 vertices in this file carry `w = −1` and the loader discards every one of them (Diligent's vertex path is `float3`). That is the first evidence in this project of the sign actually differing, and it is [T0166](../completed/0166-tangent-frames-and-real-assets.md).4's missing input — **report it there whichever way T0166 resolves**
+- [x] 167.1 **Take the asset as it comes.** No re-export, no axis fix-up, no re-bake, no hand-edited glTF. The moment it is adjusted to suit the engine it stops being the test — and "we had to fix the asset first" is itself the finding
+- [x] 167.2 **Import and report what the loader saw**: meshes, primitives, materials, attributes present and absent (`TANGENT` especially), texture count and colour spaces, extensions, units and bounds. Much of this is already logged; what is missing is reading it deliberately
+- [x] 167.3 **Render and look**, in the editor, from several angles, with the light moved. Capture frames. **The rock cube's black top face is unexplained and this is where a second data point comes from**
+- [x] 167.4 **Measure, do not only look.** A gpu case that renders it offscreen and asserts something falsifiable — coverage, the magenta and checkerboard guards, luminance response to a moved light, and orientation against the source. **A screenshot alone has misled this project twice**: a magenta checkerboard was read as a working render because the summary statistics passed
+- [x] 167.5 **Test the handedness claim explicitly.** Front is front, left is left, up is up, one unit is one unit — against the source in Blender, which is available in this session over MCP
+- [x] 167.6 **Separate defects from absences.** A real PBR asset will look flat and dark without IBL, and that is T0087's, not a bug. So will anything expecting shadows (T0086). **Say which bucket each finding is in** — a missing system reported as a defect is how a clean engine gets "fixed" into a broken one
+- [x] 167.7 **Decide whether the asset joins the repository**, and on what terms. **CC-BY-4.0 permits it and 82.3 MiB argues against it** — 48 MiB of that is four embedded PNGs, two of them over 16 MiB. A decimated or texture-reduced copy is a different asset and stops being this test. Whatever is decided, **the attribution travels with any copy that lands**: *Aston Martin, Francesco Coldesina, CC-BY-4.0*, with the Sketchfab URL. If it cannot be committed, the measurement still counts and the ticket says so
+- [x] 167.8 **State plainly how far it gets without spec-gloss**, and stop there. `KHR_materials_pbrSpecularGlossiness` is in `extensionsRequired` and this engine implements metallic-roughness only, by a decision already recorded in `11-material-format.md`. Nothing in our loader stack refuses on that basis, so it will load and render **wrongly rather than not at all** — say what that looks like. **Whether to adopt it is a separate ticket** — Khronos archived the workflow, Sketchfab still exports it by the million, and that trade is not this ticket's to make. Open the ticket, do not take the decision
+- [x] 167.9b **Decide whether the engine should warn on an unsupported required extension**, since neither `tinygltf` nor Diligent looks at the field. This is a genuinely open call rather than an obvious yes: it is not spec-mandated, and a hard refusal would reject assets that render acceptably. A **log line naming the extension** is the cheap middle, and the argument for it is that the alternative failure is silent — a material that quietly resolves to defaults, which is exactly the class D35 exists to prevent
+- [x] 167.9 **Test `TANGENT.w` against real data.** 1,316 vertices in this file carry `w = −1` and the loader discards every one of them (Diligent's vertex path is `float3`). That is the first evidence in this project of the sign actually differing, and it is [T0166](../completed/0166-tangent-frames-and-real-assets.md).4's missing input — **report it there whichever way T0166 resolves**
 
 ## Not in scope
 
@@ -73,6 +73,53 @@ Measured by parsing the container directly, not inferred:
 - **167.9b is decided and built** (T0168.6): the import warns, once per model, naming each required extension outside the supported list — via a pre-parse of the raw JSON chunk, *because* a file that fails tinygltf's validation never reaches the loader callbacks (measured on `pirate.glb`). The car requires only spec-gloss, which is supported, so **the expected observation is no warning at all**.
 - **167.9 (`TANGENT.w`) is resolved as a recorded decline** (T0168.4, matrix row): the vertex path stays `float3`, and handedness is read per fragment from the UV determinant, where the corrected frame (T0168.5) needs it anyway. The car's 1,316 `w = −1` vertices are therefore expected to render **correctly without the attribute** — mirrored shells follow the chart through `HpTangentFrameGrad`, pinned by the two-shell lit case. If the car's mirrored UVs shade wrong anyway, that is a real finding *against* the derivative-frame decision and belongs here.
 - The normal map's green channel is now applied per glTF's convention (green up). Sketchfab exports GL-convention maps, so the car's normal map should read correctly; inverted-looking relief would again be a finding, not a tuning knob.
+
+### Closed 2026-08-08 — rendered, measured, and looked at
+
+**The frames the owner judges by** sit at **`test-frames/aston/`** in the repo root (gitignored — the directory is a viewing surface, not content): `front_quarter`, `side`, `rear_quarter`, `top_front`, `front_quarter_relit` (the same pose with the key swung ~137°), plus `texture_0…3.png`, thumbnails of the four embedded maps. The rock cube's are under `test-frames/rockcube/`. Produced by `tests/gpu/aston_martin_test.cpp` — permanent, env-gated on `HP_ASTON_GLB` (skips everywhere the file is absent, CI included), every asserted frame behind the magenta guard, on the RTX 2080.
+
+**What the render is**: the engine's own viewport path (`SceneView`, the renderer the editor's viewport presents), offscreen at 1024². The editor itself cannot display an arbitrary model without a project system (T0024) — a bounded 8 s editor run (timeout-killed, per the GUI rule) confirmed the rockcube sample loads and renders and that the T0169 production pass degrades loudly-and-harmlessly in an app with no VFS write directory (warnings, no files, repo untouched).
+
+**Import (167.2)**: 31 meshes / 1 material / 33 nodes, matching the container analysis. **No required-extension warning fired** — spec-gloss is end-to-end since T0168.2, and the case asserts the silence (167.9b's decision, observed on the real asset).
+
+**The numbers beside the frames (167.4)**, final framing (camera 320 units up, pitched −0.16, car at 600):
+
+| frame | coverage | magenta | mean luma | spread |
+|---|---|---|---|---|
+| front_quarter | 40.5% | 0 | 11.7 | 31.7 |
+| side | 42.9% | 0 | 14.0 | 25.9 |
+| rear_quarter | 40.6% | 0 | 10.2 | 22.4 |
+| top_front | 39.9% | 0 | 12.7 | 26.8 |
+| front_quarter_relit | 40.5% | 0 | 14.6 | 31.4 |
+
+Key swung ~137°: mean luma 11.7 → 14.6 (ratio 1.25 at this framing; 1.77 at the earlier closer framing) — the surface answers the light; a painting would not.
+
+**Orientation, scale, handedness (167.5)** — observed, which is what D33's amendment was argued from and never had:
+
+- **Upright, wheels down, un-mirrored**: windshield up, seats forward, steering wheel left (LHD), the door flames licking forward on both our frames and the owner-supplied Sketchfab reference image. The chain composed the file's own Z-up→Y-up root rotation (det +1 — a rotation, not a mirror; no negative scale anywhere in the file) correctly.
+- **Blender comparison not performed**: the MCP action was denied by the session's permission layer — recorded rather than worked around. The claim rests on the file's own math plus the owner-supplied reference image, which is the authored appearance by definition.
+- **Units, stated**: the content spans **1014 × 426 × 270 units** (ground at −10). Read as glTF's mandated metres that is a 10.1 m car — a real DBS Volante is 4.72 m — so the asset is authored at roughly **2.15× life size** (Sketchfab's auto-framing viewer hides this). Taken as it comes (167.1): no rescale. **A lesson the harness paid for**: the default lens (far plane 1000) clipped the whole car at framing distance, and the first capture pass shipped five frames of pure background that *passed a coverage check* — because the coverage metric compared against the linear clear colour while the readback is display-encoded. The clear reference is **measured from an empty frame** now, and the file's comment carries the incident.
+
+**Why the car is darker than Sketchfab's preview (167.6, the owner's question) — measured, and it is an authored split plus an absence, not a defect**:
+
+- `texture_0` (diffuse): the body paint is authored **dark navy-black** — the tan is seats, the red is door cards.
+- `texture_1` (specular): the body paint is **bright cyan** — with `specularFactor` 0.796 grey and `glossinessFactor` 0.85, the paint's colour is authored to live in *reflection*.
+- Under correct spec-gloss shading, `DiffuseColor = diffuse × (1 − maxSpec)` shrinks the already-dark diffuse further, and f0 = the cyan map — so with **no environment to reflect (T0087)** the paint reads near-black, and the teal appears exactly where the two punctual lamps raise a lobe: the rims in `front_quarter_relit`, the wheel-arch in `side`. **The specular-colour path is demonstrably working.** Under IBL this car lights up like the reference.
+- The defect this *would have been* — the shader misreading the SG texture as metallic-roughness — was real until T0168.2 closed it, with the synthetic case that fails on the old code. A suspicion that the old mechanism was still live was checked against the tests and the material JSON rather than inherited.
+
+**The rock cube (167.3's second data point)** — looked at for the first time since T0166's frame fix:
+
+- **The top face is no longer black.** It is textured and lit in the committed scene's own pose (`test-frames/rockcube/rockcube_sample.png`). The old "black top face" symptom did not survive the T0166 frame correction plus the green-channel fix.
+- **The speckle on it remains, and is now diagnosed**: scattered black dots only on faces at **grazing view incidence**. Measured to be the **view march**, not the self-shadow — a local `kShadowStrength = 0` rebuild renders the identical speckle (`rockcube_sample_noshadow.png`; the edit was reverted). Mechanism: the POM offset grows as `1/viewTS.z`, the marched UV overshoots the chart, REPEAT wrap samples foreign texels, dark grout lands as dots. The shadow march has a window cap (`rock_pom.slang:218`); the view march has only the `1e-4` horizon guard. **T0158 owns the mitigation** (fade or clamp by `viewTS.z` — the standard POM treatments); the diagnosis is on its ticket, per the stop order nothing was tuned here.
+- The relief marches correctly in the frame — the masonry reads carved, not embossed; the step-edge direction is pinned by `tangent_frame_test` from first principles.
+
+**167.7 — the repository decision: recommendation recorded, the call is the owner's.** Recommend **not** committing the 82.3 MiB `.glb`: the env-gated tests keep every measurement reproducible against the owner's copy, CI never needs the file, and a decimated derivative would stop being this test. If it ever joins the tree, CC-BY-4.0 requires the attribution that already travels in the test header and this ticket (*Aston Martin*, Francesco Coldesina / topfrank2013, https://sketchfab.com/3d-models/aston-martin-1633d1972aa84b7891dc50cd6e83cd18).
+
+**167.9 — `TANGENT.w` on real data**: the 1,316 `w = −1` vertices render without visible seam artifacts on the car's symmetric panels under the derivative-built frame (T0168.4's decline holds on its first production asset). The controlled oracle remains the two-shell case; a production asset cannot assert per-shell.
+
+**What the asset did not exercise — the next asset's brief**: vertex colours, a second UV set, skinning/joints, animations, morph targets, quantization (`KHR_mesh_quantization` — still the matrix's one believed-not-verified row; `pirate.glb` cannot verify it because meshopt refuses at parse), any `KHR_materials_*` family beyond spec-gloss, multi-scene files, in-file cameras/lights, Draco (covered by the synthetic case only), non-triangle primitive modes, sparse accessors.
+
+**Corrections T0167 made to the matrix (168.8's rule: the asset wins)**: none — every prediction held (SG-native textured render, upright composition, no warning, blend/double-sided load). The quantization row stays unverified and says so.
 
 ## Notes / findings (measured)
 

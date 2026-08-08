@@ -134,6 +134,10 @@ practice and is not wasted work when tessellation later lands above it.
 
 ## Notes / findings
 
+### Handed by T0167 (2026-08-08): the rock cube's top-face speckle is the view march at grazing incidence, measured
+
+The long-unexplained "black top face" is **half gone and half diagnosed**. The face itself is no longer black — it is textured and lit in the committed scene's own pose since T0166's frame correction and T0168.5's green-channel fix (`test-frames/rockcube/rockcube_sample.png`). What remains is scattered black **speckle**, only on faces at grazing view incidence, and it is **not the self-shadow**: a local `kShadowStrength = 0` rebuild renders the identical dots (`rockcube_sample_noshadow.png`; edit reverted). Mechanism: the **view march's** offset grows as `1/viewTS.z`, the marched UV overshoots the chart at grazing, REPEAT wrap samples foreign texels, and dark grout texels land as dots. The shadow march already bounds its window (`rock_pom.slang:218`, the cap comment); the view march has only the `1e-4` horizon guard, which is orders of magnitude short of these angles. The standard mitigations — fade the effect by `viewTS.z`, or clamp the total UV offset the way the shadow march clamps its window — are exactly this ticket's tuning remainder. Nothing was tuned in T0167's session; the diagnosis is the hand-off.
+
 ### 158.1 landed as **game content**, not an engine change — and the engine change was reverted
 
 The reference plane was first built into the engine: a `Material::heightReferencePlane`
