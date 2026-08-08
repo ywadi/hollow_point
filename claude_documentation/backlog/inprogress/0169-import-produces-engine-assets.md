@@ -2,14 +2,14 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Complex |
 | **Phase** | 7 — Content pipeline |
 | **Order** | 460 |
 | **Created** | 2026-08-08 |
 | **Blocked by** | nothing |
-| **Refs** | [../completed/0168-asset-import-coverage.md](../completed/0168-asset-import-coverage.md) — **the sibling and the prerequisite in practice**: it decides *which features survive the loader*, this decides *what an import produces on disk*, and a feature that does not survive cannot be written out; [0167-sketchfab-asset-validation.md](0167-sketchfab-asset-validation.md) — the asset that made this concrete, whose single material is unreachable today; [../completed/0023-asset-manager.md](../completed/0023-asset-manager.md) — the GUID and `.hpmeta` identity this extends, and **which already names sub-asset GUIDs as an open gap**; [0024-project-manager.md](0024-project-manager.md) — a scene cannot reference an asset by path, which is why hand-written `.hpmeta` files exist at all; [0036-assets-panel.md](0036-assets-panel.md) — the editor surface that would show and re-import these; [0097-texture-import-pipeline.md](0097-texture-import-pipeline.md) — **owns the texture half**, and its settings are per-import settings by another name; [0038-fbx-to-gltf-converter.md](0038-fbx-to-gltf-converter.md) — a converter's output lands here; [0043-export-pipeline.md](0043-export-pipeline.md) — what ships must be derivable from what was imported; [../../documentation/11-material-format.md](../../documentation/11-material-format.md) — the `.hpmat` schema this would finally write; **D13**, **D23**, **D35** |
+| **Refs** | [../completed/0168-asset-import-coverage.md](../completed/0168-asset-import-coverage.md) — **the sibling and the prerequisite in practice**: it decides *which features survive the loader*, this decides *what an import produces on disk*, and a feature that does not survive cannot be written out; [../open/0167-sketchfab-asset-validation.md](../open/0167-sketchfab-asset-validation.md) — the asset that made this concrete, whose single material is unreachable today; [../completed/0023-asset-manager.md](../completed/0023-asset-manager.md) — the GUID and `.hpmeta` identity this extends, and **which already names sub-asset GUIDs as an open gap**; [0024-project-manager.md](../open/0024-project-manager.md) — a scene cannot reference an asset by path, which is why hand-written `.hpmeta` files exist at all; [0036-assets-panel.md](../open/0036-assets-panel.md) — the editor surface that would show and re-import these; [0097-texture-import-pipeline.md](../open/0097-texture-import-pipeline.md) — **owns the texture half**, and its settings are per-import settings by another name; [0038-fbx-to-gltf-converter.md](../open/0038-fbx-to-gltf-converter.md) — a converter's output lands here; [0043-export-pipeline.md](../open/0043-export-pipeline.md) — what ships must be derivable from what was imported; [../../documentation/11-material-format.md](../../documentation/11-material-format.md) — the `.hpmat` schema this would finally write; **D13**, **D23**, **D35** |
 
 ## Why
 
@@ -45,7 +45,7 @@ Every row is a decision, and **"we did not think about it" must not be reachable
 | node hierarchy / scene | flattened at draw | does an import produce a `.hpscene` fragment or a prefab? **Not yet designed** |
 | camera | `hp::Camera` exists | imported or ignored — decide, do not drift |
 | `KHR_lights_punctual` | `hp::Light` exists | same |
-| animation | nothing | ozz-animation is vendored ([T0041](0041-ozz-animation.md)/[T0049](0049-animation-runtime.md)) — a row, not a build |
+| animation | nothing | ozz-animation is vendored ([T0041](../open/0041-ozz-animation.md)/[T0049](../open/0049-animation-runtime.md)) — a row, not a build |
 | skin / joints | vertex attributes exist in the loader's defaults | same |
 | morph targets | nothing | 07-design-gaps already names these |
 
@@ -57,17 +57,17 @@ Every row is a decision, and **"we did not think about it" must not be reachable
 - [ ] 169.2 **Materials first, end to end.** `writeMaterial` exists, `.hpmat` has a schema, `.hpmeta` has GUIDs — this is joining three things that are already built, and it is the subtask that proves the design. **Do it before generalising**
 - [ ] 169.3 **Re-import and override.** The behaviour that separates an import pipeline from a one-shot converter. State the conflict policy explicitly — source wins, override wins, or three-way — and **prove an override survives a re-import with a test**
 - [ ] 169.4 **Walk the table above and give every row a decision**, including the ones whose decision is "not yet, and here is the ticket". A row left blank is the failure mode D35 exists to prevent
-- [ ] 169.5 **The editor surface** — what an import shows, what its settings look like, and where re-import is triggered. Coordinate with [T0036](0036-assets-panel.md) rather than inventing a second panel
-- [ ] 169.6 **Textures**: embedded images have no file of their own, so an import must extract them or address them in place. **This is [T0097](0097-texture-import-pipeline.md)'s territory and must be settled with it, not around it** — the Aston Martin carries 48 MiB of embedded PNGs, so "extract everything" is not free
+- [ ] 169.5 **The editor surface** — what an import shows, what its settings look like, and where re-import is triggered. Coordinate with [T0036](../open/0036-assets-panel.md) rather than inventing a second panel
+- [ ] 169.6 **Textures**: embedded images have no file of their own, so an import must extract them or address them in place. **This is [T0097](../open/0097-texture-import-pipeline.md)'s territory and must be settled with it, not around it** — the Aston Martin carries 48 MiB of embedded PNGs, so "extract everything" is not free
 - [ ] 169.7 **Prove it on the asset that motivated it.** The car's material becomes a `.hpmat` with a GUID, a scene references it, and a parameter changed in the file changes the render
 - [ ] 169.8 **Say what an import must never do.** It must not silently drop a type, must not renumber identities, and must not require the source file at run time (D13: everything is addressed through the VFS, and a shipped game has no `.glb` to reach back into)
 
 ## Not in scope
 
-- **FBX, OBJ, USD.** [T0038](0038-fbx-to-gltf-converter.md) converts *to* glTF; this ticket starts where a glTF exists. Deliberate, and it is what keeps the mapping table finite (**D13**: one mesh format).
+- **FBX, OBJ, USD.** [T0038](../open/0038-fbx-to-gltf-converter.md) converts *to* glTF; this ticket starts where a glTF exists. Deliberate, and it is what keeps the mapping table finite (**D13**: one mesh format).
 - **Which glTF features survive the loader.** [T0168](../completed/0168-asset-import-coverage.md)'s question. This ticket assumes a feature arrives and asks what becomes of it; where T0168 says a feature does not arrive, the row here reads "blocked on T0168" rather than being solved twice.
-- **An animation system.** 169.4 gives animation and skinning a row and a ticket. Building either is [T0041](0041-ozz-animation.md)/[T0049](0049-animation-runtime.md)'s.
-- **The cooked/shipped form.** [T0043](0043-export-pipeline.md) owns export. What this ticket owes it is that the shipped form is *derivable* — 169.8's last clause.
+- **An animation system.** 169.4 gives animation and skinning a row and a ticket. Building either is [T0041](../open/0041-ozz-animation.md)/[T0049](../open/0049-animation-runtime.md)'s.
+- **The cooked/shipped form.** [T0043](../open/0043-export-pipeline.md) owns export. What this ticket owes it is that the shipped form is *derivable* — 169.8's last clause.
 
 ## Notes / findings
 
