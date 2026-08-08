@@ -40,7 +40,7 @@ owning ticket.
 | Per-channel hooks (`baseColor`, `occlusion`, …) | **Y** | — |
 | Whole-output hook (`surface`) | **Y** | — |
 | Per-tap sampling seam | **–** | T0153.1 |
-| Tangent frame (`HpTangentFrame`) | **–** — a game rebuilds it by hand. T0166.2 fixed the *engine's* construction (DiligentFX's signed-determinant solve, proven by `tangent_frame_test`'s mirrored shell) and left the duplication: `rock_pom.slang` still carries its own copy, which had to be corrected in two places at once | **T0168** |
+| Tangent frame (`HpTangentFrame`) | **Y** — `HpTangentFrame` / `HpTangentFrameGrad` (2026-08-08, T0168.5): the signed-determinant solve as an engine function, shared by parallax, the engine's own normal mapping and game modules; `rock_pom.slang`'s copy became a call. The same landing corrected the normal map's bitangent to follow the chart (the 0-vs-130.2 mirrored shell) and its green channel to glTF's green-up — both pinned by `tangent_frame_test`'s lit case | — |
 | Cross-hook state | **Y** — hooks are `[mutating]`, members zero-initialised (2026-08-06, T0159) | — |
 | Game-declared parameters | **Y** — `cbuffer HpMaterialParams` with author-named fields, valued by `.hpmat`, hinted by `[HpRange]`/`[HpColor]`/`[HpTooltip]` (2026-08-06, T0160). float/2/3/4, int, bool; 256 bytes | — |
 | Game-declared textures | **Y** — author-named `Texture2DArray` globals at any count, reflected into a per-module resource signature and bound by `.hpmat` under the author's names (2026-08-07, T0161, D35). Cost measured before commitment: 34 ns/draw (161.1). **The one deliberate limit is sampler *state***: modules sample through the engine's six-name immutable palette (`HpSamplerLinearWrap` …), and a module's own `SamplerState` is refused by name. `HpTexture0`…`3` remain as deprecated declarations | — |
@@ -116,20 +116,35 @@ thing the audit produced:
   frame measures 0 there too (T0166 swept 25 yaws: best 3 pixels; 90 once the
   key is yawed 0.6 rad off the axis).
 
-  **The gap that remains is the duplication, not the sign.** A game shader still
-  rebuilds this by hand, and `rock_pom.slang` still carries a copy of the
-  engine's construction that had to be corrected in two places at once. The row
-  is **`HpTangentFrame(worldPos, uv, N, out T, out B)`** as an engine function:
-  one implementation, and `rock_pom.slang`'s copy becomes a call.
+  **Landed 2026-08-08 (T0168.5): `HpTangentFrame(worldPos, uv, N, out T, out B)`
+  and `HpTangentFrameGrad(dPdx, dPdy, dUVdx, dUVdy, N, out T, out B)` are
+  engine functions in the shader contract** — one construction, shared by
+  parallax (`HpParallaxUv`), by the engine's own normal mapping and by game
+  modules; `rock_pom.slang`'s copy became a call the same day. The magnitudes
+  keep the chart's anisotropy (parallax needs the ratio); normalise per axis
+  for unit vectors. `B` runs along **+v**, down a glTF chart's image — the
+  green channel note below is that sign spent.
 
-  **Owner: T0168**, which also owns the two things next to it — the normal
-  map's bitangent on a mirrored shell (measured wrong: the same tangent-space
-  normal shades the two shells of `tangent_frame_test`'s asset 0 against 130.2)
-  and `Tangent.w`, which cannot carry the handedness because
-  `PBR_Renderer.cpp:1660` generates the vertex struct from a `constexpr`
-  three-component tangent. All three are the same question — *what does the
-  engine know about the tangent frame that it will not say* — and splitting them
-  across tickets is how the first one got missed.
+  The other two things this row owned closed with it:
+
+  - **The normal map's bitangent follows the chart now.** The engine stopped
+    calling upstream's `PerturbNormal` — `b = cross(t, n)` is a fixed
+    chirality, which shaded a mirrored shell's `v` response backwards (0
+    against 130.2) — and applies the map in `shadingNormal` through
+    `HpTangentFrameGrad`. **Green is up, per the glTF spec**, which upstream's
+    construction also got backwards (its `b` points down-image on a plain
+    chart, the DirectX convention); both directions and the mirror are pinned
+    by `tangent_frame_test.cpp`'s lit case against point lights at plain world
+    positions — no quaternion anywhere in the control chain. Measured after:
+    the mirrored pair reads 227.7/172.3 against 172.1/227.5 by symmetry, and
+    the `u` rows stay opposite (195/0, 0/195).
+  - **`Tangent.w` is declined, as a recorded decision** (T0168.4,
+    `14-asset-import-matrix.md` has the row): widening it needs an upstream
+    patch at `PBR_Renderer.cpp:1660`, and the engine reads the same fact from
+    the UV determinant per fragment — where the frame construction needs it
+    anyway. A game shader that wants per-vertex handedness where derivatives
+    do not exist reopens the row via an upstream PR mirroring the colour
+    attribute's component-count pattern three lines above that constexpr.
 - ~~The undisplaced UV0~~ — **landed 2026-08-06** as
   `HpSurfaceInput::UV0Base` (T0159.3).
 - **Camera matrices, viewport size, mip bias, the previous camera.** All written

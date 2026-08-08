@@ -4,7 +4,7 @@
 
 **Exported from an implementation file.** `engine/shaders/HpSurface.slang` is the engine's own shader and is *not* contract — nothing else in it may be relied on. The functions below are marked `hp-shader-doc: export` because a game's module calls them: they are the engine's own defaults and primitives, and they live there because they read the frame's constant buffers, which are declared after the contract file is included.
 
-9 declaration(s), 0 member(s), all documented.
+11 declaration(s), 0 member(s), all documented.
 
 ## `HpSceneColour`
 
@@ -70,6 +70,74 @@ The scene's linear depth at a screen coordinate, in metres.
 
 @param screenUv normalised target coordinates.
 @returns view-space distance to whatever the opaque pass left there.
+
+## `HpTangentFrameGrad`
+
+```hlsl
+bool HpTangentFrameGrad(float3 dPdx, float3 dPdy, float2 dUVdx, float2 dUVdy, float3 N, out float3 T, out float3 B);
+```
+
+The fragment's tangent frame, solved from explicit derivatives (T0168.5).
+
+**The one construction in this engine**, used by parallax (`HpParallaxUv`),
+by normal mapping (`shadingNormal`) and available to game modules — so the
+three provably agree about the same pixel's frame instead of agreeing by
+inspection, which is how the frame was wrong in two places at once before
+this existed (T0166).
+
+It is the honest solution of `dP = T·du + B·dv` for `T` and `B`:
+
+    T · det = dUVdy.y · dPdx − dUVdx.y · dPdy
+    B · det = dUVdx.x · dPdy − dUVdy.x · dPdx
+
+with the **signed** determinant folded into a shared normalisation, so the
+chart's own chirality is carried rather than inferred: on a **mirrored UV
+shell** `T` genuinely flips, `B` genuinely does not, and there is no cross
+product anywhere to smuggle a fixed handedness in. That is the defect this
+replaced twice over — Schüler's cotangent frame normalised positive came
+back rotated 180° on *every* asset (T0166.2, the parallax half), and
+DiligentFX's `b = cross(t, n)` holds a fixed chirality against the chart,
+so the same tangent-space normal shaded a mirrored shell's `v` response
+backwards, measured 0 against 130.2 (the normal-map half, closed with this
+function).
+
+The magnitudes keep the chart's anisotropy — `|dP/du| : |dP/dv|` survives,
+which a parallax march's offset depends on. Normalise per axis if unit
+axes are wanted. `B` points along **+v**, which on a glTF chart runs *down*
+the image; a tangent-space normal in glTF's own convention (green = up)
+tilts along **−B** — `shadingNormal` documents that sign where it spends it.
+
+@param dPdx world-position derivative along screen x.
+@param dPdy world-position derivative along screen y.
+@param dUVdx UV derivative along screen x.
+@param dUVdy UV derivative along screen y.
+@param N the unit surface normal; `T` and `B` are confined to its plane.
+@param T receives the tangent, along `+u`.
+@param B receives the bitangent, along `+v`.
+@returns false when the parameterisation is degenerate — `T` and `B` are
+         zero and there is no frame; flat is the stable answer.
+
+## `HpTangentFrame`
+
+```hlsl
+bool HpTangentFrame(float3 worldPos, float2 uv, float3 N, out float3 T, out float3 B);
+```
+
+`HpTangentFrameGrad` over this fragment's own screen-space derivatives —
+the form a material module wants: no vertex tangents required, so it works
+on any mesh that has texture coordinates at all.
+
+Under parallax, pass the **undisplaced** coordinate (`In.UV0Base`): the
+marched UV's derivatives are discontinuous at layer boundaries and the
+frame built from them shimmers (T0158's measurement, T0159.3's field).
+
+@param worldPos the fragment's world position (`In.WorldPos`).
+@param uv the coordinate whose chart the frame should follow.
+@param N the unit surface normal.
+@param T receives the tangent, along `+u`.
+@param B receives the bitangent, along `+v` — down the image on a glTF
+       chart; see `HpTangentFrameGrad` for the green-channel consequence.
+@returns false when the chart is degenerate.
 
 ## `HpLightCount`
 

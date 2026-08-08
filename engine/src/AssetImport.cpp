@@ -20,6 +20,8 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdint>
+#include <cstring>
 #include <string>
 
 #include <GLTFLoader.hpp>
@@ -28,13 +30,16 @@
 #include <Texture.h>
 #include <TextureLoader.h>
 
-// Declarations only -- `TINYGLTF_IMPLEMENTATION` lives in Diligent's
-// GLTFDocument.cpp, and without it this header needs nothing beyond the
-// standard library. Included because the loader's callbacks hand the parsed
-// source model back as `const void*`, and `extensionsRequired` -- the one
-// field read here (T0168.6) -- exists nowhere else: `GLTF::Model::Extensions`
-// mirrors `extensionsUsed`, which is the wrong field.
-#include <tiny_gltf.h>
+// nlohmann, through Diligent's own vendored interface target (Diligent-JSON,
+// which also fixes JSON_DIAGNOSTICS to match every other inclusion in the
+// process -- its CMake warns that an inconsistent define is a run-time crash).
+// Used for exactly one read: `extensionsRequired` (T0168.6), which nothing
+// else in the stack surfaces -- `GLTF::Model::Extensions` mirrors
+// `extensionsUsed`, the wrong field, and the loader's callbacks never run at
+// all when tinygltf refuses the document, which is precisely when the field
+// matters most (measured on `pirate.glb`: a meshopt-compressed file dies on a
+// byteLength check before any callback fires).
+#include <json.hpp>
 
 namespace hp {
 namespace {
@@ -104,6 +109,83 @@ constexpr std::array<std::string_view, 11> kEndToEndExtensions{
     "KHR_materials_volume",
     "KHR_materials_ior",
 };
+
+/// The document's JSON, whether the container is binary or text.
+///
+/// A GLB is a 12-byte header (`glTF`, version, length) and chunks, the first
+/// of which must be `JSON`; anything that does not start with the magic is
+/// taken to be a `.gltf`, which *is* the JSON. Returns empty on a malformed
+/// container rather than guessing -- the caller treats empty as "nothing to
+/// warn about" and leaves the real diagnosis to the loader.
+std::string_view gltfJsonOf(const std::vector<std::byte>& bytes) {
+    constexpr std::uint32_t kGlbMagic = 0x46546C67U; // 'glTF'
+    constexpr std::uint32_t kJsonChunk = 0x4E4F534AU; // 'JSON'
+    const auto* data = bytes.data();
+    if (bytes.size() < 4 || std::memcmp(data, &kGlbMagic, 4) != 0) {
+        return {reinterpret_cast<const char*>(data), bytes.size()};
+    }
+    if (bytes.size() < 20) {
+        return {};
+    }
+    std::uint32_t chunkLength = 0;
+    std::uint32_t chunkType = 0;
+    std::memcpy(&chunkLength, data + 12, 4);
+    std::memcpy(&chunkType, data + 16, 4);
+    if (chunkType != kJsonChunk || chunkLength > bytes.size() - 20) {
+        return {};
+    }
+    return {reinterpret_cast<const char*>(data) + 20, chunkLength};
+}
+
+/// **The one read of `extensionsRequired` in the whole stack** (T0168.6).
+///
+/// Neither tinygltf nor Diligent consults the field -- verified, and not a
+/// spec violation: the glTF spec puts its MUSTs on the asset, never on the
+/// client. But the alternative to reading it is a material that quietly
+/// resolves to defaults, which is exactly D35's silent-failure class, so the
+/// import names the gap once, out loud, and carries on. A hard refusal was
+/// considered and rejected on T0167.9b's argument: it would reject assets
+/// that render acceptably.
+///
+/// Deliberately a **pre-parse of the raw document**, not a loader callback.
+/// The first cut used `ModelCreateInfo::NodeLoadCallback`, and `pirate.glb`
+/// showed why that is the wrong place: a compressed file fails tinygltf's
+/// byteLength validation before any callback runs, so the warning went
+/// missing on exactly the file class -- meshopt- and draco-compressed
+/// downloads -- it exists for. Best effort throughout: a malformed document
+/// warns about nothing here and fails properly in the loader.
+void warnOnUnsupportedRequiredExtensions(const std::string& path,
+                                         const std::vector<std::byte>& bytes) {
+    const std::string_view json = gltfJsonOf(bytes);
+    if (json.empty()) {
+        return;
+    }
+    const nlohmann::json document =
+        nlohmann::json::parse(json.begin(), json.end(), /*cb=*/nullptr,
+                              /*allow_exceptions=*/false);
+    if (document.is_discarded() || !document.is_object()) {
+        return;
+    }
+    const auto required = document.find("extensionsRequired");
+    if (required == document.end() || !required->is_array()) {
+        return;
+    }
+    for (const auto& entry : *required) {
+        if (!entry.is_string()) {
+            continue;
+        }
+        const auto name = entry.get<std::string>();
+        const bool supported = std::find(kEndToEndExtensions.begin(), kEndToEndExtensions.end(),
+                                         name) != kEndToEndExtensions.end();
+        if (!supported) {
+            HP_LOG_WARN(kLog,
+                        "'{}' requires the glTF extension '{}', which this engine does not "
+                        "support end to end; whatever the extension carries will be missing or "
+                        "wrong (14-asset-import-matrix.md has the row)",
+                        path, name);
+        }
+    }
+}
 
 } // namespace
 
@@ -425,40 +507,14 @@ std::shared_ptr<MeshAsset> loadMesh(Diligent::IRenderDevice* device,
         return true;
     };
 
-    // **The one read of `extensionsRequired` in the whole stack** (T0168.6).
-    // Neither tinygltf nor Diligent consults the field -- verified, and not a
-    // spec violation: the glTF spec puts its MUSTs on the asset, never on the
-    // client. But the alternative to reading it is a material that quietly
-    // resolves to defaults, which is exactly D35's silent-failure class, so
-    // the import names the gap once, out loud, and carries on. A hard refusal
-    // was considered and rejected on T0167.9b's argument: it would reject
-    // assets that render acceptably.
-    //
-    // The node callback is the earliest per-model hook that receives the
-    // parsed source document; the mutable flag keeps it to one pass per
-    // import.
-    createInfo.NodeLoadCallback = [path, warned = false](const void* srcModel, int /*srcNodeIndex*/,
-                                                         const void* /*srcNode*/,
-                                                         Diligent::GLTF::Node& /*node*/) mutable {
-        if (warned || srcModel == nullptr) {
-            return;
-        }
-        warned = true;
-        const auto* gltf = static_cast<const tinygltf::Model*>(srcModel);
-        for (const std::string& required : gltf->extensionsRequired) {
-            const bool supported =
-                std::find(kEndToEndExtensions.begin(), kEndToEndExtensions.end(), required) !=
-                kEndToEndExtensions.end();
-            if (!supported) {
-                HP_LOG_WARN(kLog,
-                            "'{}' requires the glTF extension '{}', which this engine does not "
-                            "support end to end; the model will load, but whatever the extension "
-                            "carries will be missing or wrong (14-asset-import-matrix.md has the "
-                            "row)",
-                            path, required);
-            }
-        }
-    };
+    // The required-extension pre-check (T0168.6): read once through the VFS,
+    // warn, discard. An extra read of a file the loader is about to read again
+    // through the same callbacks -- accepted, because import is a cold editor
+    // path and the alternative was a loader callback that never runs when the
+    // parse fails, which is when the warning matters most.
+    if (const auto bytes = Vfs::read(path)) {
+        warnOnUnsupportedRequiredExtensions(path, *bytes);
+    }
 
     auto asset = std::make_shared<MeshAsset>();
     try {

@@ -378,6 +378,98 @@ float HpSceneViewDepth(float2 screenUv)
     return HpViewDepth(HpSceneDepth(screenUv));
 }
 
+// hp-shader-doc: export
+/// The fragment's tangent frame, solved from explicit derivatives (T0168.5).
+///
+/// **The one construction in this engine**, used by parallax (`HpParallaxUv`),
+/// by normal mapping (`shadingNormal`) and available to game modules — so the
+/// three provably agree about the same pixel's frame instead of agreeing by
+/// inspection, which is how the frame was wrong in two places at once before
+/// this existed (T0166).
+///
+/// It is the honest solution of `dP = T·du + B·dv` for `T` and `B`:
+///
+///     T · det = dUVdy.y · dPdx − dUVdx.y · dPdy
+///     B · det = dUVdx.x · dPdy − dUVdy.x · dPdx
+///
+/// with the **signed** determinant folded into a shared normalisation, so the
+/// chart's own chirality is carried rather than inferred: on a **mirrored UV
+/// shell** `T` genuinely flips, `B` genuinely does not, and there is no cross
+/// product anywhere to smuggle a fixed handedness in. That is the defect this
+/// replaced twice over — Schüler's cotangent frame normalised positive came
+/// back rotated 180° on *every* asset (T0166.2, the parallax half), and
+/// DiligentFX's `b = cross(t, n)` holds a fixed chirality against the chart,
+/// so the same tangent-space normal shaded a mirrored shell's `v` response
+/// backwards, measured 0 against 130.2 (the normal-map half, closed with this
+/// function).
+///
+/// The magnitudes keep the chart's anisotropy — `|dP/du| : |dP/dv|` survives,
+/// which a parallax march's offset depends on. Normalise per axis if unit
+/// axes are wanted. `B` points along **+v**, which on a glTF chart runs *down*
+/// the image; a tangent-space normal in glTF's own convention (green = up)
+/// tilts along **−B** — `shadingNormal` documents that sign where it spends it.
+///
+/// @param dPdx world-position derivative along screen x.
+/// @param dPdy world-position derivative along screen y.
+/// @param dUVdx UV derivative along screen x.
+/// @param dUVdy UV derivative along screen y.
+/// @param N the unit surface normal; `T` and `B` are confined to its plane.
+/// @param T receives the tangent, along `+u`.
+/// @param B receives the bitangent, along `+v`.
+/// @returns false when the parameterisation is degenerate — `T` and `B` are
+///          zero and there is no frame; flat is the stable answer.
+bool HpTangentFrameGrad(float3 dPdx, float3 dPdy, float2 dUVdx, float2 dUVdy, float3 N,
+                        out float3 T, out float3 B)
+{
+    T = float3(0.0, 0.0, 0.0);
+    B = float3(0.0, 0.0, 0.0);
+    const float det = dUVdx.x * dUVdy.y - dUVdy.x * dUVdx.y;
+    if (det == 0.0)
+    {
+        return false;
+    }
+    T = dUVdy.y * dPdx - dUVdx.y * dPdy;
+    B = dUVdx.x * dPdy - dUVdy.x * dPdx;
+
+    // Confined to the tangent plane, as upstream confines `t`. `dPdx` and
+    // `dPdy` lie in the *geometric* plane while `N` is interpolated, so on a
+    // smooth-shaded mesh they are not quite perpendicular; on the flat-shaded
+    // assets in this tree these two lines are exactly zero-valued.
+    T -= N * dot(N, T);
+    B -= N * dot(N, B);
+
+    // **`sign(det)` folded into the shared normalisation rather than a literal
+    // `1/det`.** Dividing by `det` and then rescaling by a positive factor is
+    // the same frame, and doing it in that order would overflow to infinity on
+    // a near-degenerate chart and come back through `rsqrt` as a NaN.
+    float invMax = rsqrt(max(max(dot(T, T), dot(B, B)), 1e-12));
+    const float scale = det < 0.0 ? -invMax : invMax;
+    T *= scale;
+    B *= scale;
+    return true;
+}
+
+// hp-shader-doc: export
+/// `HpTangentFrameGrad` over this fragment's own screen-space derivatives —
+/// the form a material module wants: no vertex tangents required, so it works
+/// on any mesh that has texture coordinates at all.
+///
+/// Under parallax, pass the **undisplaced** coordinate (`In.UV0Base`): the
+/// marched UV's derivatives are discontinuous at layer boundaries and the
+/// frame built from them shimmers (T0158's measurement, T0159.3's field).
+///
+/// @param worldPos the fragment's world position (`In.WorldPos`).
+/// @param uv the coordinate whose chart the frame should follow.
+/// @param N the unit surface normal.
+/// @param T receives the tangent, along `+u`.
+/// @param B receives the bitangent, along `+v` — down the image on a glTF
+///        chart; see `HpTangentFrameGrad` for the green-channel consequence.
+/// @returns false when the chart is degenerate.
+bool HpTangentFrame(float3 worldPos, float2 uv, float3 N, out float3 T, out float3 B)
+{
+    return HpTangentFrameGrad(ddx(worldPos), ddy(worldPos), ddx(uv), ddy(uv), N, T, B);
+}
+
 #if HP_USE_HEIGHT_MAP
 // The engine's own height slot (T0141.7), added to the signature by
 // `SurfacePipeline::CreateCustomSignature` -- not one of DiligentFX's
@@ -480,76 +572,25 @@ float2 HpParallaxUv(float2 uv, HpSurfaceInput In)
         N = -N;
     }
 
-    // **The UV parameterisation's determinant, and this construction is
-    // DiligentFX's rather than Schueler's** (T0166.2). It is the honest
-    // solution of `dp = T*du + B*dv` for `T` and `B`:
+    // **The frame is `HpTangentFrameGrad`'s** (T0168.5) — the signed-determinant
+    // solve this function used to carry inline, T0166.2's fix, now the one
+    // construction normal mapping, parallax and game modules all share. The
+    // history that earned it — Schüler's positive normalisation rotating the
+    // frame 180° on every asset, why `sign(dot(cross(ddx, ddy), N))` is the
+    // wrong correction, and why there is deliberately no cross product in the
+    // construction at all — lives on that function and on T0166.
     //
-    //     T * det = duv2.y * dp1 - duv1.y * dp2
-    //     B * det = duv1.x * dp2 - duv2.x * dp1
-    //
-    // with `det = duv1.x*duv2.y - duv2.x*duv1.y` -- exactly `d` and exactly the
-    // numerator of `t` in `TransformTangentSpaceNormalGrad`
-    // (`DiligentFX/Shaders/Common/public/ShaderUtilities.fxh:51-55`), including
-    // the `d != 0` guard. Their function cannot be called from here -- it
-    // *applies* a tangent-space normal and returns a world one, where the march
-    // needs the frame itself -- so the algebra is borrowed rather than the code,
-    // and it is theirs so that normal mapping and parallax provably agree about
-    // the same pixel's frame instead of agreeing by inspection.
-    //
-    // ## What was wrong, which is more than the ticket that found it thought
-    //
-    // This replaced Schueler's cotangent frame, normalised by `rsqrt` -- always
-    // positive. Substituting the same expansion into *that* construction
-    // collapses it to
-    //
-    //     T_schueler = det * cross(B, N) = (det * h) * T,  h = sign(cross(T,B).N)
-    //
-    // so it carries the **chart's own chirality `h`** as well as `det`. And
-    // `det * h` is `dot(cross(dp1, dp2), N)`, which in a framebuffer whose `y`
-    // runs **down** is negative on *every* front-facing fragment -- so a
-    // positive normalisation returned `-dP/du` and `-dP/dv` **on every asset in
-    // the tree**, mirrored or not. Not a mirrored-shell bug: a global
-    // 180-degree rotation of the parallax frame, which a differential parallax
-    // test cannot see and which nothing here asserted the direction of.
-    //
-    // Dividing Schueler's output by the signed `det` would have fixed the
-    // mirrored charts and left the plain ones inverted, because the `h` would
-    // still be in there. Measured both ways on `tangent_frame_test`'s two-shell
-    // asset before this was written.
-    //
-    // **It is still not the `sign(dot(cross(ddx, ddy), N))` factor T0165 wrote
-    // and reverted**, and the difference is the point rather than a technicality:
-    // that factor is a *pseudo-scalar*, and multiplying by it patches the
-    // symptom while leaving a chirality dependence in a frame that has none.
-    // The construction above has no cross product in it at all, so there is
-    // nothing to be chirally dependent -- the `h` is gone rather than cancelled.
-    const float det = duv1.x * duv2.y - duv2.x * duv1.y;
-    if (det == 0.0)
+    // The shared-scale magnitudes are the part the march *needs*: the ratio
+    // `|dP/du| : |dP/dv|` is the chart's anisotropy, and the offset depends
+    // on it.
+    float3 T;
+    float3 B;
+    if (!HpTangentFrameGrad(dp1, dp2, duv1, duv2, N, T, B))
     {
         // Upstream's guard, and the same answer: with no invertible
         // parameterisation there is no frame, and flat is the stable result.
         return uv;
     }
-    float3 T = duv2.y * dp1 - duv1.y * dp2;
-    float3 B = duv1.x * dp2 - duv2.x * dp1;
-
-    // Confined to the tangent plane, as upstream confines `t`. `dp1` and `dp2`
-    // lie in the *geometric* plane while `N` is interpolated, so on a
-    // smooth-shaded mesh they are not quite perpendicular; on the flat-shaded
-    // assets in this tree these two lines are exactly zero-valued.
-    T -= N * dot(N, T);
-    B -= N * dot(N, B);
-
-    // **`sign(det)` folded into the shared normalisation rather than a literal
-    // `1/det`.** Dividing by `det` and then rescaling by a positive factor is
-    // the same frame, and doing it in that order would overflow to infinity on
-    // a near-degenerate chart and come back through `rsqrt` as a NaN. One
-    // factor for both, so the ratio `|dP/du| : |dP/dv|` -- the chart's
-    // anisotropy, which the march's offset depends on -- survives.
-    float invMax = rsqrt(max(max(dot(T, T), dot(B, B)), 1e-12));
-    const float scale = det < 0.0 ? -invMax : invMax;
-    T *= scale;
-    B *= scale;
 
     float3 viewTS = float3(dot(T, In.ViewDir), dot(B, In.ViewDir), dot(N, In.ViewDir));
     return HpParallaxMarch(uv, viewTS, duv1, duv2);
@@ -1307,8 +1348,40 @@ interface IHpMaterial
                        g_Material.Textures[NormalTextureAttribId].PackedProps));
         float3 microNormal = GetMicroNormal(g_Material, normalUv, normalUv, ddx(normalUv),
                                             ddy(normalUv), g_Frame.Renderer.MipBias);
-        return PerturbNormal(normalInfo, ddx(normalUv), ddy(normalUv), microNormal,
-                             /*HasUV = */ true);
+        // **The engine's own application, not upstream's `PerturbNormal`**
+        // (T0168.5), and the divergence is deliberate, measured, and twofold:
+        //
+        // 1. **The bitangent follows the chart.** Upstream's
+        //    `TransformTangentSpaceNormalGrad` takes `b = cross(t, n)` — a
+        //    fixed chirality — so on a mirrored UV shell the same map's `v`
+        //    response shaded backwards: 0 against 130.2 on
+        //    `tangent_frame_test`'s two-shell asset. `HpTangentFrameGrad`
+        //    solves `B` from the derivatives, so it mirrors when the chart
+        //    does and only then.
+        //
+        // 2. **Green is up, per the glTF spec** ("the normal vectors use
+        //    OpenGL conventions: +Y is up"). A glTF chart's `v` runs *down*
+        //    the image, so the map's up axis is **−B**, and the sign below is
+        //    that fact spent. Upstream's `b = cross(t, n)` points down-image
+        //    on a plain chart — the DirectX convention — which is why every
+        //    normal map this engine ever applied had its green channel
+        //    inverted (T0166's measurement, 168.5's fix). The authoring
+        //    answer lives in `11-material-format.md`: author NormalGL, which
+        //    `tools/pack_test_textures.py` already does.
+        //
+        // The two-sided flip (`microNormal.xy *= Face`) is upstream's own
+        // line, kept: on a back face the frame's N was flipped toward the
+        // viewer by `GetPerturbNormalInfo`, and the map flips with it.
+        float3 frameT;
+        float3 frameB;
+        if (!HpTangentFrameGrad(normalInfo.dPos_dx, normalInfo.dPos_dy, ddx(normalUv),
+                                ddy(normalUv), normalInfo.Normal, frameT, frameB))
+        {
+            return normalInfo.Normal;
+        }
+        microNormal.xy *= normalInfo.Face;
+        return normalize(microNormal.x * normalize(frameT) - microNormal.y * normalize(frameB) +
+                         microNormal.z * normalInfo.Normal);
 #else
         return normalInfo.Normal;
 #endif
@@ -1359,8 +1432,20 @@ interface IHpMaterial
             float2 coatUv = SelectUV(VSOut, selector);
             float3 coatNormal = GetClearcoatNormal(g_Material, coatUv, coatUv, ddx(coatUv),
                                                    ddy(coatUv), g_Frame.Renderer.MipBias);
-            return PerturbNormal(normalInfo, ddx(coatUv), ddy(coatUv), coatNormal,
-                                 /*HasUV = */ true);
+            // The same application as `shadingNormal`, for the same two
+            // reasons (T0168.5): the bitangent follows the chart, and glTF's
+            // green-up rides `−B` on a `v`-down chart. A coat map and a base
+            // map on the same surface must agree about which way up is.
+            float3 frameT;
+            float3 frameB;
+            if (!HpTangentFrameGrad(normalInfo.dPos_dx, normalInfo.dPos_dy, ddx(coatUv),
+                                    ddy(coatUv), normalInfo.Normal, frameT, frameB))
+            {
+                return normalInfo.Normal;
+            }
+            coatNormal.xy *= normalInfo.Face;
+            return normalize(coatNormal.x * normalize(frameT) - coatNormal.y * normalize(frameB) +
+                             coatNormal.z * normalInfo.Normal);
         }
 #endif
         return normalInfo.Normal;

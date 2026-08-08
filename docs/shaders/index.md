@@ -40,7 +40,7 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 
 | Page | Source | Declarations |
 |---|---|---|
-| [`Engine functions`](engine-functions.md) | `engine/shaders/HpSurface.slang` | 9 |
+| [`Engine functions`](engine-functions.md) | `engine/shaders/HpSurface.slang` | 11 |
 | [`HpMaterial`](HpMaterial.md) | `engine/shaders/HpMaterial.slang` | 25 |
 | [`IHpMaterial`](IHpMaterial.md) | `engine/shaders/HpSurface.slang` | 1 |
 
@@ -52,6 +52,8 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | `HpSceneDepth` | function | [`Engine functions`](engine-functions.md) |
 | `HpViewDepth` | function | [`Engine functions`](engine-functions.md) |
 | `HpSceneViewDepth` | function | [`Engine functions`](engine-functions.md) |
+| `HpTangentFrameGrad` | function | [`Engine functions`](engine-functions.md) |
+| `HpTangentFrame` | function | [`Engine functions`](engine-functions.md) |
 | `HpLightCount` | function | [`Engine functions`](engine-functions.md) |
 | `HpGetLight` | function | [`Engine functions`](engine-functions.md) |
 | `HpStandardLight` | function | [`Engine functions`](engine-functions.md) |

@@ -604,6 +604,59 @@ TEST_CASE("imported glTF material features reach the pixels they were parsed for
         }
     }
 
+    SUBCASE("pirate.glb, genuine DCC output, fails loudly rather than silently (166.7)") {
+        // `third_party/meshoptimizer/demo/pirate.glb` was T0166.7's "render
+        // something nobody here authored" — and reading its container answered
+        // differently: gltfpack 0.14 output, `extensionsRequired` carries
+        // **both** `KHR_mesh_quantization` and `EXT_meshopt_compression`, and
+        // meshopt decode is absent at every layer of this stack
+        // (14-asset-import-matrix.md). So the honest assertion is not a
+        // render: it is that the import **says so** — each required extension
+        // named in a warning — instead of the silent wrong-geometry failure
+        // D35 exists to prevent. The first real file to exercise T0168.6's
+        // warning, and it is exactly the file class (a Sketchfab-style
+        // compressed download) the warning was built for.
+        std::filesystem::path repo = std::filesystem::current_path();
+        bool found = false;
+        for (int up = 0; up < 6 && !found; ++up) {
+            if (std::filesystem::exists(repo / "third_party" / "meshoptimizer" / "demo" /
+                                        "pirate.glb")) {
+                found = true;
+                break;
+            }
+            if (!repo.has_parent_path()) {
+                break;
+            }
+            repo = repo.parent_path();
+        }
+        if (!found) {
+            MESSAGE("pirate.glb not found from the working directory; skipping");
+        } else {
+            REQUIRE(hp::Vfs::mount((repo / "third_party" / "meshoptimizer" / "demo").string()));
+            sink.entries.clear();
+            auto mesh = hp::loadMesh(device.render->device(), device.render->context(),
+                                     "pirate.glb");
+            bool warnedMeshopt = false;
+            bool warnedQuantization = false;
+            for (const auto& entry : sink.entries) {
+                if (entry.level != hp::LogLevel::Warning) {
+                    continue;
+                }
+                warnedMeshopt = warnedMeshopt ||
+                                entry.message.find("EXT_meshopt_compression") != std::string::npos;
+                warnedQuantization =
+                    warnedQuantization ||
+                    entry.message.find("KHR_mesh_quantization") != std::string::npos;
+            }
+            CHECK(warnedMeshopt);
+            CHECK(warnedQuantization);
+            const std::string verdict = (mesh != nullptr && mesh->valid()) ? "yes" : "no";
+            MESSAGE("pirate.glb loaded: " << verdict
+                                          << " (either is acceptable; the warning is the "
+                                             "contract, rendering it is not)");
+        }
+    }
+
     SUBCASE("an unsupported required extension warns by name; a supported one is silent") {
         sink.entries.clear();
         const Frame fake = renderModel(device, "models/requires_fake.gltf", /*lit=*/false);

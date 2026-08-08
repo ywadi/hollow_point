@@ -359,6 +359,27 @@ wrong:
 - **`baseColour`** *is* bounded to 0..1 — it is a reflectance, and a surface that
   reflects more light than falls on it is not a material, it is a bug.
 
+### Normal maps are OpenGL-convention — green is up (T0168.5)
+
+**Author NormalGL: `+Y` (green above 0.5) means the bump faces *up* the
+image.** That is glTF's own rule — "the normal vectors use OpenGL conventions
+where +X is right and +Y is up" — and since 2026-08-08 it is what the engine
+actually does, pinned by `tangent_frame_test.cpp`'s lit case. A DirectX-style
+map (green down; Unreal's default export, some Substance presets) shades
+concave-for-convex in exactly the way that reads as an authoring mistake, so
+if a bump looks *pressed in* under a light from above, flip the map's green
+channel before touching anything else.
+
+`tools/pack_test_textures.py` has always packed NormalGL and said so; until
+T0168.5 the engine applied every map with the green channel inverted — the
+construction it inherited builds its bitangent as `cross(t, n)`, which points
+*down* a glTF chart's image. The fix rides `HpTangentFrameGrad`, which also
+makes the frame follow a **mirrored UV shell** (standard game-art practice),
+so a symmetric model's mirrored half now bumps the same way as its authored
+half. A future per-asset "flip green" import setting belongs to T0097's
+texture pipeline; until then the convention is fixed and this section is where
+an artist finds it.
+
 ### `alphaMode` is written by name
 
 `alphaMode: Blend`, never `alphaMode: 2`. A number silently means something else

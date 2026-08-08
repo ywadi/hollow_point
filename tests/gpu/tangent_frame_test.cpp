@@ -420,6 +420,17 @@ struct Options {
     float yaw = 0.0F;
     float pitch = 0.0F;
     hp::Quaternion lightRotation = hp::Quaternion{};
+    /// Base colour: the black/white step texture (the parallax case's edge
+    /// probe), or plain white (the lit case's luminance probe — a step would
+    /// halve every band mean and add nothing, T0166 measured against white).
+    bool stepBase = true;
+    /// When set, the lamp is a **point light at this world position** instead
+    /// of the rotated directional. The lit case pins absolute directions with
+    /// it: "toward the light is brighter" is N·L from first principles, with
+    /// no quaternion sign convention anywhere to get wrong — which is exactly
+    /// how T0166's directional-light control went wrong the first time.
+    bool pointLight = false;
+    hp::float3 lightPosition{0.0F, 0.0F, 0.0F};
 };
 
 /// Renders the two-shell quad. Returns false only on a real failure.
@@ -439,14 +450,15 @@ bool renderShells(Device& device, const std::filesystem::path& scratch, const Op
     }
     pool.store<hp::MeshAsset>(meshGuid, mesh);
 
-    const hp::Guid colourGuid = hp::Guid::generate();
-    pool.store<hp::TextureAsset>(colourGuid,
-                                 hp::loadTexture(device.render->device(), "models/step.png"));
-
     const hp::Guid materialGuid = hp::Guid::generate();
     {
         auto material = std::make_shared<hp::Material>();
-        material->baseColourTexture = colourGuid;
+        if (options.stepBase) {
+            const hp::Guid colourGuid = hp::Guid::generate();
+            pool.store<hp::TextureAsset>(
+                colourGuid, hp::loadTexture(device.render->device(), "models/step.png"));
+            material->baseColourTexture = colourGuid;
+        }
         if (options.withHeight) {
             const hp::Guid heightGuid = hp::Guid::generate();
             pool.store<hp::TextureAsset>(
@@ -488,12 +500,23 @@ bool renderShells(Device& device, const std::filesystem::path& scratch, const Op
 
     if (!options.unlit) {
         hp::Entity lightEntity = scene.create("sun");
-        hp::Light sun;
-        sun.type = hp::LightType::Directional;
-        sun.colour = hp::float3{1.0F, 1.0F, 1.0F};
-        sun.intensity = 3.0F;
-        lightEntity.add<hp::Light>(sun);
-        lightEntity.get<hp::Transform>().rotation = options.lightRotation;
+        hp::Light lamp;
+        if (options.pointLight) {
+            lamp.type = hp::LightType::Point;
+            lamp.colour = hp::float3{1.0F, 1.0F, 1.0F};
+            // Bright enough that ~10 units of 1/d² attenuation still lights
+            // the quad well, with range comfortably past the far corner.
+            lamp.intensity = 260.0F;
+            lamp.range = 60.0F;
+            lightEntity.add<hp::Light>(lamp);
+            lightEntity.get<hp::Transform>().position = options.lightPosition;
+        } else {
+            lamp.type = hp::LightType::Directional;
+            lamp.colour = hp::float3{1.0F, 1.0F, 1.0F};
+            lamp.intensity = 3.0F;
+            lightEntity.add<hp::Light>(lamp);
+            lightEntity.get<hp::Transform>().rotation = options.lightRotation;
+        }
     }
     scene.propagateTransforms();
 
@@ -724,6 +747,129 @@ TEST_CASE("parallax lands a texel where the view ray does, on a mirrored shell t
 
     // **The mirror.** Same screen column, within a pixel or two of filtering.
     CHECK(std::abs(displacedA - displacedB) < 3.0);
+
+    tearDown(device);
+}
+
+TEST_CASE("a tangent-space normal map shades by the chart's own frame, mirrored shells too "
+          "(T0168.5)") {
+    // **The lit half T0166 measured and handed forward**: a tangent-space
+    // normal tilted along `v` must shade both shells the *same*, because only
+    // `u` is mirrored between them — and it measured 0 against 130.2, because
+    // DiligentFX's `b = cross(t, n)` holds a fixed chirality against the
+    // chart. The same construction defect inverted the green channel on every
+    // *plain* chart: upstream's `b` points down the image, glTF's convention
+    // says +Y is up. `HpTangentFrameGrad` fixes both at once, and this case
+    // pins both — the mirror *and* the absolute direction, because the mirror
+    // half alone passes for a frame that is wrong the same way on both shells,
+    // which is exactly the trap the parallax case above had to be rewritten to
+    // escape.
+    //
+    // **Every absolute direction here comes from a point light at a plain
+    // world position.** "Toward the light is brighter" is N·L from first
+    // principles; there is no quaternion convention anywhere in the chain to
+    // get wrong, which is how the directional-light version of this control
+    // went wrong the first time it was written (T0166's notes).
+    //
+    // The shells face +Z at world z = −6; world +Y is up the *image* of their
+    // shared chart (`v = (top − y) / height`, so +v runs down, glTF's own
+    // convention). So, with the green-up application:
+    //
+    //   normal_up    tilts the shaded normal toward +Y — on both shells;
+    //   normal_down  toward −Y — on both shells;
+    //   normal_right toward +X on shell A and −X on shell B, because `u` is
+    //                what the mirror mirrors.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+    const std::filesystem::path scratch = prepareScratch();
+
+    const hp::float3 above{0.0F, 10.0F, -4.0F};
+    const hp::float3 below{0.0F, -10.0F, -4.0F};
+    const hp::float3 right{10.0F, 0.0F, -4.0F};
+
+    const auto lit = [&](const char* map, const hp::float3& lightPosition,
+                         std::vector<std::uint8_t>& pixels) {
+        Options options;
+        options.unlit = false;
+        options.stepBase = false; // white base: band luminance is the probe
+        options.normalMap = map;
+        options.pointLight = true;
+        options.lightPosition = lightPosition;
+        return renderShells(device, scratch, options, pixels);
+    };
+
+    // ---- the flat control: no map, just the lamp -----------------------
+    // Proves the lamp lights the quad at all, so a black band below means
+    // "the normal turned away", never "the light never arrived".
+    std::vector<std::uint8_t> flat;
+    REQUIRE(lit(nullptr, above, flat));
+    REQUIRE(magentaShare(flat) < 0.05);
+    const double flatA = meanLuma(flat, kBandA);
+    const double flatB = meanLuma(flat, kBandB);
+    MESSAGE("flat control under the above-lamp: A " << flatA << ", B " << flatB);
+    REQUIRE(flatA > 5.0);
+    REQUIRE(flatB > 5.0);
+
+    // ---- the v axis: both shells must agree ----------------------------
+    std::vector<std::uint8_t> upAbove;
+    std::vector<std::uint8_t> downAbove;
+    std::vector<std::uint8_t> downBelow;
+    REQUIRE(lit("normal_up.png", above, upAbove));
+    REQUIRE(lit("normal_down.png", above, downAbove));
+    REQUIRE(lit("normal_down.png", below, downBelow));
+    REQUIRE(magentaShare(upAbove) < 0.05);
+    REQUIRE(magentaShare(downAbove) < 0.05);
+    REQUIRE(magentaShare(downBelow) < 0.05);
+
+    const double upA = meanLuma(upAbove, kBandA);
+    const double upB = meanLuma(upAbove, kBandB);
+    const double downA = meanLuma(downAbove, kBandA);
+    const double downB = meanLuma(downAbove, kBandB);
+    const double downBelowA = meanLuma(downBelow, kBandA);
+    const double downBelowB = meanLuma(downBelow, kBandB);
+    MESSAGE("green-up map under the above-lamp: A " << upA << ", B " << upB);
+    MESSAGE("green-down map under the above-lamp: A " << downA << ", B " << downB);
+    MESSAGE("green-down map under the below-lamp: A " << downBelowA << ", B " << downBelowB);
+
+    // The absolute direction, on **both** shells: glTF's green-up tilts toward
+    // the lamp that hangs above. A green channel applied inverted — the code
+    // this replaces — swaps every one of these six comparisons.
+    CHECK(upA > downA * 2.5);
+    CHECK(upB > downB * 2.5);
+    CHECK(upA > 60.0);
+    CHECK(upB > 60.0);
+    // The symmetric half, so "the map broke shading entirely" cannot pass:
+    // the same green-down map is *bright* once the lamp moves below.
+    CHECK(downBelowA > downA * 2.5);
+    CHECK(downBelowB > downB * 2.5);
+
+    // ---- the u axis: the shells must disagree, because u is the mirror --
+    std::vector<std::uint8_t> rightRight;
+    std::vector<std::uint8_t> leftRight;
+    REQUIRE(lit("normal_right.png", right, rightRight));
+    REQUIRE(lit("normal_left.png", right, leftRight));
+    REQUIRE(magentaShare(rightRight) < 0.05);
+    REQUIRE(magentaShare(leftRight) < 0.05);
+
+    const double rightOnA = meanLuma(rightRight, kBandA);
+    const double rightOnB = meanLuma(rightRight, kBandB);
+    const double leftOnA = meanLuma(leftRight, kBandA);
+    const double leftOnB = meanLuma(leftRight, kBandB);
+    MESSAGE("+u map under the right-lamp: A " << rightOnA << ", B " << rightOnB);
+    MESSAGE("-u map under the right-lamp: A " << leftOnA << ", B " << leftOnB);
+
+    // Shell A's chart runs `+u = +X`, so its +u tilt faces the right-lamp;
+    // shell B's chart runs the other way, so the *same texels* face away.
+    // This is the pair that fails if a "fix" makes the frame ignore the
+    // mirror instead of following it.
+    CHECK(rightOnA > rightOnB * 2.5);
+    CHECK(rightOnA > 60.0);
+    CHECK(leftOnB > leftOnA * 2.5);
+    CHECK(leftOnB > 60.0);
 
     tearDown(device);
 }

@@ -275,26 +275,21 @@ struct HpMaterial : IHpMaterial
 
     /// The tangent frame, from screen-space derivatives.
     ///
-    /// The same construction the engine's `HpParallaxUv` uses, for the same
-    /// reason: it needs no vertex tangents, so this works on any mesh that has
-    /// texture coordinates at all. `N` is oriented toward the viewer explicitly
-    /// rather than by `SV_IsFrontFace`, because the contract normal
+    /// **The construction is the engine's `HpTangentFrameGrad`** (T0168.5) —
+    /// the copy this method used to carry is gone, which closes the gap
+    /// `13-shader-capability-matrix.md` recorded against exactly this file:
+    /// the engine's frame was corrected once (T0166.2) and the sample's copy
+    /// had to be corrected beside it, in two places at once. What stays here
+    /// is only what is this shader's own: `N` is oriented toward the viewer
+    /// explicitly rather than by `SV_IsFrontFace`, because the contract normal
     /// legitimately points away from the camera on a double-sided surface seen
     /// from behind, and parallax only means anything on the side being looked
-    /// at. (An earlier version of this comment said hardware and geometric
-    /// facing "disagree in this engine" -- that was T0141.12's inverted
-    /// diagnosis, corrected by T0152.)
-    ///
-    /// **This is a duplicate of engine code, and that is the gap rather than the
-    /// design** -- `13-shader-capability-matrix.md` records the missing
-    /// engine-provided `HpTangentFrame` against exactly this. Until it exists,
-    /// this file has to carry the whole of `HpParallaxUv`'s reasoning, and a
-    /// game author copying the sample copies whichever version of it is here.
+    /// at. A degenerate chart returns the zero frame, which is the stable
+    /// answer downstream: the view march's offset is zero so the UV does not
+    /// move, and the shadow march accumulates no occlusion.
     void tangentFrame(HpSurfaceInput In, float2 uv, out float3 T, out float3 B, out float3 N,
                       out float2 duv1, out float2 duv2)
     {
-        float3 dp1 = ddx(In.WorldPos);
-        float3 dp2 = ddy(In.WorldPos);
         duv1 = ddx(uv);
         duv2 = ddy(uv);
 
@@ -304,42 +299,7 @@ struct HpMaterial : IHpMaterial
             N = -N;
         }
 
-        // **Solved, not Schueler** (T0166.2), matching
-        // `HpParallaxUv` and, through it, DiligentFX's
-        // `TransformTangentSpaceNormalGrad` -- signed determinant, `d != 0`
-        // guard, no cross products. The construction that used to be here
-        // returned `(det * h) * dP/du`, where `h` is the UV chart's own
-        // chirality, and `det * h` is negative on every front-facing fragment
-        // in a `y`-down framebuffer: so the frame was rotated 180 degrees on
-        // **every** asset, and the march ran backwards everywhere.
-        //
-        // That is what the `sign(dot(cross(ddx, ddy), N))` factor T0165 wrote
-        // was groping at, and why reverting it on this shader's evidence looked
-        // right: the self-shadow below is posed, its pose was tuned against the
-        // rotated frame, and a correct frame therefore measured nothing at that
-        // pose. Both the factor and the revert treated a construction defect as
-        // a chirality question. There is no cross product left to be chiral.
-        const float det = duv1.x * duv2.y - duv2.x * duv1.y;
-        if (det == 0.0)
-        {
-            // No invertible parameterisation, no frame. A zero frame is the
-            // stable answer rather than a special case downstream: the view
-            // march's offset is zero so the UV does not move, and the shadow
-            // march's ray starts half a bias *below* a field that never
-            // changes under it, so it accumulates no occlusion either.
-            T = float3(0.0, 0.0, 0.0);
-            B = float3(0.0, 0.0, 0.0);
-            return;
-        }
-        T = duv2.y * dp1 - duv1.y * dp2;
-        B = duv1.x * dp2 - duv2.x * dp1;
-        T -= N * dot(N, T);
-        B -= N * dot(N, B);
-
-        float invMax = rsqrt(max(max(dot(T, T), dot(B, B)), 1e-12));
-        const float scale = det < 0.0 ? -invMax : invMax;
-        T *= scale;
-        B *= scale;
+        HpTangentFrameGrad(ddx(In.WorldPos), ddy(In.WorldPos), duv1, duv2, N, T, B);
     }
 
     [mutating] override VSOutput surfaceCoordinates(VSOutput VSOut, HpSurfaceInput In)
