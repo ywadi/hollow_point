@@ -130,6 +130,29 @@ parser interprets it (raw extension JSON survives regardless); "Diligent" means
 | `EXT_texture_avif` | — | — | — | ⬆️ · unowned |
 | `EXT_lights_image_based` | — | — | environment lighting is T0087's, and its design should decide whether an asset-supplied IBL is even wanted | ⬆️ · a row on T0087's Refs before anyone relies on it |
 
+## What an import *produces* (T0169, D39)
+
+The tables above say which features **arrive**; this one says what each type
+**becomes on disk**. Importing a glTF writes engine-native files under
+`<source>.assets/`, identity in the source metafile's sub-asset registry
+(keyed by name, never index — D39), extract-once so the author's edits win.
+`hp::produceEngineAssets` is the pass; `import_produce_test.cpp` proves each
+row's behaviour devicelessly.
+
+| glTF carries | Becomes | State · owner |
+|---|---|---|
+| material | a `.hpmat` + sidecar, registry GUID, full factor/texture/extension mapping **from the source JSON** (preserving `occlusionTexture.strength` and spec-gloss's `glossinessFactor`, both of which the render loader drops) | ✅ 2026-08-08 |
+| material (spec-gloss) | the migration D39 describes: diffuse → base colour, `1 − glossiness` → roughness, metallic 0; the SG texture is extracted as an image but not converted into a slot — texel-space conversion is **T0097**-class, warned at production | ✅ decision recorded |
+| image, embedded (bufferView or data URI) | a `.png`/`.jpg` beside the material, **bytes verbatim** — never re-encoded; **every** image in the file, not only referenced ones (the Aston Martin's unconverted spec-gloss PNG is why) | ✅ 2026-08-08 · processing/colour-space is **T0097**'s |
+| image, external (`uri`) | referenced in place; its own `.hpmeta` is its identity, the registry stays out of it | ✅ |
+| sampler | wrap modes → the generated material's `UvChannel`; per-texture `KHR_texture_transform` → the same channel, first-wins with a warning on conflict (per-channel is the engine's authored shape) | ✅ with the recorded loss |
+| mesh / primitive | stays inside the `MeshAsset`, index-addressed — T0023's named sub-asset gap, half-closed by this registry (namespace `mesh/` reserved, mechanism proven on materials) | not yet · **T0023's gap, next consumer names the ticket** |
+| node hierarchy / scene | flattened at draw; an import does **not** emit a `.hpscene` fragment or prefab until prefabs exist | not yet · **T0059** (Refs carry this) |
+| camera | loaded into the model, dropped at draw, not produced — `hp::Camera` exists; produce on demand when an editor flow wants it | decision recorded · unowned |
+| `KHR_lights_punctual` | same: loaded, dropped, not produced — `hp::Light` exists | decision recorded · unowned |
+| animation / skin | stays in the model (upstream evaluates on request — T0049's Refs); production waits for the runtime; namespace `animation/` reserved | not yet · **T0041/T0049** |
+| morph targets | never arrive (upstream-absent, table above) — nothing to produce | blocked on the arrival row |
+
 ## What reading could not settle — T0167's brief (168.8)
 
 Predictions this table makes that one real asset can correct. **Where the asset

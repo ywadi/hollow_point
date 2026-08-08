@@ -8,7 +8,7 @@
 | **Phase** | 7 — Content pipeline |
 | **Order** | 710 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0023, T0038, T0096, T0134, T0141 |
+| **Refs** | T0023, T0038, T0096, T0134, T0141; [../completed/0169-import-produces-engine-assets.md](../completed/0169-import-produces-engine-assets.md) — **the extraction/processing boundary is drawn and this ticket owns the processing side** (D39): `produceEngineAssets` writes embedded images **bytes-verbatim** and never re-encodes; colour-space flags (`loadTexture` hardcodes sRGB today — a normal map wants linear), compression, mips, and the spec-gloss→MR texel conversion the extraction warns about are all this ticket's, as per-import settings on the sidecar metafile |
 
 **From T0141 (2026-08-06): the sRGB decode currently runs in the pixel shader,
 and this ticket may move it.** The glTF loader creates `RGBA8_TYPELESS` textures

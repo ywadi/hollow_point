@@ -47,6 +47,18 @@ std::string writeAssetMeta(const AssetMeta& meta) {
     root.set("guid", meta.guid.toString());
     root.set("type", meta.type);
     root.set("source", meta.sourcePath);
+    // The sub-asset registry (T0169.1, D39), written only when it has
+    // something to say -- a plain asset's metafile stays exactly the three
+    // lines it always was, so nothing that diffs or hand-reads one changes.
+    if (!meta.subAssets.empty()) {
+        YamlNode registry = root.addSequence("subAssets");
+        for (const SubAssetRecord& record : meta.subAssets) {
+            YamlNode entry = registry.appendMap();
+            entry.set("kind", record.kind);
+            entry.set("key", record.key);
+            entry.set("guid", record.guid.toString());
+        }
+    }
     return document.emit();
 }
 
@@ -82,6 +94,30 @@ std::optional<AssetMeta> parseAssetMeta(std::string_view yaml, std::string_view 
     if (meta.type.empty() || meta.sourcePath.empty()) {
         HP_LOG_WARN(kLog, "metafile '{}' is missing 'type' or 'source'; reimporting", name);
         return std::nullopt;
+    }
+
+    // The sub-asset registry (T0169.1, D39). Absent in every version-1 file
+    // and in most version-2 files, and absent means empty. **A malformed
+    // entry is skipped with a warning rather than failing the parse**: the
+    // registry protects identity, and throwing the whole metafile away over
+    // one bad line would regenerate every GUID -- the exact detachment it
+    // exists to prevent.
+    const YamlNode registry = root["subAssets"];
+    if (registry.valid() && registry.isSequence()) {
+        for (std::size_t i = 0; i < registry.size(); ++i) {
+            const YamlNode entry = registry.at(i);
+            SubAssetRecord record;
+            record.kind = entry["kind"].read(std::string{});
+            record.key = entry["key"].read(std::string{});
+            const auto recordGuid = Guid::parse(entry["guid"].read(std::string{}));
+            if (record.kind.empty() || record.key.empty() || !recordGuid) {
+                HP_LOG_WARN(kLog, "metafile '{}' subAssets[{}] is malformed; entry skipped", name,
+                            i);
+                continue;
+            }
+            record.guid = *recordGuid;
+            meta.subAssets.push_back(std::move(record));
+        }
     }
     return meta;
 }

@@ -12,10 +12,13 @@
 
 #include <hp/Assets.hpp>
 
+#include <hp/Import.hpp>
 #include <hp/Log.hpp>
 #include <hp/Material.hpp>
 #include <hp/Profiling.hpp>
 #include <hp/Vfs.hpp>
+
+#include "GltfPeek.hpp"
 
 #include <algorithm>
 #include <array>
@@ -110,33 +113,6 @@ constexpr std::array<std::string_view, 12> kEndToEndExtensions{
     "KHR_materials_volume",
     "KHR_materials_ior",
 };
-
-/// The document's JSON, whether the container is binary or text.
-///
-/// A GLB is a 12-byte header (`glTF`, version, length) and chunks, the first
-/// of which must be `JSON`; anything that does not start with the magic is
-/// taken to be a `.gltf`, which *is* the JSON. Returns empty on a malformed
-/// container rather than guessing -- the caller treats empty as "nothing to
-/// warn about" and leaves the real diagnosis to the loader.
-std::string_view gltfJsonOf(const std::vector<std::byte>& bytes) {
-    constexpr std::uint32_t kGlbMagic = 0x46546C67U; // 'glTF'
-    constexpr std::uint32_t kJsonChunk = 0x4E4F534AU; // 'JSON'
-    const auto* data = bytes.data();
-    if (bytes.size() < 4 || std::memcmp(data, &kGlbMagic, 4) != 0) {
-        return {reinterpret_cast<const char*>(data), bytes.size()};
-    }
-    if (bytes.size() < 20) {
-        return {};
-    }
-    std::uint32_t chunkLength = 0;
-    std::uint32_t chunkType = 0;
-    std::memcpy(&chunkLength, data + 12, 4);
-    std::memcpy(&chunkType, data + 16, 4);
-    if (chunkType != kJsonChunk || chunkLength > bytes.size() - 20) {
-        return {};
-    }
-    return {reinterpret_cast<const char*>(data) + 20, chunkLength};
-}
 
 /// **The one read of `extensionsRequired` in the whole stack** (T0168.6).
 ///
@@ -591,6 +567,13 @@ ImportResult importAsset(Diligent::IRenderDevice* device, Diligent::IDeviceConte
         if (auto mesh = loadMesh(device, context, virtualPath)) {
             pool.store(result.guid, std::move(mesh));
             result.loaded = true;
+            // **An import produces engine assets** (T0169, D39): one `.hpmat`
+            // per material, embedded images extracted verbatim, identity in
+            // the source metafile's registry. Best effort, after the load —
+            // a model that renders but cannot be produced (read-only project
+            // directory) is logged by the pass itself, and extract-once means
+            // a re-import of an already-produced model writes nothing.
+            (void)produceEngineAssets(virtualPath);
         } else {
             // No placeholder mesh. A missing *texture* has an obvious visual
             // stand-in; a missing *model* does not, and inventing a cube would

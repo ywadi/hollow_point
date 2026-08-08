@@ -2823,3 +2823,106 @@ commit immediately before the mirror:
 So D31's repack cost is **not detectable**, and the fallback it recorded
 (mirroring layout-compatibly so conversion is a reinterpretation) is not
 needed.
+
+---
+
+## D39 — An import emits **visible engine assets**, keyed by **name in a registry that never renumbers**, and the author owns them after the first write
+
+**Decided 2026-08-08 on T0169.1**, before the code that spends it, because the
+identity scheme is the part that cannot be migrated cheaply once scenes
+reference generated assets — T0023's architecture review named exactly this
+gap, and Godot and Unity both arrived at a keyed map only *after* their
+index-keyed versions failed.
+
+### What an import produces
+
+Importing `models/car.glb` writes, beside it:
+
+```
+models/car.glb.assets/<key>.hpmat          one per material
+models/car.glb.assets/<key>.png|.jpg       embedded images, bytes verbatim
+models/car.glb.assets/<key>.*.hpmeta       ordinary sidecars, standard GUIDs
+models/car.glb.hpmeta                      grows the sub-asset registry
+```
+
+**Project files, not a cache.** The entire point (T0169's Why) is that a game
+author edits an imported material without touching the source file, so the
+artefacts live where the author lives. The `.assets` suffix reuses `.hpmeta`'s
+append rule and reasoning: appended to the *full* filename, so `car.glb` and
+`car.gltf` in one directory cannot share a folder. Everything resolves through
+the VFS like any other asset, which is what makes 169.8's third rule
+structural: **a shipped game never reaches back into the `.glb`**, because the
+generated files are ordinary assets that export (T0043) copies like any other.
+
+### Identity: a registry in the source's metafile
+
+The source's `.hpmeta` (schema 2) gains `subAssets:` — a list of
+`{kind, key, guid}` records. The key namespace is generic on purpose —
+`material/…`, `image/…` today; `mesh/…`, `animation/…` when their tickets land
+— one mechanism for every kind (D35's shape), so the next type extends a list
+instead of inventing a second scheme.
+
+**The key is the sub-asset's name, sanitised; never its array index.** An
+index silently repoints every scene reference when a DCC tool reorders its
+material list — the failure Godot's path-keys and Unity's `fileID` map both
+exist to prevent. Rules, stated completely:
+
+- named and unique → `material/<sanitised name>`;
+- named and duplicated → `material/<sanitised name>_<n>`, `n` counting within
+  that name only, in file order — the degradation is scoped to files that
+  reuse a name, and it is the same rule Unity applies;
+- unnamed → `material/material_<index>` — an unnamed material's only identity
+  *is* its position, so this is the honest floor, written down rather than
+  hidden. Naming materials in the DCC is the fix, and the limitation is
+  documented where an author will find it.
+
+**Registry entries are permanent.** A GUID, once minted for a key, is never
+reused for a different key and never dropped — a material deleted from the
+source keeps its record, so scenes referencing its generated file keep
+resolving, and the same name returning in a later export re-attaches to the
+same GUID. Renaming a material in the DCC is a new key and therefore a new
+GUID and file; the old file stays, still owned by the author, still referenced
+by whatever referenced it. That is name-keying's known limit — Unity and Godot
+share it — and it is the right trade because a rename is visible while a
+reorder is silent.
+
+The generated file's own `.hpmeta` carries the same GUID. **On divergence the
+registry wins** — identity anchors in exactly one place — and the import
+rewrites the sidecar with a warning.
+
+### Re-import: the author's edits win, structurally
+
+**Extract-once.** Re-importing the source creates only files that do not
+exist; it never overwrites and never deletes a generated file. An edited
+`.hpmat` therefore survives every re-import because the importer will not
+touch it — the policy is enforced by an existence check, not by a merge. A
+deleted generated file is recreated from the source **with its registry GUID**,
+so deleting the file is "reset to source" and scene references survive it.
+
+Rejected: *source-wins* (discards the edits the mechanism exists to keep) and
+*three-way merge* (a real merge engine for a problem nobody here has; Godot
+ships extract-once and a decade of projects has not forced the upgrade).
+The recorded cost: DCC-side material edits do not flow into an
+already-extracted `.hpmat` — delete the generated file to re-extract.
+
+### What an import must never do (T0169.8)
+
+1. **Never silently drop a type.** A type the pipeline does not map logs one
+   line and has a row in `14-asset-import-matrix.md`'s production table.
+2. **Never renumber.** No generated identity may depend on another sub-asset's
+   existence or position — the registry rules above are the whole of it.
+3. **Never require the source at run time.** Generated assets are complete:
+   a `.hpmat` references textures by GUID through the VFS, not by reaching
+   into the container it came from.
+
+### Spec-gloss, at the boundary this creates
+
+An imported `KHR_materials_pbrSpecularGlossiness` model **renders** natively
+(T0168.2's runtime branch) — but a `.hpmat` is metallic-roughness by the
+standing `11-material-format.md` decision, so *extraction* is where the
+archived workflow converts or stops. The v1 mapping takes the diffuse texture
+and factor as base colour and leaves the specular-glossiness texture
+unconverted with one warning — the faithful texel-space conversion is
+T0097-class work, recorded there. Assigning an extracted material over an SG
+import is therefore a *migration* off the dead workflow, not a re-skin, and
+the log says so at extraction time.

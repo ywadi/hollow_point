@@ -6,7 +6,7 @@
 #include <hp/Assets.hpp>
 ```
 
-69 public declaration(s), 69 documented.
+71 public declaration(s), 71 documented.
 
 ## `AssetTraits`
 
@@ -28,6 +28,25 @@ class AssetTraits
  rule reflected components live under (T0095). A type with no specialisation
  fails to compile rather than falling back to something unstable.
 
+## `SubAssetRecord`
+
+```cpp
+struct SubAssetRecord
+```
+
+ One generated sub-asset's identity record (T0169.1, D39).
+
+ A container format holds N materials and K images; each one the import
+ generates gets a `{kind, key, guid}` record in the **source's** metafile,
+ and that registry is the identity anchor: minted once, never renumbered,
+ never dropped. The key is the sub-asset's *name* (sanitised, with the
+ duplicate and unnamed rules D39 states), never its array index — an index
+ silently repoints every scene reference when a DCC tool reorders its list.
+
+ The `kind` namespace is generic on purpose — `material`, `image` today;
+ `mesh`, `animation` when their tickets land — one mechanism per D35's
+ rule, so the next type extends a list instead of inventing a second scheme.
+
 ## `AssetMeta`
 
 ```cpp
@@ -40,13 +59,27 @@ struct AssetMeta
  so without a record tying a GUID to a source path, reopening a project cannot
  reconnect a scene to its assets and export cannot find what to copy.
 
+## `AssetMeta::findSubAsset`
+
+```cpp
+const SubAssetRecord * findSubAsset(std::string_view recordKind, std::string_view recordKey) const
+```
+
+ Looks a sub-asset up in the registry.
+ @param recordKind the namespace, `material` or `image`.
+ @param recordKey the stable key within that kind.
+ @returns the record, or null when the pair was never minted.
+
 ## `kAssetMetaVersion`
 
 ```cpp
-inline constexpr std :: uint32_t kAssetMetaVersion = 1
+inline constexpr std :: uint32_t kAssetMetaVersion = 2
 ```
 
  The metafile schema version this build writes.
+
+ 2 (T0169): `subAssets` — version 1 files parse unchanged with an empty
+ registry, so nothing reimports on upgrade.
 
 ## `kAssetMetaExtension`
 

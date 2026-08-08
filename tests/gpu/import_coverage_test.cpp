@@ -19,7 +19,9 @@
 
 #include <hp/Assets.hpp>
 #include <hp/Camera.hpp>
+#include <hp/Import.hpp>
 #include <hp/Light.hpp>
+#include <hp/Material.hpp>
 #include <hp/Log.hpp>
 #include <hp/Render.hpp>
 #include <hp/Scene.hpp>
@@ -371,11 +373,15 @@ struct Frame {
 /// Imports `modelPath`, draws it once and reads the frame back. `lit` adds the
 /// tilted directional lamp the spec-gloss case shades by; unlit cases leave the
 /// scene lamp-free on purpose, because "bright with zero lights" *is* their
-/// assertion.
-Frame renderModel(Device& device, const std::string& modelPath, bool lit) {
+/// assertion. `materialOverride` assigns an authored material from `pool`
+/// into slot 0 — the T0169.7 path, a generated `.hpmat` referenced by GUID.
+Frame renderModel(Device& device, const std::string& modelPath, bool lit,
+                  hp::AssetPool* externalPool = nullptr,
+                  hp::Guid materialOverride = hp::Guid{}) {
     Frame frame;
 
-    hp::AssetPool pool;
+    hp::AssetPool localPool;
+    hp::AssetPool& pool = externalPool != nullptr ? *externalPool : localPool;
     const hp::Guid meshGuid = hp::Guid::generate();
     auto mesh = hp::loadMesh(device.render->device(), device.render->context(), modelPath);
     if (!mesh || !mesh->valid()) {
@@ -390,6 +396,9 @@ Frame renderModel(Device& device, const std::string& modelPath, bool lit) {
     hp::Entity quad = scene.create("quad");
     hp::MeshRenderer renderer;
     renderer.mesh = meshGuid;
+    if (materialOverride.isValid()) {
+        renderer.materials = {materialOverride};
+    }
     quad.add<hp::MeshRenderer>(renderer);
 
     if (lit) {
@@ -523,6 +532,8 @@ TEST_CASE("imported glTF material features reach the pixels they were parsed for
 
     REQUIRE(hp::Vfs::init(nullptr));
     REQUIRE(hp::Vfs::mount(scratch.string()));
+    // The write directory, for the T0169.7 subcase's production pass.
+    REQUIRE(hp::Vfs::setWriteDirectory(scratch.string()));
 
     CapturingSink sink;
     hp::logAddSink(&sink);
@@ -612,6 +623,55 @@ TEST_CASE("imported glTF material features reach the pixels they were parsed for
             // reasoning as the unlit case: 186 measured, 150 asserted.
             CHECK(frame.mean.g > 150.0);
             CHECK(frame.mean.r < 100.0);
+        }
+    }
+
+    SUBCASE("a generated .hpmat has a GUID a scene resolves, and an edit changes pixels "
+            "(T0169.7)") {
+        // The Done-when, minus the specific car: import a model whose own
+        // material is red, produce its engine assets, **edit the generated
+        // file** to green, and reference it from the scene by the GUID the
+        // registry minted. Red proves the imported path; green proves the
+        // authored file — same mesh, same frame geometry, one GUID of
+        // difference.
+        const Frame imported = renderModel(device, "models/unlit_red.gltf", /*lit=*/false);
+        CHECK(imported.ok);
+
+        const hp::ImportProducts products =
+            hp::produceEngineAssets("models/unlit_red.gltf");
+        REQUIRE(products.ok);
+        REQUIRE(products.assets.size() == 1);
+        const hp::ImportedSubAsset& generated = products.assets.front();
+        CHECK(generated.kind == "material");
+        REQUIRE(generated.guid.isValid());
+
+        // The author turns the red material green in the generated file.
+        {
+            const auto text = hp::Vfs::readText(generated.path);
+            REQUIRE(text.has_value());
+            auto material = hp::parseMaterial(*text, generated.path);
+            REQUIRE(material.has_value());
+            material->baseColour = hp::float4{0.05F, 0.8F, 0.05F, 1.0F};
+            REQUIRE(hp::Vfs::writeText(generated.path, hp::writeMaterial(*material)));
+        }
+
+        hp::AssetPool pool;
+        auto authored = hp::loadMaterial(generated.path);
+        REQUIRE(authored != nullptr);
+        pool.store<hp::Material>(generated.guid, authored);
+
+        const Frame overridden = renderModel(device, "models/unlit_red.gltf", /*lit=*/false,
+                                             &pool, generated.guid);
+        CHECK(overridden.ok);
+        if (imported.ok && overridden.ok) {
+            CHECK(magentaShareOfCovered(overridden.pixels) < 0.05);
+            MESSAGE("imported mean " << imported.mean.r << "," << imported.mean.g
+                                     << "  authored-override mean " << overridden.mean.r << ","
+                                     << overridden.mean.g);
+            CHECK(imported.mean.r > 150.0);
+            CHECK(imported.mean.g < 100.0);
+            CHECK(overridden.mean.g > 150.0);
+            CHECK(overridden.mean.r < 100.0);
         }
     }
 

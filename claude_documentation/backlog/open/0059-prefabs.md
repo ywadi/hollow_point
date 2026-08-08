@@ -8,7 +8,7 @@
 | **Phase** | 3 — Data model |
 | **Order** | 300 |
 | **Created** | 2026-08-03 |
-| **Refs** | T0053, T0107, [../completed/0060-material-system.md](../completed/0060-material-system.md) — raised 59.10; material slots are per *model*, so a node-level entity must decide deliberately what it overrides |
+| **Refs** | T0053, T0107, [../completed/0060-material-system.md](../completed/0060-material-system.md) — raised 59.10; material slots are per *model*, so a node-level entity must decide deliberately what it overrides; [../completed/0169-import-produces-engine-assets.md](../completed/0169-import-produces-engine-assets.md) — **an imported node hierarchy owes this ticket its decision**: T0169's production table records that an import emits no scene fragment until prefabs exist, so when this lands, "a glTF's node tree becomes a prefab" is a row to fill here, with D39's registry (`mesh/` namespace reserved) carrying the sub-asset identities it will need |
 
 ## Why
 

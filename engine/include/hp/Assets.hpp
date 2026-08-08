@@ -60,6 +60,31 @@ namespace hp {
 template <typename T>
 struct AssetTraits;
 
+/// One generated sub-asset's identity record (T0169.1, D39).
+///
+/// A container format holds N materials and K images; each one the import
+/// generates gets a `{kind, key, guid}` record in the **source's** metafile,
+/// and that registry is the identity anchor: minted once, never renumbered,
+/// never dropped. The key is the sub-asset's *name* (sanitised, with the
+/// duplicate and unnamed rules D39 states), never its array index — an index
+/// silently repoints every scene reference when a DCC tool reorders its list.
+///
+/// The `kind` namespace is generic on purpose — `material`, `image` today;
+/// `mesh`, `animation` when their tickets land — one mechanism per D35's
+/// rule, so the next type extends a list instead of inventing a second scheme.
+struct SubAssetRecord {
+    /// The record's namespace: `material`, `image`, …
+    std::string kind;
+
+    /// The stable key within the kind — `material/paint` stores `paint` here.
+    std::string key;
+
+    /// The generated asset's identity, shared with its own sidecar metafile.
+    /// **On divergence this registry wins** (D39): identity anchors in exactly
+    /// one place, and the import rewrites the sidecar with a warning.
+    Guid guid;
+};
+
 /// What a metafile records about an imported asset (23.4).
 ///
 /// **The metafile is what makes a project reopenable.** Assets can live anywhere,
@@ -81,10 +106,34 @@ struct AssetMeta {
 
     /// Schema version of the metafile itself, for T0082's migration.
     std::uint32_t schemaVersion = 1;
+
+    /// The sub-asset registry (T0169.1, D39). Empty for most assets; for a
+    /// container source (a glTF), one record per generated sub-asset.
+    /// **Permanent**: a record survives its material disappearing from the
+    /// source, so the same name returning re-attaches to the same GUID and
+    /// scenes never detach.
+    std::vector<SubAssetRecord> subAssets;
+
+    /// Looks a sub-asset up in the registry.
+    /// @param recordKind the namespace, `material` or `image`.
+    /// @param recordKey the stable key within that kind.
+    /// @returns the record, or null when the pair was never minted.
+    [[nodiscard]] const SubAssetRecord* findSubAsset(std::string_view recordKind,
+                                                     std::string_view recordKey) const {
+        for (const SubAssetRecord& record : subAssets) {
+            if (record.kind == recordKind && record.key == recordKey) {
+                return &record;
+            }
+        }
+        return nullptr;
+    }
 };
 
 /// The metafile schema version this build writes.
-inline constexpr std::uint32_t kAssetMetaVersion = 1;
+///
+/// 2 (T0169): `subAssets` — version 1 files parse unchanged with an empty
+/// registry, so nothing reimports on upgrade.
+inline constexpr std::uint32_t kAssetMetaVersion = 2;
 
 /// The extension appended to an asset's path to find its metafile.
 ///

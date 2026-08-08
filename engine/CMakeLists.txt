@@ -141,7 +141,9 @@ add_library(hp_engine SHARED
     src/CameraSystem.cpp
     src/DrawSubmission.cpp
     src/Engine.cpp
+    src/GltfPeek.cpp
     src/Guid.cpp
+    src/Import.cpp
     src/Input.cpp
     src/InputBindings.cpp
     src/ModuleResourceSignature.cpp

@@ -8,7 +8,7 @@
 | **Phase** | 6 — Editor |
 | **Order** | 660 |
 | **Created** | 2026-08-02 |
-| **Refs** | T0115, T0120 |
+| **Refs** | T0115, T0120; [../completed/0169-import-produces-engine-assets.md](../completed/0169-import-produces-engine-assets.md) — **the import surface this panel shows already exists headless**: `hp::produceEngineAssets` emits the `.assets/` files and `ImportProducts` reports kind/key/guid/path/created per sub-asset — the exact rows an import dialog lists. What the panel adds is the *trigger* (drop, re-import button) and the display; re-import semantics are D39's extract-once and are not the panel's to reinvent — "delete the generated file" **is** the reset-to-source gesture |
 
 ## Why
 

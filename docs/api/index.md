@@ -32,7 +32,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 |---|---|---|
 | [`<hp/Api.hpp>`](Api.md) | 0 | 0 |
 | [`<hp/Application.hpp>`](Application.md) | 24 | 14 |
-| [`<hp/Assets.hpp>`](Assets.md) | 69 | 69 |
+| [`<hp/Assets.hpp>`](Assets.md) | 71 | 71 |
 | [`<hp/Camera.hpp>`](Camera.md) | 11 | 11 |
 | [`<hp/CameraSystem.hpp>`](CameraSystem.md) | 11 | 11 |
 | [`<hp/Cook.hpp>`](Cook.md) | 14 | 14 |
@@ -44,6 +44,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/FrameTargets.hpp>`](FrameTargets.md) | 27 | 27 |
 | [`<hp/Guid.hpp>`](Guid.md) | 13 | 5 |
 | [`<hp/HandednessConvention.hpp>`](HandednessConvention.md) | 1 | 1 |
+| [`<hp/Import.hpp>`](Import.md) | 3 | 3 |
 | [`<hp/Input.hpp>`](Input.md) | 39 | 39 |
 | [`<hp/Layer.hpp>`](Layer.md) | 28 | 16 |
 | [`<hp/Layers.hpp>`](Layers.md) | 15 | 15 |
@@ -74,7 +75,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 47 | 47 |
 
-**774 public declarations across 43 headers, 657 documented.**
+**779 public declarations across 44 headers, 662 documented.**
 
 ## Every symbol
 
@@ -105,7 +106,9 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `Application::input` | [`Application.hpp`](Application.md) |
 | `createApplication` | [`Application.hpp`](Application.md) |
 | `AssetTraits` | [`Assets.hpp`](Assets.md) |
+| `SubAssetRecord` | [`Assets.hpp`](Assets.md) |
 | `AssetMeta` | [`Assets.hpp`](Assets.md) |
+| `AssetMeta::findSubAsset` | [`Assets.hpp`](Assets.md) |
 | `kAssetMetaVersion` | [`Assets.hpp`](Assets.md) |
 | `kAssetMetaExtension` | [`Assets.hpp`](Assets.md) |
 | `writeAssetMeta` | [`Assets.hpp`](Assets.md) |
@@ -341,6 +344,9 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `hash` | [`Guid.hpp`](Guid.md) |
 | `hash::operator()` | [`Guid.hpp`](Guid.md) |
 | `kRightHandedCameraSpace` | [`HandednessConvention.hpp`](HandednessConvention.md) |
+| `ImportedSubAsset` | [`Import.hpp`](Import.md) |
+| `ImportProducts` | [`Import.hpp`](Import.md) |
+| `produceEngineAssets` | [`Import.hpp`](Import.md) |
 | `ActionId` | [`Input.hpp`](Input.md) |
 | `ActionId::ActionId` | [`Input.hpp`](Input.md) |
 | `ActionId::ActionId` | [`Input.hpp`](Input.md) |
