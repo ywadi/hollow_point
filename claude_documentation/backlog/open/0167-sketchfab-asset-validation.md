@@ -53,7 +53,8 @@ Measured by parsing the container directly, not inferred:
 - [ ] 167.5 **Test the handedness claim explicitly.** Front is front, left is left, up is up, one unit is one unit — against the source in Blender, which is available in this session over MCP
 - [ ] 167.6 **Separate defects from absences.** A real PBR asset will look flat and dark without IBL, and that is T0087's, not a bug. So will anything expecting shadows (T0086). **Say which bucket each finding is in** — a missing system reported as a defect is how a clean engine gets "fixed" into a broken one
 - [ ] 167.7 **Decide whether the asset joins the repository**, and on what terms. **CC-BY-4.0 permits it and 82.3 MiB argues against it** — 48 MiB of that is four embedded PNGs, two of them over 16 MiB. A decimated or texture-reduced copy is a different asset and stops being this test. Whatever is decided, **the attribution travels with any copy that lands**: *Aston Martin, Francesco Coldesina, CC-BY-4.0*, with the Sketchfab URL. If it cannot be committed, the measurement still counts and the ticket says so
-- [ ] 167.8 **State plainly how far it gets without spec-gloss**, and stop there. `KHR_materials_pbrSpecularGlossiness` is in `extensionsRequired` and this engine implements metallic-roughness only, by a decision already recorded in `11-material-format.md`. **Whether to adopt it is a separate ticket** — Khronos archived the workflow, Sketchfab still exports it by the million, and that trade is not this ticket's to make. Open the ticket, do not take the decision
+- [ ] 167.8 **State plainly how far it gets without spec-gloss**, and stop there. `KHR_materials_pbrSpecularGlossiness` is in `extensionsRequired` and this engine implements metallic-roughness only, by a decision already recorded in `11-material-format.md`. Nothing in our loader stack refuses on that basis, so it will load and render **wrongly rather than not at all** — say what that looks like. **Whether to adopt it is a separate ticket** — Khronos archived the workflow, Sketchfab still exports it by the million, and that trade is not this ticket's to make. Open the ticket, do not take the decision
+- [ ] 167.9b **Decide whether the engine should warn on an unsupported required extension**, since neither `tinygltf` nor Diligent looks at the field. This is a genuinely open call rather than an obvious yes: it is not spec-mandated, and a hard refusal would reject assets that render acceptably. A **log line naming the extension** is the cheap middle, and the argument for it is that the alternative failure is silent — a material that quietly resolves to defaults, which is exactly the class D35 exists to prevent
 - [ ] 167.9 **Test `TANGENT.w` against real data.** 1,316 vertices in this file carry `w = −1` and the loader discards every one of them (Diligent's vertex path is `float3`). That is the first evidence in this project of the sign actually differing, and it is [T0166](../inprogress/0166-tangent-frames-and-real-assets.md).4's missing input — **report it there whichever way T0166 resolves**
 
 ## Not in scope
@@ -70,7 +71,23 @@ Three things were found by parsing the container, and the first is the headline.
 
 #### 1. It **requires** an extension this engine deliberately does not implement
 
-`KHR_materials_pbrSpecularGlossiness` appears in **`extensionsRequired`**, not merely `extensionsUsed`. The glTF spec is explicit that a loader which does not support a *required* extension **must refuse the asset** rather than render it approximately.
+`KHR_materials_pbrSpecularGlossiness` appears in **`extensionsRequired`**, not merely `extensionsUsed`.
+
+**What the spec actually says, checked against the source rather than remembered.** All three normative sentences put the obligation on the *asset*, and **none of them puts one on the consumer**:
+
+> All extensions used in a glTF asset **MUST** be listed in the top-level `extensionsUsed` array object […]
+>
+> All glTF extensions required to load and/or render an asset **MUST** be listed in the top-level `extensionsRequired` array […]
+>
+> `extensionsRequired` is a subset of `extensionsUsed`. All values in `extensionsRequired` **MUST** also exist in `extensionsUsed`.
+>
+> — glTF 2.0, *Specifying Extensions* ([`Specification.adoc:2663–2689`](https://github.com/KhronosGroup/glTF/blob/main/specification/2.0/Specification.adoc))
+
+**There is no sentence requiring a client to fail, refuse or decline to render.** Searched for one; the spec's only nearby client-side disposition points the other way — a client "can load glTF 2.x assets while **gracefully ignoring any new features it does not understand**" (§ versioning). Treating a required extension as fatal is an **ecosystem convention** — the glTF Validator flags it, several loaders throw — not a normative requirement. An earlier revision of this ticket asserted the opposite; it was wrong.
+
+**And our stack does not check it at all**, which is the fact that decides what actually happens here. `tinygltf` parses `extensionsRequired` into the model and only ever re-serialises it (`tiny_gltf.h:6064`, `8112`) — there is no refusal path. Diligent's `GLTFLoader` never reads the field: zero hits across the whole `AssetLoader/` tree. So **the asset will load**, and what the spec's "required to load and/or render" is really telling us is that the result will be *wrong* rather than *absent*.
+
+That makes the expected symptom a quiet one, which is worse than a refusal and is the thing to watch for.
 
 The support picture is layered, and the gap is ours:
 
