@@ -255,3 +255,18 @@ message sink is contained and is what `Diligent-SampleBase` itself does.
 - **The viewport is still the whole window.** T0033's panel does not exist, so
   there is no panel-space mapping and the camera takes input whenever the window
   has focus. T0173 needs that mapping and must not invent its own.
+
+## Back-references owed to other tickets — **not yet written**
+
+The backlog rule is that dependencies point both ways, because nobody reads the
+ticket they have already closed. These four back-references are owed and were
+**not** added, because another session held `claude_documentation/backlog/`
+while this landed and the coordination boundary was this ticket plus T0063 and
+T0173. Whoever picks this up next should add them; each is one line.
+
+| Ticket | What to add |
+|---|---|
+| **T0034** (EditorState) | 172.7 is blocked on it. The editor camera has no project to key a saved pose to, so it resets to the framing pose every launch. EditorState should carry a per-project camera pose |
+| **T0033** (Viewport panel) | The camera currently takes input whenever the window has focus, because the viewport *is* the window. When the panel exists, the camera must read the panel rect — and **T0173 must use the same mapping**, not invent one |
+| **T0133** (Cursor and pointer input as actions) | **T0172.2 could not be honoured because of this.** Routing the camera through T0068's input contexts needs mouse motion and the wheel to be bindable, and they are not: `bindAxis2D` composes an axis from four `KeyCode`s, and `hp::KeyCode` has no modifier entries at all, so Alt cannot be bound either. T0133 unblocks rebindable camera controls |
+| **T0064** (Transform gizmos) | The left mouse button is deliberately unbound here and belongs to picking and gizmos |
