@@ -82,17 +82,17 @@ Measured by parsing the container directly, not inferred:
 
 **Import (167.2)**: 31 meshes / 1 material / 33 nodes, matching the container analysis. **No required-extension warning fired** — spec-gloss is end-to-end since T0168.2, and the case asserts the silence (167.9b's decision, observed on the real asset).
 
-**The numbers beside the frames (167.4)**, final framing (camera 320 units up, pitched −0.16, car at 600):
+**The numbers beside the frames (167.4)**, final framing (camera 320 units up, pitched −0.16, car at 600). **The shot yaws were corrected after the owner caught `top_front` showing the top rear**: the car's nose points down −Z at yaw 0 — away from the camera — so every label was 180° off from its content, and no number could have caught it (a luminance mean has no idea which end of a car it is looking at). Each yaw now carries the π that turns the nose toward the lens, the front-facing shots take the key that favours them, and every frame was re-examined by eye:
 
-| frame | coverage | magenta | mean luma | spread |
-|---|---|---|---|---|
-| front_quarter | 40.5% | 0 | 11.7 | 31.7 |
-| side | 42.9% | 0 | 14.0 | 25.9 |
-| rear_quarter | 40.6% | 0 | 10.2 | 22.4 |
-| top_front | 39.9% | 0 | 12.7 | 26.8 |
-| front_quarter_relit | 40.5% | 0 | 14.6 | 31.4 |
+| frame | yaw | coverage | magenta | mean luma | spread |
+|---|---|---|---|---|---|
+| front_quarter | 3.74 | 41.2% | 0 | 11.9 | 27.0 |
+| side | 1.57 | 42.9% | 0 | 14.0 | 25.9 |
+| rear_quarter | 5.74 | 39.6% | 0 | 12.3 | 26.7 |
+| top_front | 2.56 | 41.0% | 0 | 8.9 | 20.2 |
+| front_quarter_relit | 3.74 | 41.2% | 0 | 10.4 | 24.7 |
 
-Key swung ~137°: mean luma 11.7 → 14.6 (ratio 1.25 at this framing; 1.77 at the earlier closer framing) — the surface answers the light; a painting would not.
+Key swung ~137° on the front-quarter pose: mean luma 11.9 → 10.4 (ratio 1.15; 1.77 at the earlier closer framing) — the surface answers the light; a painting would not.
 
 **Orientation, scale, handedness (167.5)** — observed, which is what D33's amendment was argued from and never had:
 

@@ -488,12 +488,23 @@ TEST_CASE("the Aston Martin renders, and the frames are on disk beside their num
         float yaw;
         float keyYaw;
     };
+    // The yaws are measured against the model, not assumed: the car's nose
+    // points down **−Z at yaw 0** — away from the camera — so a naive 0.6 yaw
+    // labelled "front quarter" showed the rear deck, and the owner caught it
+    // from the frame where the numbers could not (a luminance mean has no
+    // idea which end of a car it is looking at). Every yaw below carries the
+    // π that turns the nose toward the lens, and the frames were re-examined
+    // by eye after the fix.
+    // The front-facing shots take the −1.8 key as their base and 0.6 as the
+    // "relit" swing: the 0.6 key favours the car's rear flank, and a frame
+    // whose subject sits in its own shadow is a poor thing to hand an owner,
+    // however honest its numbers. The pair still measures the same swing.
     const Shot shots[] = {
-        {"front_quarter", 0.6F, 0.6F},
+        {"front_quarter", 3.74F, -1.8F},
         {"side", 1.5708F, 0.6F},
-        {"rear_quarter", 2.6F, 0.6F},
-        {"top_front", 5.7F, 0.6F},
-        {"front_quarter_relit", 0.6F, -1.8F}, // the same pose, the key swung ~137°
+        {"rear_quarter", 5.74F, 0.6F},
+        {"top_front", 2.56F, -1.8F},
+        {"front_quarter_relit", 3.74F, 0.6F}, // the same pose, the key swung ~137°
     };
 
     double firstLuma = -1.0;
