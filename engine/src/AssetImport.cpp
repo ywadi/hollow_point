@@ -438,6 +438,37 @@ std::size_t MeshAsset::nodeCount() const {
     return valid() ? impl_->model->Nodes.size() : 0;
 }
 
+std::optional<BoundingSphere> MeshAsset::boundingSphere() const {
+    if (!valid()) {
+        return std::nullopt;
+    }
+    Diligent::GLTF::Model& model = *impl_->model;
+
+    // `ComputeBoundingBox` needs a computed transform set, and the transform set
+    // is per *scene* rather than per model — so the default scene is the one to
+    // ask about, exactly as `SceneRenderer` does when it submits draws.
+    Diligent::GLTF::ModelTransforms transforms;
+    model.ComputeTransforms(model.DefaultSceneId, transforms);
+    const Diligent::BoundBox box = model.ComputeBoundingBox(model.DefaultSceneId, transforms);
+
+    const Diligent::float3 extent = box.Max - box.Min;
+    if (extent.x < 0.0F || extent.y < 0.0F || extent.z < 0.0F) {
+        // Diligent seeds the box inverted and returns it unchanged when the
+        // scene has no geometry to grow it with. That is not an error — a glTF
+        // holding only lights or cameras is valid — so the caller is told
+        // "nothing to frame" rather than handed a garbage sphere.
+        return std::nullopt;
+    }
+
+    const Diligent::float3 centre = (box.Min + box.Max) * 0.5F;
+    BoundingSphere sphere;
+    sphere.centreX = centre.x;
+    sphere.centreY = centre.y;
+    sphere.centreZ = centre.z;
+    sphere.radius = Diligent::length(extent) * 0.5F;
+    return sphere;
+}
+
 std::shared_ptr<MeshAsset> loadMesh(Diligent::IRenderDevice* device,
                                     Diligent::IDeviceContext* context,
                                     std::string_view virtualPath) {

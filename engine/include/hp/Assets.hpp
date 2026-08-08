@@ -469,6 +469,24 @@ struct AssetTraits<ShaderAsset> {
 ///          missing-material pattern.
 [[nodiscard]] HP_API std::shared_ptr<ShaderAsset> loadShader(std::string_view virtualPath);
 
+/// A sphere enclosing a model, in the model's own space (T0172.5).
+///
+/// **Four loose floats rather than an `hp::float3` and a radius, deliberately.**
+/// Naming a math type here would pull `hp/Math.hpp` — and with it Diligent's
+/// `BasicMath.hpp`, 146,280 lines at roughly 594 ms per translation unit (D21) —
+/// into every consumer of this header, to describe four numbers. The same
+/// reasoning keeps `hp::Axis2D` out of `hp/Input.hpp`.
+struct BoundingSphere {
+    /// Centre, x.
+    float centreX = 0.0F;
+    /// Centre, y.
+    float centreY = 0.0F;
+    /// Centre, z.
+    float centreZ = 0.0F;
+    /// Radius. Never negative; zero means a single point.
+    float radius = 0.0F;
+};
+
 /// A loaded glTF model.
 ///
 /// **Owns Diligent's `GLTF::Model` and hands it out raw** (D22), because that is
@@ -517,6 +535,28 @@ public:
 
     /// @returns how many nodes the model holds, or 0 when empty.
     [[nodiscard]] std::size_t nodeCount() const;
+
+    /// The model's bounds in its own space, as a sphere (T0172.5).
+    ///
+    /// **A sphere rather than a box, and here rather than in the caller.**
+    /// Framing a model needs one number — how far back to stand — and a sphere
+    /// is what that number comes from; a box would have every consumer derive
+    /// the same radius. It lives on the asset because the alternative is worse:
+    /// the bounds come from `Diligent::GLTF::Model::ComputeBoundingBox`, which
+    /// is defined in `Diligent-AssetLoader`, a **static** library the engine
+    /// links `PRIVATE` so exactly one copy exists in the process (T0023.3). An
+    /// app computing this itself would link a second copy — the duplicate-Diligent
+    /// hazard `engine/CMakeLists.txt` warns about.
+    ///
+    /// This is deliberately *not* T0045's culling bounds: no world transform, no
+    /// per-frame budget, no hierarchy. It is the smallest thing that answers
+    /// "where is this model and how big is it", which is what an editor needs to
+    /// look at one.
+    ///
+    /// @returns the sphere, or nothing for an empty asset or a model whose
+    ///          default scene contains no geometry — a caller should fall back
+    ///          to a default framing rather than treating that as an error.
+    [[nodiscard]] std::optional<BoundingSphere> boundingSphere() const;
 
 private:
     friend HP_API std::shared_ptr<MeshAsset> loadMesh(Diligent::IRenderDevice* device,

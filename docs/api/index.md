@@ -32,7 +32,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 |---|---|---|
 | [`<hp/Api.hpp>`](Api.md) | 0 | 0 |
 | [`<hp/Application.hpp>`](Application.md) | 24 | 14 |
-| [`<hp/Assets.hpp>`](Assets.md) | 71 | 71 |
+| [`<hp/Assets.hpp>`](Assets.md) | 73 | 73 |
 | [`<hp/Camera.hpp>`](Camera.md) | 11 | 11 |
 | [`<hp/CameraSystem.hpp>`](CameraSystem.md) | 11 | 11 |
 | [`<hp/Cook.hpp>`](Cook.md) | 14 | 14 |
@@ -75,7 +75,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | [`<hp/Window.hpp>`](Window.md) | 19 | 11 |
 | [`<hp/Yaml.hpp>`](Yaml.md) | 47 | 47 |
 
-**783 public declarations across 44 headers, 666 documented.**
+**785 public declarations across 44 headers, 668 documented.**
 
 ## Every symbol
 
@@ -160,6 +160,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `ShaderAsset::loadShader` | [`Assets.hpp`](Assets.md) |
 | `AssetTraits` | [`Assets.hpp`](Assets.md) |
 | `loadShader` | [`Assets.hpp`](Assets.md) |
+| `BoundingSphere` | [`Assets.hpp`](Assets.md) |
 | `MeshAsset` | [`Assets.hpp`](Assets.md) |
 | `MeshAsset::MeshAsset` | [`Assets.hpp`](Assets.md) |
 | `MeshAsset::MeshAsset` | [`Assets.hpp`](Assets.md) |
@@ -171,6 +172,7 @@ Full reasoning: `claude_documentation/documentation/06-engine-conventions.md`.
 | `MeshAsset::meshCount` | [`Assets.hpp`](Assets.md) |
 | `MeshAsset::materialCount` | [`Assets.hpp`](Assets.md) |
 | `MeshAsset::nodeCount` | [`Assets.hpp`](Assets.md) |
+| `MeshAsset::boundingSphere` | [`Assets.hpp`](Assets.md) |
 | `MeshAsset::loadMesh` | [`Assets.hpp`](Assets.md) |
 | `AssetTraits` | [`Assets.hpp`](Assets.md) |
 | `loadMesh` | [`Assets.hpp`](Assets.md) |
