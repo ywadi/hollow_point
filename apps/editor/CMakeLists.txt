@@ -13,9 +13,26 @@
 add_executable(hp_editor
     src/EditorMain.cpp
     src/EditorCamera.cpp
+    src/EditorLayer.cpp
+    src/EditorPanels.cpp
 )
 
 target_link_libraries(hp_editor PRIVATE hp::engine)
+
+# Dear ImGui, so the editor can *call* it (T0032.2).
+#
+# `Diligent-Imgui` rather than raw ImGui, which is D6's instruction and is right
+# for a second reason here: it carries `IMGUI_USER_CONFIG` as a PUBLIC compile
+# definition, and this binary's ImGui must be configured **identically** to the
+# engine's or the two disagree about `ImGuiIO`'s layout while sharing one
+# context. Linking the same target is what makes that true by construction
+# rather than by two CMake files agreeing.
+#
+# This does give the process a second copy of ImGui's code -- see `hp::UiBinding`
+# for why that is the arrangement rather than a defect, and note it is *code*
+# that is duplicated, not state: there is one context, and `EditorLayer::onAttach`
+# points this copy at it.
+target_link_libraries(hp_editor PRIVATE Diligent-Imgui)
 target_compile_features(hp_editor PRIVATE cxx_std_20)
 
 # The viewport camera, which DiligentEngine already wrote (T0172, **D40**).

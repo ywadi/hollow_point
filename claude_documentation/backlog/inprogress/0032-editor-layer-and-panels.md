@@ -104,3 +104,155 @@ Consequences this ticket did not previously account for:
 - Panels that display game-defined types depend on the module being loaded, so
   "no module loaded" and "module failed to load" are real editor states that
   need designing, not error paths to bolt on
+
+---
+
+## What landed (2026-08-08) — the shell
+
+### 32.2 first, because D40 says so: almost all of it was already here
+
+The first written note is what Diligent already provides, and on this ticket the
+answer is *nearly everything*, including two things nobody had checked.
+
+| Vendored | Where | Used? |
+|---|---|---|
+| Dear ImGui **1.92.9b, docking branch** | `third_party/imgui`, already wired in via `DILIGENT_DEAR_IMGUI_PATH` (**D6**) | **Yes** |
+| `ImGuiImplSDL3` — context, platform backend, `HandleSDLEvent` | `DiligentTools/Imgui` | **Yes**, engine-side |
+| `ImGuiDiligentRenderer` — the RHI renderer backend | same | **Yes**, through the above |
+| `CoordinateGridRenderer` — grid **and** axes, depth-aware | `DiligentFX/Components` | **32.10, not yet** — see below |
+
+**Which ImGui the editor links, since the question was asked explicitly:**
+`third_party/imgui`, the **docking** branch at 1.92.9b — `IMGUI_HAS_DOCK` is
+defined in its `imgui.h`. Diligent's bundled copy
+(`DiligentTools/ThirdParty/imgui`, 1.92.1, no `IMGUI_HAS_DOCK`) is **not**
+compiled by this build and never was: `CMakeLists.txt:124` forces
+`DILIGENT_DEAR_IMGUI_PATH` at our copy, which is D6 executed. So sorting it out
+was not part of 32.2 — it had already been sorted, before this ticket started.
+
+**One thing was genuinely missing, and it fails as four undefined symbols rather
+than as a build error you can read.** `Diligent-Imgui` compiles its own
+`ImGuiImplSDL3.cpp` wrapper, but the ImGui backend that wrapper calls into —
+`imgui_impl_sdl3.cpp` — is added to the build **on Win32 only**
+(`DiligentTools/Imgui/CMakeLists.txt` appends `imgui_impl_win32.cpp` and nothing
+for SDL). The object file exists and links against nothing. `hp_engine` compiles
+that one source now, with the reason at the call site.
+
+### The architecture question 32.2 actually turned on: who owns the ImGui context
+
+**Not the editor, and the constraint is a link constraint rather than a
+preference.** `ImGuiImplSDL3` needs SDL3 symbols and the `SDL_Window*`. SDL3 is
+linked **statically and PRIVATE** into `libhp_engine`, so a second binary linking
+SDL3 to reach that backend gets its own copy of SDL's globals — its own event
+queue, its own video subsystem — and every call it makes about *this* window goes
+to a library that has never heard of it. That is not untidiness; it does not
+work.
+
+So the split is:
+
+- **the engine hosts the context** — `RenderConfig::ui` creates
+  `ImGuiImplSDL3`, opens the frame at late update, and submits the draw data
+  between the present blit and `Present`. Nothing about it names an editor
+  (32.6), and D6 already established ImGui ships in the runtime too;
+- **the editor draws** — it links `Diligent-Imgui` for the API, and
+  `EditorLayer::onAttach` points this binary's copy at the engine's context with
+  `SetCurrentContext` + `SetAllocatorFunctions`, which is Dear ImGui's own
+  documented arrangement for a context shared across module boundaries. Sound
+  here because both copies compile from the same source with the same
+  `IMGUI_USER_CONFIG` — linking the same CMake target is what makes that true by
+  construction. `IMGUI_CHECKVERSION()` runs immediately after the bind, because
+  that is the failure this arrangement risks.
+
+**Two smaller engine additions fell out of it**, both generic and both
+documented where they are: `Window::platformWindow()` (SDL's object, distinct
+from `nativeHandles()`'s OS handle) and `Window::setPlatformEventSink` — a
+pre-translation hook for a vendored backend that speaks `SDL_Event`. The sink
+**cannot consume**; whether the UI took an input is answered by asking
+`ImGuiIO::WantCaptureMouse`, not by swallowing events the layer stack is supposed
+to order.
+
+### Where the UI draws, and why there is only one place it can
+
+`RenderLayer::onRender` clears, blits the scene, **then** submits ImGui, then
+presents. Before the blit and the UI is painted over; after `Present` and it
+lands in a buffer already handed to the compositor. `NewFrame` is at **late
+update**, not render, because layers render in push order and the render layer is
+pushed last — a frame opened in `onRender` would open after every panel had
+already tried to draw into it.
+
+### The viewport is a panel, which is T0033's substance
+
+A dockspace with nothing docked in it is not a dockspace, so this much of T0033
+landed here. Three things followed, each of which was a latent bug while the
+viewport was the window:
+
+- **the scene renders at the panel's size**, not the swap chain's — otherwise it
+  is resampled by whatever fraction of the window the panel occupies, and every
+  pixel measurement taken off it later (picking, gizmos) is taken off the wrong
+  grid;
+- **the camera takes input only when the viewport is hovered** — this closes the
+  gap T0172 recorded, where dragging a slider would have flown the view;
+- **the engine's dev present blit is switched off**, or the scene appears twice.
+
+### Layout, and where it lives
+
+Per **user**, not per project: `$XDG_CONFIG_HOME/hollowpoint/editor-layout.ini`
+(`%APPDATA%` on Windows), which is what T0032 predicted. A dock layout changes
+every time somebody drags a splitter and a per-project file would put that in
+everyone's diff. A project override is additive when T0024 exists.
+
+`ImGuiImplDiligent`'s constructor sets `io.IniFilename = nullptr`, so a context
+created through it persists nothing until told where to — which is why
+`RenderLayer::setUiLayoutPath` exists and stores the string: ImGui keeps the
+pointer, not the characters.
+
+### Deliberately off: multi-viewport
+
+`ImGuiConfigFlags_ViewportsEnable` — panels torn off into real OS windows — needs
+`UpdatePlatformWindows`/`RenderPlatformWindowsDefault` driven around the present,
+and `ImGuiImplDiligent` does not do it. Turning the flag on without that gives a
+blank second window, which reads as a renderer bug. Docking *within* the main
+window is what was asked for and is what is on. Additive later, at the cost of a
+swap chain per window.
+
+### 32.10 — the grid and axes: what Diligent provides, and why it is not built yet
+
+**D40 note first, and it confirms the framing that this is configuration rather
+than code.** `DiligentFX/Components/interface/CoordinateGridRenderer.hpp` ships
+the zero plane *and* the world axes in one component:
+
+- `FEATURE_FLAG_RENDER_PLANE_XZ` (and `_YZ`, `_XY`) — the plane;
+- `FEATURE_FLAG_RENDER_AXIS_X` / `_Y` / `_Z` — the axes;
+- `CoordinateGridAttribs` (`Shaders/Common/public/CoordinateGridStructures.fxh`)
+  already defaults to **+X red, +Y green, +Z blue** with dimmed negatives and
+  per-axis pixel widths;
+- `RenderAttributes` takes `pDepthSRV`, so the grid **occludes correctly against
+  geometry** rather than floating over it. Passing the real depth buffer is not
+  optional.
+
+`HnPostProcessTask.cpp:181-425` is the worked example of driving it.
+
+**It is not built yet, and the reason is a live collision rather than an
+oversight.** The grid needs three things that all live inside the engine's scene
+pass: the colour RTV, the scene **depth as an SRV**, and `CameraAttribs`. There
+were two ways in:
+
+1. a bespoke hook on `SceneView` — which is a fourth one-off insertion point into
+   the frame, and is exactly the divergence **T0120** and **D40** exist to stop;
+2. a pass in **T0094's `RenderExtensions`** — an `IRenderLayer` inserted at a
+   stated `order`, with `RenderPassContext::targets` giving the depth slot **by
+   name**. That is the frame seam, it is what the seam is for, and it answers
+   "where does it belong relative to the scene pass and the present blit"
+   properly: after the scene pass, before the present.
+
+**T0094 was being implemented in `engine/` by another session while this ticket
+was being worked**, and its header landed while this was in progress. Building
+(1) would have been a second seam obsolete on the day it was written; building
+(2) against uncommitted, still-moving API would have collided head-on. So the
+grid waits for T0094 to land and then goes in as a pass, which is one ticket of
+delay and no rework.
+
+**Two things to check when it is built, and to check rather than infer**: the
+grid renders in world **XZ**, and this engine is right-handed with the camera
+down its own **−Z** (T0165) — so confirm on screen that the plane and the axis
+directions are the ones intended, rather than reasoning about them. The same
+document warns that a handedness error here does not look like an error.

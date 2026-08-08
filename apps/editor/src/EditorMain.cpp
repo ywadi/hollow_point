@@ -25,6 +25,7 @@
 #include <hp/EntryPoint.hpp>
 
 #include "EditorCamera.hpp"
+#include "EditorLayer.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -143,6 +144,36 @@ public:
     /// @returns the viewport camera, so startup can frame what it opened.
     hped::EditorCamera& camera() { return camera_; }
 
+    /// Renders at the size a viewport panel asked for, rather than the window's
+    /// (T0033).
+    /// @param width requested width in pixels; zero or less means "unchanged".
+    /// @param height requested height in pixels.
+    /// @returns nothing.
+    void setRequestedSize(int width, int height) {
+        requestedWidth_ = width;
+        requestedHeight_ = height;
+    }
+
+    /// Whether the camera should act on input this frame.
+    ///
+    /// **False whenever the pointer is not over the viewport panel.** This is
+    /// the gap T0172 recorded: while the viewport was the whole window the
+    /// camera could read input unconditionally, and the moment a panel exists
+    /// that becomes "dragging a slider flies the view".
+    /// @param enabled whether to drive the camera.
+    /// @returns nothing.
+    void setCameraInputEnabled(bool enabled) { cameraInput_ = enabled; }
+
+    /// Whether to blit the scene straight to the swap chain.
+    ///
+    /// **Off once a viewport panel draws it**, or the scene appears twice — once
+    /// full-window from the engine's dev present path and once inside the panel
+    /// — with the UI over the top of the first. The blit was always labelled a
+    /// throwaway for exactly this moment (T0028).
+    /// @param present whether to keep the dev present path.
+    /// @returns nothing.
+    void setPresentToScreen(bool present) { presentToScreen_ = present; }
+
     /// Tells the camera what a re-frame (the F key) should recentre on.
     /// @param centre the subject's centre in world space.
     /// @param radius the subject's bounding radius.
@@ -163,7 +194,12 @@ public:
         if (input_.takeFrameRequest() && subjectRadius_ > 0.0F) {
             camera_.frame(subjectCentre_, subjectRadius_, framingFov());
         }
-        camera_.update(input_, static_cast<float>(deltaSeconds));
+        if (cameraInput_) {
+            camera_.update(input_, static_cast<float>(deltaSeconds));
+        }
+        // Ended every frame regardless, so a wheel notch or a key edge that
+        // arrived while the pointer was over a panel is discarded rather than
+        // being applied later, all at once, when it returns to the viewport.
         input_.endFrame();
 
         // **Drive the scene's own camera entity rather than an editor-only view
@@ -190,8 +226,10 @@ public:
         if (!render_.ready()) {
             return;
         }
-        const int width = render_.swapChainWidth();
-        const int height = render_.swapChainHeight();
+        // The viewport panel's size when there is one, the swap chain's when
+        // there is not. Both are in pixels.
+        const int width = requestedWidth_ > 0 ? requestedWidth_ : render_.swapChainWidth();
+        const int height = requestedHeight_ > 0 ? requestedHeight_ : render_.swapChainHeight();
 
         if (!view_.valid()) {
             if (!view_.create(render_.device(), render_.context(), width, height)) {
@@ -201,8 +239,6 @@ public:
                 return;
             }
         }
-        // Matching the swap chain exactly is what lets the dev blit be a plain
-        // copy with no scaling (T0028's present path).
         view_.resize(width, height);
 
         hp::SceneViewStats stats;
@@ -216,7 +252,7 @@ public:
             return;
         }
 
-        render_.setPresentSource(view_.colourTexture());
+        render_.setPresentSource(presentToScreen_ ? view_.colourTexture() : nullptr);
 
         // The real interface. Nothing listens yet -- T0033's viewport panel is
         // the first consumer -- but publishing from the start is what stops the
@@ -252,6 +288,10 @@ private:
     hp::SceneView view_;
     hped::EditorInputController input_;
     hped::EditorCamera camera_;
+    int requestedWidth_ = 0;
+    int requestedHeight_ = 0;
+    bool cameraInput_ = true;
+    bool presentToScreen_ = true;
     hp::float3 subjectCentre_{0.0F, 0.0F, 0.0F};
     float subjectRadius_ = 0.0F;
     bool failed_ = false;
@@ -275,6 +315,11 @@ private:
     hp::RenderConfig renderConfig() const {
         hp::RenderConfig config;
         config.backend = backend_;
+        // The editor is the reason `RenderConfig::ui` exists (T0032.2). It is
+        // off by default because a shipped game that never draws a debug panel
+        // should not pay for a context or for a platform backend that eats the
+        // mouse — see the field's own note.
+        config.ui = true;
         return config;
     }
 
@@ -330,6 +375,18 @@ private:
 
             scene_ = static_cast<SceneLayer*>(
                 layers().push(std::make_unique<SceneLayer>(*this, render)));
+
+            // **Between the scene and the render layer, and both sides matter**
+            // (T0032.1). Layers render in push order, so this draws after the
+            // scene has published its frame — which is what lets the viewport
+            // panel show *this* frame rather than the last one — and before the
+            // render layer, which submits the UI's draw data between the present
+            // blit and `Present`. Events run the other way, top-down, so the
+            // editor sees input before the scene does, which is the correct
+            // order for a UI over a world.
+            editor_ = static_cast<hped::EditorLayer*>(
+                layers().push(std::make_unique<hped::EditorLayer>(*this, render)));
+
             layers().push(std::move(renderOwned));
 
             // Deliberately not black: a black window and a broken window look
@@ -396,7 +453,34 @@ private:
             }
 
             reportCamera();
+
+            if (editor_ != nullptr && scene_ != nullptr) {
+                editor_->setSubject(&scene_->scene(), &scene_->assets(), &scene_->camera());
+                // The viewport panel draws the scene now, so the engine's
+                // full-window dev blit stops (T0028 always called it a
+                // throwaway for this moment).
+                scene_->setPresentToScreen(false);
+            }
         }
+    }
+
+    /// Carries what the panels asked for back to the scene layer.
+    ///
+    /// **After the layers' own late update, and that ordering is the point.**
+    /// The panels ran during the previous frame's render, so what they asked for
+    /// is read here and applied to the frame about to be drawn — one frame of
+    /// latency on a resize, which is invisible, against a half-resized frame if
+    /// it were applied mid-render.
+    /// @param deltaSeconds the scaled frame delta.
+    /// @returns nothing.
+    void onLateUpdate(double deltaSeconds) override {
+        (void)deltaSeconds;
+        if (editor_ == nullptr || scene_ == nullptr) {
+            return;
+        }
+        const hped::EditorContext& ui = editor_->context();
+        scene_->setRequestedSize(ui.requestedWidth, ui.requestedHeight);
+        scene_->setCameraInputEnabled(ui.viewportFocused);
     }
 
     /// Says where the viewport camera is and which way it faces, once, at
@@ -755,6 +839,7 @@ private:
 
 private:
     SceneLayer* scene_ = nullptr;
+    hped::EditorLayer* editor_ = nullptr;
 };
 
 } // namespace
