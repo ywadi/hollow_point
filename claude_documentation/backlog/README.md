@@ -20,33 +20,40 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-08 — twenty-ninth revision: `T0166` closed on a third of what it
+**Set 2026-08-08 — thirtieth revision: `T0168` closed same-day and whole, and
+the import matrix it was opened for closed most of its own rows on the way.**
+[`14-asset-import-matrix.md`](../documentation/14-asset-import-matrix.md) is
+the deliverable — one row per glTF feature and ratified extension, with who
+owns each gap — and building it by reading corrected the ticket's own premise:
+spec-gloss dies in *our shader*, not at `SceneRenderer.cpp:329` (that hardcode
+is the authored-material path; an imported model's workflow reaches the
+constant buffer and `HpSurface.slang` never read it). Closed with the table
+rather than after it: **spec-gloss** (judged and adopted, imports only —
+authoring stays MR), **unlit**, **texture-transform** and **default-scene**
+for imported models; **Draco end to end** (vendored 1.5.7 at Diligent's own
+declared ref, the EnTT/abseil redirect, proven by a test that encodes its own
+asset); the **required-extension warning** (a pre-parse, because `pirate.glb`
+measured that tinygltf refuses a compressed file before any loader callback
+runs); and the whole of T0166's remainder — **`HpTangentFrame` in the shader
+contract, the normal-map bitangent following the chart, and the green channel
+un-inverted** (glTF's green-up; upstream's `b = cross(t, n)` applies every
+glTF map backwards, ours no longer calls it — 227.7/172.3 against the old
+0/130.2, pinned by point lights at plain world positions). `Tangent.w` is a
+recorded decline. **D35 now covers import in words**, and `CLAUDE.md` points
+at the matrix beside the shader one.
+
+What this hands the next two items: T0169 starts from materials that already
+carry correct workflow data end to end, and T0167's predictions are written in
+the matrix — the car should render *through the genuine SG path*, and where
+the asset disagrees, the asset wins and the matrix records the correction.
+
+Previously — the twenty-ninth revision: `T0166` closed on a third of what it
 set out to do, because the rest of it turned out to be re-deriving what
-DiligentEngine already ships.** The one thing it was opened for is fixed and
-proven: the reconstructed parallax tangent frame. The diagnosis it carried was
-half right — the ticket said a *mirrored* UV shell marched backwards, and the
-measurement says **every** asset did. Schüler's cotangent frame, which the
-engine hand-copied, expands to `(det · h) · dP/du`, carrying the UV chart's own
-chirality as well as its determinant; and `det · h` is negative on every
-front-facing fragment in a `y`-down framebuffer. So the frame came back rotated
-180°, everywhere, and the march ran the wrong way on every parallax surface this
-engine has ever drawn. Dividing by the signed determinant — the obvious reading
-— fixes the mirrored charts and leaves the plain ones inverted.
-
-**The fix was sitting in `third_party/`.** `ShaderUtilities.fxh:51-55` solves it
-correctly, with the signed determinant, the zero guard and no cross product to
-be chiral. `tests/gpu/tangent_frame_test.cpp` is the asset that proves it — one
-mesh, two shells, one mirrored, the mirror asserted on the emitted bytes — and
-it pins the **absolute** direction from first principles, because "both shells
-agree" passes for a consistently rotated frame, which is exactly what was wrong.
-
-`T0168` takes the rest by name: the normal map's bitangent on a mirrored shell
-(measured wrong — the same map shades the two shells 0 against 130.2), the green
-channel that follows from it, `Tangent.w`, the conformance assets and the first
-unfamiliar model. That is not a tidy-up. **It is the fifth instance in one
-evening of the same failure**, and the sharpest: this was not a gap we filled
-in, it was correct upstream code in a file our own shader already includes,
-while we ran a wrong snippet from a 2013 blog post beside it.
+DiligentEngine already ships. The parallax frame fix was sitting in
+`third_party/` (`ShaderUtilities.fxh:51-55` — signed determinant, zero guard,
+no cross product), `tests/gpu/tangent_frame_test.cpp` pins it from first
+principles, and T0168 took the rest by name: the fifth instance in one evening
+of correct upstream code sitting unasked beside a wrong local copy.
 
 Previously — the twenty-eighth revision: the owner put `T0166` and `T0167` at
 the top, and the engine goes and looks at an asset it did not help make.**
@@ -363,12 +370,11 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0168](inprogress/0168-asset-import-coverage.md) | asset import coverage — the paper half, built by reading | **Four gaps in one evening, and every one was a case where Diligent already had the answer and we were not asking**: spec-gloss (their loader *and* their shader), `TANGENT.w` (a default we inherited by passing null, not a constraint), the tangent-frame determinant (they ship it correct; we hand-rolled it wrong), and Draco (opt-in behind a CMake target nobody supplied — the built lib has **zero** draco symbols). `CLAUDE.md`'s *"does DiligentEngine already do this?"* check exists for exactly this and did not happen. **D35's rule stops at the loader boundary and this extends it.** Cheap, because it is read rather than built |
-| 2 | [T0169](open/0169-import-produces-engine-assets.md) | an import produces engine assets | **The owner's call, and marked critical**: an import must yield engine types, not one opaque model. Today a glTF's materials stay inside Diligent's model — no GUID, no file, unreachable by a scene — and `writeMaterial` has existed since T0060 with **no caller outside a unit test**. It is Godot's `.import`, Unity's Extract Materials, Unreal's import dialog: the thing every game developer expects and the reason T0167's car cannot have its roughness changed. **The hard part is identity, not code** — an index is not a GUID, and both Godot and Unity moved to a keyed map after index-keying failed |
-| 3 | [T0167](open/0167-sketchfab-asset-validation.md) | a Sketchfab model, rendered and measured | The owner supplies the asset. Judged **by eye and by number** — a screenshot alone has misled this project twice. **Blocked by T0166 and not softly**: a production model has several things wrong at once, so it says *something* is wrong rather than *which*. It is also the observation **D33's amendment was argued from and never made** — that a Blender artist's model arrives as authored is currently derived, not observed |
-| 4 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | The movable one — see below. It needs nothing from the surface or lighting stages, and T0147 gave it the opaque/blend pass split it would have had to build. **T0152.5 adds one constraint**: facing is per-draw (the determinant rule), so any batching or sorting must keep the per-draw cull decision |
-| 5 | [T0086](open/0086-shadows.md) | shadows | Now unblocked in the way D30 sequenced it: the loop the shadow lookup goes inside is the engine's, the `ENABLE_SHADOWS` block's shape is waiting in `HpGetLight`, and T0145's Ref says where the factor goes and why it must not fold into `Attenuation`. Its Refs carry T0152.5's shadow-pass determinant note — and its bias tuning is now made against a **settled** convention (T0165), which is the whole reason T0152 blocked it |
-| 6 | [T0158](inprogress/0158-parallax-depth-cues.md) | parallax depth cues, remainder | 158.2 closed with T0159 and **158.3 closed with T0145**; what is left is the reference/tuning subtasks and the geometrically-displaced ground-truth cube. **T0165 re-posed its self-shadow probe** (yaw −0.45, the mirror of the old +0.45 onto the same object face at the same 11.5° grazing incidence) — any further tuning starts from there |
+| 1 | [T0169](open/0169-import-produces-engine-assets.md) | an import produces engine assets | **The owner's call, and marked critical**: an import must yield engine types, not one opaque model. Today a glTF's materials stay inside Diligent's model — no GUID, no file, unreachable by a scene — and `writeMaterial` has existed since T0060 with **no caller outside a unit test**. It is Godot's `.import`, Unity's Extract Materials, Unreal's import dialog: the thing every game developer expects and the reason T0167's car cannot have its roughness changed. **The hard part is identity, not code** — an index is not a GUID, and both Godot and Unity moved to a keyed map after index-keying failed. T0168 settled which features arrive at all; the matrix is the boundary this ticket maps *from* |
+| 2 | [T0167](open/0167-sketchfab-asset-validation.md) | a Sketchfab model, rendered and measured | The owner supplies the asset. Judged **by eye and by number** — a screenshot alone has misled this project twice. It is also the observation **D33's amendment was argued from and never made** — that a Blender artist's model arrives as authored is currently derived, not observed. **T0168 rewrote its predictions**: spec-gloss is supported for imports now, so the car should render through the genuine SG path, and 167.8/167.9/167.9b have notes on the ticket saying what closed under them |
+| 3 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | The movable one — see below. It needs nothing from the surface or lighting stages, and T0147 gave it the opaque/blend pass split it would have had to build. **T0152.5 adds one constraint**: facing is per-draw (the determinant rule), so any batching or sorting must keep the per-draw cull decision |
+| 4 | [T0086](open/0086-shadows.md) | shadows | Now unblocked in the way D30 sequenced it: the loop the shadow lookup goes inside is the engine's, the `ENABLE_SHADOWS` block's shape is waiting in `HpGetLight`, and T0145's Ref says where the factor goes and why it must not fold into `Attenuation`. Its Refs carry T0152.5's shadow-pass determinant note — and its bias tuning is now made against a **settled** convention (T0165), which is the whole reason T0152 blocked it |
+| 5 | [T0158](inprogress/0158-parallax-depth-cues.md) | parallax depth cues, remainder | 158.2 closed with T0159 and **158.3 closed with T0145**; what is left is the reference/tuning subtasks and the geometrically-displaced ground-truth cube. **T0165 re-posed its self-shadow probe** (yaw −0.45, the mirror of the old +0.45 onto the same object face at the same 11.5° grazing incidence) — any further tuning starts from there |
 
 **Raised rather than reordered, because the order is the owner's call:**
 [T0162](open/0162-shader-authoring-docs.md) (the shader authoring guide) listed
@@ -534,7 +540,7 @@ wrong in the confident voice of a document that is normally right.
 | 469 | [T0164](open/0164-per-instance-data.md) | Per-instance data: the last empty cell in the capability matrix | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 462 | [T0166](completed/0166-tangent-frames-and-real-assets.md) | Tangent frames, the conventions underneath them, and the first real asset this engine has ever rendered | 4 — Render layer | ✅ DONE | High | Moderate |
 | 463 | [T0167](open/0167-sketchfab-asset-validation.md) | A model from Sketchfab, rendered and measured: the first asset chosen by somebody other than us | 4 — Render layer | 🔜 TODO | High | Moderate |
-| 461 | [T0168](inprogress/0168-asset-import-coverage.md) | Asset import coverage: what does DiligentEngine already do, and are we asking it to? | 4 — Render layer | 🚧 IN PROGRESS | High | Moderate |
+| 461 | [T0168](completed/0168-asset-import-coverage.md) | Asset import coverage: what does DiligentEngine already do, and are we asking it to? | 4 — Render layer | ✅ DONE | High | Moderate |
 | 460 | [T0169](open/0169-import-produces-engine-assets.md) | An import produces engine assets: every type a DCC tool exports becomes an `hp::` type on disk | 7 — Content pipeline | 🔜 TODO | High | Complex |
 | 464 | [T0155](open/0155-terrain-rendering.md) | Terrain rendering: their reference implementation is the floor, not the ceiling | 4 — Render layer | 🔜 TODO | Medium | Very Complex |
 | 465 | [T0145](completed/0145-lighting-stage-own-the-light-loop.md) | The lighting stage: own the light loop, overridable shading model | 4 — Render layer | ✅ DONE | High | Complex |

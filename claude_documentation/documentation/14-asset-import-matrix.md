@@ -127,6 +127,8 @@ parser interprets it (raw extension JSON survives regardless); "Diligent" means
 | `EXT_meshopt_compression` | — | — | meshoptimizer *is* vendored (T0039) but the decode wiring through tinygltf does not exist at any layer | ⬆️ · unowned |
 | `EXT_mesh_gpu_instancing` | — | — | the node renders **one** instance at the node TRS — thousands of authored instances silently absent | ⬆️ · unowned (T0164's per-instance data is the natural consumer) |
 | `EXT_texture_webp` | — | — | — | ⬆️ · unowned |
+| `EXT_texture_avif` | — | — | — | ⬆️ · unowned |
+| `EXT_lights_image_based` | — | — | environment lighting is T0087's, and its design should decide whether an asset-supplied IBL is even wanted | ⬆️ · a row on T0087's Refs before anyone relies on it |
 
 ## What reading could not settle — T0167's brief (168.8)
 

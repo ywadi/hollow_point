@@ -8,7 +8,7 @@
 | **Phase** | 7 — Content pipeline |
 | **Order** | 750 |
 | **Created** | 2026-08-03 |
-| **Refs** | [../inprogress/0168-asset-import-coverage.md](../inprogress/0168-asset-import-coverage.md) — the import matrix (`14-asset-import-matrix.md`) assigns this ticket the `JOINTS_0`/`WEIGHTS_0` row: skins and animations are **fully loaded and upstream-evaluatable already** — `GLTF::Model::ComputeTransforms(scene, transforms, root, AnimationIndex, Time)` updates joint palettes today, the engine just always passes `-1` — so this runtime starts from a running mechanism, not from raw data. A skinned mesh currently renders its bind pose, which is the intended degradation until then. See T0041's Refs for the draw-path flags the first render needs |
+| **Refs** | [../completed/0168-asset-import-coverage.md](../completed/0168-asset-import-coverage.md) — the import matrix (`14-asset-import-matrix.md`) assigns this ticket the `JOINTS_0`/`WEIGHTS_0` row: skins and animations are **fully loaded and upstream-evaluatable already** — `GLTF::Model::ComputeTransforms(scene, transforms, root, AnimationIndex, Time)` updates joint palettes today, the engine just always passes `-1` — so this runtime starts from a running mechanism, not from raw data. A skinned mesh currently renders its bind pose, which is the intended degradation until then. See T0041's Refs for the draw-path flags the first render needs |
 
 ## Why
 

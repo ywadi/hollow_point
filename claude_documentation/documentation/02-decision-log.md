@@ -2453,6 +2453,25 @@ rather than loud**, which is what makes it expensive.
    is a warning. That document exists because of this decision and is worthless
    if it is only updated in arrears.
 
+### Extended to import, 2026-08-08 (T0168) — the same rule at the loader boundary
+
+**A format feature gets a row in
+[`14-asset-import-matrix.md`](14-asset-import-matrix.md) *before* anything
+relies on it** — before a converter targets it (T0038), before an import
+pipeline maps it (T0169), before a test asset assumes it. The same sentence
+that already works for shader techniques, and it was earned the same way: the
+capability-matrix discipline was applied to shaders and stopped at the loader,
+and on the other side of that line **four gaps accumulated in one evening**
+(spec-gloss, `TANGENT.w`, the tangent-frame determinant, Draco) — every one a
+case where DiligentEngine already had the answer and this engine was not
+asking, every one found by a person reading rather than by a test, none of
+which a render would have surfaced. The import matrix is the loader's
+equivalent of the shader matrix, `AssetImport.cpp`'s `kEndToEndExtensions`
+must move in the same commit as its rows, and an unsupported **required**
+extension now warns by name instead of degrading silently — because a material
+that quietly resolves to defaults is exactly the failure class this decision
+exists to prevent, one layer down.
+
 ### What was rejected, and why — so it is not re-litigated
 
 - **Widening the fixed slots** (8, 16 engine-named textures). Keeps the tax —

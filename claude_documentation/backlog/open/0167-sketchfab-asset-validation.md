@@ -65,6 +65,17 @@ Measured by parsing the container directly, not inferred:
 
 ## Notes / findings
 
+### What T0168 closed under this ticket's subtasks (2026-08-08) — read before starting
+
+[T0168](../completed/0168-asset-import-coverage.md) landed the paper half and closed several of this ticket's questions ahead of it. The prediction list this ticket tests is **`14-asset-import-matrix.md` § "What reading could not settle"** — where the car disagrees, the car wins and the matrix records the correction (168.8's standing instruction).
+
+- **167.8 is overtaken in its premise**: the engine now implements spec-gloss **for imported models** (runtime `Workflow` branch in `HpSurface.slang`, upstream's own design; authoring stays MR by the standing `11-material-format.md` decision). So the question is no longer "how far does it get without spec-gloss" but "does the genuine SG path survive a real asset" — the synthetic test covered factors and the diffuse slot alias; **the car is the first asset to exercise the SG *texture* in the phys-desc slot**. One caveat to watch: upstream never reads `glossinessFactor` (hardcoded 1.0) — irrelevant here, the car carries an SG texture, but it is the matrix row to check against.
+- **167.9b is decided and built** (T0168.6): the import warns, once per model, naming each required extension outside the supported list — via a pre-parse of the raw JSON chunk, *because* a file that fails tinygltf's validation never reaches the loader callbacks (measured on `pirate.glb`). The car requires only spec-gloss, which is supported, so **the expected observation is no warning at all**.
+- **167.9 (`TANGENT.w`) is resolved as a recorded decline** (T0168.4, matrix row): the vertex path stays `float3`, and handedness is read per fragment from the UV determinant, where the corrected frame (T0168.5) needs it anyway. The car's 1,316 `w = −1` vertices are therefore expected to render **correctly without the attribute** — mirrored shells follow the chart through `HpTangentFrameGrad`, pinned by the two-shell lit case. If the car's mirrored UVs shade wrong anyway, that is a real finding *against* the derivative-frame decision and belongs here.
+- The normal map's green channel is now applied per glTF's convention (green up). Sketchfab exports GL-convention maps, so the car's normal map should read correctly; inverted-looking relief would again be a finding, not a tuning knob.
+
+## Notes / findings (measured)
+
 ### What the file contains, measured 2026-08-08 before any render
 
 Three things were found by parsing the container, and the first is the headline.

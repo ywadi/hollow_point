@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | 🚧 IN PROGRESS |
+| **Status** | ✅ DONE |
 | **Priority** | High |
 | **Complexity** | Moderate |
 | **Phase** | 4 — Render layer |
@@ -44,11 +44,11 @@ And nothing answers the question today. `05-verification-status.md` says exactly
 
 ## Done when
 
-- [ ] Every glTF 2.0 feature and every ratified `KHR_`/`EXT_` extension has a row, a state, and — where the state is not ✅ — **who owns it and what it would cost**
-- [ ] A person can answer *"will this model import?"* from one document, without reading the loader
-- [ ] Every 🔌 and 🔧 row has either been **closed** or has a named ticket
-- [ ] **Draco loads**, or its rejection is recorded with the reason
-- [ ] `CLAUDE.md` points at the matrix in the same table that points at the shader one, and **D35's rule is extended to import in words** — a format feature gets a row before someone finds out by rendering
+- [x] Every glTF 2.0 feature and every ratified `KHR_`/`EXT_` extension has a row, a state, and — where the state is not ✅ — **who owns it and what it would cost**
+- [x] A person can answer *"will this model import?"* from one document, without reading the loader
+- [x] Every 🔌 and 🔧 row has either been **closed** or has a named ticket
+- [x] **Draco loads**, or its rejection is recorded with the reason
+- [x] `CLAUDE.md` points at the matrix in the same table that points at the shader one, and **D35's rule is extended to import in words** — a format feature gets a row before someone finds out by rendering
 
 ## Subtasks
 
@@ -58,8 +58,8 @@ And nothing answers the question today. `05-verification-status.md` says exactly
 - [x] 168.4 **The vertex attribute array.** Carried from T0166.4 if it was not landed there. `DefaultVertexAttributes` is a default; we pass null and inherit it. `TANGENT.w` is the known casualty; check whether anything else is. **Done 2026-08-08, as a decision: declined, recorded in the matrix with the reopening route.** The sweep found exactly two casualties: `TANGENT.w` (declined — widening needs an upstream patch at `PBR_Renderer.cpp:1660`, T0166 already measured that, and the engine reads the same fact from the UV determinant per fragment, where 168.5's frame fix needs it anyway) and `TEXCOORD_2+` (dropped, upstream has two UV sets — a matrix row, unowned). Everything else in the default array converts faithfully, including normalized u8/u16 attributes
 - [x] 168.5 **The remainder of T0166**: the normal-map green channel (166.5), whether to vendor Khronos's `glTF-Sample-Assets` (166.6, ~2 GB — a build-harness call), and rendering `third_party/meshoptimizer/demo/pirate.glb` (166.7). **Done 2026-08-08, all three — 166.5 as code, 166.6 as a recorded decline, 166.7 as a measured negative; the substance is in Notes**
 - [x] 168.6 **Warn on an unsupported required extension.** Neither `tinygltf` nor Diligent consults `extensionsRequired` — verified, zero hits in `AssetLoader/`. **Not spec-mandated**: the glTF spec places its `MUST`s on the asset, never on the client, and a hard refusal would reject assets that render acceptably. But the alternative is a material silently resolving to defaults, which is D35's class. A log line naming the extension is the cheap middle. **Done 2026-08-08: `AssetImport.cpp` reads the field through the load callbacks' `pSrcModel` (tinygltf declarations only — the implementation stays in Diligent's TU) against `kEndToEndExtensions`, once per import. Asserted both directions: a fake required extension warns by name, a supported one is silent**
-- [ ] 168.7 **Wire it into the rules.** A row in `CLAUDE.md`'s table, and D35 extended to import — **a format feature gets a row before it is relied on**, the same sentence that already works for shader techniques
-- [ ] 168.8 **Feed T0167 and be fed by it.** This ticket predicts from reading; T0167 measures one real asset. **Where they disagree, the asset wins and the table is wrong** — record which rows it corrected, because that is the measure of whether reading is enough
+- [x] 168.7 **Wire it into the rules.** A row in `CLAUDE.md`'s table, and D35 extended to import — **a format feature gets a row before it is relied on**, the same sentence that already works for shader techniques
+- [x] 168.8 **Feed T0167 and be fed by it.** This ticket predicts from reading; T0167 measures one real asset. **Where they disagree, the asset wins and the table is wrong** — record which rows it corrected, because that is the measure of whether reading is enough
 
 ## Not in scope
 
