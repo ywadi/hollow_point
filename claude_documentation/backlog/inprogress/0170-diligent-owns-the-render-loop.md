@@ -208,6 +208,51 @@ want was already there from T0143's sheen LUT. That last number was written as
 20 first and the suite said 19, which is the argument for pinning it rather than
 reasoning about it.
 
+### 170.5's third finding — the precompute cost 50x the frame rate, and the cause was not the sampling
+
+**Worth reading before adding anything else that renders at setup time.**
+
+Turning IBL on made `screen_inputs_test`'s snapshot bench go from **3.4 ms a
+frame to 161 ms**, on the RTX 2080, reproducibly, four runs in five. Bisected
+rather than guessed, one rebuild each:
+
+| build | ms/frame |
+|---|---|
+| `EnableIBL = false` | 2.65 / 4.29 |
+| `EnableIBL = true`, **`PSO_FLAG_USE_IBL` masked off** | **160** |
+| `EnableIBL = true`, precompute skipped | 3.20 / 3.61 |
+| diffuse samples 8192 → 128, specular 256 → 64 | **161**, unchanged |
+| `FinishFrame()` after the precompute | **3.64 / 2.76** |
+
+So it was **not** the shader — the second row has no IBL code in the pixel
+shader at all — and **not** the sampling, which is what the fourth row rules
+out. It was `PrecomputeCubemaps`'s ~60 render passes each mapping a constant
+buffer out of Diligent's **per-frame dynamic heap**, a fixed-size ring that
+only `FinishFrame` recycles. An offscreen renderer never presents, so nothing
+ever recycles it — the trap **T0156** already recorded from the other end.
+Spending sixty allocations of it on *setup* pushes the heap over its limit, and
+past that point every `MapBuffer` in every later frame stalls.
+
+`SceneRenderer::create` now unbinds targets (`PrecomputeCubemaps` leaves its
+last cube face bound) and calls `FinishFrame()` once, guarded so it happens on
+the frame that actually integrated. Safe exactly there: `create()` is setup by
+contract and a resize goes through `FrameTargets`, never through it.
+
+**It also cures something that predates this ticket.** Diligent's "Space in
+dynamic heap is exhausted!" line appears **7,886 times** in that one test case
+on `main` before T0170 and **zero** times after this change — so those frames
+were already stalling and the bench was already measuring it. The bound the
+case asserts (`< 50 ms`) is the reason any of this was caught at all, which is
+the argument for keeping catastrophe guards on timing tests even when the
+finding is the printed number.
+
+The environment is also **shared per device** now rather than built per
+renderer, refcounted so the entry dies with the last renderer on that device.
+That is the right shape independently — the cubemaps are identical for every
+renderer — but on its own it did **not** fix the stall, because a test that
+creates and destroys a view per measurement drops the refcount to zero every
+time. Recorded so the next reader does not mistake the cache for the fix.
+
 ### 170.2 — `GLTF_PBR_Renderer` **cannot** be the base class, and its `Render` cannot be the draw path
 
 Both measured in source, and they change this ticket's mechanism rather than

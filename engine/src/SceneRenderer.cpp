@@ -445,6 +445,41 @@ makeDefaultEnvironmentMap(Diligent::IRenderDevice* device) {
     return texture;
 }
 
+/// The precomputed environment, **shared by every renderer on one device**.
+///
+/// **Not an optimisation — a correctness fix, and it was measured.** The
+/// integration is 60 render passes plus two shader compiles, and it was
+/// running once per `SceneRenderer::create()`. Every one of those passes
+/// allocates from Diligent's per-frame dynamic heap, which is only recycled by
+/// `FinishFrame`; an offscreen renderer that never presents therefore never
+/// recycles it (T0156 recorded that trap). Spending 60 allocations of it on
+/// *setup* moved the exhaustion point earlier, and past that point every
+/// `MapBuffer` stalls: `screen_inputs_test`'s snapshot bench went from 1.4 ms
+/// a frame to **174 ms**, four runs in five, with the stall showing up as a
+/// per-frame cost because the 120-frame leg exhausts the heap and the 20-frame
+/// leg does not.
+///
+/// The cubemaps are identical for every renderer — one fixed procedural sky —
+/// so building them once per device is the honest shape as well as the fast
+/// one. Refcounted rather than leaked: the entry goes when the last renderer on
+/// that device does, so a test that builds and tears down many devices cannot
+/// hand a later device the previous one's freed views.
+struct SharedEnvironment {
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> irradiance;
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> prefiltered;
+
+    /// How many renderers hold this. The entry is erased at zero.
+    int users = 0;
+};
+
+/// The per-device table. **Single-threaded by the same rule the rest of the
+/// renderer follows**: creation happens on the thread that owns the immediate
+/// context.
+std::unordered_map<Diligent::IRenderDevice*, SharedEnvironment>& sharedEnvironments() {
+    static std::unordered_map<Diligent::IRenderDevice*, SharedEnvironment> table;
+    return table;
+}
+
 Diligent::TEXTURE_ADDRESS_MODE toDiligentWrap(TextureWrap wrap) {
     switch (wrap) {
     case TextureWrap::Repeat:
@@ -739,6 +774,9 @@ struct SceneRenderer::Impl {
     /// pipeline rebuild.
     float environmentIntensity = 1.0F;
 
+    /// Releases this renderer's claim on the shared environment.
+    ~Impl();
+
     /// The diffuse irradiance cube, integrated from the environment once at
     /// `create()`. Bound on every SRB as `g_IrradianceMap`.
     Diligent::RefCntAutoPtr<Diligent::ITextureView> irradianceCube;
@@ -945,6 +983,24 @@ struct SceneRenderer::Impl {
                    const DrawItem& item, Guid guid, const AssetPool& pool, DrawPass pass,
                    PassScan& scan);
 };
+
+SceneRenderer::Impl::~Impl() {
+    if (device == nullptr) {
+        return;
+    }
+    auto& table = sharedEnvironments();
+    const auto found = table.find(device);
+    if (found == table.end()) {
+        return;
+    }
+    if (--found->second.users <= 0) {
+        // **Erased at zero rather than kept for a rainy day.** A test process
+        // builds and tears down a device per case; a cached entry outliving
+        // its device would hand the next renderer views into freed memory the
+        // moment the allocator reused the address.
+        table.erase(found);
+    }
+}
 
 SceneRenderer::Impl::ModelBindings*
 SceneRenderer::Impl::ensureBindings(Guid guid, const Diligent::GLTF::Model& model) {
@@ -1981,26 +2037,73 @@ bool SceneRenderer::create(Diligent::IRenderDevice* device, Diligent::IDeviceCon
     // safe exactly because this is setup: no frame is in flight. Calling it
     // mid-frame would silently retarget the caller's draws.
     // -----------------------------------------------------------------------
-    if (Diligent::RefCntAutoPtr<Diligent::ITexture> environment =
-            makeDefaultEnvironmentMap(device)) {
-        Diligent::RefCntAutoPtr<Diligent::ITexture> irradiance =
-            impl->renderer->CreateIrradianceCube(context, "hp irradiance cube");
-        Diligent::RefCntAutoPtr<Diligent::ITexture> prefiltered =
-            impl->renderer->CreatePrefilteredEnvMap(context, "hp prefiltered environment");
-        if (irradiance && prefiltered) {
-            impl->irradianceCube =
-                irradiance->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
-            impl->prefilteredEnvMap =
-                prefiltered->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+    SharedEnvironment& shared = sharedEnvironments()[device];
+    ++shared.users;
+    if (!shared.irradiance || !shared.prefiltered) {
+        if (Diligent::RefCntAutoPtr<Diligent::ITexture> environment =
+                makeDefaultEnvironmentMap(device)) {
+            Diligent::RefCntAutoPtr<Diligent::ITexture> irradiance =
+                impl->renderer->CreateIrradianceCube(context, "hp irradiance cube");
+            Diligent::RefCntAutoPtr<Diligent::ITexture> prefiltered =
+                impl->renderer->CreatePrefilteredEnvMap(context, "hp prefiltered environment");
+            if (irradiance && prefiltered) {
+                Diligent::PBR_Renderer::PrecomputeCubemapsAttribs precompute;
+                precompute.pEnvironmentMapSRV =
+                    environment->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+                precompute.pIrradianceCube = irradiance;
+                precompute.pPrefilteredEnvMap = prefiltered;
+                // **Sample counts left at upstream's defaults, and that was
+                // checked rather than assumed** (T0170.5). They are large --
+                // 8192 diffuse samples per texel on a discrete NVIDIA part,
+                // 256 specular (`PBR_Renderer.cpp:746-757, 627`) -- and
+                // dropping them to 128/64 changed the measured cost of this
+                // whole path by nothing at all, because what was expensive
+                // was never the sampling (see the `FinishFrame` note below).
+                // `GetDefaultDiffuseSamplesCount` already scales the number
+                // by device class, and it runs once per device, so paying it
+                // buys an irradiance cube with no risk of aliasing the sun
+                // disc for no measurable cost.
+                impl->renderer->PrecomputeCubemaps(context, precompute);
 
-            Diligent::PBR_Renderer::PrecomputeCubemapsAttribs precompute;
-            precompute.pEnvironmentMapSRV =
-                environment->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
-            precompute.pIrradianceCube = irradiance;
-            precompute.pPrefilteredEnvMap = prefiltered;
-            impl->renderer->PrecomputeCubemaps(context, precompute);
+                shared.irradiance =
+                    irradiance->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+                shared.prefiltered =
+                    prefiltered->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+            }
         }
+
+        // ---------------------------------------------------------------
+        // **End the frame, or the next hundred are 50x slower.**
+        //
+        // This is not tidiness. The integration above is ~60 render passes,
+        // each mapping a constant buffer out of Diligent's **per-frame
+        // dynamic heap** -- a fixed-size ring that only `FinishFrame`
+        // recycles. An offscreen renderer never presents, so nothing else
+        // ever recycles it (the trap T0156 recorded). Spending sixty
+        // allocations of it on *setup* pushes the heap over its limit, and
+        // past that point every `MapBuffer` in every later frame stalls
+        // waiting for space it will never get.
+        //
+        // **Measured, `screen_inputs_test`'s snapshot bench at 1024x1024:**
+        // 3.4 ms a frame before this ticket, **161 ms** with the precompute
+        // and no `FinishFrame`, 3.6 ms with it -- and Diligent's "Space in
+        // dynamic heap is exhausted!" line goes from **7,886 occurrences to
+        // zero** in that case, most of which predate this ticket. So this
+        // repairs a regression *and* an existing pathology.
+        //
+        // Targets are unbound first because `PrecomputeCubemaps` leaves its
+        // last cube face bound as one and does not restore.
+        //
+        // Safe here and only here: `create()` is setup by contract -- no
+        // caller has a frame in flight, and a resize goes through
+        // `FrameTargets`, never through this function. Guarded by the branch
+        // above, so it happens once per device rather than once per renderer.
+        context->SetRenderTargets(0, nullptr, nullptr,
+                                  Diligent::RESOURCE_STATE_TRANSITION_MODE_NONE);
+        context->FinishFrame();
     }
+    impl->irradianceCube = shared.irradiance;
+    impl->prefilteredEnvMap = shared.prefiltered;
     if (!impl->irradianceCube || !impl->prefilteredEnvMap) {
         // **Not fatal, and loud rather than black.** `CreateIrradianceCube`
         // clears its faces, so an unprecomputed cube is a valid black texture
