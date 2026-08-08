@@ -10,6 +10,25 @@
 | **Created** | 2026-08-02 |
 | **Refs** | [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md) — **inherited its editor half** (142.8/142.9/142.10 → 32.7/32.8/32.9), including an undecided question this ticket must settle; [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — the same work reached T0142 from 141.2/141.5 first, so the chain is 141.2 → 142.9 → 32.8 and 141.5 → 142.8 → 32.7; [../completed/0085-layers-and-masks.md](../completed/0085-layers-and-masks.md) — 85.6's mask editor widget also waits here; [0035-hierarchy-and-inspector.md](0035-hierarchy-and-inspector.md) — the inspector panel itself, which 32.8/32.9 describe the *contents* of; [../completed/0160-material-declared-parameters.md](../completed/0160-material-declared-parameters.md) — **answers 32.8's open reflection question with measurements, and builds the description 32.9 has to consume**: `hp::ShaderParamLayout` exists, and the deviceless half of this ticket's Done-when is measured impossible; [../../documentation/02-decision-log.md](../../documentation/02-decision-log.md) **D28** (Slang), **D12** (the editor is a module host) |
 
+## Inherited from T0061 (2026-08-08, T0171) — two vendored visualisations are yours
+
+**Moved here rather than kept on the debug-draw ticket**, because neither is a
+debug-draw primitive and keeping them there made that ticket look half-vendored
+when it is not.
+
+- **`CoordinateGridRenderer`** (`DiligentFX/Components/interface/CoordinateGridRenderer.hpp`)
+  is a complete, depth-aware, full-screen ray-marched infinite grid with flags for
+  three planes and three axes. It is **the editor grid**, and this engine never
+  constructs it. `HnPostProcessTask.cpp:181-425` is the worked example of driving it.
+- **`BoundBoxRenderer`** draws **one** box per `Prepare`+`Render` pair, with colour
+  and a dash pattern — which is wrong for the hundred bounds a culling
+  visualisation wants, and exactly right for **one selection outline**.
+  `HnRenderBoundBoxTask.cpp:141-209` shows the sequence.
+
+Both are 🔧 *switch off* rows in
+[`../../documentation/12-vendored-capabilities.md`](../../documentation/12-vendored-capabilities.md)
+with this ticket named as owner. See [0061-debug-draw.md](0061-debug-draw.md).
+
 ## Why
 
 The editor is added as **one layer** pushed onto the LayerStack, which is what

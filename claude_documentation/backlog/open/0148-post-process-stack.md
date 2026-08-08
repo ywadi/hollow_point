@@ -13,14 +13,36 @@
 
 ## Why
 
+**Rescoped 2026-08-08 by T0171 under D40. Nothing in this ticket is an effect to
+write — every one of the five is vendored, complete, and never constructed.**
+
 **No post-process stack exists, and the pieces are all waiting on one.**
-Verified 2026-08-06: DiligentFX ships `Bloom`, `ScreenSpaceAmbientOcclusion`,
-`ScreenSpaceReflection`, `DepthOfField` and `TemporalAntiAliasing` as
-components (T0096 confirmed the list, and D6 notes their ImGui tuning panels);
-`zig build` compiles them on every platform; **zero tickets integrate any of
-them**. T0096 deliberately stops at the tonemap — its 96.7 is "leave the hook
-where Bloom/TAA slot in later... do not integrate them yet". This ticket is
-where they slot in.
+Verified 2026-08-06 and re-read 2026-08-08: DiligentFX ships `Bloom`,
+`ScreenSpaceAmbientOcclusion`, `ScreenSpaceReflection`, `DepthOfField` and
+`TemporalAntiAliasing` as components under `DiligentFX/PostProcess/`, with
+`PostFXContext` (`PostProcess/Common/interface/PostFXContext.hpp`) and `GBuffer`
+(`Components/interface/GBuffer.hpp` — **not** `PostProcess/Common/`, which the
+capability matrix said until this sweep) as the shared infrastructure they need.
+`zig build` compiles all of it on every platform; **zero tickets integrate any
+of them**, and `grep Bloom engine/` returns nothing.
+
+**So the work here is three things, and writing an effect is not among them:**
+
+1. **Construct the shared infrastructure and drive it** — `PostFXContext` and
+   `GBuffer`, threaded through a chain that runs after the scene pass.
+2. **Surface each component's settings as engine data** — reflected, serialized,
+   wired to T0078's quality section (D23's mechanism, not a sixth one). Bloom's
+   6 settings, DoF's 7, SSAO's 11, SSR's 16, TAA's 6.
+3. **The genuinely new part: a game's own effect**, which is a *pass*, and
+   therefore rides **T0094**'s transport rather than inventing one.
+
+**Two things to know before writing any of it.** `PostFXContext` and each of the
+five components own a **private `ResourceRegistry`** — a slot array whose entire
+lifetime policy is "recreate everything when the viewport size changes"
+(`PostFXContext.cpp:246`). There is no pool and nothing of ours can reach inside
+them, which is part of why T0047 was answered "no" (**D41**). And **none of the
+five needs compute** — every `*_Compute*.fx` in them is a full-screen-triangle
+*pixel* shader despite the filename, measured on T0171's predecessor survey.
 
 **Decided here: this is a separate ticket, not a fold into T0096 — and the
 reason is recorded** because the alternative was considered. T0096 is
@@ -42,41 +64,65 @@ inputs and parameters", without the game writing pipeline code. That is rung 5
 of D30's ladder made cheap, and it is the noir grain / underwater warp /
 security-camera static that T0149's custom styles will name.
 
+## The seam, in the two-seam terms T0171 settled
+
+- **A game's post effect is a *pass*, not a material.** It reads the whole
+  frame; nothing about it is per-surface, so `IHpMaterial` is the wrong shape
+  and must not be stretched to fit. It is `IRenderLayer` — **T0094's transport,
+  inherited whole**.
+- **What a game authors**: a Slang fragment shader over the frame, with declared
+  parameters and its own resources (D35's `buildModuleSignatureDesc`, already
+  built and measured at 34 ns a draw on T0161).
+- **What the default is**: the engine's chain, in order, unchanged for a game
+  that adds nothing.
+- **Every engine effect is a *setting*, never a hook.** Bloom threshold, SSAO
+  radius, DoF focus: data, through T0078. **A ticket proposing a game-facing
+  hook for one of these is wrong** — D40.
+
 ## Done when
 
+- [ ] **`PostFXContext` and `GBuffer` are constructed and driven**, and the
+      chain runs after the scene pass — with the ticket naming what was written
+      here rather than taken, and why (D40's required artefact)
 - [ ] An ordered post chain runs between the world layers and the UI layers at
       10.10, and **each effect declares which side of the tonemap it sits on**
-      — T0096's rule, now enforced by the chain's own structure
 - [ ] **Bloom works end to end** on the HDR target, behind a quality setting —
-      the proof the chain reads what T0096 built
+      the proof the chain reads the HDR image rather than a tonemapped one
+- [ ] **Every component's settings are reflected engine data**, serialized and
+      reachable from T0078's quality section — not a bespoke struct per effect
 - [ ] SSAO, SSR, DoF and TAA are each **dispositioned** — integrated, or
       deferred with the blocker named (TAA waits on T0111's prerequisites;
       SSR/SSAO need depth/normal inputs whose forward-renderer availability is
       T0147's 147.6 question) — none left as silent maybes
-- [ ] A **game-authored post effect** — a Slang fragment shader with declared
-      parameters, authored like a material — inserts at a stated point in the
-      chain, orders deterministically against engine effects, and survives
-      hot reload (T0094.7's rules)
+- [ ] A **game-authored post effect** inserts at a stated point in the chain via
+      **T0094's** layer transport, orders deterministically against engine
+      effects, and survives hot reload (T0094.7's rules)
 - [ ] The chain composes with D25's rules: upscale happens once, UI stays
       native and post-tonemap
 - [ ] Cost per effect is visible (profiling zones per effect, T0030's shape)
+- [ ] **The matrix rows flip** — five 🔌 rows in
+      [`12-vendored-capabilities.md`](../../documentation/12-vendored-capabilities.md)
+      become ✅, or say why not
 
 ## Subtasks
 
-- [ ] 148.1 The chain structure at 10.10: ordered entries, per-effect
-      enable/quality, ping-pong targets via T0046's `declarePingPong`
-- [ ] 148.2 Bloom, first and alone — it has the fewest inputs (the HDR colour
-      target) and proves the seam
-- [ ] 148.3 Disposition SSAO / SSR / DoF / TAA, one decision each, with the
+- [ ] 148.1 **Construct `PostFXContext` and `GBuffer`**, and thread them through
+      a chain at 10.10: ordered entries, per-effect enable/quality, ping-pong
+      via T0046's `declarePingPong`. **Read `PostFXContext.hpp:190-206` first** —
+      the 12 named slots are what a component expects to find filled
+- [ ] 148.2 **Bloom, first and alone** — fewest inputs (the HDR colour target),
+      and it proves the whole chain
+- [ ] 148.3 **Settings as reflected data**, one shape for all five, wired to
+      T0078. Design-gaps item 4's fifth consumer — do not invent a sixth
+- [ ] 148.4 Disposition SSAO / SSR / DoF / TAA, one decision each, with the
       named blockers
-- [ ] 148.4 The game post-effect shape: a Slang shader + parameters through
-      the same reflection path materials use (T0142.9, now **T0032.8** —
-      the mechanism is still undecided there), inserted via the
-      RenderStack transport T0094 owns
-- [ ] 148.5 Quality settings: this is design-gaps item 4's fifth consumer —
-      wire to T0078's (still unbuilt) quality section rather than inventing a
-      sixth shape
+- [ ] 148.5 **The game post-effect shape**: a Slang shader + declared parameters
+      and resources (D35), inserted via **T0094**'s transport. **Do not design
+      an insertion mechanism here** — if T0094 has not landed, this subtask is
+      blocked, and that is the correct outcome rather than a second mechanism
 - [ ] 148.6 Per-effect profiling zones
+- [ ] 148.7 **Add rows before building** — D40. Each effect that gains a
+      setting surface gets its row updated in the same commit
 
 ## Notes / findings
 

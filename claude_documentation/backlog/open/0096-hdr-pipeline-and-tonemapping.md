@@ -25,18 +25,52 @@ the UI gets tonemapped along with the world — each individually looks
 plausible, and fixing it later means re-tuning every light and every material
 in every scene. That re-tuning *is* the cost this ticket exists to avoid.
 
-Verified in the tree: DiligentFX ships a **ToneMapping component**
-(`DiligentFX/Components/interface/ToneMapping.hpp` + shader library) alongside
-Bloom, DepthOfField, SSAO, SSR and TAA under `DiligentFX/PostProcess/`. The
-work here is wiring and policy, not writing a tonemapper.
+**Rescoped 2026-08-08 by T0171 under D40.** Nothing here is a tonemapper to
+write. `Shaders/PostProcess/ToneMapping/public/ToneMapping.fxh:87` implements
+**eleven operators** plus `NONE` (`ToneMappingStructures.fxh:11-22`: Exp,
+Reinhard, Reinhard-mod, Uncharted2, Filmic ALU, Logarithmic, Adaptive-log, AgX,
+AgX Custom, PBR Neutral, Commerce). This ticket owns the **policy** — linear
+workflow, sRGB rules, exposure ownership, which side of the tonemap each thing
+sits on — and the **pass** that applies it. The curve is upstream's.
+
+### The one finding that changes how the operator is exposed
+
+**`TONE_MAPPING_MODE` is a compile-time macro, not a runtime setting.**
+`ToneMap()` branches on it at `ToneMapping.fxh:101-198`, and
+`ToneMappingAttribs::iToneMappingMode` — which reads like the knob — **is never
+read by the shader**. Upstream's own pattern is to key the PSO on that field
+(`EnvMapRenderer.cpp:218` puts it straight into the PSO key) or to emit it as a
+macro (`EpipolarLightScattering.cpp:1671`, `:1859`).
+
+So *"a game developer picks the operator"* is a **shader-variant** question and
+belongs beside **T0151**, not a constant-buffer write. Three honest answers, and
+this ticket picks one deliberately: one PSO per operator built lazily (upstream's
+way), a fixed project-wide choice compiled once, or a runtime `switch` in our own
+pass shader at the cost of divergence. **The same shape applies to `SHADOW_MODE`
+(T0086) and terrain's `TEXTURING_MODE` (T0155)** — record the answer where those
+tickets can find it.
+
+### And the seam is a *setting*, not a hook
+
+A game does not implement a tonemapper. It picks an operator and its parameters
+out of data (T0078), and if it wants something none of the eleven provides, that
+is a **game post effect** — T0148's shape, on T0094's transport. **This ticket
+adds no game-facing hook**, and one proposed here would be the ninth mechanism
+D40 exists to prevent.
 
 ## Done when
 
 - [ ] The world renders into a **linear HDR** target — format decided and
       recorded (RGBA16F vs R11G11B10, memory vs precision) in T0046's frame
       targets
-- [ ] Tonemapping converts HDR → display via DiligentFX's component; UI, HUD
-      and debug draw composite **after** it (T0027's ordering, now enforced)
+- [ ] Tonemapping converts HDR → display **in a pass calling upstream's
+      `ToneMap()`**; UI, HUD and debug draw composite **after** it (T0027's
+      ordering, now enforced). Note there is no DiligentFX tone-mapping
+      *component* to construct — see the 2026-08-05 correction below; there is a
+      shader include and a UI helper
+- [ ] **How the operator is selected is decided and recorded** — it is a
+      compile-time macro, so this is a variant decision (T0151), and T0086 and
+      T0155 inherit the answer for `SHADOW_MODE` and `TEXTURING_MODE`
 - [ ] sRGB vs linear is explicit at every texture bind: albedo/emissive sRGB,
       normals/data/lookup textures linear — recorded per asset (T0097), not
       guessed per call site
@@ -52,8 +86,12 @@ work here is wiring and policy, not writing a tonemapper.
 ## Subtasks
 
 - [ ] 96.1 Decide the HDR target format and add it to T0046's declared formats
-- [ ] 96.2 Wire the DiligentFX ToneMapping component as the world layer's
-      resolve step in the RenderStack (T0027)
+- [ ] 96.2 **The tonemap pass** as the world layer's resolve step in the
+      RenderStack (T0027), calling `ToneMap()` from
+      `ToneMapping.fxh`. **Do not write a curve**; all eleven are there
+- [ ] 96.2b **Decide operator selection** — one PSO per operator (upstream's
+      pattern), a project-wide compile-time choice, or a runtime switch. Record
+      it where T0151, T0086 and T0155 will find it
 - [ ] 96.3 Write the sRGB policy down (which semantic slots are sRGB) and
       plumb it through texture load (T0023/T0097) and material binding (T0060)
 - [ ] 96.4 Exposure control as a scene/camera setting, serialized

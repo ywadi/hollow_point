@@ -69,6 +69,30 @@ does not block this.
 | **Real runtime LOD** | Theirs has none. Clipmap or chunked-quadtree, with the popping question answered | **T0045** |
 | **Procedural heightmaps** | Generated rather than authored, deterministically | **T0154** |
 
+## Verdict 2026-08-08 (T0171) — 📄 **sample source**, and it is the only ticket where that state applies
+
+Under **D40** every other render-layer ticket resolved to *construct upstream's
+component and expose its settings*. **This one does not, and the reason is
+structural rather than a matter of taste: there is no component.** The terrain is
+`DiligentSamples/Samples/Atmosphere/src/Terrain/` — copy-and-adapt source with
+all the maintenance that implies, **not a library to link**. That single fact
+changes the cost by an order of magnitude versus the six post-process components,
+which is why the capability matrix gives it a state of its own (📄) rather than a
+footnote.
+
+**So this ticket keeps its existing shape, and D40 strengthens rather than
+replaces it.** *"Their reference implementation is the floor, not the ceiling"*
+was already the right framing; what D40 adds is that **the argument has to be
+written down**, and that the four limits below are the argument. Copying sample
+source we then own entirely is a *cost*, not a saving — so "adopt" here has to
+clear a bar that "construct `Bloom`" never had to.
+
+**One thing the sweep adds to 155.4.** Their `TEXTURING_MODE` is a **compile-time
+shader macro** baked into the PSO (limit 2 below), which is the same shape as
+`TONE_MAPPING_MODE` (T0096) and `SHADOW_MODE` (T0086). **T0096 is deciding how
+this engine handles that class of switch**; take its answer rather than inventing
+a third.
+
 ## The decision this ticket must make first
 
 **Adopt-and-extend, or build our own?** The honest answer is not obvious, and it
@@ -101,6 +125,11 @@ source in front of you.
 - [ ] Terrain shadows reuse **T0086's** cascade path, not a bespoke one
 - [ ] **What is not delivered is written down with a trigger** — this ticket is
       large and will ship in stages; the stages should be named
+- [ ] **Heightmap and splat masks are `hp::` assets**, authorable and addressed
+      through the VFS (D13) like everything else — not sample-shaped file loads.
+      This is the "expose" half of the ticket and it survives whichever way the
+      adopt-vs-build call goes
+- [ ] **`TEXTURING_MODE` follows T0096's variant decision**, not a third answer
 
 ## Subtasks
 

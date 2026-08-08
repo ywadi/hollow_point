@@ -44,6 +44,59 @@ is a concrete "even more" — if and only if the gameplay exposure ships; an
 engine-internal-only compute path matches Godot for engine features and
 exceeds nothing.
 
+## Verdict 2026-08-08 (T0171) — ✅ **genuinely ours**, and this is the argument D40 requires
+
+D40 says the verdict *"genuinely ours"* stays reachable and that **reaching it
+must be argued rather than assumed**. Here is the argument, and it is short
+because the facts are unambiguous:
+
+- **Diligent supplies the API and nothing above it.** `CreateComputePipelineState`
+  and `DispatchCompute` are standard RHI. There is no compute *subsystem* to
+  adopt — no dispatch placement, no frame phase, no barrier policy, no shader
+  path. Those are the parts that need designing and they are exactly the parts
+  Diligent has no opinion about.
+- **The engine cannot even request it today.** `hp::ShaderStage` has two values,
+  and `SlangCompiler`'s stage mapping is a ternary sending anything-not-Vertex to
+  `SLANG_STAGE_FRAGMENT`. **A compute shader currently compiles silently as a
+  fragment shader** — the loud-failure default in 150.1 is not polish.
+- **Nothing about this competes with a vendored implementation.** There is no
+  row in the capability matrix this duplicates.
+
+### It unblocks more than T0080, and that is new
+
+This ticket has been sequenced purely as T0080's prerequisite. The sweep found
+two other consumers, both blocked on it and neither recorded here before:
+
+- **`DepthRangeCalculator`** (`DiligentFX/Components/interface/DepthRangeCalculator.hpp`)
+  — auto near/far extraction, **compute-only with no pixel-shader fallback**. It
+  is the one vendored component the engine cannot reach at all.
+- **`EpipolarLightScattering`'s high-quality techniques** (T0088) — LUT-based
+  single scattering, multi-scattering, and per-frame `RefineSampleLocations`
+  under epipolar sampling. The *reduced* configuration ships without compute at
+  a real quality cost; full quality waits here.
+
+**The rest of the post-process chain does not**, and that is worth stating so it
+is not assumed: Bloom, DoF, SSAO, SSR and TAA are full-screen-triangle *pixel*
+shaders despite their `*_Compute*.fx` filenames. T0148 is not blocked on this.
+
+### The seam, and why it is *not* `IHpMaterial`-shaped
+
+**A compute dispatch has no default implementation to override**, so it is not a
+surface-seam-shaped thing at all — and calling it one would produce a hook with
+nothing behind it. It belongs to the **frame** side: a dispatch happens at a
+named phase, like a pass.
+
+- **What a game supplies**: a `.slang` compute entry point, with its buffers and
+  textures declared **by its own names** — `buildModuleSignatureDesc` with
+  `ModuleSignaturePolicy::allowBuffers = true`, which already carries
+  `BUFFER_SRV`/`UAV` and `TEXTURE_UAV`. **D35's whole point is that this is the
+  same mechanism as a material's**; this ticket supplies the compute base
+  signature's names and the data paths, never a parallel reflection walk.
+- **What the default is**: nothing runs. A game that declares no compute module
+  gets today's frame exactly.
+- **Whether it ships now** is 150.6's recorded decision, and *"engine-internal
+  only, revisit with T0080's findings"* remains an acceptable answer.
+
 ## Done when
 
 - [ ] `ShaderStage::Compute` exists, and the slang stage mapping is an

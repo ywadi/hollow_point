@@ -20,7 +20,41 @@ This is the work. For what is already proven to work — and what only appears t
 
 ## Current ticket sequence
 
-**Set 2026-08-08 — thirty-second revision: `T0167` closed, and the engine has
+**Set 2026-08-08 — thirty-third revision: `T0171` swept the render layer against
+what DiligentEngine already ships, and the order below is the result.** Eleven
+tickets were rescoped, **two closed** (`T0047` answered "no" as **D41**; `T0087`
+closed on IBL with the sky moved to T0088), `12-vendored-capabilities.md` became
+**binding** with a *who owns the gap* column, and **D35 extended a third time** —
+a render feature gets a matrix row before it is built.
+
+**The finding that reordered everything: there are two seams, not one.**
+`IHpMaterial` is per **fragment** and it is finished. The **frame** seam is a
+pass, it lives in C++, and it is **T0094** — which is not one more item on the
+list but what four of the others wait on, by its own `## Why`. Not a hard
+blocker on their engine halves; a **design** blocker, which under D35 is the
+stronger kind. Everything else those tickets wanted turned out to be **settings**
+(T0078), not hooks — which is what nine of them each got wrong independently.
+
+**T0047 came off the list by being answered rather than done**, and it also
+corrected its own premise: it was sequenced ahead of T0094 on the belief that a
+declarative pass layer decides T0094's shape. It does not. The frame has **three
+draw passes** against a revisit trigger of fifteen; barriers are already
+Diligent's and aliasing is unreachable by API; and DiligentFX's own **22-task**
+USD renderer orchestrates itself with a hand-ordered `std::vector` and a
+read/write matrix written by hand in a doc comment. What T0094 actually needs is
+plumbing: **no shipping app builds a `RenderStack` at all**, and `ModuleServices`
+does not carry one — so the seam has never once been crossed by a real app.
+
+**And the sweep found something nobody was looking for.**
+`DiligentFX/Radient` is a **21,746-line** alternative engine — scene, importer,
+asset cache, draw list, frame targets, PBR renderer, a three-pass pipeline —
+inside the pinned submodule, **compiled by every build here**, named in no
+document and no ticket. Not adopted (its own C ABI would replace D12/D13/D23/D26,
+its pipeline has no insertion point, its post-process stage is an empty stub),
+but *no test could have found it and no amount of care would have* — which is the
+argument for the matrix being binding. Re-read it on every pin bump.
+
+Previously — the thirty-second revision: `T0167` closed, and the engine has
 now been looked at rendering an asset it did not help make.** The Aston
 Martin's frames sit at `test-frames/aston/` beside their numbers (gitignored;
 produced by the env-gated `aston_martin_test.cpp`, magenta-guarded, RTX 2080):
@@ -416,11 +450,38 @@ T0143: the engine will have every feature DiligentFX's PBR has, not a subset.
 
 | # | Item | What | Why it sits here |
 |---|---|---|---|
-| 1 | [T0170](inprogress/0170-diligent-owns-the-render-loop.md) | Diligent owns the render loop | **Six capabilities in three days were already in the tree with the switch off** — spec-gloss, `TANGENT.w`, the tangent frame, Draco, the green channel, and **order-independent transparency**, which sat behind `OITLayerCount = 0` while this project prepared to hand-write a strictly worse sort. The cause is structural: **D26** let a constraint on the *shader* swallow the *submission loop*, and every lost capability was invisible from inside our own walk. Measured: `RenderInfo::AlphaModes` gives D37's snapshot and `CreateCustomSignature` gives T0161's signatures — **the loop was never blocked, only the material shader is**. Subclass `GLTF_PBR_Renderer` and OIT, bucketing, the PSO cache and IBL all arrive at once |
-| 2 | [T0171](open/0171-expose-not-replace-sweep.md) | expose, do not replace — sweep the backlog against Diligent | **The owner's instruction**: *"we only need the shaders exposed to the game devs and abilities we clearly stated"*, and *"expose capabilities, not replace — the same method of attachment as Slang, not rewriting."* `CLAUDE.md` already names tone mapping, bloom, DoF, SSAO, SSR, TAA, atmospheric scattering, four shadow-filter modes and a whole terrain implementation as vendored, and the backlog still plans to build several of them. Every render-layer ticket gets one verdict: **closed as vendored**, **rescoped to expose**, or **genuinely ours**. **Blocked on T0170 and hard**: today "adopt their shadows" is a port, afterwards it is a settings field |
-| 3 | [T0045](open/0045-culling-and-render-queues.md) | culling and render queues | **No longer the movable one — a real asset made the missing sort visible.** T0167's Aston Martin renders its own interior through its own glass, and which pieces survive changes with the camera ([frame](findings/t0045-blend-order-aston.png), and the ticket's 2026-08-08 note). The blend pass draws in submission order because T0147 split 10.9 and deliberately refused to invent half a sort. **The frame also constrains 45.4**: the glass and the interior are primitives of the *same* draw item under one material, so a per-object sort key still gets it wrong — the sort has to reach primitives. It still needs nothing from the surface or lighting stages, and **T0152.5 adds one constraint**: facing is per-draw (the determinant rule), so any batching or sorting must keep the per-draw cull decision |
-| 4 | [T0086](open/0086-shadows.md) | shadows | Now unblocked in the way D30 sequenced it: the loop the shadow lookup goes inside is the engine's, the `ENABLE_SHADOWS` block's shape is waiting in `HpGetLight`, and T0145's Ref says where the factor goes and why it must not fold into `Attenuation`. Its Refs carry T0152.5's shadow-pass determinant note — and its bias tuning is now made against a **settled** convention (T0165), which is the whole reason T0152 blocked it |
-| 5 | [T0158](inprogress/0158-parallax-depth-cues.md) | parallax depth cues, remainder | 158.2 closed with T0159 and **158.3 closed with T0145**; what is left is the reference/tuning subtasks and the geometrically-displaced ground-truth cube. **T0165 re-posed its self-shadow probe** (yaw −0.45, the mirror of the old +0.45 onto the same object face at the same 11.5° grazing incidence) — any further tuning starts from there. **T0167 handed it the rock cube's speckle, diagnosed**: the view march at grazing incidence, shadow march exonerated by measurement — the note with the mechanism and the mitigations is on the ticket |
+| 1 | [T0170](inprogress/0170-diligent-owns-the-render-loop.md) | Diligent owns the render loop — **remainder** | Still in progress and still first, but it is now a *smaller* ticket than its title. The two structural questions are **answered and negative**: `GLTF_PBR_Renderer` cannot be the base class (its ctor drops `InitSignature`, so the engine's signature silently vanishes; its `Render()` uses `COMPARISON_FUNC_LESS` and draws nothing under reverse-Z), and shader-cache seeding is blocked because `PBR_Renderer.cpp:2055-2058` copies one global signature list into every PSO with no hook. So the engine **keeps the submission walk** and hands upstream the pipeline policy. What is owed: **170.6's deletion pass**, D26's amendment, the boundary document, and the `InitMaterialSRB`/`GetMaterialPSOFlags` follow-up whose brief is written on 170.2's notes |
+| 2 | [T0094](open/0094-gameplay-extensible-rendering.md) | the **frame seam** — gameplay-extensible rendering | **Not one more item on the list; it is what four of the others wait on**, and its own `## Why` said so before T0171 existed: *"minimaps, portal and mirror views, security-camera monitors, custom post effects, decal buffers and player-drawn markers all need the same three capabilities."* T0148, T0088, T0091 and T0096 all ride this transport. Not a *hard* blocker on their engine halves — a pass can go into `RenderStack` today — but a **design** blocker, which under **D35** is the stronger kind: build the chain first and its insertion API is retrofitted, and that retrofit has already been paid for twice. **Cheaper than it looks**: the interface is built and correct, and what is missing is that **no shipping app instantiates a `RenderStack`** (editor and runtime both go through `SceneView`; it exists only in `tests/`) and `ModuleServices` does not carry one. 94.0 and 94.1 are the two smallest subtasks on the ticket and everything else is blocked behind them |
+| 3 | [T0061](open/0061-debug-draw.md) | debug draw | **Cheap, independent, and it unblocks diagnostics for five other tickets** — physics' one reverse dependency on the renderer (T0051), culling bounds (T0045), LOD colouring (T0040), skeletons (T0049), and T0081.8, which is blocked on this and nothing else. **Its verdict reversed on inspection**, which is why it is worth reading before starting: DiligentFX's three renderers are *specific visualisations*, not a debug-draw API — `BoundBoxRenderer` draws **one box per `Prepare`+`Render` pair**, which is precisely the per-draw-call naive implementation the ticket forbids — and there is no line, sphere, capsule, frustum or text renderer anywhere in the vendored tree. So this is ✅ genuinely ours, and three rows were handed to T0032/T0033/T0111 instead |
+| 4 | [T0096](open/0096-hdr-pipeline-and-tonemapping.md) | HDR pipeline, tonemapping and the linear-workflow policy | **First of the configuration tickets, because it is policy and the others inherit it.** Eleven operators ship (`ToneMapping.fxh:87`); nothing here is a curve to write. It also has to settle a question **T0086 and T0155 both inherit**: `TONE_MAPPING_MODE` is a **compile-time macro** and `ToneMappingAttribs::iToneMappingMode` is never read by the shader, so "let the game pick an operator" is a **variant** decision (T0151), not a constant-buffer write — and `SHADOW_MODE` and terrain's `TEXTURING_MODE` are the same shape. D24 already decided the pass over the in-shader path: the in-shader one tonemaps **per draw before blending** and leaves bloom nothing to read |
+| 5 | [T0148](open/0148-post-process-stack.md) | the post-process stack | Blocked on T0096's HDR target and seam. Five components are vendored, complete, and **constructed zero times** — `grep Bloom engine/` returns nothing. The work is `PostFXContext` + `GBuffer`, running them, and surfacing their settings as reflected data; **none of the five needs compute**, despite the `*_Compute*.fx` filenames. The genuinely new part is a game's own effect, and that **is** T0094's transport rather than a second one |
+| 6 | [T0086](open/0086-shadows.md) | shadows | **Much cheaper than its Complex rating**, and the reason is that we own the pixel shader. DiligentFX ships **two unconnected** shadow implementations: `Shadows.fxh` has cascade selection, cross-cascade blending and all four filter modes, while `PBR_Shading.fxh` — the one wired to `PBR_Renderer` — includes `PCF.fxh` alone and samples one array slice with no cascades. Owning `HpGetLight` lets us call the better one, into a seam T0145 already reserved and guarded with an `#error`. `ShadowMapManager` even makes 86.3's texel snapping a **boolean**. What is genuinely ours is the depth pass from the light, allocation and the caster cull — plus **point/spot shadows, which upstream does not have at all** and which must be scoped or declined. It sits after T0087's IBL landed deliberately: **bias tuned against pure black is bias tuned against a baseline that then moves** |
+| 7 | [T0088](open/0088-sky-atmosphere-time-of-day.md) | the sky — static and dynamic | **Inherited T0087's remainder when it closed**, so it now owns the sky end to end rather than only the dynamic layer. The near-term half is small and independent: `EnvMapRenderer` is complete and **this engine never constructs it**, so nothing draws a sky at all — T0170.5 integrates a *procedural* environment into cubemaps precisely so a real one is the game's to supply. The far half is `EpipolarLightScattering`: 41 fields, six technique enum families, and a reduced configuration that needs **zero compute**. Also carries 87.8's undispositioned local-ambient question |
+| 8 | [T0091](open/0091-volumetric-fog.md) | volumetric fog and light shafts | **Halved by measurement.** `EpipolarLightScattering` takes **one directional light**, so sun shafts are T0088's configuration and this ticket keeps only point/spot beams — for which upstream has nothing. Its first subtask is now *evaluate the sun case with T0088's component actually running*, and **a recorded decline is a valid close**: ⬆️ has to be argued, not defaulted to (D40) |
+| 9 | [T0158](inprogress/0158-parallax-depth-cues.md) | parallax depth cues, remainder | 158.2 closed with T0159 and **158.3 closed with T0145**; what is left is the reference/tuning subtasks and the geometrically-displaced ground-truth cube. **T0165 re-posed its self-shadow probe** (yaw −0.45, the mirror of the old +0.45 onto the same object face at the same 11.5° grazing incidence) — any further tuning starts from there. **T0167 handed it the rock cube's speckle, diagnosed**: the view march at grazing incidence, shadow march exonerated by measurement — the note with the mechanism and the mitigations is on the ticket |
+
+**Deliberately not sequenced, and judged on their own merits rather than by
+blocking relationships** — T0171's instruction, because none of the three gates
+anything above:
+
+- **[T0045](open/0045-culling-and-render-queues.md)** at **reduced scope**. It
+  was #3 on the previous revision because the Aston Martin rendered its interior
+  through its own glass — and **T0170.4 fixed that frame by a different
+  mechanism**, a depth prepass that reclassifies blended materials to `Mask` so
+  their opaque texels occlude by z-buffer, order-independently. What survives is
+  **glass against glass**, plus frustum culling (upstream's `AdvancedMath`
+  maths, consumed not re-derived) and sorting for state coherence. The
+  constraint the frame taught still stands and is the useful part: **the sort
+  has to reach primitives**, because the glass and the interior are primitives
+  of the same draw item under one material.
+- **[T0155](open/0155-terrain-rendering.md)**, the only 📄 *sample source* row on
+  the board: copy-and-adapt, not a library, which changes the cost by an order
+  of magnitude and is why its adopt-vs-build call has to be made with
+  `EarthHemisphere.cpp` open.
+- **[T0150](open/0150-compute-pipelines.md)**, ✅ genuinely ours, and it unblocks
+  more than was recorded: T0080's particles, **`DepthRangeCalculator`** (the one
+  vendored component the engine cannot reach at all), and T0088's high-quality
+  scattering techniques.
 
 **Raised rather than reordered, because the order is the owner's call:**
 [T0162](open/0162-shader-authoring-docs.md) (the shader authoring guide) listed
@@ -430,6 +491,12 @@ documentation comes before T0143's features is a call this ticket should not
 make on its own — but it is the item whose blockers just emptied.
 
 ### T0045 is the movable one, and that is the useful thing to know about it
+
+**Still true, and now for a second reason (2026-08-08, T0171).** It was moved to
+#3 on the previous revision by a real asset making the missing sort visible;
+T0170.4 then fixed that frame with a depth prepass rather than a sort, so the
+urgency it had gained is largely spent. It is unsequenced above for that reason,
+not demoted.
 
 What it needs from the material work is **identity and blend mode** — `Guid` plus
 `AlphaMode` — which T0060 delivered in full, and nothing at all from the surface
@@ -587,7 +654,7 @@ wrong in the confident voice of a document that is normally right.
 | 462 | [T0166](completed/0166-tangent-frames-and-real-assets.md) | Tangent frames, the conventions underneath them, and the first real asset this engine has ever rendered | 4 — Render layer | ✅ DONE | High | Moderate |
 | 463 | [T0167](completed/0167-sketchfab-asset-validation.md) | A model from Sketchfab, rendered and measured: the first asset chosen by somebody other than us | 4 — Render layer | ✅ DONE | High | Moderate |
 | 461 | [T0168](completed/0168-asset-import-coverage.md) | Asset import coverage: what does DiligentEngine already do, and are we asking it to? | 4 — Render layer | ✅ DONE | High | Moderate |
-| 458 | [T0171](open/0171-expose-not-replace-sweep.md) | Expose, do not replace: sweep the backlog against what DiligentEngine already ships | 4 — Render layer | 🔜 TODO | High | Moderate |
+| 458 | [T0171](completed/0171-expose-not-replace-sweep.md) | Expose, do not replace: sweep the backlog against what DiligentEngine already ships | 4 — Render layer | ✅ DONE | High | Moderate |
 | 459 | [T0170](inprogress/0170-diligent-owns-the-render-loop.md) | DiligentEngine owns the render loop; the engine owns the shader | 4 — Render layer | 🚧 IN PROGRESS | High | Complex |
 | 460 | [T0169](completed/0169-import-produces-engine-assets.md) | An import produces engine assets: every type a DCC tool exports becomes an `hp::` type on disk | 7 — Content pipeline | ✅ DONE | High | Complex |
 | 464 | [T0155](open/0155-terrain-rendering.md) | Terrain rendering: their reference implementation is the floor, not the ceiling | 4 — Render layer | 🔜 TODO | Medium | Very Complex |
@@ -597,13 +664,13 @@ wrong in the confident voice of a document that is normally right.
 | 548 | [T0150](open/0150-compute-pipelines.md) | Compute pipelines: the stage D15 promised | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 470 | [T0079](completed/0079-lighting-system.md) | Lights and per-object light selection | 4 — Render layer | ✅ DONE | High | Complex |
 | 480 | [T0086](open/0086-shadows.md) | Shadow rendering | 4 — Render layer | 🔜 TODO | High | Complex |
-| 490 | [T0087](open/0087-environment-lighting.md) | Environment lighting, IBL and skybox | 4 — Render layer | 🔜 TODO | Medium | Moderate |
+| 490 | [T0087](completed/0087-environment-lighting.md) | Environment lighting, IBL and skybox | 4 — Render layer | ✅ DONE | Medium | Moderate |
 | 495 | [T0117](open/0117-font-and-text-rendering.md) | Font and text rendering | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 500 | [T0061](open/0061-debug-draw.md) | Debug draw service | 4 — Render layer | 🔜 TODO | Medium | Simple |
 | 510 | [T0094](open/0094-gameplay-extensible-rendering.md) | Gameplay-extensible rendering | 4 — Render layer | 🔜 TODO | High | Complex |
 | 515 | [T0120](open/0120-render-to-texture.md) | Camera render-to-texture | 4 — Render layer | 🔜 TODO | High | Complex |
 | 520 | [T0050](open/0050-threading-model.md) | Threading model and enkiTS workload map | 4 — Render layer | 🔜 TODO | High | Complex |
-| 530 | [T0047](open/0047-evaluate-render-graph.md) | Declarative pass layer (and why not an off-the-shelf frame graph) | 4 — Render layer | 🔜 TODO | Medium | Complex |
+| 530 | [T0047](completed/0047-evaluate-render-graph.md) | Declarative pass layer (and why not an off-the-shelf frame graph) | 4 — Render layer | ✅ DONE | Medium | Complex |
 | 535 | [T0108](open/0108-decals.md) | Decals | 4 — Render layer | 🔜 TODO | Medium | Moderate |
 | 540 | [T0093](open/0093-visibility-and-fog-of-war.md) | Visibility as an engine capability: prove a vision mechanic needs no engine changes | 4 — Render layer | 🔜 TODO | High | Moderate |
 | 545 | [T0106](open/0106-vfx-sprites-and-flipbooks.md) | VFX sprites, flipbooks and blend modes | 4 — Render layer | 🔜 TODO | High | Moderate |

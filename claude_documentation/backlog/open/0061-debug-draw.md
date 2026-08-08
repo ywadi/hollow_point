@@ -32,24 +32,76 @@ Jolt renders collision shapes through a debug-draw interface. Culling (T0045)
 wants bounds and frustums, LOD (T0040) wants level colouring, animation (T0049)
 wants skeletons, and the editor wants selection outlines and grids.
 
+## Verdict 2026-08-08 (T0171): ⬆️ **genuinely ours**, and the argument is measured
+
+**This ticket was expected to be the cheapest win on the board — "construct the
+three renderers DiligentFX already ships and put an `hp::` API in front". Read
+from source, that is wrong**, and the correction is worth more than the
+assumption was.
+
+DiligentFX ships **three specific visualisations**, not a debug-draw API:
+
+| What it is | What it actually does |
+|---|---|
+| `Components/interface/BoundBoxRenderer.hpp` | **One box per `Prepare` + `Render` pair** (`:139`, `:143`) — `RenderAttribs` carries a single `BoundBoxTransform` and a single colour. Colour, dash pattern and a reverse-depth option are the knobs |
+| `Components/interface/CoordinateGridRenderer.hpp` | A **full-screen, ray-marched, depth-aware infinite grid** with three plane flags and three axis flags. This is an *editor grid* |
+| `Components/interface/VectorFieldRenderer.hpp` | A line grid whose directions come from a **2D vector-field texture** — i.e. motion vectors. Not a general arrow API |
+
+**And there is nothing else.** No line renderer, no sphere, no capsule, no
+frustum, no text, and nothing batched — in DiligentCore, DiligentFX *or*
+DiligentTools. So the primitives this ticket exists to provide have **no upstream
+implementation at all**.
+
+**Worse, the one that looks closest is the trap.** This ticket's own note says
+*"the naive implementation issues a draw call per line and becomes the slowest
+thing in the frame, which then distorts every profile taken while it is on."*
+Driving `BoundBoxRenderer` once per bounding box **is** that naive
+implementation, with a constant-buffer write per box on top. It is right for
+**one** highlighted box — an editor selection outline — and wrong for the
+hundred a culling visualisation draws.
+
+**A correction to the capability matrix worth keeping**: these three were
+recorded as *"unreferenced"*. They are not — `HnRenderBoundBoxTask.cpp:141-209`
+and `HnPostProcessTask.cpp:181-512` construct and drive all three. They are
+unreferenced **by this engine**, and Hydrogent is the worked example of how to
+drive them if any of the three rows below is picked up.
+
+### What comes off this ticket
+
+- **The editor coordinate grid → T0032/T0033.** `CoordinateGridRenderer` is a
+  complete answer to a thing the editor wants and this ticket does not.
+- **Selection outline → T0032**, if it wants one box drawn well.
+- **Motion-vector visualisation → T0111**, if motion vectors ever exist.
+
+None of the three is a debug-draw primitive, and keeping them here would make
+this ticket look half-vendored when it is not.
+
 ## Done when
 
-- [ ] `DebugDraw::Line/Box/Sphere/Frustum/Text` callable from anywhere
+- [ ] `DebugDraw::Line/Box/Sphere/Capsule/Frustum/Arrow/Text` callable from
+      anywhere
 - [ ] Immediate mode — submitted geometry is drawn this frame and cleared
+- [ ] **Batched**: thousands of lines cost a handful of draw calls, measured.
+      This is the acceptance criterion, not a nice-to-have — an unbatched
+      implementation distorts every profile taken while it is on
 - [ ] Depth-tested and always-on-top modes both available
 - [ ] Renders as its own layer in the RenderStack (T0027)
 - [ ] Compiled out entirely in shipping builds
-- [ ] Cheap enough that thousands of lines do not distort what is being profiled
+- [ ] **T0081.8 closes with it** — `hp::extractFrustum` already returns the six
+      planes; this ticket is the only thing it is blocked on
 
 ## Subtasks
 
 - [ ] 61.1 Immediate-mode API with per-frame buffering
 - [ ] 61.2 Primitives: line, box, sphere, capsule, frustum, arrow, text
-- [ ] 61.3 A debug render layer batching everything into few draw calls
+- [ ] 61.3 A debug render layer **batching everything into few draw calls** —
+      one dynamic vertex buffer per category, filled and drawn once
 - [ ] 61.4 Depth-tested vs overlay modes
 - [ ] 61.5 Categories with independent toggles (physics, culling, animation…)
 - [ ] 61.6 Thread-safe submission, since jobs will want to draw
 - [ ] 61.7 Compile out in shipping builds
+- [ ] 61.8 **Hand off the three vendored visualisations** — grid to T0032/T0033,
+      selection box to T0032, vector field to T0111 — rather than absorbing them
 
 ## Notes / findings
 

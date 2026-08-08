@@ -34,31 +34,85 @@ no culling and no render queues**. Draw submission (T0028) deliberately starts b
 drawing everything in whatever order the ECS iterates — correct, but it draws
 geometry that is off-screen and thrashes pipeline state.
 
-This is the genuine gap in what Diligent provides, and it is the one worth
-closing early because the whole renderer's shape depends on it.
+**This is one of the few render-layer tickets D40 leaves entirely ours**, and the
+capability matrix says so in as many words: *scene graph, traversal, render
+queues, sorting — nothing, by design.* Diligent has no opinion about any of it
+and never will.
+
+## Verdict 2026-08-08 (T0171) — the maths is upstream's, the policy is ours, and one half got smaller
+
+**Frustum culling: 🔌 use upstream's maths, do not re-derive it.**
+`DiligentCore/Common/interface/AdvancedMath.hpp` has the whole test —
+`ViewFrustum:78`, `ViewFrustumExt:113` (adds the corner points a tighter test
+needs), `ExtractViewFrustumPlanesFromMatrix:128/:183`, and `GetBoxVisibility`
+overloads at `:489`, `:518`, `:576` for `BoundBox` and `OrientedBoundingBox`.
+**Keep the three-state `BoxVisibility` enum** (`:303`) rather than reducing it to
+a bool: `FullyVisible` lets a container skip testing its children, and that is
+the whole value of a hierarchy later. `hp::extractFrustum` already derives the
+same planes for the [0, 1] clip space, so 45.3 is *reconciling two derivations
+into one*, not writing a third.
+
+**Sorting: re-judged, and most of its urgency is gone.** T0170.4 landed a depth
+prepass that reclassifies every `BLEND` material to `Mask` for one pass, so a
+blended mesh's opaque texels write depth and occlude one another **by z-buffer,
+order-independently**. That fixed the Aston Martin frame this ticket's 2026-08-08
+note is about — a blended mesh is now correct against opaque geometry *and
+against its own opaque parts*. **What remains is glass against glass**: two
+overlapping genuinely-translucent surfaces are still order-dependent. That is a
+real defect and a much smaller one, and it changes 45.4/45.5 from "the frame is
+wrong" to "a specific composition is wrong".
+
+**Opaque front-to-back is untouched by that** and remains worth doing for
+early-Z, as does sorting for state coherence — both are performance, not
+correctness.
+
+**OIT is not the answer and is closed.** `PBR_Renderer` ships it, and it is
+unreachable from here: `GLTF_PBR_Renderer.cpp:638` hardcodes
+`RenderPassType::Main` in its only `PSOKey` with no override, and the population
+pass lives behind the Hydrogent/USD entry point. Evaluated and rejected on
+**T0170.3**; reaching it means patching vendored source, which D26 and D40
+forbid. **Do not reopen it here** — reopen it as an upstream PR if it matters.
 
 ## Done when
 
-- [ ] Frustum culling rejects off-screen objects before submission
+- [ ] Frustum culling rejects off-screen objects before submission, **through
+      `AdvancedMath`'s `GetBoxVisibility`**, with the three-state result kept
+- [ ] **One frustum derivation, not two** — `hp::extractFrustum` and
+      `ExtractViewFrustumPlanesFromMatrix` reconciled, because two that drift
+      present as objects popping in one system and not the other
+- [ ] **Culling is callable with an arbitrary frustum** — T0086.4 culls shadow
+      casters per light and T0120.3 culls per render-texture camera; an API
+      hard-wired to "the" camera forces both to fork it
 - [ ] Objects are bucketed into render queues (opaque, transparent, overlay)
-- [ ] Opaque sorted front-to-back; transparent sorted back-to-front
-- [ ] Within a queue, sorting reduces pipeline/material switches
+- [ ] Opaque sorted front-to-back for early-Z; within a queue, sorting reduces
+      pipeline/material switches
+- [ ] **Transparent sorted back-to-front — and the acceptance case is glass
+      against glass**, not the Aston Martin frame below, which T0170.4 already
+      fixed by a different mechanism
+- [ ] **The sort reaches primitives, not just objects** — the interior and the
+      glass are primitives of the *same* draw item under one material, so a
+      per-object key still gets it wrong
 - [ ] Culling can be disabled for debugging, and culled counts are visible
 - [ ] Measurable: draw calls and triangles drop on a scene with off-screen geometry
 - [ ] Culling and sorting cost is visible in Tracy and is not itself the bottleneck
 
 ## Subtasks
 
-- [ ] 45.1 Bounding volumes per mesh, computed at import and stored in the asset
+- [ ] 45.1 Bounding volumes per mesh — **computed at load time for now**, moved
+      into the cooked asset when T0039's container exists (see the second review
+      pass below; do not block Phase 4 on a Phase 7 format)
 - [ ] 45.2 World-space bounds from transform + local bounds
-- [ ] 45.3 Frustum extraction from the camera and an AABB/sphere test
+- [ ] 45.3 **Frustum test via `AdvancedMath`**, and reconcile the two
+      derivations. Consume, do not re-derive
 - [ ] 45.4 Render queues with an explicit ordering policy
 - [ ] 45.5 Sort keys packing material/pipeline/depth so one sort achieves both
-      state coherence and depth ordering
+      state coherence and depth ordering — **and reaching primitive granularity**
 - [ ] 45.6 Shape the cull pass so T0050.4 can parallelise it without a redesign
       — see the 2026-08-04 note. This ticket does **not** parallelise it
 - [ ] 45.7 Debug counters: visible vs culled, draw calls, triangles
 - [ ] 45.8 Profiling zones
+- [ ] 45.9 **Add the rows before building** — D40. Two exist already: frustum
+      maths (🔌, this ticket) and scene/queues/sorting (⬆️, this ticket)
 
 ## Notes / findings
 
@@ -233,3 +287,18 @@ Every element in the shot — windscreen, seats, dashboard, steering wheel — i
 **It is also the third absence one real model surfaced in an afternoon** — after spec-gloss read as metallic-roughness and no IBL for a metal to reflect (T0167, T0087). All three were on paper as known gaps and all three showed up on the first asset nobody here authored, which is the argument for this ticket sitting where it does in the sequence.
 
 **Not a defect, and T0167 must not report it as one.** Its 167.6 exists to keep absences and defects in separate buckets; this is an absence with a named owner.
+
+**Superseded in part, 2026-08-08 (T0170.4).** *This exact frame is fixed*, and
+not by a sort. The blend pass stopped writing depth, and every blended material
+is now drawn a second time *first*, reclassified to `Mask` at a 0.996 cutoff —
+so its opaque texels write depth and occlude one another by z-buffer,
+order-independently, while its translucent texels discard and leave no depth.
+The interior is back. `screen_inputs_test` pins it in both directions and fails
+on the pre-T0170.4 renderer.
+
+**What survives from this note, and it is the load-bearing half:** the
+*constraint on 45.4/45.5* is unchanged and was correct — the glass and the
+interior are primitives of the **same** draw item under one material, so a
+per-object sort key still gets a genuinely-translucent case wrong. What changed
+is the *scope*: the remaining defect is glass against glass, not a car with no
+interior.
