@@ -18,6 +18,7 @@
 
 // The sheen albedo-scaling LUT, embedded from the pinned submodule at build
 // time (T0143) -- see `cmake/hp_embed_binary.cmake` for why it is not a file.
+#include <hp/PreintegratedCharlieBrdf.h>
 #include <hp/SheenAlbedoScalingLut.h>
 
 #include <algorithm>
@@ -395,6 +396,40 @@ SurfacePipeline::SurfacePipeline(Diligent::IRenderDevice* device,
                                "sheen materials will fail to bind");
         }
     }
+
+    // **The preintegrated Charlie BRDF, the same way** (T0170.5). The base
+    // constructor loads this one inside its `EnableSheen` block but only
+    // `if (EnableIBL)` -- so turning IBL on is what made a second embedded LUT
+    // necessary, and leaving it out would have bound `g_PreintegratedCharlie`
+    // to null for every sheen permutation.
+    if (GetSettings().EnableSheen && GetSettings().EnableIBL &&
+        !m_pPreintegratedCharlie_SRV) {
+        Diligent::TextureLoadInfo loadInfo{"hp preintegrated Charlie BRDF"};
+        // R8 with the blue channel swizzled in, exactly as upstream loads it
+        // (`PBR_Renderer.cpp:434-436`) -- the LUT's data is in blue and the
+        // shader samples `.r`.
+        loadInfo.Format = Diligent::TEX_FORMAT_R8_UNORM;
+        loadInfo.Swizzle.R = Diligent::TEXTURE_COMPONENT_SWIZZLE_B;
+        Diligent::RefCntAutoPtr<Diligent::ITextureLoader> loader;
+        Diligent::CreateTextureLoaderFromMemory(hp::embedded::kPreintegratedCharlieBrdfJpg,
+                                                hp::embedded::kPreintegratedCharlieBrdfJpgSize,
+                                                /*MakeDataCopy=*/false, loadInfo, &loader);
+        Diligent::RefCntAutoPtr<Diligent::ITexture> lut;
+        if (loader) {
+            loader->CreateTexture(device, &lut);
+        }
+        if (lut) {
+            m_pPreintegratedCharlie_SRV =
+                lut->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+            const Diligent::StateTransitionDesc barrier{
+                lut, Diligent::RESOURCE_STATE_UNKNOWN, Diligent::RESOURCE_STATE_SHADER_RESOURCE,
+                Diligent::STATE_TRANSITION_FLAG_UPDATE_STATE};
+            context->TransitionResourceStates(1, &barrier);
+        } else {
+            HP_LOG_ERROR(kLog, "the embedded preintegrated Charlie BRDF LUT did not decode; "
+                               "sheen materials will fail to bind under IBL");
+        }
+    }
     CreateSignature();
 
     // Every name the engine's signatures own, for the subtraction that
@@ -564,10 +599,18 @@ Diligent::IPipelineState* SurfacePipeline::pipeline(const Diligent::GraphicsPipe
 }
 
 void SurfacePipeline::configure(CreateInfo& info) {
-    // Off because they belong to other tickets, and because each one that is on
-    // demands resources the engine has no way to supply yet -- IBL wants a
-    // precomputed environment, lights want a populated light buffer.
-    info.EnableIBL = false;
+    // **On since T0170.5** (absorbing T0087's core). What kept it off was that
+    // "IBL wants a precomputed environment" and the engine had none; it has one
+    // now -- `SceneRenderer` builds a procedural sky and runs
+    // `PrecomputeCubemaps` over it at `create()` time, so every scene is
+    // environment-lit by default the way Godot's and Unity's are.
+    //
+    // Three things move together and the feature is silently absent without
+    // all three -- the same three-switch rule T0143 recorded: this setting
+    // (which builds the signature slots and the BRDF LUT), `PSO_FLAG_USE_IBL`
+    // in `SceneRenderer`'s enabled set (which compiles the shader that reads
+    // them), and the cubemaps actually bound on every SRB.
+    info.EnableIBL = true;
     // **On, and the debug views are why.** Both were off, and both were invisible:
     // the rock test set packs a real ambient-occlusion map into its ORM red
     // channel, `ensureBindings` bound it, and `GetOcclusion` was never called

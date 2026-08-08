@@ -850,12 +850,21 @@ void HpSurface(in HpSurfaceInput In, inout HpSurfaceOutput Out)
 // by the same drift guard as the base layer. Iridescence needs no lighting
 // block at all: it bends `Reflectance0` at surface-fill time, exactly as
 // upstream bends the base layer's F0. `ENABLE_VOLUME` deliberately has no
-// term here -- thickness's only consumer is the image-based refraction, so it
-// waits inside the `USE_IBL` seam below (T0087).
+// term here -- thickness's only consumer is image-based refraction, which is
+// still unbuilt and stays on T0087.
 
-#if USE_IBL
-#   error "the engine's lighting stage has no image-based path; T0087 fills the seam in HpResolveLighting"
-#endif
+// **The `USE_IBL` seam is filled** (T0170.5). What stood here was an `#error`
+// saying the engine had no image-based path. It has one now: sampled in
+// `main`, resolved in `HpResolveLighting` below.
+//
+// **Upstream's functions are called, not mirrored**, and the asymmetry with
+// the punctual loop above is the whole reason this was cheap. D30 forced a
+// mirror there because `ApplyPunctualLight` takes the entire
+// `SurfaceShadingInfo`; the image-based getters take a bare
+// `SurfaceReflectanceInfo`, every field of which `HpShadedSurface` already
+// carries. So `GetIBLSamplingInfo`, `GetLambertianIBL`, `GetSpecularIBL_GGX`
+// and `GetSpecularIBL_Charlie` are theirs, unchanged, and the drift guard the
+// punctual mirror needs has nothing to guard here.
 
 #if ENABLE_SHADOWS
 // **The shape T0086 drops into, and it is empty on purpose.** The shadow lookup
@@ -1065,6 +1074,26 @@ HpLightResponse HpStandardLight(HpLight Light, HpShadedSurface Surface)
 }
 
 // hp-shader-doc: export
+/// How much of the environment reaches this fragment (T0170.5).
+///
+/// `IBLScale` times `Occlusion`, which is the entire weighting upstream
+/// applies to every image-based term (`GetBaseLayerIBL`, `GetSheenIBL`,
+/// `GetClearcoatIBL` -- `PBR_Shading.fxh:795-838`, all three identical). It is
+/// a function rather than three copies of one expression because a `lighting()`
+/// override that resolves its own layers needs the same weight and should not
+/// have to know which two factors it is made of.
+///
+/// **Ambient occlusion applies here and to nothing else.** No punctual term
+/// reads `Occlusion` -- that asymmetry is glTF's, not an omission.
+///
+/// @param Surface the shaded surface.
+/// @returns the per-channel weight to multiply an image-based term by.
+float3 HpIBLWeight(HpShadedSurface Surface)
+{
+    return g_Frame.Renderer.IBLScale.rgb * Surface.Occlusion;
+}
+
+// hp-shader-doc: export
 /// Turns accumulated light into the fragment's colour (T0145, layers T0143).
 ///
 /// The mirror of `ResolveLighting` (`PBR_Shading.fxh:847-876`), layer for
@@ -1088,12 +1117,20 @@ HpLightResponse HpStandardLight(HpLight Light, HpShadedSurface Surface)
 float3 HpResolveLighting(HpShadedSurface Surface, float3 punctual, float3 sheenPunctual,
                          float3 clearcoatPunctual)
 {
-    float3 Color = punctual + Surface.Emissive;
+    // **The one place the image-based terms are weighed** (T0170.5), mirroring
+    // `GetBaseLayerIBL` (:806) exactly: each layer's environment reflection is
+    // scaled by the frame's `IBLScale` and the surface's `Occlusion`, and by
+    // nothing else. `HpIBLWeight()` is that product, named once so a custom
+    // resolve can reuse it rather than re-deriving which two factors apply.
+    float3 iblWeight = HpIBLWeight(Surface);
+
+    float3 Color = punctual + Surface.Emissive +
+                   (Surface.DiffuseIBL + Surface.SpecularIBL) * iblWeight;
 
 #if ENABLE_SHEEN
-    // `GetSheenLighting` (:826): the punctual sum plus an IBL term that is
-    // identically zero without an environment.
-    Color += sheenPunctual;
+    // `GetSheenLighting` (:826): the punctual sum plus the sheen layer's own
+    // image-based term.
+    Color += sheenPunctual + Surface.SheenIBL * iblWeight;
 #endif
 
 #if ENABLE_CLEAR_COAT
@@ -1107,11 +1144,13 @@ float3 HpResolveLighting(HpShadedSurface Surface, float3 punctual, float3 sheenP
         ccNdotV = max(ccNdotV, 0.1);
 
         float ClearcoatFresnel = SchlickReflection(ccNdotV, Surface.ClearcoatReflectance0, 1.0);
-        // `GetClearcoatLighting` (:840) is the punctual sum times the coat
-        // factor; the (1 - F*factor) dim is what the coat takes *from*
-        // everything underneath.
+        // `GetClearcoatLighting` (:840) is the punctual sum *plus the coat's
+        // own image-based term*, both times the coat factor; the
+        // (1 - F*factor) dim is what the coat takes *from* everything
+        // underneath.
         Color = Color * (1.0 - Surface.Clearcoat * ClearcoatFresnel) +
-                clearcoatPunctual * Surface.Clearcoat;
+                (clearcoatPunctual + Surface.ClearcoatIBL * iblWeight) *
+                    Surface.Clearcoat;
     }
 #endif
 
@@ -1134,12 +1173,12 @@ float3 HpResolveLighting(HpShadedSurface Surface, float3 punctual, float3 sheenP
 float3 HpResolveLighting(HpShadedSurface Surface, float3 punctual)
 {
     // `GetBaseLayerIBL` is `(DiffuseIBL + SpecularIBL) * IBLScale * Occlusion`
-    // and both terms are identically zero while `USE_IBL` is off -- so the
-    // whole product is +0 and adding it is a no-op the compiler removes. It is
-    // written out rather than implied because T0087's change is then one line
-    // in one place, and because the `#if USE_IBL` guard above makes turning IBL
-    // on without writing it impossible rather than merely unlikely.
-    return punctual + Surface.Emissive;
+    // -- and the two terms are still identically zero in a permutation without
+    // `USE_IBL`, so the expression is unchanged there and the compiler removes
+    // it. T0087's change turned out to be exactly the one line in one place
+    // the pre-T0170 comment here predicted.
+    return punctual + Surface.Emissive +
+           (Surface.DiffuseIBL + Surface.SpecularIBL) * HpIBLWeight(Surface);
 }
 
 // ---------------------------------------------------------------------------
@@ -2249,6 +2288,12 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(inout TMaterial material, VSOu
     shaded.AlphaRoughnessB = 0.0;
 #endif
     shaded.IridescenceThickness = surfaceOut.IridescenceThickness;
+    // **Hoisted out of the block below** (T0170.5): the image-based sampler
+    // wants the film's Fresnel too -- `GetIBLSamplingInfo` lerps `k_S` toward
+    // it exactly as the F0 bend does -- and a value declared inside the `#if`
+    // would not be in scope there. Zero without the feature, which is what the
+    // permutation that never reads it compiles away.
+    float3 iridescenceFresnel = float3(0.0, 0.0, 0.0);
 #if ENABLE_IRIDESCENCE
     {
         // ---- mirrored from `ReadIridescenceProperties` (:236-251) and the
@@ -2256,7 +2301,7 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(inout TMaterial material, VSOu
         // The film's Fresnel is evaluated against the *unbent* base F0, then
         // the base layer's `Reflectance0` is bent toward it by the factor.
         // A zero-thickness film kills the factor, upstream's own rule.
-        float3 iridescenceFresnel =
+        iridescenceFresnel =
             EvalIridescence(1.0, g_Material.Iridescence.IOR, shaded.NdotV,
                             shaded.IridescenceThickness, shaded.Reflectance0);
         float3 iridescenceF0 = SchlickToF0(shaded.NdotV, iridescenceFresnel,
@@ -2273,6 +2318,106 @@ PSOutput evaluateSurface<TMaterial : IHpMaterial>(inout TMaterial material, VSOu
 #endif
     shaded.Transmission = surfaceOut.Transmission;
     shaded.Thickness = surfaceOut.Thickness;
+
+    // -----------------------------------------------------------------------
+    // **The environment** (T0170.5, absorbing T0087's core) — sampled here,
+    // weighed in `HpResolveLighting`.
+    //
+    // **Before `lighting()`, deliberately.** A material that replaces the
+    // whole punctual stage — a cel shader, a ramp, a custom BRDF — still gets
+    // its environment reflections handed to it, and can add, scale or ignore
+    // them. Sampling inside the default `lighting()` would have made
+    // "override the light loop" silently mean "lose all reflections", which is
+    // the failure `HpShadedSurface` exists to prevent.
+    //
+    // The block is `ApplyIBL` (`PBR_Shading.fxh:723-791`) statement for
+    // statement, with `SurfaceShadingInfo` replaced by the fields
+    // `HpShadedSurface` already carries. Zeroed in the `#else` because D31
+    // requires every field written in every permutation.
+    // -----------------------------------------------------------------------
+#if USE_IBL
+    {
+        SurfaceReflectanceInfo iblSrf;
+        iblSrf.PerceptualRoughness = shaded.Roughness;
+        iblSrf.Reflectance0 = shaded.Reflectance0;
+        iblSrf.Reflectance90 = shaded.Reflectance90;
+        iblSrf.DiffuseColor = shaded.DiffuseColor;
+
+        IBLSamplingInfo iblInfo = GetIBLSamplingInfo(
+            iblSrf, g_PreintegratedGGX, g_PreintegratedGGX_sampler,
+#if ENABLE_IRIDESCENCE
+            iridescenceFresnel, shaded.Iridescence,
+#endif
+            shaded.Normal, shaded.View);
+
+        shaded.DiffuseIBL =
+            GetLambertianIBL(iblSrf, iblInfo, g_IrradianceMap, g_IrradianceMap_sampler);
+#if ENABLE_TRANSMISSION
+        // What passes through does not scatter back (:748-752).
+        shaded.DiffuseIBL *= 1.0 - shaded.Transmission;
+#endif
+
+#if ENABLE_ANISOTROPY
+        {
+            // ---- mirrored from `ApplyIBL`, :756-770 ------------------------
+            // KHR_materials_anisotropy's own image-based rule: the reflection
+            // vector is taken about a normal bent toward the anisotropy
+            // bitangent, which is what stretches an environment highlight.
+            // **After the diffuse term and before the specular one**, exactly
+            // as upstream orders it — the diffuse lobe is not anisotropic.
+            float tangentRoughness =
+                lerp(iblSrf.PerceptualRoughness, 1.0, shaded.Anisotropy * shaded.Anisotropy);
+            float3 anisoTangent = cross(shaded.AnisotropyBitangent, shaded.View);
+            float3 anisoNormal = cross(anisoTangent, shaded.AnisotropyBitangent);
+            float bendFactor = 1.0 - shaded.Anisotropy * (1.0 - iblSrf.PerceptualRoughness);
+            float bendFactorPow4 = bendFactor * bendFactor * bendFactor * bendFactor;
+            float3 bentNormal =
+                normalize(lerp(anisoNormal, shaded.Normal,
+                               float3(bendFactorPow4, bendFactorPow4, bendFactorPow4)));
+
+            iblInfo.N = bentNormal;
+            iblInfo.L = normalize(reflect(-iblInfo.V, iblInfo.N));
+        }
+#endif
+
+        shaded.SpecularIBL =
+            GetSpecularIBL_GGX(iblSrf, iblInfo, g_PrefilteredEnvMap, g_PrefilteredEnvMap_sampler,
+                               float(g_Frame.Renderer.PrefilteredCubeLastMip));
+
+#if ENABLE_SHEEN
+        // Upstream's own note stands: strictly this wants a second cube
+        // prefiltered with the Charlie BRDF, and it reuses the GGX one.
+        shaded.SheenIBL = GetSpecularIBL_Charlie(
+            shaded.SheenColor, shaded.SheenRoughness, shaded.Normal, shaded.View,
+            float(g_Frame.Renderer.PrefilteredCubeLastMip), g_PreintegratedCharlie,
+            g_PreintegratedCharlie_sampler, g_PrefilteredEnvMap, g_PrefilteredEnvMap_sampler);
+#else
+        shaded.SheenIBL = float3(0.0, 0.0, 0.0);
+#endif
+
+#if ENABLE_CLEAR_COAT
+        {
+            SurfaceReflectanceInfo ccSrf =
+                GetSurfaceReflectanceClearCoat(shaded.ClearcoatRoughness, 1.5);
+            IBLSamplingInfo ccInfo =
+                GetClearcoatIBLSamplingInfo(ccSrf, g_PreintegratedGGX,
+                                            g_PreintegratedGGX_sampler,
+                                            shaded.ClearcoatNormal, shaded.View);
+            shaded.ClearcoatIBL =
+                GetSpecularIBL_GGX(ccSrf, ccInfo, g_PrefilteredEnvMap,
+                                   g_PrefilteredEnvMap_sampler,
+                                   float(g_Frame.Renderer.PrefilteredCubeLastMip));
+        }
+#else
+        shaded.ClearcoatIBL = float3(0.0, 0.0, 0.0);
+#endif
+    }
+#else
+    shaded.DiffuseIBL = float3(0.0, 0.0, 0.0);
+    shaded.SpecularIBL = float3(0.0, 0.0, 0.0);
+    shaded.SheenIBL = float3(0.0, 0.0, 0.0);
+    shaded.ClearcoatIBL = float3(0.0, 0.0, 0.0);
+#endif
 
     Out.Color.rgb = material.lighting(shaded, surfaceIn);
     Out.Color.a = surfaceOut.BaseColor.a;

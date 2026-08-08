@@ -40,7 +40,7 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 
 | Page | Source | Declarations |
 |---|---|---|
-| [`Engine functions`](engine-functions.md) | `engine/shaders/HpSurface.slang` | 11 |
+| [`Engine functions`](engine-functions.md) | `engine/shaders/HpSurface.slang` | 12 |
 | [`HpMaterial`](HpMaterial.md) | `engine/shaders/HpMaterial.slang` | 25 |
 | [`IHpMaterial`](IHpMaterial.md) | `engine/shaders/HpSurface.slang` | 1 |
 
@@ -57,6 +57,7 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | `HpLightCount` | function | [`Engine functions`](engine-functions.md) |
 | `HpGetLight` | function | [`Engine functions`](engine-functions.md) |
 | `HpStandardLight` | function | [`Engine functions`](engine-functions.md) |
+| `HpIBLWeight` | function | [`Engine functions`](engine-functions.md) |
 | `HpResolveLighting` | function | [`Engine functions`](engine-functions.md) |
 | `HpResolveLighting` | function | [`Engine functions`](engine-functions.md) |
 | `HP_UNSHADED` | macro | [`HpMaterial`](HpMaterial.md) |
@@ -162,6 +163,10 @@ Material asset format: `claude_documentation/documentation/11-material-format.md
 | `HpShadedSurface::Reflectance90` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpShadedSurface::Emissive` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpShadedSurface::Occlusion` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::DiffuseIBL` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::SpecularIBL` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::SheenIBL` | field | [`HpMaterial`](HpMaterial.md) |
+| `HpShadedSurface::ClearcoatIBL` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpShadedSurface::Clearcoat` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpShadedSurface::ClearcoatRoughness` | field | [`HpMaterial`](HpMaterial.md) |
 | `HpShadedSurface::ClearcoatNormal` | field | [`HpMaterial`](HpMaterial.md) |

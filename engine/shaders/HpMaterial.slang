@@ -1056,8 +1056,39 @@ struct HpShadedSurface
     float3 Emissive;
 
     /// How much ambient light reaches this fragment, 0 to 1. Applies to the
-    /// image-based term when T0087 lands; punctual light does not use it.
+    /// image-based term below; punctual light does not use it.
     float Occlusion;
+
+    // -----------------------------------------------------------------------
+    // The image-based terms (T0170.5, absorbing T0087's core).
+    //
+    // **Already sampled, not yet scaled.** The engine fills these from the
+    // environment before `lighting()` runs -- so a material that replaces the
+    // whole punctual stage still has its environment reflections in hand, and
+    // a cel shader that wants none simply ignores them. The `IBLScale` and
+    // `Occlusion` multiplies happen in `HpResolveLighting`, exactly where
+    // `GetBaseLayerIBL` does them upstream (`PBR_Shading.fxh:806`), so a
+    // custom resolve can weigh them differently without re-deriving anything.
+    //
+    // **Zero in every permutation without `USE_IBL`** (D31), which is what
+    // keeps the resolve one expression rather than two.
+    // -----------------------------------------------------------------------
+
+    /// The diffuse irradiance this fragment receives from the environment,
+    /// already through the Lambertian (and multiple-scattering) term.
+    float3 DiffuseIBL;
+
+    /// The specular environment reflection, split-sum GGX.
+    float3 SpecularIBL;
+
+    /// The sheen layer's environment reflection, Charlie. Zero unless the
+    /// permutation carries `ENABLE_SHEEN`.
+    float3 SheenIBL;
+
+    /// The coat's environment reflection, **before** the coat factor —
+    /// mirroring `SurfaceLightingInfo::Clearcoat.SpecularIBL`. Zero unless
+    /// the permutation carries `ENABLE_CLEAR_COAT`.
+    float3 ClearcoatIBL;
 
     // -----------------------------------------------------------------------
     // The extended layers (T0143), flattened from `SurfaceShadingInfo`'s

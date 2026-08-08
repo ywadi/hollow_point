@@ -249,6 +249,38 @@ double meanLumaOfCovered(const std::vector<std::uint8_t>& rgba) {
     return n > 0 ? sum / static_cast<double>(n) : 0.0;
 }
 
+/// Mean absolute per-pixel luminance change between two frames, over pixels
+/// covered in **either** (T0170.5).
+///
+/// **This replaced a ratio of whole-frame means, and the reason is the point
+/// of the ticket.** Before image-based lighting existed, the only light on the
+/// car was the two lamps, so swinging the key moved the frame's *average*
+/// brightness by 15% and a mean ratio was a fine instrument. With an
+/// environment the average barely moves — measured 112.891 against 112.517,
+/// a ratio of 1.003 — because most of what lights the car now comes from a
+/// sky that did not move. The frame still answered the light: a specular
+/// highlight travelled across the bonnet and one flank went from lit to
+/// shaded. A mean of means cannot see that and a per-pixel difference can, so
+/// the weaker instrument was replaced rather than its threshold lowered.
+double meanLumaDelta(const std::vector<std::uint8_t>& a, const std::vector<std::uint8_t>& b) {
+    if (a.size() != b.size()) {
+        return 0.0;
+    }
+    const auto luma = [](const std::uint8_t* px) {
+        return 0.2126 * px[0] + 0.7152 * px[1] + 0.0722 * px[2];
+    };
+    double sum = 0.0;
+    long long n = 0;
+    for (std::size_t i = 0; i + 3 < a.size(); i += 4) {
+        if (isClear(a.data() + i) && isClear(b.data() + i)) {
+            continue;
+        }
+        sum += std::abs(luma(a.data() + i) - luma(b.data() + i));
+        ++n;
+    }
+    return n > 0 ? sum / static_cast<double>(n) : 0.0;
+}
+
 /// Standard deviation of covered-pixel luminance — a textured, shaded surface
 /// has structure; a flat default-material blob does not.
 double lumaSpreadOfCovered(const std::vector<std::uint8_t>& rgba) {
@@ -509,6 +541,8 @@ TEST_CASE("the Aston Martin renders, and the frames are on disk beside their num
 
     double firstLuma = -1.0;
     double relitLuma = -1.0;
+    std::vector<std::uint8_t> firstPixels;
+    std::vector<std::uint8_t> relitPixels;
     for (const Shot& shot : shots) {
         aimLights(shot.keyYaw);
         std::vector<std::uint8_t> pixels;
@@ -534,22 +568,38 @@ TEST_CASE("the Aston Martin renders, and the frames are on disk beside their num
 
         if (std::string(shot.name) == "front_quarter") {
             firstLuma = luma;
+            firstPixels = pixels;
         }
         if (std::string(shot.name) == "front_quarter_relit") {
             relitLuma = luma;
+            relitPixels = pixels;
         }
     }
 
-    // **The light moved and the surface answered** (167.4): the same pose
-    // under a swung key must shade measurably differently, or the frame is a
-    // painting.
+    // **The light moved and the surface answered** (167.4, re-instrumented on
+    // T0170.5): the same pose under a swung key must shade measurably
+    // differently, or the frame is a painting. Measured per pixel — see
+    // `meanLumaDelta` for why the frame-wide mean stopped being able to say.
     REQUIRE(firstLuma >= 0.0);
     REQUIRE(relitLuma >= 0.0);
+    REQUIRE_FALSE(firstPixels.empty());
+    REQUIRE_FALSE(relitPixels.empty());
     const double ratio = firstLuma > relitLuma ? firstLuma / std::max(relitLuma, 1e-3)
                                                : relitLuma / std::max(firstLuma, 1e-3);
+    const double delta = meanLumaDelta(firstPixels, relitPixels);
     MESSAGE("key swung ~137 degrees: mean luma " << firstLuma << " vs " << relitLuma
-                                                 << " (ratio " << ratio << ")");
-    CHECK(ratio > 1.05);
+                                                 << " (ratio " << ratio
+                                                 << "), mean per-pixel |dLuma| " << delta);
+    CHECK(delta > 2.0);
+
+    // **And the environment is actually reaching the car** (T0170.5). The
+    // paint's colour lives in this asset's *specular* map — its diffuse is
+    // navy-black — so before there was anything to reflect the car rendered
+    // near-black whatever the lamps did: mean luma 10.4 across all five shots.
+    // A number rather than a screenshot, because a screenshot was what let the
+    // black car pass for a year.
+    MESSAGE("mean luma with the environment: " << firstLuma << " (pre-T0170: ~10.4)");
+    CHECK(firstLuma > 40.0);
 
     // ---- 167.9: the 1,316 TANGENT.w = -1 vertices, against the decline -----
     // The vertex path stays float3 by T0168.4's recorded decision; the frame

@@ -4,7 +4,7 @@
 
 **Exported from an implementation file.** `engine/shaders/HpSurface.slang` is the engine's own shader and is *not* contract — nothing else in it may be relied on. The functions below are marked `hp-shader-doc: export` because a game's module calls them: they are the engine's own defaults and primitives, and they live there because they read the frame's constant buffers, which are declared after the contract file is included.
 
-11 declaration(s), 0 member(s), all documented.
+12 declaration(s), 0 member(s), all documented.
 
 ## `HpSceneColour`
 
@@ -199,6 +199,27 @@ override a line rather than a rewrite: the caller computes
 @param Light the light, from `HpGetLight`.
 @param Surface the shaded surface.
 @returns the standard physically-based response.
+
+## `HpIBLWeight`
+
+```hlsl
+float3 HpIBLWeight(HpShadedSurface Surface);
+```
+
+How much of the environment reaches this fragment (T0170.5).
+
+`IBLScale` times `Occlusion`, which is the entire weighting upstream
+applies to every image-based term (`GetBaseLayerIBL`, `GetSheenIBL`,
+`GetClearcoatIBL` -- `PBR_Shading.fxh:795-838`, all three identical). It is
+a function rather than three copies of one expression because a `lighting()`
+override that resolves its own layers needs the same weight and should not
+have to know which two factors it is made of.
+
+**Ambient occlusion applies here and to nothing else.** No punctual term
+reads `Occlusion` -- that asymmetry is glTF's, not an omission.
+
+@param Surface the shaded surface.
+@returns the per-channel weight to multiply an image-based term by.
 
 ## `HpResolveLighting`
 

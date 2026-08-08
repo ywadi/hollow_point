@@ -284,7 +284,7 @@ pass that writes it, and it gets its own row in the capability matrix first.
 still bind from a `.hpmat` that names them — see their declarations below —
 but they are **deprecated**: name your textures yourself.
 
-25 declaration(s), 98 member(s), all documented.
+25 declaration(s), 102 member(s), all documented.
 
 ## `HP_UNSHADED`
 
@@ -1350,7 +1350,43 @@ float Occlusion;
 ```
 
 How much ambient light reaches this fragment, 0 to 1. Applies to the
-image-based term when T0087 lands; punctual light does not use it.
+image-based term below; punctual light does not use it.
+
+### `HpShadedSurface::DiffuseIBL`
+
+```hlsl
+float3 DiffuseIBL;
+```
+
+The diffuse irradiance this fragment receives from the environment,
+already through the Lambertian (and multiple-scattering) term.
+
+### `HpShadedSurface::SpecularIBL`
+
+```hlsl
+float3 SpecularIBL;
+```
+
+The specular environment reflection, split-sum GGX.
+
+### `HpShadedSurface::SheenIBL`
+
+```hlsl
+float3 SheenIBL;
+```
+
+The sheen layer's environment reflection, Charlie. Zero unless the
+permutation carries `ENABLE_SHEEN`.
+
+### `HpShadedSurface::ClearcoatIBL`
+
+```hlsl
+float3 ClearcoatIBL;
+```
+
+The coat's environment reflection, **before** the coat factor —
+mirroring `SurfaceLightingInfo::Clearcoat.SpecularIBL`. Zero unless
+the permutation carries `ENABLE_CLEAR_COAT`.
 
 ### `HpShadedSurface::Clearcoat`
 

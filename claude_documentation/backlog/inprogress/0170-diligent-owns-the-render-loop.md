@@ -2,14 +2,14 @@
 
 | | |
 |---|---|
-| **Status** | 🔜 TODO |
+| **Status** | 🚧 IN PROGRESS |
 | **Priority** | High |
 | **Complexity** | Complex |
 | **Phase** | 4 — Render layer |
 | **Order** | 459 |
 | **Created** | 2026-08-08 |
 | **Blocked by** | nothing |
-| **Refs** | **D26** — **this ticket amends it**; [0045-culling-and-render-queues.md](0045-culling-and-render-queues.md) — **superseded in large part**: OIT replaces the back-to-front sort, and upstream's bucketing replaces the queue split; what survives is frustum culling and batching; [0087-environment-lighting.md](0087-environment-lighting.md) — **probably subsumed**: `PBR_Renderer` ships IBL, so "configure or supersede" answers itself; [../completed/0147-engine-intermediates-for-shaders.md](../completed/0147-engine-intermediates-for-shaders.md) / **D37** — the 10.9b snapshot survives, but via `RenderInfo::AlphaModes` rather than our own split; [../completed/0161-game-resource-model.md](../completed/0161-game-resource-model.md) — moves onto `CreateCustomSignature`; [../completed/0145-lighting-stage-own-the-light-loop.md](../completed/0145-lighting-stage-own-the-light-loop.md) / **D30** — records that the lighting hook was to be offered upstream and never was; that debt is now on the critical path; [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — the finding D26 rests on, **still true and narrower than what was built on it**; [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md), [../completed/0166-tangent-frames-and-real-assets.md](../completed/0166-tangent-frames-and-real-assets.md), [0168-asset-import-coverage.md](../completed/0168-asset-import-coverage.md); **D12**, **D27**, **D35** |
+| **Refs** | **D26** — **this ticket amends it**; [0045-culling-and-render-queues.md](../open/0045-culling-and-render-queues.md) — **superseded in large part**: OIT replaces the back-to-front sort, and upstream's bucketing replaces the queue split; what survives is frustum culling and batching; [0087-environment-lighting.md](../open/0087-environment-lighting.md) — **probably subsumed**: `PBR_Renderer` ships IBL, so "configure or supersede" answers itself; [../completed/0147-engine-intermediates-for-shaders.md](../completed/0147-engine-intermediates-for-shaders.md) / **D37** — the 10.9b snapshot survives, but via `RenderInfo::AlphaModes` rather than our own split; [../completed/0161-game-resource-model.md](../completed/0161-game-resource-model.md) — moves onto `CreateCustomSignature`; [../completed/0145-lighting-stage-own-the-light-loop.md](../completed/0145-lighting-stage-own-the-light-loop.md) / **D30** — records that the lighting hook was to be offered upstream and never was; that debt is now on the critical path; [../completed/0141-custom-shader-materials.md](../completed/0141-custom-shader-materials.md) — the finding D26 rests on, **still true and narrower than what was built on it**; [../completed/0142-slang-shader-language.md](../completed/0142-slang-shader-language.md), [../completed/0166-tangent-frames-and-real-assets.md](../completed/0166-tangent-frames-and-real-assets.md), [0168-asset-import-coverage.md](../completed/0168-asset-import-coverage.md); **D12**, **D27**, **D35** |
 
 ## Why
 
@@ -47,7 +47,7 @@ What that buys immediately, none of it written here: **OIT**, opaque→mask→bl
 - [ ] 170.2 **Subclass, do not fork.** `class HpRenderer : public GLTF_PBR_Renderer`, following `USD_Renderer` as the worked precedent. Override `CreateCustomSignature` for T0161
 - [ ] 170.3 **Turn OIT on** — `OITLayerCount`, `CreateOITResources`, `CreateClearOITLayersSRB`, `SetOITResources`, and the `OITLayers` pass. Read how **Hydrogent** sequences it (`HnRenderRprimsTask`, `HnEndOITPassTask`) and copy that sequence
 - [ ] 170.4 **D37's snapshot via `RenderInfo::AlphaModes`**, deleting the hand-rolled 10.9a/c split
-- [ ] 170.5 **Turn IBL on** and give the car an environment. This is what makes it look like the DCC preview — its paint colour is authored into the *specular* map and there is currently nothing to reflect
+- [x] 170.5 **Turn IBL on** and give the car an environment. This is what makes it look like the DCC preview — its paint colour is authored into the *specular* map and there is currently nothing to reflect
 - [ ] 170.6 **Delete what is now upstream's.** Measure the line count before and after; a refactor that adds code has gone wrong
 - [ ] 170.7 **Amend D26**, and write the boundary document
 - [ ] 170.8 **Re-scope T0045 and T0087** on their own tickets — say what survives and what this absorbed
@@ -59,6 +59,143 @@ What that buys immediately, none of it written here: **OIT**, opaque→mask→bl
 - **Gameplay-facing API.** `hp::SceneRenderer`'s public surface should not move — this is an implementation change (**D12**: gameplay is in lockstep, so a header change costs a rebuild of every module).
 
 ## Notes / findings
+
+### 170.5 — the environment is on, and the car is the colour it is in Blender
+
+**What Diligent does about it, first** (the rule this ticket sets): all of it.
+`EnableIBL`, `PSO_FLAG_USE_IBL`, `CreateIrradianceCube`,
+`CreatePrefilteredEnvMap`, `PrecomputeCubemaps`, `SetIBLResourceViews` and
+`SetInternalShaderParameters` are **`PBR_Renderer`'s**, not
+`GLTF_PBR_Renderer`'s — so `SurfacePipeline`, which has been a `PBR_Renderer`
+subclass since T0141.10, could call every one of them without any structural
+change at all. The BRDF LUT is precomputed by the base constructor. Nothing was
+written here that upstream had.
+
+**Measured, on the RTX 2080, `aston_martin_test`, same camera and same lamps:**
+
+| | before | after |
+|---|---|---|
+| mean luma of covered pixels, `front_quarter` | **10.4** | **112.9** |
+| luma spread | 20.2 | 38.8 |
+| coverage | 41.0% | 39.1% |
+| magenta share | 0 | 0 |
+
+The car goes from near-black to its authored cyan. That is the whole of the
+ticket's "correct paint colour": this asset is spec-gloss, its paint lives in
+the **specular** map and its diffuse is navy-black, so with nothing to reflect
+it was correctly rendering as almost nothing. Coverage falls 1.9 points because
+the near-black body used to differ from the clear colour by more than the
+`isClear` tolerance in places where it now does not — the silhouette is
+unchanged.
+
+**The seam T0087 reserved in `HpSurface.slang` was an `#error`, and it is
+filled.** The punctual loop had to be *mirrored* (D30, because
+`ApplyPunctualLight` takes the whole `SurfaceShadingInfo`); the image-based
+getters take a bare `SurfaceReflectanceInfo`, every field of which
+`HpShadedSurface` already carried, so `GetIBLSamplingInfo`,
+`GetLambertianIBL`, `GetSpecularIBL_GGX` and `GetSpecularIBL_Charlie` are
+**called, not mirrored**. There is no second copy of upstream's maths and no
+drift guard needed.
+
+**Sampled before `lighting()`, on purpose.** `HpShadedSurface` gains
+`DiffuseIBL`, `SpecularIBL`, `SheenIBL` and `ClearcoatIBL`, filled by the
+engine before the material's hook runs. Sampling them *inside* the default
+`lighting()` would have made "override the light loop" silently mean "lose
+every reflection", which is exactly the class of failure `HpShadedSurface`
+exists to prevent. `HpIBLWeight(Surface)` names the `IBLScale * Occlusion`
+product once so a custom resolve reuses it instead of re-deriving it.
+
+**Two things had to be built, and both were forced rather than chosen:**
+
+- **The preintegrated Charlie BRDF LUT is now embedded**, beside the sheen
+  albedo-scaling LUT T0143 embedded for the same reason. Upstream loads it
+  inside its `EnableSheen` block but only `if (EnableIBL)` — so turning IBL on
+  with sheen already on is precisely what made a second embedded LUT
+  necessary. Without it `g_PreintegratedCharlie` binds **null** for every sheen
+  permutation. 25 KiB, from the pinned submodule, same `hp_embed_binary` path.
+- **A default environment**, because `EnableIBL` with unbound cubemaps is a
+  null descriptor rather than a fallback. It is a **procedural sky** — a
+  256×128 equirectangular map, cool zenith, bright horizon band, dark floor,
+  one sun disc — generated at `create()` and integrated by
+  `PrecomputeCubemaps`. **Not** the vendored `papermill.ktx`, and that is a
+  decision worth arguing with: papermill is 16 MiB, so embedding it puts 16 MiB
+  of one particular sky into every shipped game binary, and loading it from
+  disk makes the engine's default lighting depend on an asset the VFS has to
+  find (D13). The generated sky costs 512 KiB of startup scratch and no bytes
+  at rest. **A real HDR environment is the game's to supply** and that seam is
+  T0087's remaining scope.
+
+**One test assertion was replaced, not re-baselined.** `aston_martin_test`
+checked that swinging the key light 137° moved the frame's mean luma by ≥5%.
+With an environment the mean barely moves — 112.891 against 112.517, ratio
+1.003 — because most of the light now comes from a sky that did not move. The
+frame *did* answer: a specular highlight crossed the bonnet and a flank went
+from lit to shaded. So the instrument was replaced by a **mean per-pixel
+|Δluma|**, which measures the thing the check was always about and is strictly
+stronger: **5.06** where a mean-of-means saw 0.3%. Lowering the old threshold
+would have kept a check that can no longer fail for the right reason. A second
+assertion pins the outcome directly — mean luma > 40, against the 10.4 it was.
+
+### 170.2 — `GLTF_PBR_Renderer` **cannot** be the base class, and its `Render` cannot be the draw path
+
+Both measured in source, and they change this ticket's mechanism rather than
+its goal. Recorded here because the ticket, the board row and D26's amendment
+all currently say otherwise.
+
+**1. Subclassing it silently destroys the engine's signature.**
+`PBR_Renderer`'s constructor takes `bool InitSignature = true` and calls
+`CreateSignature()` — and therefore the **virtual** `CreateCustomSignature` —
+from its own body, where the derived vtable does not exist yet.
+`SurfacePipeline` handles this the way the flag exists for: it passes
+`InitSignature = false` and calls `CreateSignature()` itself
+(`SurfacePipeline.cpp:355`). **`GLTF_PBR_Renderer`'s constructor does not
+forward that flag** (`GLTF_PBR_Renderer.cpp:107-111`) and offers no way to set
+it. Deriving from it would call `CreateCustomSignature` through
+`PBR_Renderer`'s vtable, and `g_HeightMap`, `g_SceneColour`, `g_SceneDepth` and
+the six-sampler palette would simply not be in the signature — every custom
+material shader in the engine stops compiling, with no diagnostic pointing
+here.
+
+**Upstream's own precedent says the same thing.** The ticket cites
+`USD_Renderer` — and `USD_Renderer` derives from **`PBR_Renderer`**, not from
+`GLTF_PBR_Renderer`, and passes `false, // InitSignature`
+(`USD_Renderer.cpp:215`) for exactly this reason. `SurfacePipeline` is already
+that precedent, followed.
+
+**2. `GLTF_PBR_Renderer::Render` draws nothing under reverse-Z.** Its two PSO
+caches are built in its constructor from a default-constructed
+`GraphicsPipelineDesc` (`GLTF_PBR_Renderer.cpp:113-129`), whose depth
+comparison is `COMPARISON_FUNC_LESS`, and its `CreateInfo` carries no depth
+field. The engine clears depth to 0 and puts the near plane at 1 (**T0130**),
+so `LESS` admits only fragments below 0 — a black frame, not inverted geometry.
+`SceneRenderer.hpp` has documented this since T0134; it is still true.
+
+**3. And it cannot see anything the engine adds.** `Render` reads materials
+only from `GLTFModel.Materials`, so a `.hpmat` assignment, the missing-material
+fallback, a custom Slang module, the per-object light selection and the
+mirrored-node cull rule (**D33**/T0152.5) are all invisible to it. It hardcodes
+`RenderPassType::Main`, so it cannot drive an OIT layers pass either.
+
+**What this leaves.** The two things worth having from `GLTF_PBR_Renderer` are
+`InitMaterialSRB` and `GetMaterialPSOFlags`, both currently inlined here — and
+`InitMaterialSRB` reaches `GetPBRTextureSRV`, the per-slot sRGB view that is
+file-static and unreachable today. Neither needs the base class: both are worth
+one focused follow-up, not a base-class change that costs the signature.
+
+**The route that does work is 170.1's**, and it is better than subclassing:
+pre-seed the protected `m_VertexShaders` / `m_PixelShaders` caches with the
+engine's Slang-compiled bytecode, then delegate to `PBR_Renderer::GetPSO` —
+which skips compilation for an already-populated entry — with a
+`GetPsoCacheAccessor(GraphicsDesc)` built from **the engine's own reverse-Z
+pipeline description**. That keeps upstream's PSO construction, blend policy
+and depth policy, gets `RenderPassType::OITLayers` compiled from upstream's own
+`UpdateOITLayers.psh` for free, and never mentions `GLTF_PBR_Renderer`.
+
+**D26's amendment therefore needs a second correction before it is final**: the
+engine keeps the *submission walk* — it must, for reverse-Z, per-object lights,
+material assignment and D33 — and hands upstream the *pipeline construction and
+per-pass policy*. What the six missed capabilities actually needed was an audit
+and adoption, which is what OIT and IBL are, not a transfer of the loop.
 
 ### The trap this ticket exists to close, stated so it cannot recur
 

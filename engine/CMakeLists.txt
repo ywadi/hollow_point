@@ -129,6 +129,34 @@ add_custom_command(
 
 add_custom_target(hp_sheen_lut DEPENDS "${HP_SHEEN_LUT_HEADER}")
 
+# --- the preintegrated Charlie BRDF LUT (T0170.5) ----------------------------
+#
+# The exact same situation one feature over: `EnableIBL && EnableSheen` makes
+# the base class declare `g_PreintegratedCharlie`, and upstream again ships the
+# data only as a GLTFViewer sample asset behind a native path. Embedded from
+# the pinned submodule beside the sheen LUT, decoded the same way.
+#
+# **Both are needed or neither works.** Turning IBL on with sheen already on is
+# what adds this second one -- the base constructor loads Charlie *inside* its
+# `EnableSheen` block, but only `if (m_Settings.EnableIBL)`.
+set(HP_CHARLIE_LUT_HEADER "${CMAKE_BINARY_DIR}/generated/hp/PreintegratedCharlieBrdf.h")
+set(_hp_charlie_lut_source
+    "${CMAKE_SOURCE_DIR}/third_party/DiligentEngine/DiligentSamples/Samples/GLTFViewer/assets/textures/charlie_preintegrated.jpg")
+
+add_custom_command(
+    OUTPUT "${HP_CHARLIE_LUT_HEADER}"
+    COMMAND "${CMAKE_COMMAND}"
+            -DHP_BINARY_INPUT=${_hp_charlie_lut_source}
+            -DHP_BINARY_OUTPUT=${HP_CHARLIE_LUT_HEADER}
+            -DHP_BINARY_SYMBOL=kPreintegratedCharlieBrdfJpg
+            -P "${CMAKE_SOURCE_DIR}/cmake/hp_embed_binary.cmake"
+    DEPENDS "${_hp_charlie_lut_source}"
+            "${CMAKE_SOURCE_DIR}/cmake/hp_embed_binary.cmake"
+    COMMENT "Embedding the preintegrated Charlie BRDF LUT (T0170.5)"
+    VERBATIM)
+
+add_custom_target(hp_charlie_lut DEPENDS "${HP_CHARLIE_LUT_HEADER}")
+
 add_library(hp_engine SHARED
     src/Module.cpp
     src/ModuleHost.cpp
@@ -183,7 +211,7 @@ target_include_directories(hp_engine PUBLIC
 
 # The generated header is an input to compiling the engine, so say so rather
 # than relying on target ordering.
-add_dependencies(hp_engine hp_build_id hp_engine_shaders hp_sheen_lut)
+add_dependencies(hp_engine hp_build_id hp_engine_shaders hp_sheen_lut hp_charlie_lut)
 
 # PRIVATE: consumers must see the *import* side of HP_API, never the export
 # side. Making this PUBLIC would have every app and module claim to define the

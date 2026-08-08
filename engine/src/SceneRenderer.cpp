@@ -28,6 +28,7 @@
 #include <algorithm>
 #include <array>
 #include <cfloat>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -85,19 +86,23 @@ Diligent::TEXTURE_FORMAT toDiligentFormat(TargetFormat format) {
 /// | Flag | Ticket |
 /// |---|---|
 /// | `PSO_FLAG_USE_LIGHTS` | T0079 — also raises `MaxLightCount` and sets `Renderer.LightCount` |
-/// | `PSO_FLAG_USE_IBL` | T0087 — also `EnableIBL` and the precomputed cubemaps |
 /// | `PSO_FLAG_ENABLE_SHADOWS` | T0086 — also `EnableShadows` and `MaxShadowCastingLightCount` |
 /// | `PSO_FLAG_ENABLE_TONE_MAPPING` | T0096 — **and D24 recommends it stays off**; tonemapping belongs in a pass over an HDR target, because the in-shader path tonemaps per draw before blending and leaves bloom nothing to read |
 /// | `PSO_FLAG_COMPUTE_MOTION_VECTORS` | T0111/T0096 — `PrevCamera` is already written every frame, so only the flag is missing |
 ///
-/// **Three of these are why every mesh currently renders pure black**: no
-/// lights, no IBL, no emissive. That is measured, not assumed, and it is
-/// recorded on T0079.
+/// `PSO_FLAG_USE_IBL` came off this list on T0170.5, together with `EnableIBL`
+/// and the precomputed cubemaps below — the three switches a feature needs
+/// before it is actually there.
 constexpr Diligent::PBR_Renderer::PSO_FLAGS kFeatureMask =
     static_cast<Diligent::PBR_Renderer::PSO_FLAGS>(
         Diligent::PBR_Renderer::PSO_FLAG_VERTEX_ATTRIBS |
         Diligent::PBR_Renderer::PSO_FLAG_DEFAULT_TEXTURES |
         Diligent::PBR_Renderer::PSO_FLAG_USE_LIGHTS |
+        // Image-based lighting (T0170.5, absorbing T0087's core). Paired with
+        // `EnableIBL` in `SurfacePipeline::configure` and with the cubemaps
+        // every SRB binds; any one of the three missing makes it silently
+        // absent.
+        Diligent::PBR_Renderer::PSO_FLAG_USE_IBL |
         // A material asset's UV transforms (T0060) are shader math behind this
         // flag; without it the attribs are written and silently ignored. Set
         // per material, only when a transform is not the identity.
@@ -229,7 +234,13 @@ Diligent::PBR_Renderer::PSO_FLAGS importedMaterialFlags(const Diligent::GLTF::Ma
 /// lights, and later IBL and shadows — is enabled **here**, and the mask is what
 /// keeps everything else off.
 constexpr Diligent::PBR_Renderer::PSO_FLAGS kEnabledFeatures =
-    Diligent::PBR_Renderer::PSO_FLAG_USE_LIGHTS;
+    static_cast<Diligent::PBR_Renderer::PSO_FLAGS>(
+        Diligent::PBR_Renderer::PSO_FLAG_USE_LIGHTS |
+        // **The line that actually turns the environment on** (T0170.5).
+        // Adding the bit to `kFeatureMask` alone changes nothing, for the
+        // reason spelled out above this constant, and that mistake has now
+        // been made once per feature.
+        Diligent::PBR_Renderer::PSO_FLAG_USE_IBL);
 
 // --- material assets on the GPU (T0141.12) ----------------------------------
 //
@@ -306,6 +317,132 @@ std::array<MaterialTextureSlot, 15> materialTextureSlots(const Material& materia
          Diligent::GLTF::DefaultThicknessTextureAttribId, material.thicknessTexture,
          material.thicknessUv},
     }};
+}
+
+// --- the engine's default environment (T0170.5) ------------------------------
+//
+// **Every scene is environment-lit, with no asset required**, which is what
+// Godot and Unity both do and what makes a metal or a car-paint material look
+// like itself rather than like a black blob. Before this, a surface facing
+// away from the one lamp rendered *black* -- an absence the aston and rock-cube
+// tests both worked around by adding a fill light that a real scene would not
+// have.
+//
+// **Procedural rather than the vendored `papermill.ktx`**, deliberately. That
+// file is the reference sample's environment and it is right there in
+// `third_party/`, but it is 16 MiB: embedding it would put 16 MiB of sky in
+// every shipped game binary whether the game wants that sky or not, and
+// loading it from disk would make the engine's default lighting depend on an
+// asset the VFS has to find (D13). A generated sky costs 512 KiB of scratch
+// at startup, no bytes at rest, and no content decision. **A real HDR
+// environment is the game's to supply** -- the seam for that is T0087's
+// remaining scope, which keeps the skybox and the ambient controls.
+
+/// The environment map's width in texels; height is half.
+///
+/// 256x128 is small on purpose: `PrecomputeCubemaps` integrates it into a
+/// 64x64 irradiance cube and a 256x256 prefiltered cube, so detail beyond the
+/// prefiltered cube's own resolution is thrown away by the very next step.
+constexpr std::uint32_t kEnvironmentWidth = 256;
+
+/// The sky as one direction's radiance, linear and unbounded.
+///
+/// A studio-ish gradient: a cool zenith, a bright warm horizon band and a dark
+/// floor, plus a sun disc. The horizon band is the part that matters for
+/// vehicles -- it is the hard line that reads across a car's flanks and tells
+/// the eye the paint is glossy, and a plain zenith-to-ground lerp does not
+/// produce it.
+///
+/// @param direction a unit direction in world space, Y up.
+/// @returns linear RGB radiance.
+float3 skyRadiance(const float3& direction) {
+    const float up = std::clamp(direction.y, -1.0F, 1.0F);
+
+    // The sun. Angular radius ~3.4 degrees with a soft edge -- wider than the
+    // real thing, because a 0.5-degree disc integrated into a 64x64 irradiance
+    // cube is a handful of texels and aliases badly.
+    const float3 sunDirection = normalize(float3{0.35F, 0.62F, -0.70F});
+    const float sunCos = dot(direction, sunDirection);
+    const float sunDisc = std::pow(std::max(sunCos, 0.0F), 900.0F);
+
+    float3 colour;
+    if (up >= 0.0F) {
+        // Horizon to zenith. The 0.42 exponent keeps the bright band low and
+        // tight rather than washing the whole upper hemisphere.
+        const float k = std::pow(up, 0.42F);
+        const float3 horizon{1.15F, 1.22F, 1.35F};
+        const float3 zenith{0.34F, 0.50F, 0.92F};
+        colour = horizon * (1.0F - k) + zenith * k;
+    } else {
+        // Below the horizon: a neutral floor that falls off to near black, so
+        // the underside of a body reads dark the way it does on a real ground
+        // plane.
+        const float k = std::pow(-up, 0.55F);
+        const float3 nearGround{0.42F, 0.40F, 0.37F};
+        const float3 farGround{0.05F, 0.048F, 0.045F};
+        colour = nearGround * (1.0F - k) + farGround * k;
+    }
+
+    colour += float3{1.0F, 0.95F, 0.86F} * (sunDisc * 55.0F);
+    return colour;
+}
+
+/// Builds the engine's default environment map.
+///
+/// **Equirectangular, not a cube**, because `PrecomputeCubemaps` accepts either
+/// (`ENV_MAP_TYPE_SPHERE`, keyed off `TextureDesc::IsCube()`) and a 2D image is
+/// half the code to fill. The projection is upstream's own:
+/// `TransformDirectionToSphereMapUV` maps `v` to `asin(y)/pi + 0.5`, so **row
+/// 0 is straight down and the last row is straight up** -- inverted from the
+/// usual convention, and getting it backwards puts the ground in the sky with
+/// nothing to say so.
+///
+/// @param device the render device.
+/// @returns the texture, or null if it could not be created.
+Diligent::RefCntAutoPtr<Diligent::ITexture>
+makeDefaultEnvironmentMap(Diligent::IRenderDevice* device) {
+    constexpr std::uint32_t kWidth = kEnvironmentWidth;
+    constexpr std::uint32_t kHeight = kEnvironmentWidth / 2;
+
+    std::vector<float> texels(static_cast<std::size_t>(kWidth) * kHeight * 4);
+    for (std::uint32_t row = 0; row < kHeight; ++row) {
+        const float v = (static_cast<float>(row) + 0.5F) / static_cast<float>(kHeight);
+        const float y = std::sin((v - 0.5F) * 3.14159265F);
+        const float radius = std::sqrt(std::max(1.0F - y * y, 0.0F));
+        for (std::uint32_t column = 0; column < kWidth; ++column) {
+            const float u = (static_cast<float>(column) + 0.5F) / static_cast<float>(kWidth);
+            const float azimuth = (u - 0.5F) * 2.0F * 3.14159265F;
+            const float3 direction{radius * std::cos(azimuth), y, radius * std::sin(azimuth)};
+            const float3 radiance = skyRadiance(direction);
+            float* texel = texels.data() + (static_cast<std::size_t>(row) * kWidth + column) * 4;
+            texel[0] = radiance.x;
+            texel[1] = radiance.y;
+            texel[2] = radiance.z;
+            texel[3] = 1.0F;
+        }
+    }
+
+    Diligent::TextureDesc desc;
+    desc.Name = "hp default environment";
+    desc.Type = Diligent::RESOURCE_DIM_TEX_2D;
+    desc.Width = kWidth;
+    desc.Height = kHeight;
+    desc.MipLevels = 1;
+    // 32-bit float rather than half: this is a startup-only staging texture
+    // that `PrecomputeCubemaps` reads once, and hand-packing halves for it
+    // would be code with nothing to gain.
+    desc.Format = Diligent::TEX_FORMAT_RGBA32_FLOAT;
+    desc.BindFlags = Diligent::BIND_SHADER_RESOURCE;
+    desc.Usage = Diligent::USAGE_IMMUTABLE;
+
+    Diligent::TextureSubResData level;
+    level.pData = texels.data();
+    level.Stride = static_cast<Diligent::Uint64>(kWidth) * 4 * sizeof(float);
+    Diligent::TextureData data{&level, 1};
+
+    Diligent::RefCntAutoPtr<Diligent::ITexture> texture;
+    device->CreateTexture(desc, &data, &texture);
+    return texture;
 }
 
 Diligent::TEXTURE_ADDRESS_MODE toDiligentWrap(TextureWrap wrap) {
@@ -595,6 +732,18 @@ struct SceneRenderer::Impl {
     /// The checkerboard placeholder (T0023.6), pinned for the SRBs that bind it.
     std::shared_ptr<TextureAsset> placeholder;
 
+    // --- the environment (T0170.5) -----------------------------------------
+
+    /// The diffuse irradiance cube, integrated from the environment once at
+    /// `create()`. Bound on every SRB as `g_IrradianceMap`.
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> irradianceCube;
+
+    /// The prefiltered specular cube, roughness per mip. Bound as
+    /// `g_PrefilteredEnvMap`, and its mip count is what
+    /// `SetInternalShaderParameters` turns into `PrefilteredCubeLastMip` --
+    /// which is why the *view* is held rather than just the SRV pointer.
+    Diligent::RefCntAutoPtr<Diligent::ITextureView> prefilteredEnvMap;
+
     /// Missing materials already reported, so the log line fires **once per
     /// GUID** rather than per draw per frame -- the T0141 rule: report on the
     /// transition, never from the draw path.
@@ -878,6 +1027,13 @@ SceneRenderer::Impl::ensureBindings(Guid guid, const Diligent::GLTF::Model& mode
         // pipeline, and Diligent verifies that a declared resource is bound
         // whether the shader names it or not.
         bindScreenResources(srb);
+
+        // The environment (T0170.5). `g_IrradianceMap` and
+        // `g_PrefilteredEnvMap` are **mutable** in the base signature -- unlike
+        // the BRDF LUT beside them, which the base class binds once as a static
+        // -- so they are per SRB, and upstream's own samples do exactly this
+        // loop after every model load (`GLTFViewer::BindIBLResourceViews`).
+        renderer->SetIBLResourceViews(srb, irradianceCube, prefilteredEnvMap);
 
         // A game module's resources are **not** bound here any more (T0161.6).
         // They used to be: four engine-named slots and a parameter block sat
@@ -1251,6 +1407,10 @@ bool SceneRenderer::Impl::buildMaterialBinding(Diligent::IDeviceContext* context
     // they are bound here with everything else -- and re-bound by
     // `rebindScreenResources` when a resize replaces the views.
     bindScreenResources(out.srb);
+
+    // The environment (T0170.5), for the same reason and on the same terms as
+    // in `ensureBindings`: mutable variables, so every SRB carries them.
+    renderer->SetIBLResourceViews(out.srb, irradianceCube, prefilteredEnvMap);
 
     // A game module's parameter buffer and textures are bound on the draw
     // path (`ensureModuleSrb`, T0161.5), not here: their signature does not
@@ -1777,15 +1937,15 @@ bool SceneRenderer::create(Diligent::IRenderDevice* device, Diligent::IDeviceCon
         static_cast<Diligent::Uint32>(Diligent::GLTF::DefaultVertexAttributes.size()));
     info.InputLayout = inputLayout;
 
-    // **The `IRenderStateCache` slot stays null, and that is a decision, not
-    // an omission** (T0141.3, 2026-08-06). What the slot would cache today is
-    // nothing: with `EnableIBL` off the base constructor compiles zero
-    // shaders, and `SurfacePipeline::build` creates its shaders and PSOs
-    // against the device directly. The measured startup cost was slang's cold
-    // compile, and that is paid off by the persistent SPIR-V bytecode cache
-    // in `SlangCompiler.cpp` instead. Revisit when T0087 turns IBL on -- the
-    // BRDF precompute then runs through this slot -- or if PSO creation from
-    // cached SPIR-V ever shows up in a measurement.
+    // **The `IRenderStateCache` slot stays null, and it is still a decision**
+    // (T0141.3, revisited on T0170.5). It now caches something -- with
+    // `EnableIBL` on, the base constructor compiles the BRDF-integration
+    // shaders and `PrecomputeCubemaps` compiles two more -- but that is five
+    // small full-screen passes at startup, once, against a persistent cache
+    // that would have to be created, versioned and invalidated. The measured
+    // startup cost remains slang's cold compile, and that is paid off by the
+    // SPIR-V bytecode cache in `SlangCompiler.cpp`. Revisit if PSO creation
+    // ever shows up in a measurement rather than in an argument.
     impl->renderer = std::make_unique<SurfacePipeline>(device, nullptr, context, info);
 
     // The checkerboard, created up front rather than on first miss: it is 16x16
@@ -1802,6 +1962,49 @@ bool SceneRenderer::create(Diligent::IRenderDevice* device, Diligent::IDeviceCon
             Diligent::RESOURCE_STATE_SHADER_RESOURCE,
             Diligent::STATE_TRANSITION_FLAG_UPDATE_STATE};
         context->TransitionResourceStates(1, &barrier);
+    }
+
+    // -----------------------------------------------------------------------
+    // **The environment** (T0170.5, absorbing T0087's core).
+    //
+    // Three calls, and they are upstream's rather than ours: create the two
+    // cubes, then integrate the sky into them. `PrecomputeCubemaps` renders 60
+    // faces (6 irradiance + 9 mips x 6 prefiltered), which is why it happens
+    // **once here** and not per frame.
+    //
+    // **It leaves render targets bound and does not restore them**, which is
+    // safe exactly because this is setup: no frame is in flight. Calling it
+    // mid-frame would silently retarget the caller's draws.
+    // -----------------------------------------------------------------------
+    if (Diligent::RefCntAutoPtr<Diligent::ITexture> environment =
+            makeDefaultEnvironmentMap(device)) {
+        Diligent::RefCntAutoPtr<Diligent::ITexture> irradiance =
+            impl->renderer->CreateIrradianceCube(context, "hp irradiance cube");
+        Diligent::RefCntAutoPtr<Diligent::ITexture> prefiltered =
+            impl->renderer->CreatePrefilteredEnvMap(context, "hp prefiltered environment");
+        if (irradiance && prefiltered) {
+            impl->irradianceCube =
+                irradiance->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+            impl->prefilteredEnvMap =
+                prefiltered->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+
+            Diligent::PBR_Renderer::PrecomputeCubemapsAttribs precompute;
+            precompute.pEnvironmentMapSRV =
+                environment->GetDefaultView(Diligent::TEXTURE_VIEW_SHADER_RESOURCE);
+            precompute.pIrradianceCube = irradiance;
+            precompute.pPrefilteredEnvMap = prefiltered;
+            impl->renderer->PrecomputeCubemaps(context, precompute);
+        }
+    }
+    if (!impl->irradianceCube || !impl->prefilteredEnvMap) {
+        // **Not fatal, and loud rather than black.** `CreateIrradianceCube`
+        // clears its faces, so an unprecomputed cube is a valid black texture
+        // and the frame simply has no ambient -- exactly the pre-T0170
+        // behaviour. An *unbound* one is a different thing entirely: a null
+        // descriptor, which is a validation error in a debug backend and
+        // undefined in a release one.
+        HP_LOG_ERROR(kLog, "the environment cubemaps could not be built; surfaces will have no "
+                           "image-based lighting");
     }
 
     Diligent::CreateUniformBuffer(device, impl->renderer->GetPRBFrameAttribsSize(),
@@ -2052,8 +2255,12 @@ std::size_t SceneRenderer::render(Diligent::IDeviceContext* context, const DrawL
                 params = Diligent::HLSL::PBRRendererShaderParameters{};
 
                 // Sets `PrefilteredCubeLastMip`, and is the only field Diligent
-                // wants to own. Null env map is correct while IBL is off (T0087).
-                impl.renderer->SetInternalShaderParameters(params, nullptr);
+                // wants to own. **The prefiltered cube is what it reads the mip
+                // count off** (T0170.5) -- passing null here leaves the last mip
+                // at 0, which makes every roughness sample the sharpest mip and
+                // turns rough metal into a mirror. It was correct only while
+                // IBL was off.
+                impl.renderer->SetInternalShaderParameters(params, impl.prefilteredEnvMap);
 
                 params.OcclusionStrength = 1.0F;
                 params.EmissionScale = 1.0F;
