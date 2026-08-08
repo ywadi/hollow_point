@@ -12,10 +12,63 @@
 # CMake demands it.
 add_executable(hp_editor
     src/EditorMain.cpp
+    src/EditorCamera.cpp
 )
 
 target_link_libraries(hp_editor PRIVATE hp::engine)
 target_compile_features(hp_editor PRIVATE cxx_std_20)
+
+# The viewport camera, which DiligentEngine already wrote (T0172, **D40**).
+#
+# `FirstPersonCamera` and `TrackballCamera` live in `DiligentSamples/SampleBase`,
+# and this app compiles the two source files it needs **directly** rather than
+# linking `Diligent-SampleBase`. That is not squeamishness about a sample: the
+# target link-depends PUBLIC on `${ENGINE_LIBRARIES}` and `Diligent-NativeAppBase`,
+# so linking it would pull a *second* graphics-engine flavour into a process that
+# already has one through `hp::engine` -- the duplicate-Diligent hazard
+# `engine/CMakeLists.txt` describes at length, and the one D12 exists to prevent.
+# Two translation units is the whole cost of avoiding it.
+#
+# `InputController<Platform>.cpp` is here for exactly one symbol: the platform
+# controller's out-of-line constructor/destructor, which `EditorInputController`
+# needs because it derives from the `InputController` typedef -- the parameter
+# type `FirstPersonCamera::Update` takes. None of its event handling is ever
+# called; this app's events come from SDL3 (T0015).
+set(HP_SAMPLE_BASE "${CMAKE_SOURCE_DIR}/third_party/DiligentEngine/DiligentSamples/SampleBase")
+
+target_sources(hp_editor PRIVATE "${HP_SAMPLE_BASE}/src/FirstPersonCamera.cpp")
+
+# Include directories taken from the targets that own them rather than spelled
+# out, so a Diligent reorganisation does not silently break this -- the same
+# pattern `engine/CMakeLists.txt` uses for `Diligent-Common`.
+target_include_directories(hp_editor SYSTEM PRIVATE
+    "${HP_SAMPLE_BASE}/include"
+    $<TARGET_PROPERTY:Diligent-GraphicsEngine,INTERFACE_INCLUDE_DIRECTORIES>)
+
+# `FirstPersonCamera::SetReferenceAxes` calls `LOG_WARNING_MESSAGE`, which
+# resolves to `Diligent::DebugMessageCallback` -- a global defined in the
+# platform library. The engine links the platform layer PRIVATE and builds with
+# `-fvisibility=hidden`, so its copy is not exported and this app needs its own.
+#
+# **A second copy of a few hundred lines, and it is contained.** The variable is
+# a message sink: this app's Diligent asserts print through this app's copy, the
+# engine's through the engine's, and nothing correlates the two. That is not the
+# duplicate-state hazard D12 is about -- which is engine state a game observes --
+# and it is the same arrangement `Diligent-SampleBase` itself uses. The
+# alternative is exporting Diligent's symbols from `libhp_engine.so`, which
+# would put a vendored library's ABI on this engine's public surface.
+target_link_libraries(hp_editor PRIVATE Diligent-TargetPlatform)
+
+if (WIN32)
+    target_sources(hp_editor PRIVATE "${HP_SAMPLE_BASE}/src/Win32/InputControllerWin32.cpp")
+else()
+    target_sources(hp_editor PRIVATE "${HP_SAMPLE_BASE}/src/Linux/InputControllerLinux.cpp")
+    # X11 and xcb resolve from `third_party/sysroot/`, not from /usr -- the build
+    # is hermetic (see the trap list in CLAUDE.md). `XCBKeySyms` is Diligent's own
+    # vendored copy under DiligentTools/NativeApp/Linux, already a target here.
+    find_package(X11 REQUIRED)
+    target_link_libraries(hp_editor PRIVATE XCBKeySyms X11::X11)
+endif()
 
 # The sample gameplay module this app hosts (T0048).
 #
