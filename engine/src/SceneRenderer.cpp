@@ -73,6 +73,30 @@ Diligent::TEXTURE_FORMAT toDiligentFormat(TargetFormat format) {
     return Diligent::TEX_FORMAT_RGBA8_UNORM_SRGB;
 }
 
+/// The alpha above which a blended texel is treated as opaque in the depth
+/// prepass (T0170.4).
+///
+/// **Not the material's `AlphaCutoff`, and the difference is what makes the
+/// two-pass scheme safe rather than merely lucky.** The reference
+/// implementation reclassifies a `BLEND` material to `MASK` and lets it use its
+/// authored cutoff, which on the Aston is the 0.5 default and works because
+/// that asset's alpha is bimodal — 97.8% of its diffuse map at 255, the glass
+/// clustered at 76 and 96. A material whose glass sat at 0.6 would render its
+/// windows **solid**.
+///
+/// This threshold removes that failure mode entirely. A texel only writes depth
+/// in the prepass if it is opaque to within 1/255, and premultiplied-alpha
+/// blending at α ≥ 0.996 is indistinguishable from not blending at all
+/// (`Src·1 + Dst·(1−α)` is `Src` to less than a code value). So **every texel
+/// the prepass draws would have looked the same drawn either way** — which is
+/// the argument that this cannot change the appearance of any correctly
+/// authored surface, only the *depth* it leaves behind.
+///
+/// glTF defines `alphaCutoff` for `MASK` only, so a `BLEND` material's value is
+/// whatever the importer defaulted; reading it here would be reading a field
+/// with no authored meaning.
+constexpr float kOpaqueAlphaCutoff = 0.996F;
+
 /// The shading features currently enabled, which is the whole of them.
 ///
 /// **This is the adoption boundary from D24, stated in code** — promoted by
@@ -669,6 +693,31 @@ struct SceneRenderer::Impl {
     /// D26 replaced. `SurfacePipeline::pipeline` takes this per call and caches
     /// on it together with the PSO key.
     Diligent::GraphicsPipelineDesc graphics;
+
+    /// The same, with the depth policy the blend pass needs (T0170.4).
+    ///
+    /// **Two differences from `graphics`, and the first one is the whole
+    /// mechanism.** The comparison is `GREATER` rather than `GREATER_EQUAL`, so
+    /// a fragment at *exactly* the depth the prepass wrote is **rejected** —
+    /// that is what stops a blended surface's opaque texels from being drawn a
+    /// second time on top of themselves. Under a conventional depth buffer this
+    /// is `LESS`, which rejects equality for free; under the engine's reverse-Z
+    /// (T0130) the natural comparison **accepts** it, so the pass would
+    /// silently redraw everything and the fix would look exactly like the bug
+    /// it was meant to remove.
+    ///
+    /// And depth writes are off, which is what a blended surface should always
+    /// have done: its own depth must not occlude the surface behind it.
+    Diligent::GraphicsPipelineDesc blendGraphics;
+
+    /// Whether the pass has a depth attachment at all.
+    ///
+    /// **The prepass is depth-driven, so without depth it cannot work** and is
+    /// not attempted: a HUD layer (T0027, `configureAsHud`) draws in submission
+    /// order with no depth buffer, and reclassifying its blended surfaces would
+    /// draw each one twice with nothing to reject the second. That path keeps
+    /// exactly the pre-T0170 behaviour.
+    bool hasDepth = false;
 
     /// One SRB per material per model, keyed by the mesh asset's GUID.
     ///
@@ -1748,19 +1797,81 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
             // -----------------------------------------------------------------
             const bool blended = material->Attribs.AlphaMode ==
                                  Diligent::GLTF::Material::ALPHA_MODE_BLEND;
-            if (blended != (pass == DrawPass::Blend)) {
+
+            // **The depth prepass for blended geometry** (T0170.4). A blended
+            // primitive is now drawn in *both* passes rather than only the
+            // second: in the first it is reclassified to `Mask` against a
+            // near-one cutoff, so its opaque texels draw with depth write and
+            // occlude one another **by z-buffer, order-independently**, and
+            // everything translucent is discarded and leaves no depth. That is
+            // what puts a car's interior in front of the far side of its own
+            // glass without sorting anything.
+            //
+            // **Three things take a blended primitive back out of it**, and
+            // each is a correctness requirement rather than a tuning choice:
+            //
+            //   * **no depth attachment** — the prepass is depth-driven, so
+            //     with nothing to reject the second draw a HUD layer (T0027)
+            //     would simply draw every blended surface twice;
+            //   * **the module reads the screen** (T0147) — the snapshot is
+            //     taken *between* the passes, so a prepass draw would sample a
+            //     `g_SceneColour` that does not exist yet. `SurfacePipeline`
+            //     already refuses to build such a pipeline for any alpha mode
+            //     but `Blend`, so without this the material would fall back to
+            //     the missing-material checkerboard. `Unknown` counts as reads,
+            //     for the same reason it counts as demand below;
+            //   * **the material is transmissive** (T0143) — its coverage is
+            //     `1 - Transmission`, applied *after* the cutout test, so its
+            //     base colour's alpha says nothing about whether the fragment
+            //     is opaque. A fully transmissive material has base alpha 1 and
+            //     final alpha 0; letting the prepass judge it by the former
+            //     paints it solid over whatever is behind it.
+            const bool readsScreen =
+                renderer->screenInputUse(customModule) != SurfacePipeline::ScreenInputUse::No;
+            // `readsScreen` is `Unknown`-inclusive, so a **custom module** is
+            // never prepassed on the first frame it is seen — its answer does
+            // not exist until a pipeline has been built for it. That costs one
+            // frame of the pre-T0170.4 behaviour for a newly compiled module
+            // and nothing afterwards; the standard material answers `No`
+            // without a lookup, so an imported glTF's blended surfaces — the
+            // case this ticket exists for — are prepassed from frame one.
+            const bool prepassed =
+                blended && hasDepth && !readsScreen && material->Transmission == nullptr;
+            if (blended) {
                 scan.otherPass = true;
-                if (blended) {
+                if (pass == DrawPass::Opaque) {
                     // `Unknown` counts as demand: a module compiled for the
                     // first time in the blend pass would otherwise have its
                     // answer arrive one frame after the snapshot it needed.
-                    const SurfacePipeline::ScreenInputUse use =
-                        renderer->screenInputUse(customModule);
-                    scan.screenDemand = scan.screenDemand ||
-                                        use != SurfacePipeline::ScreenInputUse::No;
+                    scan.screenDemand = scan.screenDemand || readsScreen;
+                    if (!prepassed) {
+                        continue;
+                    }
                 }
+            } else if (pass == DrawPass::Blend) {
+                // Opaque and masked geometry is finished after the first pass.
                 continue;
             }
+
+            // What this *draw* is, as opposed to what the material says: the
+            // prepass draw of a blended material is a masked draw, and it must
+            // be one in the pipeline key and in the material buffer alike.
+            const bool prepassDraw = prepassed && pass == DrawPass::Opaque;
+            const auto drawAlphaMode =
+                prepassDraw ? Diligent::PBR_Renderer::ALPHA_MODE_MASK
+                            : static_cast<Diligent::PBR_Renderer::ALPHA_MODE>(
+                                  material->Attribs.AlphaMode);
+            // **The blend pass's depth policy follows the *primitive*, not the
+            // pass**, and getting that wrong is strictly worse than doing
+            // nothing. Dropping depth writes is only safe for a surface whose
+            // opaque texels already wrote depth in the prepass; a blended
+            // primitive that was *excluded* from it must keep the old policy,
+            // or it stops occluding anything at all and a far surface handed
+            // over later simply paints over a near one. Measured: with the two
+            // decoupled, the proof case below went from (149, 0, 218) — the
+            // bug — to (0, 255, 0), which is a different and worse bug.
+            const Diligent::GraphicsPipelineDesc& passGraphics =
+                (pass == DrawPass::Blend && prepassed) ? blendGraphics : graphics;
 
             // The mask is what keeps this ticket out of T0079/T0087/T0096 --
             // see `kFeatureMask`. Material flags are intersected with it rather
@@ -1825,11 +1936,10 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
             // under a mirrored node, where the determinant rule (T0152.5, above)
             // flips it per draw.
             const Diligent::PBR_Renderer::PSOKey key{
-                Diligent::PBR_Renderer::RenderPassType::Main, flags,
-                static_cast<Diligent::PBR_Renderer::ALPHA_MODE>(material->Attribs.AlphaMode),
+                Diligent::PBR_Renderer::RenderPassType::Main, flags, drawAlphaMode,
                 doubleSided ? Diligent::CULL_MODE_NONE : singleSidedCull};
 
-            Diligent::IPipelineState* pso = renderer->pipeline(graphics, key, customModule);
+            Diligent::IPipelineState* pso = renderer->pipeline(passGraphics, key, customModule);
             if (pso == nullptr && customModule != nullptr) {
                 // **The error shader** (T0141.4): a custom module that will
                 // not compile renders the same checkerboard a missing
@@ -1867,7 +1977,7 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                         static_cast<Diligent::PBR_Renderer::ALPHA_MODE>(
                             material->Attribs.AlphaMode),
                         doubleSided ? Diligent::CULL_MODE_NONE : singleSidedCull};
-                    pso = renderer->pipeline(graphics, errorKey);
+                    pso = renderer->pipeline(passGraphics, errorKey);
                 }
             }
             if (pso == nullptr) {
@@ -1939,6 +2049,34 @@ bool SceneRenderer::Impl::drawModel(Diligent::IDeviceContext* context,
                         flags, renderer->GetSettings().TextureAttribIndices, *material};
                     Diligent::GLTF_PBR_Renderer::WritePBRMaterialShaderAttribs(materialAttribs,
                                                                                data);
+                    if (prepassDraw) {
+                        // **Patched here rather than by mutating the asset**
+                        // (T0170.4). The reference implementation flips
+                        // `Model::Materials[i].Attribs.AlphaMode` between
+                        // passes; in this engine that is loaded asset state
+                        // shared by every entity drawing the mesh, touched
+                        // twice a frame, and a hot reload or a second view
+                        // rendering concurrently would see it mid-flip.
+                        //
+                        // It does not need mutating. This buffer is already
+                        // rewritten per draw, and `PBRMaterialBasicAttribs` is
+                        // the first member of what was just written
+                        // (`GLTF_PBR_Renderer.cpp:932-934`), so the two fields
+                        // this draw disagrees with the material about are set
+                        // on the copy the GPU will read and nowhere else.
+                        //
+                        // **Both fields matter.** The cutoff is what the
+                        // compile-time `discard` compares against
+                        // (`HpSurface.slang`, `PBR_ALPHA_MODE_MASK`), and the
+                        // mode is what the shader's premultiply test reads —
+                        // leaving it at `Blend` would premultiply a fragment
+                        // the pipeline is *not* blending, darkening every
+                        // prepass texel by its own alpha.
+                        auto* basic =
+                            static_cast<Diligent::HLSL::PBRMaterialBasicAttribs*>(materialAttribs);
+                        basic->AlphaMode = Diligent::GLTF::Material::ALPHA_MODE_MASK;
+                        basic->AlphaMaskCutoff = kOpaqueAlphaCutoff;
+                    }
                 }
                 context->UnmapBuffer(renderer->GetPBRMaterialAttribsCB(), Diligent::MAP_WRITE);
             }
@@ -2161,6 +2299,14 @@ bool SceneRenderer::create(Diligent::IRenderDevice* device, Diligent::IDeviceCon
     pipeline.DepthStencilDesc.DepthWriteEnable = depth.has_value();
     pipeline.DepthStencilDesc.DepthFunc = Diligent::COMPARISON_FUNC_GREATER_EQUAL;
     static_assert(kReverseZ, "the depth comparison above assumes T0130's reverse-Z");
+
+    // **The blend pass's own depth policy** (T0170.4). See `blendGraphics` for
+    // why `GREATER` rather than `GREATER_EQUAL` is the load-bearing character
+    // in this whole ticket.
+    impl->hasDepth = depth.has_value();
+    impl->blendGraphics = pipeline;
+    impl->blendGraphics.DepthStencilDesc.DepthWriteEnable = false;
+    impl->blendGraphics.DepthStencilDesc.DepthFunc = Diligent::COMPARISON_FUNC_GREATER;
 
     impl_ = std::move(impl);
     HP_LOG_INFO(kLog, "scene renderer ready, {}",

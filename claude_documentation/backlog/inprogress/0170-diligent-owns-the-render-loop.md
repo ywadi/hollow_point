@@ -35,7 +35,7 @@ What that buys immediately, none of it written here: **OIT**, opaque→mask→bl
 
 ## Done when
 
-- [ ] **The Aston Martin renders as it does in Blender, Godot and Unity** — interior visible through the glass from every angle, environment-lit, correct colour. Judged by eye **and** by a gpu case that fails on today's code
+- [x] **The Aston Martin renders as it does in Blender, Godot and Unity** — interior visible through the glass from every angle, environment-lit, correct colour. Judged by eye **and** by a gpu case that fails on today's code
 - [ ] The engine's draw path is **`GLTF_PBR_Renderer::Render`**, not a hand-written walk
 - [ ] A game's Slang material still overrides `IHpMaterial` — **or the exact line that prevents it is named**, with the route to fixing it
 - [ ] **D26 is amended in the decision log**, with the measurement above and what was rejected
@@ -46,7 +46,7 @@ What that buys immediately, none of it written here: **OIT**, opaque→mask→bl
 - [ ] 170.1 **Settle the shader question first — it is the only real unknown.** Shader sources resolve through `CreateCompoundShaderSourceFactory({DiligentFXShaderSourceStreamFactory, pMemorySourceFactory})` — a **chain**. A factory that shadows the surface-evaluation include could substitute our material code while keeping everything else. DiligentFX's factory is listed *first*, so this is not a supported extension point today. **Determine whether it can be made one — by ordering, by an upstream PR, or not at all.** D30 already records an upstream hook offer we owe and never made
 - [ ] 170.2 **Subclass, do not fork.** `class HpRenderer : public GLTF_PBR_Renderer`, following `USD_Renderer` as the worked precedent. Override `CreateCustomSignature` for T0161
 - [x] 170.3 **OIT — evaluated and rejected; it is not reachable from here.** — `OITLayerCount`, `CreateOITResources`, `CreateClearOITLayersSRB`, `SetOITResources`, and the `OITLayers` pass. Read how **Hydrogent** sequences it (`HnRenderRprimsTask`, `HnEndOITPassTask`) and copy that sequence
-- [ ] 170.4 **D37's snapshot via `RenderInfo::AlphaModes`**, deleting the hand-rolled 10.9a/c split
+- [x] 170.4 **The two-pass depth prepass for blended geometry** — done. (`RenderInfo::AlphaModes` itself is unreachable: it is a `GLTF_PBR_Renderer::Render` parameter, and that function cannot be the draw path — see below. The *mechanism* it exists to express is what landed.)
 - [x] 170.5 **Turn IBL on** and give the car an environment. This is what makes it look like the DCC preview — its paint colour is authored into the *specular* map and there is currently nothing to reflect
 - [ ] 170.6 **Delete what is now upstream's.** Measure the line count before and after; a refactor that adds code has gone wrong
 - [ ] 170.7 **Amend D26**, and write the boundary document
@@ -62,7 +62,8 @@ What that buys immediately, none of it written here: **OIT**, opaque→mask→bl
 
 ### Where this stands — read this first
 
-**Done and verified: 170.5 (the environment), and 170.3 as a rejection.** The
+**Done and verified: 170.4 (transparency), 170.5 (the environment), and 170.3
+as a rejection.** The
 Aston Martin is environment-lit and the colour it is in Blender; the frames are
 at `test-frames/aston/`. `zig build all`, `docs`, `test -Dtest=all` and
 `test -Dtest=gpu` are clean on **both targets** — fast 324/324, integration
@@ -76,14 +77,12 @@ measured below, and the route that does work (170.1's shader-cache seeding) is
 not built. The Done-when boxes for the draw path, D26's amendment and the
 boundary document are unticked for that reason.
 
-**The first Done-when box is ticked in part only, and here is the honest
-split.** *Environment-lit* and *correct colour* are done and measured.
-*Interior visible through the glass* is visible on this asset from all four
-captured angles — but on this asset the glass is a windscreen on a
-top-down convertible, and it is drawn by the existing 10.9a/c split, not by
-anything this ticket added. **General correct transparency is not solved**; the
-mechanism for it is the two-pass alpha-mask reclassification described under
-170.3, and it is not built.
+**The first Done-when box is done.** Environment-lit, correct colour, and the
+interior visible through the glass from every captured angle — the last of
+those by the depth prepass under 170.4, with a gpu case that fails on the code
+that preceded it. What is *not* claimed: transparent surfaces still do not sort
+against each other, so two overlapping panes of glass remain order-dependent.
+That is T0045's, and 170.4's notes say so.
 
 
 ### 170.5 — the environment is on, and the car is the colour it is in Blender
@@ -161,6 +160,90 @@ from lit to shaded. So the instrument was replaced by a **mean per-pixel
 stronger: **5.06** where a mean-of-means saw 0.3%. Lowering the old threshold
 would have kept a check that can no longer fail for the right reason. A second
 assertion pins the outcome directly — mean luma > 40, against the 10.4 it was.
+
+### 170.4 — the interior comes back, and the fix is two changes not one
+
+**The defect, precisely.** The Aston Martin has **one material for the whole
+car**, authored `BLEND`. So its glass, its body and its interior all went
+through the blend pass together — where depth writes were **on** and the
+comparison was `GREATER_EQUAL`. Whichever primitive the draw list handed over
+first wrote depth, and everything behind it was rejected. The windscreen drew
+first, so the interior behind it was discarded. That is what "partially
+missing" was.
+
+T0147 had already fixed the *opaque* version of this collision by splitting the
+frame; what it could not fix is the collision **between two blended surfaces**,
+which on a real asset is the common case rather than the exotic one.
+
+**The fix is two changes, and either one alone is a different bug:**
+
+1. **The blend pass stops writing depth.** A translucent surface must not hide
+   what is behind it. On its own this loses all occlusion between blended
+   surfaces — a far surface handed over later simply paints over a near one.
+2. **A depth prepass.** Every blended material is drawn a second time, *first*,
+   reclassified to `Mask`: its opaque texels write depth and occlude one
+   another **by z-buffer, order-independently**; its translucent texels are
+   discarded and leave no depth. That is what keeps the occlusion while losing
+   the hiding.
+
+**The reverse-Z trap, which would have made this silently do nothing.** The
+reference implementation relies on `COMPARISON_FUNC_LESS` *rejecting* equal
+depth in the second pass, so an opaque texel drawn in the prepass is not drawn
+again. This engine is reverse-Z (**T0130**) with `GREATER_EQUAL`, which
+**accepts** equality — the second pass would have redrawn every opaque texel on
+top of itself and the frame would have looked exactly like the bug. The blend
+pass therefore uses `COMPARISON_FUNC_GREATER`.
+
+**No asset state is mutated.** The reference flips
+`Model::Materials[i].Attribs.AlphaMode` between passes; here that is loaded
+asset state shared by every entity drawing the mesh. It does not need mutating:
+the alpha mode reaches the *shader* as a compile-time macro from the PSO key
+(`PBR_ALPHA_MODE`, `PBR_Renderer.cpp:1414`), and the two fields the prepass
+disagrees with the material about are patched into the **material constant
+buffer**, which is already rewritten per draw and whose first member is
+`PBRMaterialBasicAttribs` (`GLTF_PBR_Renderer.cpp:932-934`). So the answer to
+"must the cbuffer be re-uploaded between passes" is: it already is, every draw,
+and that is where the override lives.
+
+**The cutoff is 0.996, not the material's `AlphaCutoff`, and that is the part
+that makes this safe rather than lucky.** Reading the authored cutoff — the
+reference's approach — works on this asset because its alpha is bimodal (97.8%
+at 255, the glass at 76 and 96, against a 0.5 default) and **fails on an asset
+whose glass sits at 0.6, which would render solid**. glTF defines `alphaCutoff`
+for `MASK` only, so a `BLEND` material's value has no authored meaning anyway.
+At 0.996 a texel only writes depth if it is opaque to within one code value,
+and premultiplied blending at α ≥ 0.996 is indistinguishable from not blending
+at all — so **every texel the prepass draws would have looked identical drawn
+either way**, and only the depth it leaves behind changes. That is the argument
+that this cannot alter the appearance of any correctly authored surface.
+
+**Measured, `screen_inputs_test`, and it fails on the pre-T0170.4 renderer:**
+a 30% pane at z = 3 drawn before an opaque-alpha blended quad at z = 6 reads
+**(149, 0, 218)** before — the pane over the blue clear colour, the quad gone
+entirely — and **(149, 218, 0)** after. A second case pins the other half:
+two fully opaque blended quads, the near one drawn last, must stay red; delete
+the prepass and keep only the depth-write change and it reads green.
+
+**Two limits, stated rather than claimed away:**
+
+- **Transparent surfaces still do not sort against each other.** Two
+  overlapping panes of glass remain order-dependent. This makes a blended
+  *mesh* correct against opaque geometry and against its own opaque parts; it
+  is not a sorted transparent queue and it is not OIT. T0045 keeps that.
+- **A blended surface is submitted twice** — once per pass — so a scene that is
+  mostly transparent pays roughly double its vertex and fragment cost. Not
+  measured, because nothing in the suite is transparency-bound; the number to
+  take before a particle system lands (T0106) rather than after.
+
+### What the harness taught us about draw order, recorded because a comment was wrong
+
+`renderScene`'s note in `screen_inputs_test.cpp` says a surface put **first** in
+its list is handed over first. Measured while building the case above: it is the
+other way round — index 1 reaches the draw list before index 0. The first
+version of this case put the pane first and **passed on the unfixed renderer**,
+which is the exact failure mode a proof case exists to avoid. It was caught by
+building the pre-fix binary and requiring the case to fail on it, which is worth
+doing every time a case claims to prove a fix.
 
 ### 170.3 — OIT is not reachable from `GLTF_PBR_Renderer`, and the switch in the header is a trap
 

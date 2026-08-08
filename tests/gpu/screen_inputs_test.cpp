@@ -406,7 +406,143 @@ struct HpMaterial : IHpMaterial
 )";
 }
 
+/// A flat unshaded colour with a chosen alpha. Unshaded so no light, and no
+/// environment, can move the numbers this case asserts.
+std::string flatPane(const char* rgba) {
+    return std::string(R"(
+struct HpMaterial : IHpMaterial
+{
+    override float4 baseColor(VSOutput VSOut, HpSurfaceInput In)
+    {
+        return float4()") +
+           rgba + R"();
+    }
+    override bool unshaded()
+    {
+        return true;
+    }
+}
+)";
+}
+
 } // namespace
+
+TEST_CASE("a translucent surface no longer hides the blended geometry behind it "
+          "(T0170.4)") {
+    // **The bug the owner was looking at, reduced to two quads.**
+    //
+    // T0147 split the frame into an opaque pass and a blend pass, and the case
+    // below this one records what that fixed: a blended pane handed over first
+    // used to write depth and hide the *opaque* wall behind it. What it did not
+    // fix is the same collision **between two blended surfaces** — and on a
+    // real asset that is the common case rather than the exotic one. The Aston
+    // Martin has exactly **one material for the entire car**, authored `BLEND`,
+    // so its glass, its body and its interior were all in the blend pass
+    // together: whichever the node order handed over first wrote depth, and
+    // everything behind it was rejected. The interior came back partial.
+    //
+    // The fix is the depth prepass (T0170.4): every blended material is drawn
+    // once as `Mask` against a near-one cutoff, so its **opaque** texels write
+    // depth and occlude by z-buffer, order-independently, and its translucent
+    // ones are discarded and leave no depth. This case is that in two quads.
+    //
+    // **It fails on pre-T0170.4 code**, and not subtly: the far quad is not
+    // drawn at all, so the green channel is ~0 and the blue clear colour shows
+    // straight through the pane — measured (149, 0, 218) against (149, 218, 0).
+    //
+    // **Two frames, and the reason is worth knowing**: whether a module reads
+    // the screen is a fact about its compiled bytecode, so it is `Unknown`
+    // until a pipeline has been built, and a module of unknown appetite is kept
+    // out of the prepass because the snapshot does not exist there. Both
+    // surfaces here are custom modules, so frame one runs the old path and
+    // frame two the new. An imported glTF material — the case the ticket exists
+    // for — has no module and answers `No` without a lookup, so it is prepassed
+    // from the first frame.
+    Device device = bringUp();
+    if (!device.ok()) {
+        MESSAGE("no graphics device; skipping");
+        tearDown(device);
+        return;
+    }
+
+    std::vector<std::uint8_t> pixels;
+    REQUIRE(renderScene(device,
+                        {
+                            // Behind, at z = 6, blended but every texel opaque.
+                            // **This is the geometry that used to vanish.**
+                            Surface{6.0F, 6.0F, flatPane("0.0, 1.0, 0.0, 1.0"),
+                                    hp::AlphaMode::Blend},
+                            // A 30% pane in front of it at z = 3, **submitted
+                            // so that it draws first** — which is the whole
+                            // point, and is the order this harness produces for
+                            // the *later* entry (measured: the draw list hands
+                            // over index 1 before index 0). Under the old path
+                            // it then wrote depth at z = 3 and the quad behind
+                            // it failed the reverse-Z test outright.
+                            Surface{6.0F, 3.0F, flatPane("1.0, 0.0, 0.0, 0.3"),
+                                    hp::AlphaMode::Blend},
+                        },
+                        pixels, /*screenInputs=*/true, /*feedVisibilityTexture=*/false,
+                        /*frames=*/2));
+
+    const Rgb centre = centreOf(pixels);
+    MESSAGE("through a 30% pane: (" << centre.r << ", " << centre.g << ", " << centre.b << ")");
+
+    // **Green is the discriminator.** Nothing in this scene is green except the
+    // far quad, so any green at all means it was drawn; the old path rejected
+    // it outright and left the centre at roughly (150, 0, 222) — the pane over
+    // the blue clear colour.
+    CHECK(centre.g > 150);
+
+    // And the blue clear colour is gone, because the far quad now covers it.
+    // Asserted separately from the green: a case that only checked "green is
+    // present" would also pass if both quads had drawn in the wrong order.
+    CHECK(centre.b < 100);
+
+    // The pane is still translucent rather than replaced — its red survives at
+    // roughly the 30% it was authored at. Without this the case would pass just
+    // as happily if the prepass had drawn the *near* quad opaque and skipped
+    // blending altogether, which is precisely the failure `kOpaqueAlphaCutoff`
+    // exists to prevent.
+    CHECK(centre.r > 60);
+    CHECK(centre.r < 200);
+
+    CHECK(magentaPixels(pixels) == 0);
+
+    // -----------------------------------------------------------------------
+    // **The other half of the fix, and the half that is easy to lose.**
+    //
+    // Above is what stopping the blend pass from writing depth achieves. On its
+    // own that is not enough and would be a different bug: with no depth
+    // written by blended geometry, blended surfaces stop occluding **each
+    // other**, and a far surface handed over second simply paints over a near
+    // one. The depth prepass is what keeps the occlusion while losing the
+    // hiding — opaque texels of a blended material still write depth, they just
+    // do it in a pass where nothing is translucent.
+    //
+    // So: two fully opaque blended quads, the **near one first**. It must win.
+    // Delete the prepass and leave the depth-write change and this reads green.
+    // -----------------------------------------------------------------------
+    std::vector<std::uint8_t> occluded;
+    REQUIRE(renderScene(device,
+                        {
+                            Surface{6.0F, 6.0F, flatPane("0.0, 1.0, 0.0, 1.0"),
+                                    hp::AlphaMode::Blend},
+                            Surface{6.0F, 3.0F, flatPane("1.0, 0.0, 0.0, 1.0"),
+                                    hp::AlphaMode::Blend},
+                        },
+                        occluded, /*screenInputs=*/true, /*feedVisibilityTexture=*/false,
+                        /*frames=*/2));
+
+    const Rgb front = centreOf(occluded);
+    MESSAGE("two opaque blended quads, near one first: (" << front.r << ", " << front.g << ", "
+                                                          << front.b << ")");
+    CHECK(front.r > 200);
+    CHECK(front.g < 60);
+
+    hp::Vfs::shutdown();
+    tearDown(device);
+}
 
 TEST_CASE("a blended material refracts the scene behind it (T0147.2)") {
     Device device = bringUp();
