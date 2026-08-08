@@ -5,6 +5,32 @@ these, read the rationale first — most were chosen against a specific failure.
 
 ---
 
+## Every decision here can be replaced or changed — after a discussion with the owner
+
+**Set by the owner, 2026-08-08.** These entries are binding on anyone working in
+this repository, and they are **not permanent**. Any of them may be amended,
+narrowed, or dropped outright when the evidence warrants it. What is required is
+that the change is **discussed with the owner and decided deliberately**, and that
+the entry records the new reasoning beside the old rather than replacing it.
+
+**This is written at the top because the opposite failure has cost more than
+diverging ever did.** A decision that cannot be reopened stops being a record of
+reasoning and becomes an unexamined constraint, and its *scope* creeps while
+nobody is allowed to look at it. **D26** is the worked example: it was decided on
+a true finding about DiligentFX's material shader, and that constraint was then
+allowed to grow until this engine had reimplemented Diligent's entire submission
+loop — losing order-independent transparency, alpha bucketing, the PSO cache and
+IBL, none of which the original finding had anything to say about. Six separate
+capabilities were rediscovered by hand in three days because the entry was
+treated as settled rather than as reasoning that could be re-tested.
+
+So: **do not quietly diverge, and do not treat an entry as untouchable.** If an
+entry looks wrong, say so and bring the evidence. Amendments already made this
+way — **D24**, **D27**, **D30**, **D33** and now **D26** — are the normal path
+here, not exceptions to it.
+
+---
+
 ## D1 — Zig as the compiler, CMake + Ninja retained
 
 **Amended by D29 (2026-08-06):** the "Vulkan and OpenGL on both targets"
@@ -1157,6 +1183,58 @@ reader.
 ---
 
 ## D26 — The engine owns the **surface stage**; DiligentFX supplies the lighting. Diligent's source is never modified
+
+> **AMENDED 2026-08-08 by the owner, on T0170: the engine owns the SHADER, not
+> the SUBMISSION LOOP.** `SceneRenderer` becomes a subclass of
+> `GLTF_PBR_Renderer` rather than a reimplementation of it. The original entry
+> follows, kept because **its finding was true and still is** — what was wrong
+> was the scope the conclusion took, and a reader must be able to see how a
+> correct premise produced an expensive mistake.
+>
+> **What did not change:** Diligent's source is still never modified, and the
+> engine still owns the surface *shader*, for exactly the reasons below.
+
+### Why it was amended — the scope crept, and the cost was measured
+
+**Six capabilities in three days turned out to be already in the tree with the
+switch off**: `KHR_materials_pbrSpecularGlossiness`, glTF's `TANGENT.w`, the
+cotangent-frame determinant, Draco decompression, the normal-map green channel,
+and — the one that triggered this — **order-independent transparency**, sitting
+behind `OITLayerCount = 0` while this project prepared to hand-write a
+back-to-front sort that is strictly worse than it. Every one was found by a
+person reading. **None by a test.**
+
+**The mechanism is the point.** This entry constrains the *shader*. It was then
+allowed to justify owning the *submission loop* — scene traversal, alpha
+bucketing, PSO caching, depth policy, transparency — none of which the finding
+below has anything to say about. And once we walk the scene ourselves, every
+upstream improvement arrives as code we never call: **you cannot see the OIT you
+are not calling.** That is why six went unnoticed rather than one.
+
+### What was measured before amending, rather than assumed
+
+| Question | Answer |
+|---|---|
+| Can we interrupt between opaque and blend for **D37**'s screen snapshot? | **Yes.** `GLTF_PBR_Renderer::RenderInfo::AlphaModes` is a flag mask (`GLTF_PBR_Renderer.hpp:98`) — render `opaque\|mask`, snapshot, render `blend`. T0147's split never needed our own walk |
+| Can we attach **T0161**'s per-module resource signatures? | **Yes, by design.** `virtual void CreateCustomSignature(PipelineResourceSignatureDescX&&)` (`PBR_Renderer.hpp:906`), and upstream's own precedent for extension is subclassing — `USD_Renderer final : public PBR_Renderer` |
+| Can we supply our own **material evaluation**? | **No** — and this is the original finding, intact. `GetPSMainSource` yields `{OutputStruct, Footer}` only (`PBR_Renderer.cpp:1915-1935`) |
+
+**Two of three say the loop was never blocked.** Only the shader is.
+
+### What this costs and what it buys
+
+Subclassing brings **OIT**, opaque→mask→blend bucketing, the PSO cache,
+upstream's depth policy for blended draws, and **IBL** — none of it written here,
+and future upstream work arriving on a submodule bump instead of being
+rediscovered months late. It costs a large refactor and deletes a substantial
+part of `SceneRenderer`.
+
+**The one thing that must not be lost** is what five tickets bought: a game's
+Slang material overriding `IHpMaterial`. T0170.1 is first *because* of that — if
+the material evaluation cannot be injected, the ticket stops and reports rather
+than trading it away. That is an owner decision.
+
+---
 
 **Decided 2026-08-05 on T0141.0, by the owner**, in their words: *"i dont want to
 modify dilligent"*. That constraint alone settles a question this ticket had been
