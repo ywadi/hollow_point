@@ -2550,6 +2550,26 @@ extension now warns by name instead of degrading silently — because a material
 that quietly resolves to defaults is exactly the failure class this decision
 exists to prevent, one layer down.
 
+### Extended to the render layer, 2026-08-08 (T0171) — the third and last boundary
+
+**A render feature gets a row in
+[`12-vendored-capabilities.md`](12-vendored-capabilities.md) *before* it is
+built**, exactly as a shader technique and a format feature already must. **D40**
+states this as its consequence; this is where the rule lives beside its two
+siblings, so that a reader who finds one finds all three.
+
+It was earned the same way and the count is now the argument: the discipline was
+applied to shaders (T0159/T0160), then to the loader (T0168), and the render
+layer — the boundary neither of them covered — accumulated **six** capabilities
+vendored with the switch off in three days, every one found by a person reading.
+When the sweep finally ran it found a **seventh** thing nobody had looked for at
+all: `DiligentFX/Radient`, a 21,700-line scene-and-renderer subsystem that
+arrived in the submodule at the current pin, compiled by every build here, named
+in no document and no ticket. **No test could have found it and no amount of
+care would have; only a table with a "who owns the gap" column does.**
+
+The row's *absence* is the warning. A row written afterwards is a record.
+
 ### What was rejected, and why — so it is not re-litigated
 
 - **Widening the fixed slots** (8, 16 engine-named textures). Keeps the tax —
@@ -3072,3 +3092,111 @@ already must.
   by this entry. The seam is attachment — a subclass, a virtual, a seeded cache,
   an upstream PR (**D30** records one we owe and never made) — never a patch to
   their tree.
+
+---
+
+## D41 — **No declarative pass layer and no frame graph.** `RenderStack` is the answer, and the revisit triggers are numeric
+
+**Decided 2026-08-08 on T0171, closing T0047**, which existed since 2026-08-02
+precisely so this would be answered with evidence rather than built
+speculatively. T0047's own Done-when was *"a decision is recorded in the decision
+log, either way"*; this is it.
+
+### What this decides
+
+**The engine does not build a declarative pass layer** — no resource
+declarations, no topological sort of passes, no render-target pooling by
+lifetime, no declaration-derived pass culling. Ordered passes are
+`RenderStack` + `IRenderLayer`'s `int order` and a `stable_sort`
+(`RenderStack.cpp:32-40`), and that is the whole mechanism.
+
+### The measurements, because this is not an aesthetic preference
+
+**1. T0047.1 is answered: the frame has three draw passes.** Opaque
+(`SceneRenderer.cpp:2618`), blend (`:2770`, conditional), and the present blit
+(`Render.cpp:469-482`). Two are unconditional. The ticket's own revisit trigger
+was *"more than roughly 15-20 distinct passes"*. We are at **3**, and even the
+optimistic future — shadows, a tonemap, five post effects, a sky — lands around
+a dozen.
+
+**2. T0047.2 is answered: render-target memory is not under pressure.** Four
+full-resolution targets, declared from one call site (`SceneView.cpp:73-87`).
+Pooling-by-lifetime pays when effects with disjoint lifetimes coexist; we have
+none yet, and when T0148 lands, **DiligentFX's own five components each own a
+private `ResourceRegistry` a pool of ours could not reach anyway** (`Bloom.hpp:182`,
+`ScreenSpaceReflection.hpp:239`, `DepthOfField.hpp:228`,
+`ScreenSpaceAmbientOcclusion.hpp:237`, `PostFXContext.hpp:251`).
+
+**3. The biggest benefit is already Diligent's.** Automatic barriers, per
+resource, at every `SetRenderTargets` / `Clear` / `Copy`
+(`RESOURCE_STATE_TRANSITION_MODE_TRANSITION`, `DeviceContext.h:257`). A frame
+graph's central job is done and free.
+
+**4. The second-biggest is unreachable, permanently.** Memory aliasing needs
+control of image allocation; Diligent allocates internally and exposes no
+aliasing API — `STATE_TRANSITION_FLAG_ALIASING` (`DeviceContext.h:2295-2297`) is
+documented as sparse-resources-only. This was blocker 3 of the 2026-08-03
+Granite rejection and it is confirmed verbatim at the current pin.
+
+**5. And the strongest evidence is upstream's own practice at four times our
+scale.** Hydrogent — the most complex frame in the vendored tree, a **22-task**
+USD renderer — orchestrates itself with a **hand-ordered `std::vector`**
+(`HnTaskManager.cpp:517-522`, order fixed by registration order at
+`HnTaskManager.hpp:382`) and writes the read/write matrix a frame graph would
+*compute* **by hand, in a doc comment** (`HnTaskManager.hpp:92-155`). Its pass
+culling is a per-task boolean (`HnTask::IsActive`), which is what
+`IRenderLayer::enabled` already is. **Nothing in DiligentCore, DiligentFX,
+DiligentTools, DiligentSamples or this engine performs a topological sort of
+passes.**
+
+### The correction this makes to how T0047 was sequenced
+
+T0047 was placed ahead of **T0094** on the belief that it *decides T0094's
+shape*. **It does not, and that is the useful finding.** The pass-insertion seam
+a game needs — insert before or after engine passes, read engine targets, write
+its own, feed a texture back to a material — is **already expressible** with
+`RenderStack`, `IRenderLayer`, `FrameTargets` and `SceneRenderLayer::setGameTexture`.
+What is missing is plumbing, and all three items are T0094's:
+
+1. **No shipping app builds a `RenderStack`.** Editor and runtime go through
+   `SceneView`; the stack exists only in `tests/`. **The seam has never been
+   crossed once by a real app.**
+2. **`ModuleServices` does not expose it** (`ModuleHost.hpp:62-81` — scene,
+   assets, device, context, no `RenderStack*`), so T0094.2/94.3 are literally
+   unreachable from a module today.
+3. **Module-unload lifetime is unsolved** — a layer's vtable points into a
+   library that can be unloaded.
+
+A frame graph makes item 3 **worse**, not better: the graph would then own
+resource declarations belonging to a dead module in addition to the dangling
+vtable.
+
+### Rejected
+
+- **An off-the-shelf frame graph.** Granite's was evaluated in full on
+  2026-08-03 and rejected — not a standalone library, Vulkan-handle-typed
+  throughout, and it wants to own the barriers and the memory that Diligent has
+  taken ownership of. That reasoning generalises to every frame graph and is
+  kept on T0047.
+- **Diligent's `IRenderPass` / `IFramebuffer`.** They are a Vulkan wrapper and
+  nothing more — *"Render pass has no methods"* (`RenderPass.h:503`), subpass
+  dependencies hand-authored rather than derived, and **DiligentFX uses them
+  zero times**. Adopting them would buy no orchestration and cost a rewrite of
+  every target bind.
+- **Building it "while it is cheap".** It is cheap now and it is *unexercised*
+  now, which is the same sentence. Every pass written afterwards is written
+  against a more abstract API, and debugging gets harder — the cost this
+  decision declines is ongoing, not one-off.
+
+### Revisit if any of these becomes true — and they are numeric on purpose
+
+- **more than ~15 distinct passes in a frame** (we are at 3);
+- **render-target memory becomes a measured constraint** (four full-res targets today);
+- passes need enabling or reordering **dynamically per scene or per quality level**
+  — note `IRenderLayer::enabled` and `order` already cover the static case;
+- a second backend with different barrier semantics appears (**D29** makes this
+  unlikely).
+
+**Whoever revisits: re-read `12-vendored-capabilities.md`'s pass-orchestration
+row first.** If Diligent has grown one by then, this decision is about *their*
+answer, not about building ours.
